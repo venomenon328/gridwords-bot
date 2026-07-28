@@ -6,20 +6,22 @@ Diese Datei gilt für das gesamte Repository. Es gibt derzeit keine untergeordne
 
 Lies vor der Implementierung mindestens:
 
-1. `docs/anforderungsspezifikation.md` – verbindliche fachliche Anforderungen und Versionsgrenzen
-2. `docs/architecture.md` – verbindliche Architektur, Modulgrenzen und Abläufe
-3. `docs/development-guide.md` – Build, Tests, Secrets und Arbeitsweise
-4. `docs/implementation-plan.md` – Reihenfolge der Inkremente
-5. vorhandene ADRs unter `docs/adr/`, wenn die Aufgabe die dort behandelten Entscheidungen berührt
+1. `docs/anforderungsspezifikation.md` – verbindliche fachliche Grundanforderungen und Versionsgrenzen
+2. `docs/requirements/series-model.md` – verbindliche Präzisierung und Änderung der Serien-, Tagesstatus- und Berichtssemantik
+3. `docs/architecture.md` – verbindliche Architektur, Modulgrenzen und Abläufe
+4. `docs/development-guide.md` – Build, Tests, Secrets und Arbeitsweise
+5. `docs/implementation-plan.md` – Reihenfolge der Inkremente
+6. vorhandene ADRs unter `docs/adr/`, wenn die Aufgabe die dort behandelten Entscheidungen berührt
 
 Bei Widersprüchen gilt:
 
 1. aktueller expliziter Nutzerauftrag beziehungsweise GitHub-Issue,
-2. `docs/anforderungsspezifikation.md`,
-3. akzeptierte ADRs,
-4. `docs/architecture.md`,
-5. diese Datei,
-6. übrige Dokumentation.
+2. ausdrücklich als abgenommen gekennzeichnete Anforderungspräzisierungen unter `docs/requirements/`,
+3. `docs/anforderungsspezifikation.md`,
+4. akzeptierte ADRs,
+5. `docs/architecture.md`,
+6. diese Datei,
+7. übrige Dokumentation.
 
 Widersprüche nicht stillschweigend auflösen. Im Ergebnisbericht benennen oder vor einer weitreichenden Änderung nachfragen.
 
@@ -71,6 +73,15 @@ Jeder Schritt muss nach einem Absturz oder erneut zugestellten Event gefahrlos f
 - Das Datum im Share-Ergebnis ist der Spieltag.
 - Heute und gestern sind das einzige zulässige automatische Nachtragsfenster.
 
+### Serienmodell
+
+- Serien werden aus den persistierten Spielergebnissen abgeleitet und eindeutig benannt.
+- Persönlich zu berechnen sind Aktivitätsserie, Komplettserie, GridWords-Lösungsserie, QuadWords-Lösungsserie und Perfektserie.
+- Gemeinsam zu berechnen sind gemeinsame Komplettserie und gemeinsame Perfektserie.
+- Es gibt keine gemeinsame Aktivitätsserie.
+- GridWords- und QuadWords-Lösungen dürfen nicht zu einer unspezifischen persönlichen Lösungsserie zusammengefasst werden.
+- Maßgeblich sind die Definitionen und Testfälle in `docs/requirements/series-model.md`.
+
 ### Datenbank
 
 - Schemaänderungen ausschließlich über Liquibase.
@@ -87,6 +98,7 @@ Jeder Schritt muss nach einem Absturz oder erneut zugestellten Event gefahrlos f
 - Logs dürfen niemals Tokens, Passwörter, vollständige `.env`-Inhalte oder unnötige fremde Nachrichteninhalte enthalten.
 - Neue fachliche Logik benötigt Tests.
 - Parseränderungen benötigen Fixture-basierte Tests für Erfolg, Nicht-gelöst-Format und Fehlerfälle.
+- Serienänderungen benötigen getrennte Tests für alle sieben definierten Serien und die Regel für den unvollständigen aktuellen Tag.
 - Tests dürfen keine echte Discord-Verbindung öffnen.
 - Zeitabhängige Tests verwenden eine feste `Clock`.
 - Fehlerpfade und Idempotenz sind ebenso zu testen wie der Happy Path.
@@ -116,6 +128,7 @@ Für lokale manuelle Ausführung gelten die Befehle aus `README.md` und `docs/de
 - Fachliche Anforderungen nicht beiläufig im Code neu definieren.
 - Eine Änderung an Modulgrenzen, Persistenzstrategie, Discord-Ersetzungsablauf, Scheduling oder Technologieauswahl erfordert vor der Implementierung ein neues beziehungsweise aktualisiertes ADR.
 - Bestehende ADRs werden nicht rückwirkend umgeschrieben, wenn eine Entscheidung ersetzt wird; stattdessen neues ADR mit Verweis auf das abgelöste Dokument.
+- Fachliche Präzisierungen, die ältere Anforderungsformulierungen ersetzen, werden unter `docs/requirements/` dokumentiert und müssen ihren Geltungsbereich ausdrücklich nennen.
 - README bleibt Einstiegsdokument und verlinkt auf detaillierte Dokumente, dupliziert sie aber nicht vollständig.
 
 ## 8. Git- und Aufgabenworkflow
