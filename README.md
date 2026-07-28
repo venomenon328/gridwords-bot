@@ -4,7 +4,8 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 ## Projektdokumentation
 
-- [`docs/anforderungsspezifikation.md`](docs/anforderungsspezifikation.md) – verbindliche fachliche Anforderungen
+- [`docs/anforderungsspezifikation.md`](docs/anforderungsspezifikation.md) – verbindliche fachliche Grundanforderungen
+- [`docs/requirements/series-model.md`](docs/requirements/series-model.md) – abgenommene Präzisierung für Aktivitäts-, Komplett-, Lösungs- und Perfektserien
 - [`docs/architecture.md`](docs/architecture.md) – Zielarchitektur und Modulgrenzen
 - [`docs/implementation-plan.md`](docs/implementation-plan.md) – geplante Inkremente und Reihenfolge
 - [`docs/development-guide.md`](docs/development-guide.md) – lokaler Build, Tests, Secrets und Codex-Workflow
@@ -26,6 +27,8 @@ Der Branch `setup/project-scaffold` enthält das technische Grundgerüst:
 Die eigentliche Ergebnisverarbeitung ist noch nicht implementiert.
 
 Der technische Stabilisierungsauftrag aus GitHub-Issue #2 ist umgesetzt: Der Offline-Build und GitHub Actions laufen erfolgreich, die lokale Konfiguration ist dokumentiert und der Start ohne Discord beziehungsweise PostgreSQL ist automatisiert getestet. Vor dem Merge von PR #1 fehlen noch der manuelle Discord-Gateway-Smoke-Test mit lokalem Token und das abschließende Review.
+
+Die Seriensemantik wurde nachträglich präzisiert: Persönlich werden Aktivität, vollständige tägliche Erledigung, die Lösungsserien beider Spiele und perfekte Tage getrennt betrachtet; gemeinsam gibt es eine Komplett- und eine Perfektserie. Maßgeblich ist das verlinkte Serienmodell.
 
 ## Lokale Voraussetzungen
 
