@@ -19,89 +19,132 @@ Der Branch `setup/project-scaffold` enthält das technische Grundgerüst:
 - Java 21
 - Spring Boot
 - JDA
-- PostgreSQL über Docker Compose
-- Liquibase
+- PostgreSQL-Unterstützung und Liquibase
+- optionale Docker-Compose-Konfiguration
 - externe Konfiguration
 - optionale Discord-Gateway-Verbindung
 
 Die eigentliche Ergebnisverarbeitung ist noch nicht implementiert.
 
-Der technische Stabilisierungsauftrag aus GitHub-Issue #2 ist umgesetzt: Der Offline-Build und GitHub Actions laufen erfolgreich, die lokale Konfiguration ist dokumentiert und der Start ohne Discord beziehungsweise PostgreSQL ist automatisiert getestet. Vor dem Merge von PR #1 fehlen noch der manuelle Discord-Gateway-Smoke-Test mit lokalem Token und das abschließende Review.
+Der technische Stabilisierungsauftrag aus GitHub-Issue #2 ist umgesetzt:
+
+- Offline-Build und GitHub Actions sind grün.
+- Der Start ohne Discord, PostgreSQL und Container-Runtime ist automatisiert getestet.
+- Der reale Discord-Gateway-Smoke-Test wurde am 29. Juli 2026 mit lokalem Token erfolgreich **ohne Docker und ohne PostgreSQL** durchgeführt.
+- Der Bot erschien im vorgesehenen Testserver online und die JDA-Verbindung wurde erfolgreich aufgebaut.
 
 Die Seriensemantik wurde nachträglich präzisiert: Persönlich werden Aktivität, vollständige tägliche Erledigung, die Lösungsserien beider Spiele und perfekte Tage getrennt betrachtet; gemeinsam gibt es eine Komplett- und eine Perfektserie. Maßgeblich ist das verlinkte Serienmodell.
 
 ## Lokale Voraussetzungen
 
+Für den normalen lokalen Build und die Discord-/Fachlogikentwicklung werden nur benötigt:
+
+- Git
 - JDK 21
 - Maven 3.9 oder neuer
-- Docker Desktop beziehungsweise Docker Engine mit Compose
-- Git
+- VS Code beziehungsweise eine andere IDE
 
-## Standardbuild
+**Docker Desktop ist keine Projektvoraussetzung.**
 
-Der verbindliche Offline-Build lautet:
+Optional werden später benötigt:
+
+- eine nativ installierte PostgreSQL-Instanz für einen manuellen lokalen Start mit Persistenz oder
+- eine funktionierende Docker-/Compose-Umgebung als alternative Komfortlösung.
+
+PostgreSQL-Integrationstests werden vollständig in GitHub Actions ausgeführt, sobald das Persistenzinkrement implementiert ist.
+
+## Standardbuild ohne externe Systeme
+
+Der verbindliche lokale Standardbuild lautet:
 
 ```bash
 mvn --batch-mode --no-transfer-progress clean verify
 ```
 
-Er läuft ohne Discord-Token, ohne Discord-Verbindung und ohne manuell gestartete PostgreSQL-Datenbank und wird ebenso in GitHub Actions ausgeführt.
+Er muss funktionieren ohne:
 
-## Lokale Konfiguration und Start
+- Discord-Token,
+- Discord-Netzwerkverbindung,
+- PostgreSQL,
+- Docker beziehungsweise eine andere Container-Runtime.
 
-Die Anwendung startet standardmäßig im Profil `offline`: weder Discord noch PostgreSQL werden dabei kontaktiert. Die lokale Datei `.env` wird von Spring als Properties-Datei importiert; sie bleibt ignoriert. Betriebssystem-Umgebungsvariablen haben Vorrang.
+GitHub Actions führt zusätzlich die für das jeweilige Inkrement vorgesehenen vollständigen Integrationstests aus.
 
-Unter PowerShell wird die lokale Konfiguration so angelegt:
+## Lokale Konfiguration
+
+Die Anwendung importiert optional die lokale Datei `.env`; sie bleibt durch `.gitignore` vom Repository ausgeschlossen. Betriebssystem-Umgebungsvariablen haben Vorrang.
+
+Unter PowerShell:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-Anschließend die Datei `.env` lokal bearbeiten und insbesondere `DISCORD_BOT_TOKEN` nur dort eintragen. Die Beispielwerte sind ausschließlich für die lokale PostgreSQL-Instanz bestimmt.
+`DISCORD_BOT_TOKEN` wird ausschließlich lokal in `.env` eingetragen und niemals committed, in einen Chat kopiert oder an Codex übergeben.
 
-Für einen manuellen Start mit Datenbank:
+## Discord-Start ohne Docker und PostgreSQL
 
-```powershell
-docker compose up -d postgres
-mvn spring-boot:run -Dspring-boot.run.profiles=database
+In `.env`:
+
+```properties
+DISCORD_BOT_TOKEN=DEIN_LOKALER_TOKEN
+DISCORD_ENABLED=true
 ```
 
-Discord bleibt auch im Datenbankprofil deaktiviert, bis lokal `DISCORD_ENABLED=true` gesetzt wird. Ist Discord aktiviert, aber `DISCORD_BOT_TOKEN` leer, beendet die Anwendung den Start mit einer klaren Fehlermeldung. Ein echter Gateway-Smoke-Test erfolgt erst lokal mit einem echten Token und gehört nicht zum automatisierten Build.
-
-Beispiel für eine nur für den aktuellen PowerShell-Prozess geltende Übersteuerung:
+Danach:
 
 ```powershell
-$env:DISCORD_ENABLED = "true"
-mvn spring-boot:run -Dspring-boot.run.profiles=database
+$env:SPRING_PROFILES_ACTIVE = "offline"
+mvn spring-boot:run
 ```
 
-## PostgreSQL manuell starten und stoppen
+Das Profil `offline` deaktiviert die Datenbank-Autokonfiguration, nicht aber die über `DISCORD_ENABLED=true` ausdrücklich aktivierte Discord-Verbindung.
+
+Bei erfolgreichem Start erscheint sinngemäß:
+
+```text
+Discord connection ready as <Bot-Name> (application user id <ID>).
+```
+
+Der Bot reagiert im aktuellen Projektstand noch nicht auf Nachrichten, da noch kein Listener implementiert ist.
+
+## Lokaler Start mit PostgreSQL
+
+Für spätere Persistenzentwicklung wird eine nativ installierte PostgreSQL-Instanz unterstützt. Die Zugangsdaten werden in `.env` gesetzt:
+
+```properties
+DATABASE_URL=jdbc:postgresql://localhost:5432/gridwords
+DATABASE_USERNAME=gridwords
+DATABASE_PASSWORD=lokales-passwort
+```
 
 Start:
 
+```powershell
+mvn spring-boot:run -Dspring-boot.run.profiles=database
+```
+
+Discord kann dabei unabhängig über `DISCORD_ENABLED=true` aktiviert werden.
+
+## Optionale Docker-Compose-Nutzung
+
+`compose.yaml` bleibt als optionale Alternative erhalten. Auf einem Rechner mit funktionierender Container-Runtime kann PostgreSQL weiterhin so gestartet werden:
+
 ```bash
 docker compose up -d postgres
 ```
 
-Status:
+Docker ist jedoch weder für den Standardbuild noch für den Discord-Smoke-Test verpflichtend.
 
-```bash
-docker compose ps
-```
+## Teststrategie
 
-Stoppen:
+- Unit-, Parser-, Domain-, Application-, Architektur- und Discord-Adaptertests laufen lokal ohne Container.
+- Der normale lokale `mvn verify` startet keine Testcontainers-Umgebung.
+- PostgreSQL-Integrationstests werden später über ein eigenes Maven-Profil ausgeführt.
+- GitHub Actions führt dieses Profil in einer Umgebung mit verfügbarer Container-Runtime verpflichtend aus.
+- Ein vollständiger manueller Persistenzstart kann lokal gegen eine native PostgreSQL-Installation erfolgen.
 
-```bash
-docker compose down
-```
-
-Vollständiges lokales Zurücksetzen einschließlich Datenbankvolume:
-
-```bash
-docker compose down -v
-```
-
-Der manuelle Datenbankstart ist für den automatisierten Standardbuild nicht erforderlich.
+Die verbindliche Entscheidung steht in [`docs/adr/0004-docker-optional-local-development.md`](docs/adr/0004-docker-optional-local-development.md).
 
 ## Geheimnisse
 
