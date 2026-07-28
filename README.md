@@ -2,11 +2,18 @@
 
 Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
-Die fachliche Grundlage steht in [`docs/anforderungsspezifikation.md`](docs/anforderungsspezifikation.md).
+## Projektdokumentation
+
+- [`docs/anforderungsspezifikation.md`](docs/anforderungsspezifikation.md) – verbindliche fachliche Anforderungen
+- [`docs/architecture.md`](docs/architecture.md) – Zielarchitektur und Modulgrenzen
+- [`docs/implementation-plan.md`](docs/implementation-plan.md) – geplante Inkremente und Reihenfolge
+- [`docs/development-guide.md`](docs/development-guide.md) – lokaler Build, Tests, Secrets und Codex-Workflow
+- [`docs/adr/`](docs/adr/) – akzeptierte Architekturentscheidungen
+- [`AGENTS.md`](AGENTS.md) – automatisch heranzuziehende Arbeitsregeln für Codex
 
 ## Aktueller Stand
 
-Dieser Branch enthält das technische Grundgerüst:
+Der Branch `setup/project-scaffold` enthält das technische Grundgerüst:
 
 - Java 21
 - Spring Boot
@@ -16,7 +23,9 @@ Dieser Branch enthält das technische Grundgerüst:
 - externe Konfiguration
 - optionale Discord-Gateway-Verbindung
 
-Die eigentliche Ergebnisverarbeitung wird in den nächsten Inkrementen umgesetzt.
+Die eigentliche Ergebnisverarbeitung ist noch nicht implementiert.
+
+Der erste Stabilisierungsauftrag ist GitHub-Issue #2. Solange dieser Auftrag nicht abgeschlossen und CI nicht grün ist, ist das Grundgerüst noch nicht mergebereit. Insbesondere müssen Dependency-Versionen und der lokale `.env`-Startweg verifiziert beziehungsweise korrigiert werden.
 
 ## Lokale Voraussetzungen
 
@@ -25,56 +34,56 @@ Die eigentliche Ergebnisverarbeitung wird in den nächsten Inkrementen umgesetzt
 - Docker Desktop beziehungsweise Docker Engine mit Compose
 - Git
 
-## Lokaler Start
+## Standardbuild
 
-1. Repository klonen und den gewünschten Branch auschecken.
-2. Lokale Konfiguration erzeugen:
+Der verbindliche Offline-Build lautet:
 
-   ```powershell
-   Copy-Item .env.example .env
-   ```
+```bash
+mvn --batch-mode --no-transfer-progress clean verify
+```
 
-3. In `.env` den echten Bot-Token eintragen. Die Datei wird nicht versioniert.
-4. PostgreSQL starten:
+Er muss nach Abschluss von Issue #2 ohne Discord-Token, ohne Discord-Verbindung und ohne manuell gestartete PostgreSQL-Datenbank erfolgreich sein.
 
-   ```powershell
-   docker compose up -d postgres
-   ```
+## Lokaler Discord-Smoke-Test
 
-5. Zunächst ohne Discord-Verbindung bauen:
+Der genaue, technisch verifizierte Startweg wird im Rahmen von Issue #2 finalisiert und anschließend hier dokumentiert. Vorgesehen ist:
 
-   ```powershell
-   mvn clean verify
-   ```
+1. lokale, nicht versionierte Secret-Konfiguration anlegen,
+2. PostgreSQL über Docker Compose starten,
+3. Discord lokal aktivieren,
+4. Anwendung starten,
+5. erfolgreiche Gateway-Verbindung und Online-Status des Bots prüfen.
 
-6. In `.env` setzen:
+Eine bloß vorhandene `.env`-Datei wird nicht in jeder Maven-/Spring-Startvariante automatisch geladen; deshalb soll vor Abschluss von Issue #2 nicht von einem bestimmten Startbefehl ausgegangen werden.
 
-   ```text
-   DISCORD_ENABLED=true
-   ```
+## PostgreSQL manuell starten und stoppen
 
-7. Anwendung starten:
+Start:
 
-   ```powershell
-   mvn spring-boot:run
-   ```
+```bash
+docker compose up -d postgres
+```
 
-Im Log muss anschließend die erfolgreiche Discord-Verbindung mit Bot-Name und Bot-ID erscheinen. Der Bot wird in Discord als online angezeigt.
+Status:
 
-## Stoppen
+```bash
+docker compose ps
+```
 
-Die Anwendung mit `Ctrl+C` beenden. PostgreSQL bei Bedarf stoppen:
+Stoppen:
 
-```powershell
+```bash
 docker compose down
 ```
 
-Die Datenbankdaten bleiben im Docker-Volume erhalten. Zum vollständigen lokalen Zurücksetzen:
+Vollständiges lokales Zurücksetzen einschließlich Datenbankvolume:
 
-```powershell
+```bash
 docker compose down -v
 ```
 
+Der manuelle Datenbankstart darf für den automatisierten Standardbuild nicht erforderlich sein.
+
 ## Geheimnisse
 
-Der Discord-Bot-Token darf niemals in Git, einen Chat, einen Screenshot oder einen Codex-Prompt gelangen. Er gehört ausschließlich in die lokale `.env`-Datei beziehungsweise später in den Secret Store des Hosts.
+Der Discord-Bot-Token darf niemals in Git, einen Chat, ein Issue, einen Screenshot oder einen Codex-Prompt gelangen. Er gehört ausschließlich in eine lokale, nicht versionierte Konfiguration beziehungsweise später in den Secret Store des Hosts.
