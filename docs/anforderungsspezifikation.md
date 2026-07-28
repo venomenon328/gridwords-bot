@@ -1,8 +1,8 @@
 # Anforderungsspezifikation: GridGames-Discord-Bot
 
-**Version:** 0.3 – abgenommene fachliche Grundlage  
-**Stand:** 27. Juli 2026  
-**Status:** Die fachlichen Grundanforderungen, Versionsgrenzen, Serienregeln, Zeitpläne und Discord-Zielkonfiguration sind bestätigt. Das Format eines nicht gelösten QuadWords-Ergebnisses ist durch ein reales Beispiel belegt; für GridWords wird bis zu einem eigenen Fixture dasselbe Schema angenommen.  
+**Version:** 0.4 – abgenommene fachliche Grundlage  
+**Stand:** 28. Juli 2026  
+**Status:** Fachliche Grundanforderungen, Versionsgrenzen, Zeitpläne, Discord-Zielkonfiguration und das präzisierte Serienmodell sind bestätigt. Das vollständige und verbindliche Serienmodell steht in [`docs/requirements/series-model.md`](requirements/series-model.md).  
 **Zielplattform:** Discord-Server, dedizierter Textkanal, zwei fest konfigurierte Spieler
 
 ---
@@ -17,11 +17,12 @@ Er soll:
 2. geteilte Spielergebnisse automatisch erkennen,
 3. gültige Ergebnisse sicher speichern,
 4. den Tagesstatus beider Spieler verwalten,
-5. persönliche und gemeinsame Spiel- und Lösungsserien berechnen,
-6. Ergebnisbeiträge bereinigen und in einer einheitlichen Bot-Darstellung veröffentlichen,
-7. QuadWords-Ergebnisbilder ab Version 2 in Unicode-Raster umwandeln,
-8. ab Version 2 Wochen- und Monatsberichte erstellen,
-9. ab Version 3 abrufbare Statistiken, konfigurierbare Slash-Commands und regelbasierte Kommentare bereitstellen.
+5. persönliche Aktivitäts-, Komplett-, spielbezogene Lösungs- und Perfektserien berechnen,
+6. gemeinsame Komplett- und Perfektserien berechnen,
+7. Ergebnisbeiträge bereinigen und in einer einheitlichen Bot-Darstellung veröffentlichen,
+8. QuadWords-Ergebnisbilder ab Version 2 in Unicode-Raster umwandeln,
+9. ab Version 2 Wochen- und Monatsberichte erstellen,
+10. ab Version 3 abrufbare Statistiken, konfigurierbare Slash-Commands und regelbasierte Kommentare bereitstellen.
 
 Eine eigene Discord Activity ist nicht Bestandteil des Projekts.
 
@@ -37,7 +38,8 @@ Eine eigene Discord Activity ist nicht Bestandteil des Projekts.
 - GridWords und QuadWords
 - Verarbeitung neuer Ergebnisnachrichten
 - Sichere kanonische Wiederveröffentlichung erkannter Ergebnisse
-- Persistente Speicherung von Ergebnissen, Status, Serien, Erinnerungen und Berichten
+- Persistente Speicherung von Ergebnissen, Status, Erinnerungen und Berichten
+- Ableitung der Serien aus den gespeicherten Spielergebnissen
 - Robustes Verhalten bei Neustarts und mehrfach zugestellten Discord-Events
 - Erinnerungen um konfigurierbare Uhrzeiten
 - Lokaler Testbetrieb und späterer Dauerbetrieb auf einem geeigneten Host
@@ -54,6 +56,7 @@ Eine eigene Discord Activity ist nicht Bestandteil des Projekts.
 - Urlaubstage, Joker oder manuelle Serienrettung
 - Gemeinsamer Startmodus
 - Automatische Gewinner- oder Punktelogik
+- Gemeinsame Aktivitätsserie
 
 ---
 
@@ -94,11 +97,11 @@ Der Spieltag ist das im geteilten Gridgames-Ergebnis angegebene Datum. Nicht der
 
 Beispiel: Ein Ergebnis wird am 28. Juli um 00:03 Uhr gepostet, enthält aber „27. Juli 2026“. Es wird dem 27. Juli zugeordnet.
 
-### 4.2 Eingereichtes Spiel
+### 4.2 Eingereichtes beziehungsweise gespieltes Spiel
 
-Ein Spiel gilt als **eingereicht**, wenn für Spieler, Spieltyp und Spieltag ein syntaktisch und fachlich gültiges Ergebnis gespeichert wurde.
+Ein Spiel gilt als **eingereicht** beziehungsweise für die Serienlogik als **gespielt**, wenn für Spieler, Spieltyp und Spieltag ein syntaktisch und fachlich gültiges Ergebnis gespeichert wurde.
 
-Ein nicht gelöstes, aber korrekt geteiltes Ergebnis zählt als eingereicht.
+Ein nicht gelöstes, aber korrekt geteiltes Ergebnis zählt als eingereicht und gespielt.
 
 ### 4.3 Gelöstes Spiel
 
@@ -114,52 +117,34 @@ QuadWords (8. Juli 2026) X/9 in 9:47
 
 Für GridWords wird bis zu einem eigenen realen Fixture analog `X/6` angenommen. Diese Annahme muss durch einen automatisierten Parser-Test dokumentiert und später durch ein echtes GridWords-Beispiel bestätigt werden.
 
-### 4.4 Persönlich gespielter Tag
+### 4.4 Tagesmerkmale und Serien
 
-Ein Tag ist für einen Spieler **gespielt**, wenn für diesen Spieltag gültige Ergebnisse für GridWords und QuadWords vorliegen, unabhängig davon, ob beide gelöst wurden.
+Die vollständigen Definitionen, Anzeigevorgaben, Regeln für den noch unvollständigen aktuellen Tag und Testfälle stehen verbindlich in [`docs/requirements/series-model.md`](requirements/series-model.md).
 
-### 4.5 Persönlich gelöster Tag
+Kurzfassung:
 
-Ein Tag ist für einen Spieler **gelöst**, wenn:
+- **Aktivitätstag:** mindestens eines der beiden Spiele wurde eingereicht.
+- **Kompletter Tag:** GridWords und QuadWords wurden eingereicht, unabhängig vom Lösungsstatus.
+- **Perfekter Tag:** beide Spiele wurden eingereicht und gelöst.
 
-- GridWords eingereicht und gelöst wurde und
-- QuadWords eingereicht und gelöst wurde.
+Pro Spieler werden unabhängig berechnet:
 
-### 4.6 Gemeinsam gespielter Tag
+1. Aktivitätsserie
+2. Komplettserie
+3. GridWords-Lösungsserie
+4. QuadWords-Lösungsserie
+5. Perfektserie
 
-Ein Tag ist gemeinsam gespielt, wenn beide Spieler an diesem Tag beide Spiele eingereicht haben.
+Gemeinsam werden berechnet:
 
-### 4.7 Gemeinsam gelöster Tag
+1. gemeinsame Komplettserie
+2. gemeinsame Perfektserie
 
-Ein Tag ist gemeinsam gelöst, wenn beide Spieler an diesem Tag beide Spiele gelöst haben.
+Es gibt keine gemeinsame Aktivitätsserie und keine unspezifische persönliche „Lösungsserie“, die GridWords und QuadWords vermischt.
 
-### 4.8 Persönliche Spielserie
+Ein am aktuellen Tag noch fehlendes Ergebnis beendet eine bis gestern laufende Serie nicht vor Tagesende. Ein heute bereits eingereichtes, nicht gelöstes Ergebnis beendet dagegen sofort die betroffene spielbezogene Lösungsserie und gegebenenfalls die Perfektserie. Die Regel wird für jede Serie separat angewendet.
 
-Anzahl aufeinanderfolgender persönlich gespielter Kalendertage.
-
-### 4.9 Persönliche Lösungsserie
-
-Anzahl aufeinanderfolgender persönlich gelöster Kalendertage.
-
-### 4.10 Gemeinsame Spielserie
-
-Anzahl aufeinanderfolgender gemeinsam gespielter Kalendertage.
-
-### 4.11 Gemeinsame Lösungsserie
-
-Anzahl aufeinanderfolgender gemeinsam gelöster Kalendertage.
-
-### 4.12 Laufende Serie am aktuellen Tag
-
-Ein am aktuellen Tag noch fehlendes Ergebnis beendet eine bis gestern laufende Serie nicht vor Tagesende.
-
-Die angezeigte Serie endet daher:
-
-- am heutigen Tag, wenn die Bedingungen heute bereits erfüllt sind,
-- andernfalls am gestrigen Tag, solange der heutige Tag noch nicht abgeschlossen ist,
-- oder am letzten tatsächlich erfüllten Tag, wenn bereits eine Lücke feststeht.
-
-### 4.13 Gridgames-Flammenserie
+### 4.5 Gridgames-Flammenserie
 
 Die im Share-Text angezeigte Flammenserie, beispielsweise `🔥2`, wird als separates Metadatum gespeichert. Sie ist nicht maßgeblich für die Bot-eigenen Serien.
 
@@ -216,22 +201,24 @@ Der Bot:
 8. Speicherung und Validierung des GridWords-Unicode-Rasters
 9. QuadWords wird anhand der Kopfzeile als eingereicht erkannt; das Bild wird noch nicht in Unicode umgewandelt
 10. Persistente Tagesstatusverwaltung
-11. Persönliche Spiel- und Lösungsserien
-12. Gemeinsame Spiel- und Lösungsserien
-13. Erinnerungen nur bei fehlenden Einreichungen
-14. Idempotente Verarbeitung
-15. Persistenz über Neustarts hinweg
-16. Grundlegende Fehlerprotokollierung
-17. Sichere kanonische Bereinigung von GridWords-Nachrichten:
+11. Persönliche Aktivitäts-, Komplett-, GridWords-Lösungs-, QuadWords-Lösungs- und Perfektserie
+12. Gemeinsame Komplett- und Perfektserie
+13. Keine gemeinsame Aktivitätsserie
+14. Erinnerungen nur bei fehlenden Einreichungen
+15. Idempotente Verarbeitung
+16. Persistenz über Neustarts hinweg
+17. Grundlegende Fehlerprotokollierung
+18. Sichere kanonische Bereinigung von GridWords-Nachrichten:
     - Ergebnis vollständig parsen und validieren
     - Ergebnis in der Datenbank speichern
     - bereinigte Bot-Nachricht erfolgreich senden
     - erst danach Originalnachricht löschen
-18. Kanonische GridWords-Ausgabe ohne Gridgames-Link und ohne Gridgames-Linkvorschau
-19. Kanonische GridWords-Ausgabe mit Ergebnis, Raster sowie aktueller persönlicher Spiel- und Lösungsserie
-20. QuadWords-Originalnachrichten bleiben in Version 1 bestehen, weil das Rasterbild noch nicht ersetzt werden kann
-21. Erfolgreich verarbeitete QuadWords-Nachrichten erhalten mindestens eine `✅`-Reaktion
-22. Keine Slash-Commands zur Konfiguration; Änderungen erfolgen über externe Konfiguration und Neustart
+19. Kanonische GridWords-Ausgabe ohne Gridgames-Link und ohne Gridgames-Linkvorschau
+20. Kanonische GridWords-Ausgabe mit Ergebnis, Raster, Aktivitätsserie und GridWords-Lösungsserie
+21. Kontextabhängige Ergänzung der Komplett- und Perfektserie, wenn das Ergebnis den betreffenden Tageszustand herstellt
+22. QuadWords-Originalnachrichten bleiben in Version 1 bestehen, weil das Rasterbild noch nicht ersetzt werden kann
+23. Erfolgreich verarbeitete QuadWords-Nachrichten erhalten mindestens eine `✅`-Reaktion
+24. Keine Slash-Commands zur Konfiguration; Änderungen erfolgen über externe Konfiguration und Neustart
 
 ### Nicht Bestandteil von Version 1
 
@@ -269,15 +256,16 @@ Der Bot:
    - bereinigte Bot-Nachricht erfolgreich senden
    - erst danach Originalnachricht löschen
 9. Kanonische QuadWords-Ausgabe ohne Gridgames-Link und ohne Originalbild
-10. Kanonische QuadWords-Ausgabe mit Ergebnis, vier Unicode-Rastern sowie aktueller persönlicher Spiel- und Lösungsserie
-11. Bei unsicherem oder fehlgeschlagenem Bildparser bleibt die Originalnachricht bestehen
-12. Wochenbericht am Montagmorgen für die abgeschlossene Woche Montag bis Sonntag
-13. Monatsbericht am ersten Tag des Folgemonats
-14. Parser-Versionierung
-15. Möglichkeit zur kontrollierten Neuverarbeitung noch vorhandener Rohbilder
-16. Automatische Löschung temporär gespeicherter QuadWords-Rohbilder nach 48 Stunden
+10. Kanonische QuadWords-Ausgabe mit Ergebnis, vier Unicode-Rastern, Aktivitätsserie und QuadWords-Lösungsserie
+11. Kontextabhängige Ergänzung der Komplett- und Perfektserie
+12. Bei unsicherem oder fehlgeschlagenem Bildparser bleibt die Originalnachricht bestehen
+13. Wochenbericht am Montagmorgen für die abgeschlossene Woche Montag bis Sonntag
+14. Monatsbericht am ersten Tag des Folgemonats
+15. Parser-Versionierung
+16. Möglichkeit zur kontrollierten Neuverarbeitung noch vorhandener Rohbilder
+17. Automatische Löschung temporär gespeicherter QuadWords-Rohbilder nach 48 Stunden
 
-### Vorgeschlagene Standardzeiten für Berichte
+### Standardzeiten für Berichte
 
 - Wochenbericht: Montag 08:00 Uhr
 - Monatsbericht: erster Kalendertag 08:15 Uhr
@@ -308,11 +296,9 @@ Beide Zeiten werden extern konfigurierbar umgesetzt. Die leichte Zeitversetzung 
    - persönliche Bestzeit
    - persönliche Bestleistung
    - identische Ergebnisse beider Spieler
-   - Abschluss beider Spiele durch einen Spieler
-   - gemeinsam gespielter Tag
-   - gemeinsam gelöster Tag
-   - neue längste persönliche Spiel- oder Lösungsserie
-   - neue längste gemeinsame Spiel- oder Lösungsserie
+   - kompletter oder perfekter Tag eines Spielers
+   - gemeinsam kompletter oder gemeinsam perfekter Tag
+   - neue längste Aktivitäts-, Komplett-, spielbezogene Lösungs- oder Perfektserie
 6. Mehrere Textvarianten pro Kategorie
 7. Höchstens ein Ergebniskommentar pro verarbeitetem Ergebnis
 8. Höchstens ein gemeinsamer Abschlusskommentar pro Spieltag
@@ -364,13 +350,13 @@ Maßgeblich ist `Europe/Berlin`.
 5. GridWords-Raster beziehungsweise QuadWords-Anhang validieren
 6. Gelöst-Status bestimmen
 7. Ergebnis idempotent speichern oder aktualisieren
-8. Serien und Tagesstatus neu berechnen
-9. Kanonische Bot-Nachricht erzeugen, soweit die jeweilige Version dies unterstützt
+8. alle betroffenen Serien und den Tagesstatus neu berechnen
+9. kanonische Bot-Nachricht erzeugen, soweit die jeweilige Version dies unterstützt
 10. Veröffentlichung der Bot-Nachricht bestätigen lassen
-11. Erst danach Originalnachricht löschen
-12. Falls keine sichere Ersetzung möglich ist: Originalnachricht unverändert lassen und mit `✅` oder `⚠️` reagieren
+11. erst danach Originalnachricht löschen
+12. falls keine sichere Ersetzung möglich ist: Originalnachricht unverändert lassen und mit `✅` oder `⚠️` reagieren
 13. Tagesstatus aktualisieren
-14. Ab Version 3 gegebenenfalls Kommentar erzeugen
+14. ab Version 3 gegebenenfalls Kommentar erzeugen
 
 ## 7.4 Zu erfassende Daten
 
@@ -393,6 +379,8 @@ Für beide Spiele:
 - Parser-Version
 - unveränderter relevanter Rohtext
 - optionale temporäre Rohbildreferenz
+
+Die Bot-eigenen Serien werden aus diesen Ergebnissen abgeleitet und müssen nicht als eigenständige Quelle fachlicher Wahrheit gespeichert werden. Persistierte Cache- oder Snapshot-Werte sind nur zulässig, wenn sie jederzeit reproduzierbar sind.
 
 ## 7.5 Fehlertoleranz
 
@@ -443,10 +431,11 @@ Empfohlene Darstellung: Discord-Embed mit:
 - Spielname und Spieltag
 - Ergebnis und Dauer
 - Unicode-Raster
-- persönliche Spielserie
-- persönliche Lösungsserie
+- Aktivitätsserie
+- Lösungsserie des gerade geposteten Spiels
+- optional Komplett- und Perfektserie, wenn das Ergebnis den jeweiligen Tageszustand herstellt
 
-Die Nachricht enthält keinen Link zu Gridgames.
+Die Nachricht enthält keinen Link zu Gridgames. Sie enthält keine unspezifischen Bezeichnungen wie „Spielserie“ oder „Lösungsserie“ ohne eindeutigen Bezug.
 
 ## 8.2 Beispiel GridWords
 
@@ -458,7 +447,7 @@ Gelöst in 5/6 · 1:25
 ⬜⬜⬜⬜⬜
 …
 
-🔥 Spielserie: 12 Tage · Lösungsserie: 9 Tage
+🔥 Aktivität: 12 Tage · GridWords gelöst: 9 Tage
 ```
 
 ## 8.3 Beispiel QuadWords ab Version 2
@@ -483,7 +472,7 @@ Unten links
 Unten rechts
 …
 
-🔥 Spielserie: 12 Tage · Lösungsserie: 9 Tage
+🔥 Aktivität: 12 · Komplett: 8 · QuadWords gelöst: 4
 ```
 
 ## 8.4 Sichere Löschreihenfolge
@@ -506,7 +495,7 @@ Dann gilt:
 - der fachliche Ergebnisdatensatz wird aktualisiert,
 - die bestehende kanonische Bot-Nachricht wird nach Möglichkeit bearbeitet,
 - andernfalls wird eine neue kanonische Nachricht gesendet und die alte Bot-Nachricht anschließend gelöscht,
-- Tagesstatus und Serien werden neu berechnet.
+- Tagesstatus und alle betroffenen Serien werden neu berechnet.
 
 ---
 
@@ -631,16 +620,20 @@ Wortspiele · 27. Juli 2026
 Tobias
 ✅ GridWords · gelöst · 5/6 · 1:25
 ⬜ QuadWords
-Spielserie: 11 · Lösungsserie: 8
+Aktivität: 11 · Komplett: 7
+GridWords gelöst: 8 · QuadWords gelöst: 3 · Perfekt: 2
 
 Georgia
 ✅ GridWords · gelöst · 4/6 · 1:47
 ✅ QuadWords · gelöst · 8/9 · 3:51
-Spielserie: 12 · Lösungsserie: 12
+Aktivität: 12 · Komplett: 12
+GridWords gelöst: 10 · QuadWords gelöst: 6 · Perfekt: 5
 
-Gemeinsam gespielt: 10 Tage
-Gemeinsam gelöst: 7 Tage
+Gemeinsam komplett: 7 Tage
+Gemeinsam perfekt: 2 Tage
 ```
+
+Die genaue visuelle Verdichtung darf der Discord-Ausgabeadapter bestimmen. Die Bezeichnungen müssen eindeutig bleiben und Aktivität darf nicht mit vollständiger Erledigung verwechselt werden.
 
 ## 11.3 Statusregeln
 
@@ -671,7 +664,9 @@ Slash-Commands zur Änderung folgen in Version 3.
 
 Erinnert wird ausschließlich an **noch nicht eingereichte** Spiele.
 
-Ein bereits eingereichtes, aber nicht gelöstes Spiel löst keine weitere Erinnerung aus, weil es für den betreffenden Tag nicht erneut gespielt werden kann beziehungsweise die Einreichung bereits erfolgt ist.
+Ein bereits eingereichtes, aber nicht gelöstes Spiel löst keine weitere Erinnerung aus, weil die Einreichung bereits erfolgt ist.
+
+Die Aktivitätsserie beeinflusst die Erinnerung nicht: Auch wenn ein Spieler bereits einen Aktivitätstag erreicht hat, wird weiterhin an das zweite fehlende Spiel erinnert.
 
 ## 12.3 Erste Erinnerung
 
@@ -708,7 +703,7 @@ Ergebnisse dürfen nur für heute oder gestern eingereicht werden.
 
 ### 13.2 Auswirkungen
 
-- Serien werden nach einer zulässigen Nachtragung neu berechnet.
+- Nach einem zulässigen Nachtrag werden alle betroffenen persönlichen und gemeinsamen Serien vollständig neu berechnet.
 - Bereits gesendete Erinnerungen werden nicht gelöscht.
 - Bereits veröffentlichte Berichte werden zunächst nicht automatisch korrigiert.
 - Eine spätere Admin-Korrekturfunktion kann ab Version 3 ergänzt werden.
@@ -723,20 +718,29 @@ Zeitraum: abgeschlossene Kalenderwoche Montag bis Sonntag.
 
 Versand: standardmäßig Montag 08:00 Uhr.
 
-Mindestinhalt:
+Mindestinhalt pro Spieler:
 
-- gemeinsam gespielte Tage
-- gemeinsam gelöste Tage
-- Anzahl persönlich gespielter Tage je Spieler
-- Anzahl persönlich gelöster Tage je Spieler
-- aktuelle und längste Spielserie
-- aktuelle und längste Lösungsserie
+- Anzahl Aktivitätstage
+- Anzahl kompletter Tage
+- Anzahl perfekter Tage
+- aktuelle und längste Aktivitätsserie
+- aktuelle und längste Komplettserie
+- aktuelle und längste GridWords-Lösungsserie
+- aktuelle und längste QuadWords-Lösungsserie
+- aktuelle und längste Perfektserie
 - Anzahl GridWords-Einreichungen und Lösungen
 - durchschnittliche GridWords-Versuche für gelöste Spiele
 - durchschnittliche GridWords-Dauer für gelöste Spiele
 - Anzahl QuadWords-Einreichungen und Lösungen
 - durchschnittliche QuadWords-Versuche für gelöste Spiele
 - durchschnittliche QuadWords-Dauer für gelöste Spiele
+
+Gemeinsam:
+
+- Anzahl gemeinsam kompletter Tage
+- Anzahl gemeinsam perfekter Tage
+- aktuelle und längste gemeinsame Komplettserie
+- aktuelle und längste gemeinsame Perfektserie
 
 ## 14.2 Monatsbericht
 
@@ -747,10 +751,9 @@ Versand: standardmäßig am ersten Tag des Folgemonats um 08:15 Uhr.
 Mindestinhalt analog zum Wochenbericht, zusätzlich:
 
 - Gesamtzahl möglicher Tage
-- Anteil gemeinsam gespielter Tage
-- Anteil gemeinsam gelöster Tage
-- längste persönliche und gemeinsame Spielserie im Monat
-- längste persönliche und gemeinsame Lösungsserie im Monat
+- Anteil der Aktivitäts-, kompletten und perfekten Tage je Spieler
+- Anteil gemeinsam kompletter und gemeinsam perfekter Tage
+- längste persönliche und gemeinsame Serien innerhalb des Monats
 
 ## 14.3 Vergleichslogik
 
@@ -805,6 +808,8 @@ Spieler + Spieltyp + Spieltag
 ```
 
 ist fachlich eindeutig.
+
+Serien werden aus den `game_result`-Datensätzen berechnet. Eine spätere Optimierung durch persistierte Snapshots darf das Ergebnis nicht zu einer zweiten, widersprüchlichen Quelle fachlicher Wahrheit machen.
 
 ## 15.3 `daily_status_message`
 
@@ -869,7 +874,7 @@ Bei einer weiteren gültigen Einreichung desselben Spielers für denselben Spiel
 
 - wird der bestehende Datensatz aktualisiert,
 - wird die bestehende kanonische Bot-Nachricht bearbeitet oder sicher ersetzt,
-- werden Tagesstatus und Serien neu berechnet.
+- werden Tagesstatus und alle betroffenen Serien neu berechnet.
 
 ### 16.3 Manuell gelöschte kanonische Bot-Nachricht
 
@@ -909,6 +914,7 @@ Das entsprechende Discord-Delete-Event darf den gespeicherten Ergebnisdatensatz 
 - zuerst speichern, dann veröffentlichen, zuletzt löschen
 - keine verlorenen gültigen Ergebnisse bei Discord-Ausgabefehlern
 - Fehler in Status, Berichten oder Kommentaren rollen die Ergebnisspeicherung nicht zurück
+- Serien sind deterministisch aus den Ergebnissen und einer expliziten `Clock` berechenbar
 
 ### 17.4 Wartbarkeit
 
@@ -927,7 +933,7 @@ Klare Trennung zwischen:
 - Persistenz
 - Konfiguration
 
-Parser müssen mit versionierten Fixtures automatisiert testbar sein.
+Parser müssen mit versionierten Fixtures automatisiert testbar sein. Serienregeln müssen unabhängig von Discord und Datenbank testbar sein.
 
 ### 17.5 Beobachtbarkeit
 
@@ -941,21 +947,21 @@ Parser müssen mit versionierten Fixtures automatisiert testbar sein.
 
 ## 18. Technologie-Stack
 
-Vorgeschlagen:
+Vorgesehen:
 
 - Java 21 LTS
 - Spring Boot
 - JDA
 - PostgreSQL
 - Liquibase
-- Spring Data JPA oder Spring JDBC
+- Spring Data JPA
 - JUnit 5
 - Testcontainers
 - Maven
 - Docker Compose
 - Java `ImageIO`/`BufferedImage` für Version 2
 
-Die Anwendung kann als nicht-webbasierte Spring-Boot-Anwendung laufen und Discord-Ereignisse über die Gateway-Verbindung empfangen.
+Die Anwendung läuft als nicht-webbasierte Spring-Boot-Anwendung und empfängt Discord-Ereignisse über die Gateway-Verbindung.
 
 Ein öffentlicher HTTP-Endpunkt ist für die vorgesehene Bot-Funktion nicht erforderlich.
 
@@ -997,7 +1003,7 @@ PLAYER_2_DISPLAY_NAME=Georgia
 ADMIN_USER_IDS=255063936410451978,451773931351834634
 ```
 
-Empfohlene Standardwerte:
+Standardwerte:
 
 ```text
 REMINDER_FIRST_TIME=18:00
@@ -1044,17 +1050,20 @@ Mindestens 15 bis 20 originale QuadWords-Ergebnisbilder:
 2. Die kanonische GridWords-Nachricht enthält keinen Gridgames-Link.
 3. Gültiges QuadWords-Ergebnis wird anhand der Kopfzeile erkannt und gespeichert.
 4. QuadWords-Originalnachricht bleibt in Version 1 bestehen.
-5. Erfolgreiche und nicht erfolgreiche Ergebnisse werden korrekt unterschieden, sobald Fixtures vorliegen.
-6. Persönliche Spiel- und Lösungsserien werden korrekt berechnet.
-7. Gemeinsame Spiel- und Lösungsserien werden korrekt berechnet.
-8. Erinnerung erwähnt nur Spieler mit fehlenden Einreichungen.
-9. Ein nicht gelöstes, aber eingereichtes Spiel erzeugt keine erneute Erinnerung.
-10. Ergebnisse für heute und gestern werden akzeptiert.
-11. Ältere Ergebnisse werden abgelehnt.
-12. Doppeltes Event erzeugt keinen doppelten Datensatz oder Bot-Post.
-13. Neustart erzeugt keine doppelten Erinnerungen.
-14. Nachrichten anderer Nutzer oder Channels werden ignoriert.
-15. Schlägt die Bot-Veröffentlichung fehl, bleibt die Originalnachricht bestehen.
+5. Erfolgreiche und nicht erfolgreiche Ergebnisse werden korrekt unterschieden.
+6. Aktivitätstag, kompletter Tag und perfekter Tag werden korrekt bestimmt.
+7. Persönliche Aktivitäts-, Komplett-, GridWords-Lösungs-, QuadWords-Lösungs- und Perfektserie werden separat korrekt berechnet.
+8. Gemeinsame Komplett- und Perfektserie werden korrekt berechnet; eine gemeinsame Aktivitätsserie wird nicht erzeugt.
+9. Der unvollständige aktuelle Tag wird für jede Serie entsprechend dem verbindlichen Serienmodell behandelt.
+10. Vortagsnachträge berechnen alle betroffenen Serien neu.
+11. Erinnerung erwähnt nur Spieler mit fehlenden Einreichungen.
+12. Ein nicht gelöstes, aber eingereichtes Spiel erzeugt keine erneute Erinnerung.
+13. Ergebnisse für heute und gestern werden akzeptiert.
+14. Ältere Ergebnisse werden abgelehnt.
+15. Doppeltes Event erzeugt keinen doppelten Datensatz oder Bot-Post.
+16. Neustart erzeugt keine doppelten Erinnerungen.
+17. Nachrichten anderer Nutzer oder Channels werden ignoriert.
+18. Schlägt die Bot-Veröffentlichung fehl, bleibt die Originalnachricht bestehen.
 
 ## 20.4 Abnahmetests Version 2
 
@@ -1064,7 +1073,7 @@ Mindestens 15 bis 20 originale QuadWords-Ergebnisbilder:
 4. Unbekannte oder beschädigte Bilder führen zu kontrollierten Parserfehlern.
 5. Bei Parserfehler bleibt die Originalnachricht bestehen.
 6. Bei erfolgreichem Parser wird die kanonische Bot-Nachricht gesendet und erst danach das Original gelöscht.
-7. Wochen- und Monatsbericht verwenden exakt den vorgesehenen Zeitraum.
+7. Wochen- und Monatsbericht verwenden exakt den vorgesehenen Zeitraum und die Begriffe des Serienmodells.
 8. Kein Bericht wird doppelt gesendet.
 9. Rohbilder werden nach 48 Stunden gelöscht.
 
@@ -1079,7 +1088,9 @@ Benötigt werden:
 3. Installation des Bots auf Tobias' Testserver
 4. dedizierter privater Testkanal
 5. aktivierter Discord-Entwicklermodus zum Kopieren der IDs
-6. sicher gespeicherter Bot-Token
+6. sicher lokal gespeicherter Bot-Token
+
+Application, Bot-Installation und Channelrechte sind eingerichtet. Der reale Gateway-Smoke-Test mit lokal gesetztem Token steht noch aus.
 
 ### Minimale Channel-Berechtigungen
 
@@ -1129,13 +1140,9 @@ Ein kleiner VPS oder Root-Server ist technisch geeignet. Die konkrete Hostingent
 
 ### 22.4 WD My Cloud
 
-Ein WD-My-Cloud-Gerät ist nur abhängig vom exakten Modell und Betriebssystem überhaupt als Host prüfbar.
+Auf dem vorhandenen Gerät läuft nach Nutzerangabe **My Cloud OS 5**. Die genaue Modellbezeichnung und Firmwareversion werden später nachgereicht.
 
-- **My Cloud Home/Home Duo:** ungeeignet, da kein SSH-Zugriff vorgesehen ist.
-- **My Cloud OS 5:** SSH kann grundsätzlich aktiviert werden, Änderungen über SSH und Drittsoftware werden von Western Digital jedoch nicht unterstützt; Systemänderungen können bei Neustarts oder Updates verloren gehen.
-- **My Cloud OS 3:** nicht als produktiver Internetdienst verwenden, da der Produktsupport beendet ist.
-
-Ohne exakte Modellbezeichnung und Firmwareversion wird das NAS nicht als Zielplattform eingeplant. Selbst bei technischer Machbarkeit wäre es eher eine experimentelle als eine wartungsarme Lösung.
+SSH kann bei My-Cloud-OS-5-Geräten grundsätzlich verfügbar sein, Änderungen über SSH und Drittsoftware sind jedoch kein bevorzugter, wartungsarmer Betriebsweg. Ohne genaue Modellbezeichnung wird das NAS nicht als Zielplattform eingeplant.
 
 ---
 
@@ -1149,35 +1156,29 @@ venomenon328/gridwords-bot
 
 Das Repository ist privat. Tobias und der verbundene GitHub-Zugriff besitzen Schreibrechte.
 
-Vorgesehene Anfangsstruktur:
+Aktuelle Dokumentationsstruktur:
 
 ```text
 docs/
   anforderungsspezifikation.md
+  architecture.md
+  implementation-plan.md
+  development-guide.md
+  requirements/
+    series-model.md
+  adr/
 
-fixtures/
-  gridwords/
-  quadwords/
-  quadwords-images/
-
-src/
-  main/
-  test/
-
-.env.example
-.gitignore
+AGENTS.md
 README.md
-compose.yaml
-pom.xml
 ```
 
-Die fachliche Spezifikation ist mit Version 0.3 abgenommen. Die Projektinitialisierung kann beginnen; der echte Discord-Verbindungstest setzt zusätzlich einen lokal gesetzten Bot-Token und einen auf dem Testserver installierten Bot voraus.
+Die fachliche Spezifikation ist mit Version 0.4 einschließlich des referenzierten Serienmodells abgenommen.
 
 ---
 
 ## 24. Noch benötigter Input
 
-### 24.1 Nicht blockierend für die Projektinitialisierung
+### 24.1 Nicht blockierend für die nächsten Entwicklungsinkremente
 
 1. Exakte Modellbezeichnung und Firmwareversion des WD-My-Cloud-Geräts
 2. Ein direktes originales QuadWords-Ergebnisbild ohne umgebenden Discord-Screenshot für robuste Bildparser-Fixtures
@@ -1186,11 +1187,10 @@ Die fachliche Spezifikation ist mit Version 0.3 abgenommen. Die Projektinitialis
 
 ### 24.2 Vor dem ersten echten Discord-Verbindungstest
 
-1. Discord-Application mit Bot-User anlegen
-2. Message-Content-Intent aktivieren
-3. Bot auf dem Testserver installieren
-4. Bot-Berechtigungen im Zielkanal setzen
-5. Bot-Token ausschließlich lokal als Secret konfigurieren
+1. Bot-Token ausschließlich lokal als Secret konfigurieren
+2. PostgreSQL lokal starten
+3. Anwendung mit aktiviertem Discord und Datenbankprofil starten
+4. Online-Status, Gateway-Verbindung und Zugriff auf den Testchannel prüfen
 
 ### 24.3 Geheimnisse
 
@@ -1200,16 +1200,12 @@ Der Bot-Token wird benötigt, darf aber weder im Chat noch im Repository geteilt
 
 ## 25. Nächster konkreter Schritt für Tobias
 
-Die fachliche Arbeit und die Repository-Initialisierung können ohne weiteren Input fortgesetzt werden.
+Auf dem privaten Rechner:
 
-Für Tobias ist parallel als nächster praktischer Schritt erforderlich:
-
-1. Im Discord Developer Portal eine neue Application mit Bot-User anlegen.
-2. Den **Message Content Intent** aktivieren.
-3. Den Bot mit den in Abschnitt 21 genannten Berechtigungen auf Server `255064124902473729` installieren.
-4. Sicherstellen, dass der Bot den Channel `1531398793713549494` sehen, dort schreiben, Nachrichten verwalten, Reaktionen hinzufügen, Dateien anhängen und den Verlauf lesen darf.
-5. Den Bot-Token ausschließlich lokal in einem Passwortmanager speichern. Er wird später als `DISCORD_BOT_TOKEN` in einer nicht versionierten `.env`-Datei gesetzt.
-6. Bei Gelegenheit die exakte WD-My-Cloud-Modellbezeichnung und Firmwareversion nachsehen.
-7. Bei Gelegenheit ein originales QuadWords-Ergebnisbild direkt speichern und als Fixture bereitstellen.
+1. Branch `setup/project-scaffold` auschecken und aktualisieren.
+2. `.env.example` nach `.env` kopieren.
+3. den Bot-Token ausschließlich lokal in `.env` setzen und Discord aktivieren.
+4. PostgreSQL über Docker Compose starten.
+5. Offline-Build und anschließend den Discord-Gateway-Smoke-Test ausführen.
 
 Der Bot-Token darf niemals in einen Codex-Prompt, Chat, Screenshot oder Git-Commit aufgenommen werden.
