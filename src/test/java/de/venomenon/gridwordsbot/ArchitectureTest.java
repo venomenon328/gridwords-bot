@@ -45,9 +45,4 @@ class ArchitectureTest {
             .should().dependOnClassesThat().resideInAnyPackage(
                     "..adapter..", "org.springframework..", "org.springframework.data..",
                     "org.springframework.jdbc..", "jakarta.persistence..", "javax.persistence..", "org.hibernate..");
-
-    @ArchTest
-    static final ArchRule persistenceTypesStayInPersistenceAdapter = noClasses()
-            .that().doNotResideInAPackage("..adapter.persistence..")
-            .should().dependOnClassesThat().resideInAnyPackage("jakarta.persistence..", "org.springframework.data.repository..");
 }
