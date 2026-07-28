@@ -1,1 +1,4 @@
-databaseChangeLog: []
+databaseChangeLog:
+  - include:
+      file: 001-persistence-schema.sql
+      relativeToChangelogFile: true
