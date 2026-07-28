@@ -25,7 +25,7 @@ Der Branch `setup/project-scaffold` enthält das technische Grundgerüst:
 
 Die eigentliche Ergebnisverarbeitung ist noch nicht implementiert.
 
-Der erste Stabilisierungsauftrag ist GitHub-Issue #2. Solange dieser Auftrag nicht abgeschlossen und CI nicht grün ist, ist das Grundgerüst noch nicht mergebereit. Insbesondere müssen Dependency-Versionen und der lokale `.env`-Startweg verifiziert beziehungsweise korrigiert werden.
+Der technische Stabilisierungsauftrag aus GitHub-Issue #2 ist umgesetzt: Der Offline-Build und GitHub Actions laufen erfolgreich, die lokale Konfiguration ist dokumentiert und der Start ohne Discord beziehungsweise PostgreSQL ist automatisiert getestet. Vor dem Merge von PR #1 fehlen noch der manuelle Discord-Gateway-Smoke-Test mit lokalem Token und das abschließende Review.
 
 ## Lokale Voraussetzungen
 
@@ -42,7 +42,7 @@ Der verbindliche Offline-Build lautet:
 mvn --batch-mode --no-transfer-progress clean verify
 ```
 
-Er muss nach Abschluss von Issue #2 ohne Discord-Token, ohne Discord-Verbindung und ohne manuell gestartete PostgreSQL-Datenbank erfolgreich sein.
+Er läuft ohne Discord-Token, ohne Discord-Verbindung und ohne manuell gestartete PostgreSQL-Datenbank und wird ebenso in GitHub Actions ausgeführt.
 
 ## Lokale Konfiguration und Start
 
@@ -98,7 +98,7 @@ Vollständiges lokales Zurücksetzen einschließlich Datenbankvolume:
 docker compose down -v
 ```
 
-Der manuelle Datenbankstart darf für den automatisierten Standardbuild nicht erforderlich sein.
+Der manuelle Datenbankstart ist für den automatisierten Standardbuild nicht erforderlich.
 
 ## Geheimnisse
 
