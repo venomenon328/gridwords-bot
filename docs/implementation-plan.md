@@ -1,36 +1,41 @@
 # Implementierungsplan
 
-Dieser Plan zerlegt die Anforderungsspezifikation in kleine, reviewbare Inkremente. Er beschreibt Reihenfolge und Grenzen, nicht zwingend die endgültige Anzahl der Pull Requests. Für Serien, Tagesmerkmale, Status und Berichte gilt zusätzlich verbindlich `docs/requirements/series-model.md`.
+Dieser Plan zerlegt die Anforderungsspezifikation in kleine, reviewbare Inkremente. Er beschreibt Reihenfolge und Grenzen, nicht zwingend die endgültige Anzahl der Pull Requests. Für Serien, Tagesmerkmale, Status und Berichte gilt zusätzlich verbindlich `docs/requirements/series-model.md`. Für lokale Infrastruktur und Datenbanktests gilt `docs/adr/0004-docker-optional-local-development.md`.
 
 ## Leitprinzipien
 
 - Erst stabiler Build, dann Fachlogik.
 - Parser und Regeln zunächst ohne Discord und Datenbank entwickeln.
+- Der lokale Standardbuild bleibt ohne Docker, PostgreSQL und Discord-Token ausführbar.
+- PostgreSQL-Integrationstests laufen verpflichtend in GitHub Actions über ein separates Maven-Profil.
 - Persistenz und Idempotenz vor dem automatischen Löschen fremder Nachrichten fertigstellen.
 - Eine Originalnachricht wird erst gelöscht, wenn der vollständige sichere Ersetzungsablauf automatisiert getestet ist.
 - Version-2- und Version-3-Funktionen werden nicht vorgezogen.
 
 ## Inkrement 0 – Grundgerüst stabilisieren
 
+**Status:** abgeschlossen
+
 **Ziel:** Reproduzierbarer grüner Build und zuverlässige lokale Konfiguration.
 
-Umfang:
+Umgesetzt:
 
 - reale, stabile und kompatible Dependency-Versionen
-- `mvn clean verify` ohne Discord und lokale Datenbank
+- `mvn clean verify` ohne Discord, lokale Datenbank und Container-Runtime
 - Discord standardmäßig deaktiviert
 - verständlicher Fehler bei aktiviertem Discord ohne Token
 - funktionierender plattformtauglicher lokaler Secret-/Konfigurationsweg
-- CI grün
+- GitHub Actions grün
+- erfolgreicher realer Discord-Gateway-Smoke-Test am 29. Juli 2026 ohne Docker und PostgreSQL
 - keine Fachlogik
 
-Aktueller Auftrag: GitHub-Issue #2.
+Zugehöriger Auftrag: GitHub-Issue #2.
 
-Abschlussbedingung:
+Abschlussbedingung erfüllt:
 
 - Offline-Build grün
-- danach manueller Discord-Smoke-Test durch Tobias
-- PR #1 erst nach Review und erforderlichem Smoke-Test mergen
+- Discord-Smoke-Test durch Tobias erfolgreich
+- abschließendes Review und Merge von PR #1 noch ausstehend
 
 ## Inkrement 1 – Reine Share-Textparser
 
@@ -47,12 +52,15 @@ Umfang:
 - GridWords-Unicode-Raster validieren und normalisieren
 - QuadWords-Anhangsanforderung als Metadatenprüfung, noch ohne Bildanalyse
 - Fixture-basierte Tests
+- Architekturtests für die ersten fachlichen Pakete
 - keine Datenbank
 - kein JDA-Listener
+- vollständig lokal ohne Docker ausführbar
 
 Abnahmekriterium:
 
 - alle vorhandenen echten Fixtures und definierte Fehlerfälle werden korrekt klassifiziert
+- lokaler `mvn clean verify` benötigt keine externe Infrastruktur
 
 ## Inkrement 2 – Persistenzmodell und Verarbeitungszustände
 
@@ -66,12 +74,18 @@ Umfang:
 - `player + game type + game date` eindeutig
 - Quell-Message-ID eindeutig
 - persistierte Zustände des Ersetzungsablaufs
-- Testcontainers-Integrationstests
+- PostgreSQL-Integrationstests gegen echtes PostgreSQL
+- separates Maven-Profil `database-integration`
+- vollständige Ausführung dieses Profils in GitHub Actions
+- lokaler Standardbuild weiterhin ohne Container-Runtime
+- optionaler manueller lokaler Start gegen nativ installiertes PostgreSQL
 - keine Discord-Nachrichten löschen oder veröffentlichen
 
 Abnahmekriterium:
 
 - doppeltes Event beziehungsweise konkurrierender Upsert erzeugt keinen doppelten fachlichen Datensatz
+- Liquibase, Constraints und Konfliktverhalten sind in CI gegen echtes PostgreSQL getestet
+- die Datenbanktests werden in CI nachweislich ausgeführt und nicht nur übersprungen
 
 ## Inkrement 3 – Discord-Inbound im Beobachtungsmodus
 
@@ -89,6 +103,7 @@ Umfang:
 - keine kanonische Wiederveröffentlichung
 - Adaptertests ohne echte Netzwerkverbindung
 - manueller Test im Discord-Testchannel
+- manueller Persistenztest wahlweise gegen natives PostgreSQL; Docker ist nicht erforderlich
 
 Abnahmekriterium:
 
@@ -173,7 +188,7 @@ Umfang:
 - Fehlertexte und Logs
 - Betriebsdokumentation
 - Backup-/Restore-Hinweise
-- Containerimage oder reproduzierbarer Deploymentweg
+- reproduzierbarer Deploymentweg; Containerimage ist optional, nicht lokale Voraussetzung
 - Hostingentscheidung
 - Migration in endgültigen Channel
 
@@ -270,9 +285,10 @@ Parser-Fixtures und Dokumentation können parallel gesammelt werden.
 ## Definition of Done pro Inkrement
 
 - Issue-Abnahmekriterien erfüllt
-- `mvn clean verify` erfolgreich
+- lokaler `mvn clean verify` ohne Docker erfolgreich
 - GitHub Actions grün
+- Datenbankintegrationsprofil in CI erfolgreich, sofern Persistenz betroffen
 - keine Secrets
 - relevante Dokumentation aktualisiert
-- notwendige manuelle Discord-Prüfung dokumentiert
+- notwendige manuelle Discord- oder Persistenzprüfung dokumentiert
 - PR reviewbar und ohne unangeforderten Versionsumfang
