@@ -32,6 +32,7 @@ Widersprüche nicht stillschweigend auflösen. Im Ergebnisbericht benennen oder 
 - Genau ein konfigurierter Server, ein Channel und zwei Spieler in Version 1
 - Keine Microservices, keine verteilte Queue, kein generisches Plugin-Framework
 - Keine generative KI zur Laufzeit
+- Docker Desktop ist keine lokale Projektvoraussetzung
 
 Einfachheit, Nachvollziehbarkeit und robuste Fehlerbehandlung sind wichtiger als abstrakte Wiederverwendbarkeit.
 
@@ -82,12 +83,18 @@ Jeder Schritt muss nach einem Absturz oder erneut zugestellten Event gefahrlos f
 - GridWords- und QuadWords-Lösungen dürfen nicht zu einer unspezifischen persönlichen Lösungsserie zusammengefasst werden.
 - Maßgeblich sind die Definitionen und Testfälle in `docs/requirements/series-model.md`.
 
-### Datenbank
+### Datenbank und lokale Infrastruktur
 
 - Schemaänderungen ausschließlich über Liquibase.
 - Hibernate `ddl-auto` bleibt `validate` oder `none`, niemals `update`/`create` in produktionsnaher Konfiguration.
 - Fachliche Eindeutigkeiten durch Datenbank-Constraints absichern.
-- Keine Testabhängigkeit von einer lokal laufenden Datenbank; Integrationstests verwenden Testcontainers.
+- Der lokale Standardbuild darf weder eine Datenbank noch Docker oder eine andere Container-Runtime voraussetzen.
+- Eine native lokale PostgreSQL-Installation wird für manuelle Persistenzstarts unterstützt, ist aber keine Standardvoraussetzung.
+- PostgreSQL-Integrationstests werden über ein eigenes Maven-Profil ausgeführt, vorgesehen `database-integration`.
+- Das Datenbankintegrationsprofil ist in GitHub Actions verpflichtend und darf dort nicht unbemerkt übersprungen werden.
+- Testcontainers darf für CI-Integrationstests verwendet werden, aber nicht beim normalen lokalen `mvn verify` initialisiert werden.
+- H2 ersetzt keine PostgreSQL-Integrationstests.
+- Maßgeblich ist `docs/adr/0004-docker-optional-local-development.md`.
 
 ## 4. Code- und Testregeln
 
@@ -102,16 +109,25 @@ Jeder Schritt muss nach einem Absturz oder erneut zugestellten Event gefahrlos f
 - Tests dürfen keine echte Discord-Verbindung öffnen.
 - Zeitabhängige Tests verwenden eine feste `Clock`.
 - Fehlerpfade und Idempotenz sind ebenso zu testen wie der Happy Path.
+- Unit-, Domain-, Application-, Architektur- und Discord-Adaptertests müssen ohne Container-Runtime laufen.
 
 ## 5. Standardbefehle
 
-Vor Abschluss einer Implementierungsaufgabe ausführen:
+Vor Abschluss jeder Implementierungsaufgabe lokal ausführen:
 
 ```bash
 mvn --batch-mode --no-transfer-progress clean verify
 ```
 
-Falls die Aufgabe Datenbankintegration betrifft, müssen die betreffenden Testcontainers-Tests Teil von `verify` sein. Ein manuell gestartetes PostgreSQL darf für den Build nicht erforderlich sein.
+Dieser Befehl muss ohne Docker, PostgreSQL und Discord-Token funktionieren.
+
+Falls die Aufgabe Datenbankintegration betrifft, muss zusätzlich das im Issue definierte Datenbankintegrationsprofil in einer Umgebung mit Container-Runtime ausgeführt werden, spätestens in GitHub Actions. Vorgesehener Befehl:
+
+```bash
+mvn --batch-mode --no-transfer-progress -Pdatabase-integration verify
+```
+
+Nicht behaupten, Datenbankintegrationstests seien erfolgreich gewesen, wenn lokal keine Container-Runtime vorhanden war und nur der Standardbuild ausgeführt wurde.
 
 Für lokale manuelle Ausführung gelten die Befehle aus `README.md` und `docs/development-guide.md`.
 
@@ -126,7 +142,7 @@ Für lokale manuelle Ausführung gelten die Befehle aus `README.md` und `docs/de
 ## 7. Dokumentation und Architekturänderungen
 
 - Fachliche Anforderungen nicht beiläufig im Code neu definieren.
-- Eine Änderung an Modulgrenzen, Persistenzstrategie, Discord-Ersetzungsablauf, Scheduling oder Technologieauswahl erfordert vor der Implementierung ein neues beziehungsweise aktualisiertes ADR.
+- Eine Änderung an Modulgrenzen, Persistenzstrategie, Discord-Ersetzungsablauf, Scheduling, Testinfrastruktur oder Technologieauswahl erfordert vor der Implementierung ein neues beziehungsweise aktualisiertes ADR.
 - Bestehende ADRs werden nicht rückwirkend umgeschrieben, wenn eine Entscheidung ersetzt wird; stattdessen neues ADR mit Verweis auf das abgelöste Dokument.
 - Fachliche Präzisierungen, die ältere Anforderungsformulierungen ersetzen, werden unter `docs/requirements/` dokumentiert und müssen ihren Geltungsbereich ausdrücklich nennen.
 - README bleibt Einstiegsdokument und verlinkt auf detaillierte Dokumente, dupliziert sie aber nicht vollständig.
@@ -139,6 +155,7 @@ Für lokale manuelle Ausführung gelten die Befehle aus `README.md` und `docs/de
 - Kleine logisch zusammengehörige Commits mit verständlichen Commit-Nachrichten.
 - Bestehende Nutzeränderungen nicht zurücksetzen.
 - Keine Secrets, lokalen Datenbanken, generierten Binärdateien oder IDE-Artefakte committen.
+- Docker Desktop darf nicht als Voraussetzung in README, Issue oder Codex-Auftrag eingeführt werden.
 
 ## 9. Abschlussbericht für Codex-Aufgaben
 
@@ -149,6 +166,6 @@ Am Ende immer knapp berichten:
 - geänderte Dateien,
 - ausgeführte Befehle und konkrete Testergebnisse,
 - nicht ausgeführte Tests mit Grund,
-- verbleibende Risiken oder notwendige manuelle Prüfungen.
+- verbleibende Risiken oder notwendige manuelle beziehungsweise CI-Prüfungen.
 
 Nicht behaupten, ein Build, Test oder Discord-Smoke-Test sei erfolgreich gewesen, wenn er nicht tatsächlich ausgeführt wurde.
