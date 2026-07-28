@@ -1,4 +1,4 @@
-package de.venomenon.gridwordsbot.discord;
+package de.venomenon.gridwordsbot.adapter.discord;
 
 import de.venomenon.gridwordsbot.config.GridwordsBotProperties;
 import net.dv8tion.jda.api.JDA;

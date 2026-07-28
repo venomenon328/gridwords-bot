@@ -19,7 +19,7 @@
 
     <properties>
         <java.version>21</java.version>
-        <jda.version>6.5.0</jda.version>
+        <jda.version>6.4.2</jda.version>
     </properties>
 
     <dependencies>
@@ -57,16 +57,6 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.testcontainers</groupId>
-            <artifactId>junit-jupiter</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.testcontainers</groupId>
-            <artifactId>postgresql</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

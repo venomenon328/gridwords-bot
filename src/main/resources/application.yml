@@ -5,16 +5,8 @@ spring:
     import: optional:file:.env[.properties]
   main:
     web-application-type: none
-  datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/gridwords}
-    username: ${DATABASE_USERNAME:gridwords}
-    password: ${DATABASE_PASSWORD:gridwords-local}
-  jpa:
-    open-in-view: false
-    hibernate:
-      ddl-auto: validate
-  liquibase:
-    change-log: classpath:/db/changelog/db.changelog-master.yaml
+  profiles:
+    default: offline
 
 management:
   endpoints:

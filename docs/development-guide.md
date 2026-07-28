@@ -41,15 +41,26 @@ Verbindliche Regeln:
 - niemals in Issue, PR, Log oder Screenshot veröffentlichen,
 - ausschließlich lokal beziehungsweise später im Secret Store des Hosts setzen.
 
-`.env` bleibt in `.gitignore`. Das Projekt muss eine dokumentierte und tatsächlich funktionierende Methode bereitstellen, diese Werte beim lokalen Start zu laden. Eine bloß vorhandene `.env`-Datei wird nicht automatisch von jedem Maven-/Java-Prozess eingelesen.
+`.env` bleibt in `.gitignore`. Die Anwendung importiert sie über `spring.config.import=optional:file:.env[.properties]`; damit liest Spring die Datei beim Anwendungsstart tatsächlich ein. Sie wird nicht als Betriebssystemumgebung exportiert. Betriebssystem-Umgebungsvariablen haben wegen der Spring-Property-Priorität Vorrang vor lokalen Dateiwerten.
 
-Zulässige Lösungen sind beispielsweise:
+Unter PowerShell wird die Datei einmalig angelegt:
 
-- ein versioniertes Startskript, das `.env` sicher lädt und den Prozess startet,
-- Spring-Konfigurationsimport mit einer optionalen, nicht versionierten Property-Datei,
-- IDE-Run-Konfiguration, sofern zusätzlich ein plattformtauglicher Kommandozeilenweg dokumentiert ist.
+```powershell
+Copy-Item .env.example .env
+```
 
-Betriebssystem-Umgebungsvariablen müssen lokale Dateiwerte übersteuern können.
+`DISCORD_BOT_TOKEN` wird ausschließlich in diese lokale Datei eingetragen. Die Standardanwendung läuft im Profil `offline`, das keine Datenbank- oder Discord-Verbindung aufbaut. Für den manuellen Start mit PostgreSQL wird nach `docker compose up -d postgres` das Datenbankprofil aktiviert:
+
+```powershell
+mvn spring-boot:run -Dspring-boot.run.profiles=database
+```
+
+Ein Wert für den aktuellen PowerShell-Prozess übersteuert die Datei, beispielsweise:
+
+```powershell
+$env:DISCORD_ENABLED = "true"
+mvn spring-boot:run -Dspring-boot.run.profiles=database
+```
 
 ## 4. Build ohne externe Systeme
 
