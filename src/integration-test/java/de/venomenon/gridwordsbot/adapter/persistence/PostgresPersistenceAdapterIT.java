@@ -98,14 +98,21 @@ class PostgresPersistenceAdapterIT {
         assertTrue(adapter.find(102L, GameType.GRIDWORDS, LocalDate.of(2026, 7, 29)).isEmpty());
     }
     private GameResultStore.GameResultUpsert result(int attempts, String text) {
-        NormalizedBoard board = new NormalizedBoard(List.of("?????", "??????????", "??????????"));
+        NormalizedBoard board = board(attempts);
         ParsedGameResult parsed = new ParsedGameResult(GameType.GRIDWORDS, LocalDate.of(2026, 7, 29), new ShareOutcome.Solved(attempts, 6), Duration.ofSeconds(42), OptionalInt.empty(), Optional.of(board));
         return resultFor(100L, attempts, text);
     }
 
     private GameResultStore.GameResultUpsert resultFor(long playerId, int attempts, String text) {
-        NormalizedBoard board = new NormalizedBoard(List.of("?????", "??????????", "??????????", "?????"));
+        NormalizedBoard board = board(attempts);
         ParsedGameResult parsed = new ParsedGameResult(GameType.GRIDWORDS, LocalDate.of(2026, 7, 29), new ShareOutcome.Solved(attempts, 6), Duration.ofSeconds(42), OptionalInt.empty(), Optional.of(board));
         return new GameResultStore.GameResultUpsert(playerId, parsed, text, "v1");
+    }
+
+    private NormalizedBoard board(int attempts) {
+        String white = new String(Character.toChars(0x2B1C)).repeat(5);
+        String yellow = new String(Character.toChars(0x1F7E8)).repeat(5);
+        String green = new String(Character.toChars(0x1F7E9)).repeat(5);
+        return new NormalizedBoard(List.of(white, yellow, green, white, white, white).subList(0, attempts));
     }
 }
