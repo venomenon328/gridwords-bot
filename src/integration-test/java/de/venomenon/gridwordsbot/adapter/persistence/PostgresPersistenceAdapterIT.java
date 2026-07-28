@@ -11,7 +11,8 @@ import de.venomenon.gridwordsbot.domain.model.ParsedGameResult;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
 import de.venomenon.gridwordsbot.port.out.GameResultStore;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
-import de.venomenon.gridwordsbot.port.out.SubmissionStore;
+import de.venomenon.gridwordsbot.port.out.SubmissionStore;
+import de.venomenon.gridwordsbot.port.out.SubmissionConflictException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -24,7 +25,10 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import liquibase.integration.spring.SpringLiquibase;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -80,9 +84,28 @@ class PostgresPersistenceAdapterIT {
         assertThrows(Exception.class, () -> jdbc.update("INSERT INTO daily_status_message (guild_id, channel_id, game_date, created_at, updated_at) VALUES (-1, 1, CURRENT_DATE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"));
     }
 
+    @Test
+    void rollsBackResultAndSubmissionStateInAnActiveTransaction() {
+        adapter.upsert(new PlayerStore.PlayerUpsert(102L, "Rollback", true, false));
+        adapter.register(new SubmissionStore.SubmissionRegistration(902L, 200L, 300L, 102L, "share", List.of(), now));
+        TransactionTemplate transactions = new TransactionTemplate(new DataSourceTransactionManager(jdbc.getDataSource()));
+        assertThrows(IllegalStateException.class, () -> transactions.executeWithoutResult(status -> {
+            assertTrue(TransactionSynchronizationManager.isActualTransactionActive());
+            adapter.storeResult(new SubmissionStore.ResultStorage(902L, resultFor(102L, 4, "rollback")));
+            throw new IllegalStateException("force rollback");
+        }));
+        assertEquals(SubmissionStore.SubmissionState.RECEIVED, adapter.findBySourceMessageId(902L).orElseThrow().state());
+        assertTrue(adapter.find(102L, GameType.GRIDWORDS, LocalDate.of(2026, 7, 29)).isEmpty());
+    }
     private GameResultStore.GameResultUpsert result(int attempts, String text) {
         NormalizedBoard board = new NormalizedBoard(List.of("?????", "??????????", "??????????"));
         ParsedGameResult parsed = new ParsedGameResult(GameType.GRIDWORDS, LocalDate.of(2026, 7, 29), new ShareOutcome.Solved(attempts, 6), Duration.ofSeconds(42), OptionalInt.empty(), Optional.of(board));
-        return new GameResultStore.GameResultUpsert(100L, parsed, text, "v1");
+        return resultFor(100L, attempts, text);
     }
+
+    private GameResultStore.GameResultUpsert resultFor(long playerId, int attempts, String text) {
+        NormalizedBoard board = new NormalizedBoard(List.of("?????", "??????????", "??????????", "?????"));
+        ParsedGameResult parsed = new ParsedGameResult(GameType.GRIDWORDS, LocalDate.of(2026, 7, 29), new ShareOutcome.Solved(attempts, 6), Duration.ofSeconds(42), OptionalInt.empty(), Optional.of(board));
+        return new GameResultStore.GameResultUpsert(playerId, parsed, text, "v1");
+    }
 }

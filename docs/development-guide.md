@@ -79,7 +79,7 @@ Der Standardbuild umfasst alle Unit-, Parser-, Domain-, Application-, Architektu
 Datenbankintegrationstests werden mit dem Persistenzinkrement in einem separaten Maven-Profil eingeführt, vorgesehen:
 
 ```bash
-mvn --batch-mode --no-transfer-progress -Pdatabase-integration verify
+mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
 ```
 
 Dieses Profil ist im vollständigen GitHub-Actions-Build verpflichtend. Es darf in CI nicht unbemerkt übersprungen werden. Lokal muss es ohne Container-Runtime nicht ausgeführt werden können.
@@ -230,7 +230,7 @@ mvn --batch-mode --no-transfer-progress verify
 Mit dem Persistenzinkrement wird der Workflow so erweitert, dass zusätzlich beziehungsweise stattdessen das vollständige Profil läuft:
 
 ```bash
-mvn --batch-mode --no-transfer-progress -Pdatabase-integration verify
+mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
 ```
 
 Anforderungen:

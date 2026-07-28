@@ -9,6 +9,7 @@ import java.util.Optional;
 public interface SubmissionStore {
     StoredSubmission register(SubmissionRegistration registration);
     Optional<StoredSubmission> findBySourceMessageId(long sourceMessageId);
+    /** Stores once; replay with equivalent data returns the stored submission, contradictory data raises SubmissionConflictException. */
     StoredSubmission storeResult(ResultStorage request);
     boolean transition(long sourceMessageId, SubmissionState expectedState, SubmissionState targetState);
 

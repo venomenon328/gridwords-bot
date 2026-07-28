@@ -6,7 +6,8 @@ import de.venomenon.gridwordsbot.domain.model.ParsedGameResult;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
 import de.venomenon.gridwordsbot.port.out.GameResultStore;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
-import de.venomenon.gridwordsbot.port.out.SubmissionStore;
+import de.venomenon.gridwordsbot.port.out.SubmissionStore;
+import de.venomenon.gridwordsbot.port.out.SubmissionConflictException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Clock;
@@ -108,7 +109,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                 UPDATE submission SET game_result_id = ?, processing_state = 'RESULT_STORED', updated_at = ?, version = version + 1
                 WHERE source_message_id = ? AND processing_state IN ('RECEIVED', 'VALIDATED', 'RESULT_STORED')
                 """, result.id(), databaseTime(clock.instant()), request.sourceMessageId());
-        if (changed != 1) throw new IllegalStateException("submission is not eligible for result storage");
+        if (changed != 1) throw new SubmissionConflictException("submission state changed during result storage");
         return findRequired(request.sourceMessageId());
     }
 
@@ -139,6 +140,11 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                 parsed.board().map(NormalizedBoard::canonicalText).orElse(null), request.rawShareText(), request.parserVersion(), databaseTime(now), databaseTime(now));
     }
 
+    private static boolean equivalent(StoredGameResult stored, GameResultUpsert request) {
+        return stored.playerId() == request.playerId() && stored.parsedResult().equals(request.parsedResult())
+                && stored.rawShareText().equals(request.rawShareText()) && stored.parserVersion().equals(request.parserVersion());
+    }
+
     private StoredSubmission findRequired(long sourceMessageId) {
         return findBySourceMessageId(sourceMessageId).orElseThrow(() -> new IllegalStateException("submission not found: " + sourceMessageId));
     }

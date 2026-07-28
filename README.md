@@ -51,7 +51,7 @@ Optional werden später benötigt:
 - eine nativ installierte PostgreSQL-Instanz für einen manuellen lokalen Start mit Persistenz oder
 - eine funktionierende Docker-/Compose-Umgebung als alternative Komfortlösung.
 
-PostgreSQL-Integrationstests werden vollständig in GitHub Actions ausgeführt, sobald das Persistenzinkrement implementiert ist.
+PostgreSQL-Integrationstests laufen ab dem Persistenzinkrement im Maven-Profil `database-integration` und verpflichtend in GitHub Actions.
 
 ## Standardbuild ohne externe Systeme
 
@@ -140,7 +140,7 @@ Docker ist jedoch weder für den Standardbuild noch für den Discord-Smoke-Test 
 
 - Unit-, Parser-, Domain-, Application-, Architektur- und Discord-Adaptertests laufen lokal ohne Container.
 - Der normale lokale `mvn verify` startet keine Testcontainers-Umgebung.
-- PostgreSQL-Integrationstests werden später über ein eigenes Maven-Profil ausgeführt.
+- PostgreSQL-Integrationstests: `mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify` (Container-Runtime erforderlich).
 - GitHub Actions führt dieses Profil in einer Umgebung mit verfügbarer Container-Runtime verpflichtend aus.
 - Ein vollständiger manueller Persistenzstart kann lokal gegen eine native PostgreSQL-Installation erfolgen.
 
