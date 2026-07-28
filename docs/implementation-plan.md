@@ -1,6 +1,6 @@
 # Implementierungsplan
 
-Dieser Plan zerlegt die Anforderungsspezifikation in kleine, reviewbare Inkremente. Er beschreibt Reihenfolge und Grenzen, nicht zwingend die endgültige Anzahl der Pull Requests.
+Dieser Plan zerlegt die Anforderungsspezifikation in kleine, reviewbare Inkremente. Er beschreibt Reihenfolge und Grenzen, nicht zwingend die endgültige Anzahl der Pull Requests. Für Serien, Tagesmerkmale, Status und Berichte gilt zusätzlich verbindlich `docs/requirements/series-model.md`.
 
 ## Leitprinzipien
 
@@ -103,14 +103,16 @@ Umfang:
 - transportneutrales `CanonicalResultMessage`
 - Discord-Embed-/Textadapter
 - GridWords ohne Gridgames-Link schön darstellen
-- persönliche Spiel- und Lösungsserie zunächst aus vorhandenen Daten berechnen
+- persönliche Aktivitätsserie und GridWords-Lösungsserie aus vorhandenen Daten berechnen
+- Komplett- und Perfektserie ergänzen, wenn das Ergebnis den betreffenden Tageszustand herstellt
+- keine unspezifische persönliche „Spielserie“ oder „Lösungsserie“ ausgeben
 - Bot-Message-ID persistieren
 - Retry und Idempotenz der Veröffentlichung
 - Original bleibt weiterhin bestehen
 
 Abnahmekriterium:
 
-- wiederholte Verarbeitung erzeugt keine zweite kanonische Nachricht
+- wiederholte Verarbeitung erzeugt keine zweite kanonische Nachricht; die angezeigten Serien entsprechen `docs/requirements/series-model.md`
 
 ## Inkrement 5 – Sichere GridWords-Ersetzung
 
@@ -139,8 +141,15 @@ Abnahmekriterium:
 
 Umfang:
 
-- vollständige persönliche und gemeinsame Spiel-/Lösungsserien
-- eine Tagesstatusnachricht pro Spieltag
+- persönliche Aktivitätsserie
+- persönliche Komplettserie
+- persönliche GridWords-Lösungsserie
+- persönliche QuadWords-Lösungsserie
+- persönliche Perfektserie
+- gemeinsame Komplettserie
+- gemeinsame Perfektserie
+- ausdrücklich keine gemeinsame Aktivitätsserie
+- eine Tagesstatusnachricht pro Spieltag mit eindeutig benannten Serien
 - erste Erinnerung 18:00 Uhr
 - zweite Erinnerung 23:00 Uhr
 - nur fehlende Einreichungen erwähnen
@@ -148,10 +157,11 @@ Umfang:
 - Nachholen nach Neustart
 - `Europe/Berlin` und feste `Clock` in Tests
 - aktueller Tag und Vortag als Nachtragsfenster
+- separate Behandlung des noch unvollständigen aktuellen Tags je Serienbedingung
 
 Abnahmekriterium:
 
-- keine doppelten Erinnerungen, korrekte Erwähnungen und korrekte Serien über Lücken und nicht gelöste Spiele hinweg
+- keine doppelten Erinnerungen, korrekte Erwähnungen und korrekte Berechnung aller sieben Serien über Lücken, Teilaktivität, nicht gelöste Spiele, unvollständige heutige Tage und Vortagsnachträge hinweg
 
 ## Inkrement 7 – Version 1 härten und veröffentlichen
 
@@ -180,7 +190,7 @@ Nicht enthalten:
 
 Umfang:
 
-- Originalbild-Fichter
+- Originalbild-Fixtures
 - reine Java-Bildverarbeitung mit `ImageIO`/`BufferedImage`
 - Board-Gruppierung
 - Überschriften `Oben links`, `Oben rechts`, `Unten links`, `Unten rechts`
@@ -198,6 +208,8 @@ Abnahmekriterium:
 Analog zur GridWords-Ersetzung:
 
 - kanonische Unicode-Ausgabe
+- Aktivitätsserie und QuadWords-Lösungsserie ausgeben
+- bei Tagesabschluss gegebenenfalls Komplett- und Perfektserie ergänzen
 - Bot-Message-ID persistieren
 - erst danach Original und Bildnachricht löschen
 - Retry-/Neustartpfade
@@ -211,7 +223,11 @@ Umfang:
 - Wochenbericht Montag 08:00 Uhr
 - Monatsbericht Monatserster 08:15 Uhr
 - persistierte Delivery-Idempotenz
-- sachliche Kennzahlen gemäß Spezifikation
+- pro Spieler Aktivitäts-, Komplett- und perfekte Tage
+- aktuelle und längste persönliche Aktivitäts-, Komplett-, GridWords-Lösungs-, QuadWords-Lösungs- und Perfektserie
+- gemeinsam komplette und gemeinsam perfekte Tage
+- aktuelle und längste gemeinsame Komplett- und Perfektserie
+- bisher vorgesehene spielbezogene Versuchs-, Lösungs- und Zeitkennzahlen
 - keine Gewinnerlogik
 
 ## Inkrement 11 – Statistik- und Konfigurations-Commands
@@ -221,6 +237,7 @@ Umfang:
 Umfang:
 
 - Statistik-Slash-Commands
+- eindeutige Auswahl der Serienarten `activity`, `complete`, `gridwords-solved`, `quadwords-solved`, `perfect`, `shared-complete`, `shared-perfect`
 - Zeiteinstellungen per Slash-Command
 - Autorisierung nur für konfigurierte Admins
 - persistente oder klar definierte Konfigurationsquelle
@@ -233,6 +250,8 @@ Umfang:
 Umfang:
 
 - regelbasierte Kategorien und Textvarianten
+- Auslöser für eindeutig benannte persönliche und gemeinsame Serien
+- perfekte und gemeinsam perfekte Tage als mögliche Auslöser
 - definierte Nachrichtenlimits
 - keine generative KI
 - vollständig testbare Auswahl- und Auslöselogik
