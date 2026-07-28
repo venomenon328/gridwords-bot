@@ -14,8 +14,8 @@ public record AttachmentMetadata(String filename, String contentType, long size)
     }
 
     public boolean isPlausibleImage() {
-        if (contentType.toLowerCase(Locale.ROOT).startsWith("image/")) {
-            return true;
+        if (!contentType.isBlank()) {
+            return contentType.toLowerCase(Locale.ROOT).startsWith("image/");
         }
         String lowerCaseFilename = filename.toLowerCase(Locale.ROOT);
         return lowerCaseFilename.endsWith(".png")

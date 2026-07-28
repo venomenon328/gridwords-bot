@@ -28,11 +28,35 @@ public record ParsedGameResult(
         if (gridgamesStreak.isPresent() && gridgamesStreak.getAsInt() <= 0) {
             throw new IllegalArgumentException("gridgamesStreak must be positive when present");
         }
-        if (gameType == GameType.GRIDWORDS && board.isEmpty()) {
-            throw new IllegalArgumentException("a GridWords result requires a board");
+        validateGameSpecificInvariants(gameType, outcome, board);
+    }
+
+    private static void validateGameSpecificInvariants(
+            GameType gameType, ShareOutcome outcome, Optional<NormalizedBoard> board) {
+        switch (gameType) {
+            case GRIDWORDS -> validateGridWordsResult(outcome, board);
+            case QUADWORDS -> {
+                if (outcome.maxAttempts() != 9) {
+                    throw new IllegalArgumentException("a QuadWords result must use 9 maximum attempts");
+                }
+                if (board.isPresent()) {
+                    throw new IllegalArgumentException("a QuadWords result must not contain a board in version 1");
+                }
+            }
         }
-        if (gameType == GameType.QUADWORDS && board.isPresent()) {
-            throw new IllegalArgumentException("a QuadWords result must not contain a board in version 1");
+    }
+
+    private static void validateGridWordsResult(ShareOutcome outcome, Optional<NormalizedBoard> board) {
+        if (outcome.maxAttempts() != 6) {
+            throw new IllegalArgumentException("a GridWords result must use 6 maximum attempts");
+        }
+        NormalizedBoard gridWordsBoard = board.orElseThrow(
+                () -> new IllegalArgumentException("a GridWords result requires a board"));
+        int expectedBoardRows = outcome instanceof ShareOutcome.Solved solved
+                ? solved.attemptsUsed()
+                : 6;
+        if (gridWordsBoard.rows().size() != expectedBoardRows) {
+            throw new IllegalArgumentException("the GridWords board row count does not match the outcome");
         }
     }
 }
