@@ -118,9 +118,9 @@ Abnahmekriterium:
 
 ## Inkrement 4 – Kanonische GridWords-Nachricht, zunächst ohne Löschung
 
-**Status:** in Draft-Review (PR #10; manueller Smoke-Test ausstehend)
+**Status:** abgeschlossen (PR #10; manueller Discord-/PostgreSQL-Smoke-Test am 29. Juli 2026 erfolgreich)
 
-  **Ziel:** GridWords-Ausgabe vollständig erzeugen und veröffentlichen.
+**Ziel:** GridWords-Ausgabe vollständig erzeugen und veröffentlichen.
 
 Umfang:
 
@@ -133,10 +133,15 @@ Umfang:
 - Bot-Message-ID persistieren
 - Retry und Idempotenz der Veröffentlichung
 - Original bleibt weiterhin bestehen
+- Korrekturen bearbeiten dieselbe kanonische Bot-Nachricht
+- Recovery, Supersession, Delivery-Fences und Duplikatbereinigung sichern den Publish-Ablauf
+- technische Publication-Keys bleiben für Recovery erhalten, werden aber nicht sichtbar dargestellt
 
-Abnahmekriterium:
+Abnahmekriterium erfüllt:
 
-- wiederholte Verarbeitung erzeugt keine zweite kanonische Nachricht; die angezeigten Serien entsprechen `docs/requirements/series-model.md`
+- wiederholte Verarbeitung erzeugt keine zweite kanonische Nachricht
+- die angezeigten Serien entsprechen `docs/requirements/series-model.md`
+- der echte Test im Zielchannel bestätigte Veröffentlichung, Korrektur und unveränderte Originalnachrichten
 
 ## Inkrement 5 – Sichere GridWords-Ersetzung
 
