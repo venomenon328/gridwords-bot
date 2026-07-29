@@ -6,3 +6,7 @@ databaseChangeLog:
   - include:
       file: 002-canonical-publication.sql
       relativeToChangelogFile: true
+
+  - include:
+      file: 003-canonical-publication-ownership.sql
+      relativeToChangelogFile: true

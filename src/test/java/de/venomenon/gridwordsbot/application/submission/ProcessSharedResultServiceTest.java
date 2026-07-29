@@ -161,7 +161,23 @@ class ProcessSharedResultServiceTest {
         assertThat(((ShareOutcome.Solved) result.parsedResult().outcome()).attemptsUsed()).isEqualTo(2);
     }
 
+
     @Test
+    void replaysAnAlreadyPublishedSourceWithoutTryingToStoreOrPublishAgain() {
+        InboundSharedMessage inbound = message(17L, TOBIAS, gridWords(29, 3));
+        assertThat(service.process(inbound)).isEqualTo(new ProcessingResult.Accepted());
+        SubmissionStore.StoredSubmission stored = store.submissions.get(17L);
+        store.submissions.put(17L, store.with(
+                stored,
+                SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED,
+                stored.gameResultId(),
+                Optional.empty()));
+
+        assertThat(service.process(inbound)).isEqualTo(new ProcessingResult.Accepted());
+        assertThat(store.results).hasSize(1);
+        assertThat(store.submissions.get(17L).state())
+                .isEqualTo(SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED);
+    }    @Test
     void doesNotReturnSuccessWhenPersistenceFails() {
         InMemoryStore failingStore = new InMemoryStore() {
             @Override

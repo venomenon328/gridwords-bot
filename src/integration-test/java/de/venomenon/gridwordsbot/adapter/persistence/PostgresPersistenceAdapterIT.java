@@ -280,13 +280,107 @@ class PostgresPersistenceAdapterIT {
     void claimsCanonicalPublicationAndCompletesOnlyForTheExpectedSubmissionResult() {
         adapter.upsert(new PlayerStore.PlayerUpsert(120L, "Canonical", true, false));
         adapter.register(new SubmissionStore.SubmissionRegistration(920L, 200L, 300L, 120L, "share", List.of(), now));
-        SubmissionStore.StoredSubmission stored = adapter.storeResult(new SubmissionStore.ResultStorage(920L, resultFor(120L, 3, "canonical")));
+        SubmissionStore.StoredSubmission stored = adapter.storeResult(
+                new SubmissionStore.ResultStorage(920L, resultFor(120L, 3, "canonical")));
         long resultId = stored.gameResultId().orElseThrow();
-        assertTrue(adapter.claimCanonicalPublication(resultId, now.plusSeconds(60)));
-        assertFalse(adapter.claimCanonicalPublication(resultId, now.plusSeconds(60)));
-        assertTrue(adapter.completeCanonicalPublication(920L, resultId, 1234L));
+
+        GameResultStore.PublicationClaim claim = adapter.claimCanonicalPublication(resultId, now.plusSeconds(60))
+                .orElseThrow();
+        assertTrue(adapter.claimCanonicalPublication(resultId, now.plusSeconds(60)).isEmpty());
+        assertTrue(adapter.completeCanonicalPublication(920L, resultId, 1234L, claim.token()));
+
         assertEquals(1234L, adapter.findById(resultId).orElseThrow().canonicalMessageId().orElseThrow());
-        assertEquals(SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED, adapter.findBySourceMessageId(920L).orElseThrow().state());
-        assertThrows(SubmissionConflictException.class, () -> adapter.completeCanonicalPublication(920L, resultId + 1, 1235L));
+        assertEquals(
+                SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED,
+                adapter.findBySourceMessageId(920L).orElseThrow().state());
+        assertThrows(
+                SubmissionConflictException.class,
+                () -> adapter.completeCanonicalPublication(920L, resultId + 1, 1235L, java.util.UUID.randomUUID()));
+    }
+
+    @Test
+    void rejectsAStalePublisherAfterItsLeaseWasTakenOver() {
+        adapter.upsert(new PlayerStore.PlayerUpsert(121L, "Stale owner", true, false));
+        adapter.register(new SubmissionStore.SubmissionRegistration(921L, 200L, 300L, 121L, "share", List.of(), now));
+        long resultId = adapter.storeResult(new SubmissionStore.ResultStorage(921L, resultFor(121L, 3, "stale")))
+                .gameResultId()
+                .orElseThrow();
+
+        GameResultStore.PublicationClaim stale = adapter.claimCanonicalPublication(resultId, now.minusSeconds(1))
+                .orElseThrow();
+        GameResultStore.PublicationClaim current = adapter.claimCanonicalPublication(resultId, now.plusSeconds(60))
+                .orElseThrow();
+        assertFalse(stale.token().equals(current.token()));
+
+        assertThrows(
+                SubmissionConflictException.class,
+                () -> adapter.completeCanonicalPublication(921L, resultId, 1234L, stale.token()));
+        assertTrue(adapter.findById(resultId).orElseThrow().canonicalMessageId().isEmpty());
+        assertEquals(SubmissionStore.SubmissionState.RESULT_STORED,
+                adapter.findBySourceMessageId(921L).orElseThrow().state());
+
+        assertTrue(adapter.completeCanonicalPublication(921L, resultId, 1235L, current.token()));
+        assertEquals(1235L, adapter.findById(resultId).orElseThrow().canonicalMessageId().orElseThrow());
+    }
+
+    @Test
+    void grantsExactlyOneCanonicalClaimToConcurrentWorkers() throws Exception {
+        adapter.upsert(new PlayerStore.PlayerUpsert(122L, "Concurrent canonical", true, false));
+        adapter.register(new SubmissionStore.SubmissionRegistration(922L, 200L, 300L, 122L, "share", List.of(), now));
+        long resultId = adapter.storeResult(new SubmissionStore.ResultStorage(922L, resultFor(122L, 3, "concurrent canonical")))
+                .gameResultId()
+                .orElseThrow();
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            Future<Optional<GameResultStore.PublicationClaim>> first = executor.submit(
+                    () -> adapter.claimCanonicalPublication(resultId, now.plusSeconds(60)));
+            Future<Optional<GameResultStore.PublicationClaim>> second = executor.submit(
+                    () -> adapter.claimCanonicalPublication(resultId, now.plusSeconds(60)));
+
+            assertEquals(1, List.of(first.get(), second.get()).stream().filter(Optional::isPresent).count());
+        }
+    }
+    @Test
+    void replacesTheCanonicalMessageIdForALostMessageCorrection() {
+        adapter.upsert(new PlayerStore.PlayerUpsert(123L, "Lost message", true, false));
+        adapter.register(new SubmissionStore.SubmissionRegistration(923L, 200L, 300L, 123L, "first", List.of(), now));
+        long resultId = adapter.storeResult(new SubmissionStore.ResultStorage(923L, resultFor(123L, 3, "first")))
+                .gameResultId()
+                .orElseThrow();
+        adapter.setCanonicalMessageId(resultId, 1234L);
+        adapter.register(new SubmissionStore.SubmissionRegistration(924L, 200L, 300L, 123L, "correction", List.of(), now));
+        SubmissionStore.StoredSubmission correction = adapter.storeResult(
+                new SubmissionStore.ResultStorage(924L, resultFor(123L, 2, "correction")));
+        assertEquals(resultId, correction.gameResultId().orElseThrow());
+
+        GameResultStore.PublicationClaim claim = adapter.claimCanonicalPublication(resultId, now.plusSeconds(60))
+                .orElseThrow();
+        assertTrue(adapter.completeCanonicalPublication(924L, resultId, 5678L, claim.token()));
+
+        assertEquals(5678L, adapter.findById(resultId).orElseThrow().canonicalMessageId().orElseThrow());
+        assertEquals(SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED,
+                adapter.findBySourceMessageId(924L).orElseThrow().state());
+    }
+
+    @Test
+    void reconstructsRetryableGridWordsSubmissionsForStartupRecovery() {
+        adapter.upsert(new PlayerStore.PlayerUpsert(124L, "Retry", true, false));
+        adapter.register(new SubmissionStore.SubmissionRegistration(925L, 200L, 300L, 124L, "retry", List.of(), now));
+        adapter.storeResult(new SubmissionStore.ResultStorage(925L, resultFor(124L, 3, "retry")));
+        adapter.markRetryableFailure(925L, "canonical publication failed");
+
+        assertEquals(SubmissionStore.SubmissionState.FAILED_RETRYABLE,
+                adapter.findBySourceMessageId(925L).orElseThrow().state());
+        assertTrue(adapter.findGridWordsAwaitingCanonicalPublication().stream()
+                .anyMatch(submission -> submission.sourceMessageId() == 925L));
+    }
+
+    @Test
+    void appliesTheOwnershipMigrationToAnEmptyDatabase() {
+        assertEquals(1, jdbc.queryForObject("""
+                SELECT count(*)
+                FROM information_schema.columns
+                WHERE table_name = 'game_result' AND column_name = 'canonical_publish_claim_token'
+                """, Integer.class));
     }
 }

@@ -46,7 +46,74 @@ class StreakCalculatorTest {
         assertThat(streaks.personalPerfect()).isZero();
     }
 
-    private static StreakCalculator.PlayerResult result(long player, LocalDate date, GameType type, boolean solved) {
+
+    @Test
+    void missingHistoricalResultBreaksOnlyTheAffectedStreak() {
+        List<StreakCalculator.PlayerResult> results = List.of(
+                result(TOBIAS, TODAY, GameType.GRIDWORDS, true),
+                result(TOBIAS, TODAY.minusDays(2), GameType.GRIDWORDS, true));
+
+        StreakSummary streaks = calculator.calculate(results, List.of(TOBIAS, GEORGIA), TOBIAS, TODAY);
+
+        assertThat(streaks.personalActivity()).isEqualTo(1);
+        assertThat(streaks.personalGridWordsSolved()).isEqualTo(1);
+        assertThat(streaks.personalQuadWordsSolved()).isZero();
+        assertThat(streaks.personalComplete()).isZero();
+        assertThat(streaks.personalPerfect()).isZero();
+    }
+
+    @Test
+    void unsolvedQuadWordsDoesNotBreakTheIndependentGridWordsSolvedStreak() {
+        List<StreakCalculator.PlayerResult> results = List.of(
+                result(TOBIAS, TODAY, GameType.GRIDWORDS, true),
+                result(TOBIAS, TODAY, GameType.QUADWORDS, false),
+                result(TOBIAS, TODAY.minusDays(1), GameType.GRIDWORDS, true),
+                result(TOBIAS, TODAY.minusDays(1), GameType.QUADWORDS, true));
+
+        StreakSummary streaks = calculator.calculate(results, List.of(TOBIAS, GEORGIA), TOBIAS, TODAY);
+
+        assertThat(streaks.personalActivity()).isEqualTo(2);
+        assertThat(streaks.personalComplete()).isEqualTo(2);
+        assertThat(streaks.personalGridWordsSolved()).isEqualTo(2);
+        assertThat(streaks.personalQuadWordsSolved()).isZero();
+        assertThat(streaks.personalPerfect()).isZero();
+    }
+
+    @Test
+    void yesterdayBackfillRecalculatesCompleteAndPerfectStreaks() {
+        List<StreakCalculator.PlayerResult> beforeBackfill = List.of(
+                result(TOBIAS, TODAY, GameType.GRIDWORDS, true),
+                result(TOBIAS, TODAY, GameType.QUADWORDS, true),
+                result(TOBIAS, TODAY.minusDays(1), GameType.GRIDWORDS, true));
+        List<StreakCalculator.PlayerResult> afterBackfill = new java.util.ArrayList<>(beforeBackfill);
+        afterBackfill.add(result(TOBIAS, TODAY.minusDays(1), GameType.QUADWORDS, true));
+
+        StreakSummary before = calculator.calculate(beforeBackfill, List.of(TOBIAS, GEORGIA), TOBIAS, TODAY);
+        StreakSummary after = calculator.calculate(afterBackfill, List.of(TOBIAS, GEORGIA), TOBIAS, TODAY);
+
+        assertThat(before.personalComplete()).isEqualTo(1);
+        assertThat(before.personalPerfect()).isEqualTo(1);
+        assertThat(after.personalComplete()).isEqualTo(2);
+        assertThat(after.personalPerfect()).isEqualTo(2);
+    }
+
+    @Test
+    void sharedCompleteAndPerfectStreaksRemainIndependent() {
+        List<StreakCalculator.PlayerResult> results = List.of(
+                result(TOBIAS, TODAY, GameType.GRIDWORDS, true),
+                result(TOBIAS, TODAY, GameType.QUADWORDS, true),
+                result(GEORGIA, TODAY, GameType.GRIDWORDS, false),
+                result(GEORGIA, TODAY, GameType.QUADWORDS, true),
+                result(TOBIAS, TODAY.minusDays(1), GameType.GRIDWORDS, true),
+                result(TOBIAS, TODAY.minusDays(1), GameType.QUADWORDS, true),
+                result(GEORGIA, TODAY.minusDays(1), GameType.GRIDWORDS, true),
+                result(GEORGIA, TODAY.minusDays(1), GameType.QUADWORDS, true));
+
+        StreakSummary streaks = calculator.calculate(results, List.of(TOBIAS, GEORGIA), TOBIAS, TODAY);
+
+        assertThat(streaks.sharedComplete()).isEqualTo(2);
+        assertThat(streaks.sharedPerfect()).isZero();
+    }    private static StreakCalculator.PlayerResult result(long player, LocalDate date, GameType type, boolean solved) {
         ShareOutcome outcome = solved ? new ShareOutcome.Solved(1, type == GameType.GRIDWORDS ? 6 : 9) : new ShareOutcome.Unsolved(type == GameType.GRIDWORDS ? 6 : 9);
         Optional<NormalizedBoard> board = type == GameType.GRIDWORDS ? Optional.of(new NormalizedBoard(java.util.Collections.nCopies(solved ? 1 : 6, "\u2b1c\u2b1c\u2b1c\u2b1c\u2b1c"))) : Optional.empty();
         return new StreakCalculator.PlayerResult(player, new ParsedGameResult(type, date, outcome, Duration.ofSeconds(1), OptionalInt.empty(), board));

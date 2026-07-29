@@ -1,3 +1,78 @@
 package de.venomenon.gridwordsbot.adapter.discord.canonical;
-import de.venomenon.gridwordsbot.application.canonical.CanonicalResultMessage; import de.venomenon.gridwordsbot.port.out.CanonicalMessageGateway; import java.util.*; import net.dv8tion.jda.api.JDA; import net.dv8tion.jda.api.entities.*; import net.dv8tion.jda.api.exceptions.ErrorResponseException;
-public final class JdaCanonicalMessageGateway implements CanonicalMessageGateway { private final JDA jda; private final CanonicalEmbedRenderer renderer=new CanonicalEmbedRenderer(); public JdaCanonicalMessageGateway(JDA jda){this.jda=jda;} public long create(long channel,CanonicalResultMessage m){return text(channel).sendMessageEmbeds(renderer.render(m)).setAllowedMentions(List.of()).complete().getIdLong();} public void edit(long channel,long id,CanonicalResultMessage m){try{text(channel).retrieveMessageById(id).complete().editMessageEmbeds(renderer.render(m)).setAllowedMentions(List.of()).complete();}catch(ErrorResponseException e){ if (e.getErrorResponse() == net.dv8tion.jda.api.requests.ErrorResponse.UNKNOWN_MESSAGE) throw new UnknownMessageException(); throw e;}} public OptionalLong findByPublicationKey(long channel,String key){return text(channel).getHistory().retrievePast(100).complete().stream().filter(x->x.getAuthor().equals(jda.getSelfUser())).filter(x->x.getEmbeds().stream().anyMatch(e->e.getFooter()!=null&&key.equals(e.getFooter().getText()))).mapToLong(Message::getIdLong).findFirst();} private net.dv8tion.jda.api.entities.channel.concrete.TextChannel text(long id){var c=jda.getTextChannelById(id);if(c==null)throw new IllegalStateException("configured text channel is unavailable");return c;}}
+
+import de.venomenon.gridwordsbot.application.canonical.CanonicalResultMessage;
+import de.venomenon.gridwordsbot.port.out.CanonicalMessageGateway;
+import java.util.List;
+import java.util.OptionalLong;
+import net.dv8tion.jda.api.JDA;
+import net.dv8tion.jda.api.entities.Message;
+import net.dv8tion.jda.api.entities.MessageHistory;
+import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
+import net.dv8tion.jda.api.exceptions.ErrorResponseException;
+import net.dv8tion.jda.api.requests.ErrorResponse;
+
+/** JDA adapter; all calls are made by the application worker, never in a database transaction. */
+public final class JdaCanonicalMessageGateway implements CanonicalMessageGateway {
+
+    private final JDA jda;
+    private final CanonicalEmbedRenderer renderer = new CanonicalEmbedRenderer();
+
+    public JdaCanonicalMessageGateway(JDA jda) {
+        this.jda = jda;
+    }
+
+    @Override
+    public long create(long channelId, CanonicalResultMessage message) {
+        return channel(channelId)
+                .sendMessageEmbeds(renderer.render(message))
+                .setAllowedMentions(List.of())
+                .complete()
+                .getIdLong();
+    }
+
+    @Override
+    public void edit(long channelId, long messageId, CanonicalResultMessage message) {
+        try {
+            channel(channelId)
+                    .retrieveMessageById(messageId)
+                    .complete()
+                    .editMessageEmbeds(renderer.render(message))
+                    .setAllowedMentions(List.of())
+                    .complete();
+        } catch (ErrorResponseException exception) {
+            if (isUnknownMessage(exception)) {
+                throw new UnknownMessageException();
+            }
+            throw exception;
+        }
+    }
+
+    @Override
+    public OptionalLong findByPublicationKey(long channelId, String publicationKey) {
+        MessageHistory history = channel(channelId).getHistory();
+        while (true) {
+            List<Message> page = history.retrievePast(100).complete();
+            OptionalLong found = page.stream()
+                    .filter(message -> message.getAuthor().equals(jda.getSelfUser()))
+                    .filter(message -> message.getEmbeds().stream().anyMatch(embed -> embed.getFooter() != null
+                            && publicationKey.equals(embed.getFooter().getText())))
+                    .mapToLong(Message::getIdLong)
+                    .findFirst();
+            if (found.isPresent() || page.size() < 100) {
+                return found;
+            }
+        }
+    }
+
+    static boolean isUnknownMessage(ErrorResponseException exception) {
+        return exception.getErrorResponse() == ErrorResponse.UNKNOWN_MESSAGE;
+    }
+
+    private TextChannel channel(long channelId) {
+        TextChannel channel = jda.getTextChannelById(channelId);
+        if (channel == null) {
+            throw new IllegalStateException("configured text channel is unavailable");
+        }
+        return channel;
+    }
+}

@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
+import java.util.UUID;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -182,14 +183,96 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                 """, targetState.name(), databaseTime(clock.instant()), sourceMessageId, expectedState.name()) == 1;
     }
 
-    @Override public List<StoredPlayer> findActivePlayers() { return jdbc.query("SELECT * FROM player WHERE active = true ORDER BY discord_user_id", PLAYER); }
-    @Override public Optional<StoredGameResult> findById(long id) { return jdbc.query("SELECT * FROM game_result WHERE id = ?", RESULT, id).stream().findFirst(); }
-    @Override public List<StoredGameResult> findAll() { return jdbc.query("SELECT * FROM game_result", RESULT); }
-    @Override public boolean claimCanonicalPublication(long id, Instant leaseUntil) { return jdbc.update("UPDATE game_result SET canonical_publish_lease_until = ?, updated_at = ? WHERE id = ? AND (canonical_publish_lease_until IS NULL OR canonical_publish_lease_until < ?)", databaseTime(leaseUntil),databaseTime(clock.instant()),id,databaseTime(clock.instant())) == 1; }
-    @Override public void releaseCanonicalPublicationClaim(long id) { jdbc.update("UPDATE game_result SET canonical_publish_lease_until = NULL WHERE id = ?",id); }
-    @Override @Transactional public boolean completeCanonicalPublication(long source,long result,long message) { int b=jdbc.update("UPDATE submission SET processing_state='CANONICAL_MESSAGE_PUBLISHED', technical_error_message=NULL, updated_at=?, version=version+1 WHERE source_message_id=? AND game_result_id=? AND processing_state IN ('RESULT_STORED','FAILED_RETRYABLE')",databaseTime(clock.instant()),source,result); if (b != 1) throw new SubmissionConflictException("submission changed during canonical publication"); int a=jdbc.update("UPDATE game_result SET canonical_message_id=?, canonical_publish_lease_until=NULL, updated_at=?, version=version+1 WHERE id=?",message,databaseTime(clock.instant()),result); if (a != 1) throw new SubmissionConflictException("result changed during canonical publication"); return true; }
-    @Override public void markRetryableFailure(long source,String detail) { jdbc.update("UPDATE submission SET processing_state='FAILED_RETRYABLE', technical_error_message=?, updated_at=?, version=version+1 WHERE source_message_id=? AND processing_state IN ('RESULT_STORED','FAILED_RETRYABLE')",detail,databaseTime(clock.instant()),source); }
-    @Override public List<StoredSubmission> findGridWordsAwaitingCanonicalPublication() { return jdbc.query("SELECT s.* FROM submission s JOIN game_result r ON r.id=s.game_result_id WHERE r.game_type='GRIDWORDS' AND s.processing_state IN ('RESULT_STORED','FAILED_RETRYABLE')", SUBMISSION); }
+    @Override
+    public List<StoredPlayer> findActivePlayers() {
+        return jdbc.query("SELECT * FROM player WHERE active = true ORDER BY discord_user_id", PLAYER);
+    }
+
+    @Override
+    public Optional<StoredGameResult> findById(long id) {
+        return jdbc.query("SELECT * FROM game_result WHERE id = ?", RESULT, id).stream().findFirst();
+    }
+
+    @Override
+    public List<StoredGameResult> findAll() {
+        return jdbc.query("SELECT * FROM game_result", RESULT);
+    }
+
+    @Override
+    public Optional<PublicationClaim> claimCanonicalPublication(long resultId, Instant leaseUntil) {
+        UUID token = UUID.randomUUID();
+        Instant now = clock.instant();
+        int changed = jdbc.update("""
+                UPDATE game_result
+                SET canonical_publish_lease_until = ?, canonical_publish_claim_token = ?, updated_at = ?
+                WHERE id = ?
+                  AND (canonical_publish_lease_until IS NULL OR canonical_publish_lease_until < ?)
+                """, databaseTime(leaseUntil), token, databaseTime(now), resultId, databaseTime(now));
+        return changed == 1 ? Optional.of(new PublicationClaim(token, leaseUntil)) : Optional.empty();
+    }
+
+    @Override
+    public void releaseCanonicalPublicationClaim(long resultId, UUID claimToken) {
+        jdbc.update("""
+                UPDATE game_result
+                SET canonical_publish_lease_until = NULL, canonical_publish_claim_token = NULL
+                WHERE id = ? AND canonical_publish_claim_token = ?
+                """, resultId, claimToken);
+    }
+
+    @Override
+    @Transactional
+    public boolean completeCanonicalPublication(
+            long sourceMessageId,
+            long resultId,
+            long canonicalMessageId,
+            UUID claimToken) {
+        Instant now = clock.instant();
+        int claimedResult = jdbc.update("""
+                UPDATE game_result
+                SET canonical_message_id = ?, canonical_publish_lease_until = NULL,
+                    canonical_publish_claim_token = NULL, updated_at = ?, version = version + 1
+                WHERE id = ? AND canonical_publish_claim_token = ?
+                """, canonicalMessageId, databaseTime(now), resultId, claimToken);
+        if (claimedResult != 1) {
+            throw new SubmissionConflictException("publication claim was lost");
+        }
+
+        int completedSubmission = jdbc.update("""
+                UPDATE submission
+                SET processing_state = 'CANONICAL_MESSAGE_PUBLISHED', technical_error_message = NULL,
+                    updated_at = ?, version = version + 1
+                WHERE source_message_id = ?
+                  AND game_result_id = ?
+                  AND processing_state IN ('RESULT_STORED', 'FAILED_RETRYABLE')
+                """, databaseTime(now), sourceMessageId, resultId);
+        if (completedSubmission != 1) {
+            throw new SubmissionConflictException("submission changed during canonical publication");
+        }
+        return true;
+    }
+
+    @Override
+    public void markRetryableFailure(long sourceMessageId, String detail) {
+        jdbc.update("""
+                UPDATE submission
+                SET processing_state = 'FAILED_RETRYABLE', technical_error_message = ?,
+                    updated_at = ?, version = version + 1
+                WHERE source_message_id = ?
+                  AND processing_state IN ('RESULT_STORED', 'FAILED_RETRYABLE')
+                """, detail, databaseTime(clock.instant()), sourceMessageId);
+    }
+
+    @Override
+    public List<StoredSubmission> findGridWordsAwaitingCanonicalPublication() {
+        return jdbc.query("""
+                SELECT s.*
+                FROM submission s
+                JOIN game_result r ON r.id = s.game_result_id
+                WHERE r.game_type = 'GRIDWORDS'
+                  AND s.processing_state IN ('RESULT_STORED', 'FAILED_RETRYABLE')
+                """, SUBMISSION);
+    }
     private StoredGameResult upsertResult(GameResultUpsert request, Instant now) {
         ParsedGameResult parsed = request.parsedResult();
         boolean solved = parsed.outcome() instanceof ShareOutcome.Solved;

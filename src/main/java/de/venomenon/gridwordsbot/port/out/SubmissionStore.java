@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 
 /** Persistence boundary for the resumable, source-message based submission state machine. */
 public interface SubmissionStore {
@@ -14,7 +15,7 @@ public interface SubmissionStore {
     StoredSubmission reject(RejectedSubmission request);
     boolean transition(long sourceMessageId, SubmissionState expectedState, SubmissionState targetState);
     default void markRetryableFailure(long sourceMessageId, String safeTechnicalMessage) { throw new UnsupportedOperationException("retry state is not available"); }
-    default boolean completeCanonicalPublication(long sourceMessageId, long gameResultId, long canonicalMessageId) { throw new UnsupportedOperationException("canonical publication is not available"); }
+    default boolean completeCanonicalPublication(long sourceMessageId, long gameResultId, long canonicalMessageId, UUID claimToken) { throw new UnsupportedOperationException("canonical publication is not available"); }
     default List<StoredSubmission> findGridWordsAwaitingCanonicalPublication() { throw new UnsupportedOperationException("publication recovery is not available"); }
 
     record SubmissionRegistration(long sourceMessageId, long guildId, long channelId, long authorPlayerId,
