@@ -12,6 +12,8 @@ final class CanonicalEmbedRenderer {
   StringBuilder series=new StringBuilder("\ud83d\udd25 Aktivit\u00e4t: "+days(m.streaks().personalActivity())+"\n\ud83d\udfe9 GridWords gel\u00f6st: "+daysOrNone(m.streaks().personalGridWordsSolved()));
   if(m.personalComplete().isPresent())series.append("\nKomplett: ").append(days(m.personalComplete().getAsInt()));
   if(m.personalPerfect().isPresent())series.append("\nPerfekt: ").append(days(m.personalPerfect().getAsInt()));
+  if(m.sharedComplete().isPresent())series.append("\nGemeinsam komplett: ").append(days(m.sharedComplete().getAsInt()));
+  if(m.sharedPerfect().isPresent())series.append("\nGemeinsam perfekt: ").append(days(m.sharedPerfect().getAsInt()));
   return new EmbedBuilder().setTitle(title).setDescription(m.playerDisplayName()+" \u00b7 "+outcome+" \u00b7 "+duration+"\n\n"+m.board().canonicalText()+"\n\n"+series).setFooter(m.publicationKey()).build();
  }
  private String days(int x){return x+" "+(x==1?"Tag":"Tage");} private String daysOrNone(int x){return x==0?"keine laufende Serie":days(x);}
