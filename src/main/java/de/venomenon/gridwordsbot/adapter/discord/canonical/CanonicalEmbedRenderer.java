@@ -4,10 +4,16 @@ import de.venomenon.gridwordsbot.application.canonical.CanonicalResultMessage;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
+import java.util.Optional;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.MessageEmbed;
 
 final class CanonicalEmbedRenderer {
+
+    private static final String PERSONAL_COMPLETE = "✅ Komplett: ";
+    private static final String PERSONAL_PERFECT = "💎 Perfekt: ";
+    private static final String SHARED_COMPLETE = "🤝 Gemeinsam komplett: ";
+    private static final String SHARED_PERFECT = "🏆 Gemeinsam perfekt: ";
 
     MessageEmbed render(CanonicalResultMessage message) {
         String outcome = outcome(message);
@@ -23,6 +29,28 @@ final class CanonicalEmbedRenderer {
                 .build();
     }
 
+    MessageEmbed renderForEdit(CanonicalResultMessage message, MessageEmbed existingEmbed) {
+        MessageEmbed rendered = render(message);
+        if (existingEmbed == null || existingEmbed.getDescription() == null) {
+            return rendered;
+        }
+        String description = rendered.getDescription();
+        description = preserveLine(description, existingEmbed.getDescription(), PERSONAL_COMPLETE, true);
+        description = preserveLine(description, existingEmbed.getDescription(), SHARED_COMPLETE, true);
+        boolean stillSolved = message.outcome() instanceof ShareOutcome.Solved;
+        description = preserveLine(description, existingEmbed.getDescription(), PERSONAL_PERFECT, stillSolved);
+        description = preserveLine(description, existingEmbed.getDescription(), SHARED_PERFECT, stillSolved);
+        return new EmbedBuilder(rendered).setDescription(description).build();
+    }
+
+    private static String preserveLine(String current, String previous, String prefix, boolean preserve) {
+        if (!preserve || current.contains(prefix)) {
+            return current;
+        }
+        Optional<String> previousLine = previous.lines().filter(line -> line.startsWith(prefix)).findFirst();
+        return previousLine.map(line -> current + "\n" + line).orElse(current);
+    }
+
     private static String outcome(CanonicalResultMessage message) {
         if (message.outcome() instanceof ShareOutcome.Solved solved) {
             return "gelöst in " + solved.attemptsUsed() + "/" + solved.maxAttempts();
@@ -35,16 +63,16 @@ final class CanonicalEmbedRenderer {
                 .append("\uD83D\uDD25 Aktivität: ").append(days(message.streaks().personalActivity()))
                 .append("\n\uD83D\uDFE9 GridWords gelöst: ")
                 .append(daysOrNone(message.streaks().personalGridWordsSolved()));
-        appendCurrent(series, "✅ Komplett", message.streaks().personalComplete());
-        appendCurrent(series, "💎 Perfekt", message.streaks().personalPerfect());
-        appendCurrent(series, "🤝 Gemeinsam komplett", message.streaks().sharedComplete());
-        appendCurrent(series, "🏆 Gemeinsam perfekt", message.streaks().sharedPerfect());
+        appendOptional(series, PERSONAL_COMPLETE, message.personalComplete());
+        appendOptional(series, PERSONAL_PERFECT, message.personalPerfect());
+        appendOptional(series, SHARED_COMPLETE, message.sharedComplete());
+        appendOptional(series, SHARED_PERFECT, message.sharedPerfect());
         return series.toString();
     }
 
-    private static void appendCurrent(StringBuilder series, String label, int streak) {
-        if (streak > 0) {
-            series.append("\n").append(label).append(": ").append(days(streak));
+    private static void appendOptional(StringBuilder series, String label, java.util.OptionalInt streak) {
+        if (streak.isPresent()) {
+            series.append("\n").append(label).append(days(streak.getAsInt()));
         }
     }
 
