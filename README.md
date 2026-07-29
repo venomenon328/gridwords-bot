@@ -14,24 +14,22 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 ## Aktueller Stand
 
-Der Branch `setup/project-scaffold` enthält das technische Grundgerüst:
+Der aktuelle Projektstand umfasst:
 
-- Java 21
-- Spring Boot
-- JDA
-- PostgreSQL-Unterstützung und Liquibase
+- Java 21, Spring Boot und JDA-Grundgerüst
+- deterministische GridWords- und QuadWords-Share-Parser
+- PostgreSQL-Persistenzadapter und Liquibase-Migrationen
+- idempotente Spieler-, Ergebnis- und Submission-Speicherung
+- wiederaufnehmbaren Submission-Zustand mit konfliktfesten Replays
+- gekapselte PostgreSQL-Integrationstests im Maven-Profil `database-integration`
 - optionale Docker-Compose-Konfiguration
-- externe Konfiguration
-- optionale Discord-Gateway-Verbindung
+- externe Konfiguration und optionale Discord-Gateway-Verbindung
 
-Die eigentliche Ergebnisverarbeitung ist noch nicht implementiert.
+Die Inkremente 0 bis 2 sind abgeschlossen. Ein JDA-Listener und die eigentliche Verarbeitung eingehender Discord-Nachrichten folgen im nächsten Inkrement. Sichere Nachrichtenersetzung, Tagesstatus, Serien und Erinnerungen bleiben bewusst späteren Inkrementen vorbehalten.
 
-Der technische Stabilisierungsauftrag aus GitHub-Issue #2 ist umgesetzt:
+Der lokale Standardbuild umfasst derzeit 54 Tests. Zusätzlich führt GitHub Actions 18 PostgreSQL-Integrationstests gegen echtes PostgreSQL aus.
 
-- Offline-Build und GitHub Actions sind grün.
-- Der Start ohne Discord, PostgreSQL und Container-Runtime ist automatisiert getestet.
-- Der reale Discord-Gateway-Smoke-Test wurde am 29. Juli 2026 mit lokalem Token erfolgreich **ohne Docker und ohne PostgreSQL** durchgeführt.
-- Der Bot erschien im vorgesehenen Testserver online und die JDA-Verbindung wurde erfolgreich aufgebaut.
+Der reale Discord-Gateway-Smoke-Test wurde am 29. Juli 2026 mit lokalem Token erfolgreich **ohne Docker und ohne PostgreSQL** durchgeführt. Der Bot erschien im vorgesehenen Testserver online und die JDA-Verbindung wurde erfolgreich aufgebaut.
 
 Die Seriensemantik wurde nachträglich präzisiert: Persönlich werden Aktivität, vollständige tägliche Erledigung, die Lösungsserien beider Spiele und perfekte Tage getrennt betrachtet; gemeinsam gibt es eine Komplett- und eine Perfektserie. Maßgeblich ist das verlinkte Serienmodell.
 
@@ -51,7 +49,7 @@ Optional werden später benötigt:
 - eine nativ installierte PostgreSQL-Instanz für einen manuellen lokalen Start mit Persistenz oder
 - eine funktionierende Docker-/Compose-Umgebung als alternative Komfortlösung.
 
-PostgreSQL-Integrationstests werden vollständig in GitHub Actions ausgeführt, sobald das Persistenzinkrement implementiert ist.
+PostgreSQL-Integrationstests laufen im Maven-Profil `database-integration` und verpflichtend in GitHub Actions.
 
 ## Standardbuild ohne externe Systeme
 
@@ -140,7 +138,7 @@ Docker ist jedoch weder für den Standardbuild noch für den Discord-Smoke-Test 
 
 - Unit-, Parser-, Domain-, Application-, Architektur- und Discord-Adaptertests laufen lokal ohne Container.
 - Der normale lokale `mvn verify` startet keine Testcontainers-Umgebung.
-- PostgreSQL-Integrationstests werden später über ein eigenes Maven-Profil ausgeführt.
+- PostgreSQL-Integrationstests: `mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify` (Container-Runtime erforderlich).
 - GitHub Actions führt dieses Profil in einer Umgebung mit verfügbarer Container-Runtime verpflichtend aus.
 - Ein vollständiger manueller Persistenzstart kann lokal gegen eine native PostgreSQL-Installation erfolgen.
 

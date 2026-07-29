@@ -1,8 +1,11 @@
 package de.venomenon.gridwordsbot;
 
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 import com.tngtech.archunit.core.importer.ImportOption;
+import jakarta.persistence.Entity;
+import org.springframework.data.repository.Repository;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
@@ -38,4 +41,21 @@ class ArchitectureTest {
                     "..application..",
                     "..port..",
                     "..adapter..");
+
+    @ArchTest
+    static final ArchRule portsDoNotDependOnAdaptersOrPersistenceFrameworks = noClasses()
+            .that().resideInAPackage("..port..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    "..adapter..", "org.springframework..", "org.springframework.data..",
+                    "org.springframework.jdbc..", "jakarta.persistence..", "javax.persistence..", "org.hibernate..");
+
+    @ArchTest
+    static final ArchRule entitiesOnlyExistInPersistenceAdapters = classes()
+            .that().areAnnotatedWith(Entity.class)
+            .should().resideInAnyPackage("..adapter.persistence..").allowEmptyShould(true);
+
+    @ArchTest
+    static final ArchRule springDataRepositoriesOnlyExistInPersistenceAdapters = classes()
+            .that().areAssignableTo(Repository.class)
+            .should().resideInAnyPackage("..adapter.persistence..").allowEmptyShould(true);
 }

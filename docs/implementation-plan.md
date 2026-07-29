@@ -14,7 +14,7 @@ Dieser Plan zerlegt die Anforderungsspezifikation in kleine, reviewbare Inkremen
 
 ## Inkrement 0 – Grundgerüst stabilisieren
 
-**Status:** abgeschlossen
+**Status:** abgeschlossen (PR #1 gemergt)
 
 **Ziel:** Reproduzierbarer grüner Build und zuverlässige lokale Konfiguration.
 
@@ -35,9 +35,11 @@ Abschlussbedingung erfüllt:
 
 - Offline-Build grün
 - Discord-Smoke-Test durch Tobias erfolgreich
-- abschließendes Review und Merge von PR #1 noch ausstehend
+- PR #1 wurde gemergt
 
 ## Inkrement 1 – Reine Share-Textparser
+
+**Status:** abgeschlossen (PR #4 gemergt)
 
 **Ziel:** GridWords- und QuadWords-Kopfzeilen sowie GridWords-Raster deterministisch parsen.
 
@@ -63,6 +65,8 @@ Abnahmekriterium:
 - lokaler `mvn clean verify` benötigt keine externe Infrastruktur
 
 ## Inkrement 2 – Persistenzmodell und Verarbeitungszustände
+
+**Status:** abgeschlossen (PR #6)
 
 **Ziel:** Ergebnisse und Submission-Ablauf idempotent speichern.
 

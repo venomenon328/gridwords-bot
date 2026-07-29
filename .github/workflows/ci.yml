@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  standard-build:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -26,4 +26,20 @@ jobs:
           cache: maven
 
       - name: Verify project
-        run: mvn --batch-mode --no-transfer-progress verify
+        run: mvn --batch-mode --no-transfer-progress clean verify
+
+  database-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Verify PostgreSQL persistence integration
+        run: mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
