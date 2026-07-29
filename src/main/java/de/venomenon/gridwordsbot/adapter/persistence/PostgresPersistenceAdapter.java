@@ -128,7 +128,9 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         if (existing.authorPlayerId() != request.result().playerId()) {
             throw new SubmissionConflictException("result player does not match submission author");
         }
-        if (existing.state() == SubmissionState.RESULT_STORED || existing.state() == SubmissionState.FAILED_RETRYABLE) {
+        if (existing.state() == SubmissionState.RESULT_STORED
+                || existing.state() == SubmissionState.FAILED_RETRYABLE
+                || existing.state() == SubmissionState.SUPERSEDED) {
             StoredGameResult storedResult = findResultById(existing.gameResultId().orElseThrow(
                     () -> new IllegalStateException("stored submission has no linked game result")));
             if (equivalent(storedResult, request.result())) {
@@ -148,24 +150,78 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
             before = findAll();
         }
 
+        Optional<StoredGameResult> existingResult = findResultForUpdate(request.result());
+        if (existingResult.isPresent()) {
+            return storeAgainstExistingResult(request, existingResult.get(), recordsPublicationContext, before);
+        }
+
+        Optional<StoredGameResult> insertedResult = insertResultIfAbsent(request.result(), clock.instant());
+        if (insertedResult.isEmpty()) {
+            StoredGameResult concurrentResult = findResultForUpdate(request.result())
+                    .orElseThrow(() -> new IllegalStateException("concurrently inserted game result was not found"));
+            return storeAgainstExistingResult(request, concurrentResult, recordsPublicationContext, before);
+        }
+
+        StoredGameResult result = insertedResult.get();
+        PublicationContext publicationContext = recordsPublicationContext
+                ? publicationContext(before, findAll(), request.result().playerId(), result.parsedResult().gameDate(),
+                request.configuredPlayerIds())
+                : PublicationContext.none();
+        linkStoredResult(request.sourceMessageId(), result.id(), publicationContext);
+        prepareCanonicalPublication(request.sourceMessageId(), result.id());
+        return findRequired(request.sourceMessageId());
+    }
+
+    private StoredSubmission storeAgainstExistingResult(
+            ResultStorage request,
+            StoredGameResult existingResult,
+            boolean recordsPublicationContext,
+            List<StoredGameResult> before) {
+        linkStoredResult(request.sourceMessageId(), existingResult.id(), PublicationContext.none());
+        CanonicalPublicationPreparation preparation = prepareCanonicalPublication(request.sourceMessageId(), existingResult.id());
+        if (preparation == CanonicalPublicationPreparation.SUPERSEDED) {
+            return findRequired(request.sourceMessageId());
+        }
+        if (preparation != CanonicalPublicationPreparation.PUBLISHABLE) {
+            throw new SubmissionConflictException("new submission cannot already be canonically published");
+        }
+
         StoredGameResult result = upsertResult(request.result(), clock.instant());
         PublicationContext publicationContext = recordsPublicationContext
                 ? publicationContext(before, findAll(), request.result().playerId(), result.parsedResult().gameDate(),
                 request.configuredPlayerIds())
                 : PublicationContext.none();
+        updatePublicationContext(request.sourceMessageId(), result.id(), publicationContext);
+        return findRequired(request.sourceMessageId());
+    }
+
+    private void linkStoredResult(long sourceMessageId, long resultId, PublicationContext publicationContext) {
         int changed = jdbc.update("""
                 UPDATE submission SET game_result_id = ?, processing_state = 'RESULT_STORED',
                     personal_complete_established = ?, personal_perfect_established = ?,
                     shared_complete_established = ?, shared_perfect_established = ?,
                     updated_at = ?, version = version + 1
                 WHERE source_message_id = ? AND processing_state IN ('RECEIVED', 'VALIDATED')
-                """, result.id(), publicationContext.personalCompleteEstablished(),
+                """, resultId, publicationContext.personalCompleteEstablished(),
                 publicationContext.personalPerfectEstablished(), publicationContext.sharedCompleteEstablished(),
-                publicationContext.sharedPerfectEstablished(), databaseTime(clock.instant()), request.sourceMessageId());
+                publicationContext.sharedPerfectEstablished(), databaseTime(clock.instant()), sourceMessageId);
         if (changed != 1) {
             throw new SubmissionConflictException("submission state changed during result storage");
         }
-        return findRequired(request.sourceMessageId());
+    }
+
+    private void updatePublicationContext(long sourceMessageId, long resultId, PublicationContext publicationContext) {
+        int changed = jdbc.update("""
+                UPDATE submission SET personal_complete_established = ?, personal_perfect_established = ?,
+                    shared_complete_established = ?, shared_perfect_established = ?,
+                    updated_at = ?, version = version + 1
+                WHERE source_message_id = ? AND game_result_id = ? AND processing_state = 'RESULT_STORED'
+                """, publicationContext.personalCompleteEstablished(), publicationContext.personalPerfectEstablished(),
+                publicationContext.sharedCompleteEstablished(), publicationContext.sharedPerfectEstablished(),
+                databaseTime(clock.instant()), sourceMessageId, resultId);
+        if (changed != 1) {
+            throw new SubmissionConflictException("submission changed while recording publication context");
+        }
     }
     @Override
     @Transactional
@@ -215,6 +271,36 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         return jdbc.query("SELECT * FROM game_result", RESULT);
     }
 
+    /**
+     * Serializes publication order on the mutable game-result row. The later tuple
+     * {@code (received_at, source_message_id)} wins; older open submissions become terminally superseded.
+     */
+    @Override
+    @Transactional
+    public CanonicalPublicationPreparation prepareCanonicalPublication(long sourceMessageId, long gameResultId) {
+        StoredSubmission submission = lockRequired(sourceMessageId);
+        if (submission.gameResultId().filter(id -> id == gameResultId).isEmpty()) {
+            throw new SubmissionConflictException("submission is not linked to the expected game result");
+        }
+        lockResult(gameResultId);
+        if (submission.state() == SubmissionState.CANONICAL_MESSAGE_PUBLISHED) {
+            return CanonicalPublicationPreparation.ALREADY_PUBLISHED;
+        }
+        if (submission.state() == SubmissionState.SUPERSEDED) {
+            return CanonicalPublicationPreparation.SUPERSEDED;
+        }
+        if (submission.state() != SubmissionState.RESULT_STORED
+                && submission.state() != SubmissionState.FAILED_RETRYABLE) {
+            throw new SubmissionConflictException("submission state does not allow canonical publication: "
+                    + submission.state());
+        }
+        if (hasNewerLinkedSubmission(submission, gameResultId)) {
+            supersedeSubmission(sourceMessageId, gameResultId);
+            return CanonicalPublicationPreparation.SUPERSEDED;
+        }
+        supersedeOlderOpenSubmissions(submission, gameResultId);
+        return CanonicalPublicationPreparation.PUBLISHABLE;
+    }
     @Override
     public Optional<PublicationClaim> claimCanonicalPublication(long resultId, Instant leaseUntil) {
         UUID token = UUID.randomUUID();
@@ -290,6 +376,53 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                   AND s.processing_state IN ('RESULT_STORED', 'FAILED_RETRYABLE')
                 """, SUBMISSION);
     }
+    private void lockResult(long gameResultId) {
+        boolean found = !jdbc.queryForList("SELECT id FROM game_result WHERE id = ? FOR UPDATE", Long.class, gameResultId)
+                .isEmpty();
+        if (!found) {
+            throw new IllegalStateException("game result not found: " + gameResultId);
+        }
+    }
+
+    private boolean hasNewerLinkedSubmission(StoredSubmission submission, long gameResultId) {
+        return !jdbc.queryForList("""
+                SELECT source_message_id
+                FROM submission
+                WHERE game_result_id = ?
+                  AND processing_state IN (
+                      'RESULT_STORED', 'FAILED_RETRYABLE', 'CANONICAL_MESSAGE_PUBLISHED',
+                      'ORIGINAL_MESSAGE_DELETED', 'COMPLETED', 'SUPERSEDED')
+                  AND (received_at > ? OR (received_at = ? AND source_message_id > ?))
+                LIMIT 1
+                """, Long.class, gameResultId, databaseTime(submission.receivedAt()),
+                databaseTime(submission.receivedAt()), submission.sourceMessageId()).isEmpty();
+    }
+
+    private void supersedeOlderOpenSubmissions(StoredSubmission submission, long gameResultId) {
+        jdbc.update("""
+                UPDATE submission
+                SET processing_state = 'SUPERSEDED', technical_error_message = NULL,
+                    updated_at = ?, version = version + 1
+                WHERE game_result_id = ?
+                  AND processing_state IN ('RESULT_STORED', 'FAILED_RETRYABLE')
+                  AND (received_at < ? OR (received_at = ? AND source_message_id < ?))
+                """, databaseTime(clock.instant()), gameResultId, databaseTime(submission.receivedAt()),
+                databaseTime(submission.receivedAt()), submission.sourceMessageId());
+    }
+
+    private void supersedeSubmission(long sourceMessageId, long gameResultId) {
+        int changed = jdbc.update("""
+                UPDATE submission
+                SET processing_state = 'SUPERSEDED', technical_error_message = NULL,
+                    updated_at = ?, version = version + 1
+                WHERE source_message_id = ?
+                  AND game_result_id = ?
+                  AND processing_state IN ('RESULT_STORED', 'FAILED_RETRYABLE')
+                """, databaseTime(clock.instant()), sourceMessageId, gameResultId);
+        if (changed != 1) {
+            throw new SubmissionConflictException("submission changed during supersession");
+        }
+    }
     private void lockConfiguredPlayers(List<Long> configuredPlayerIds) {
         List<Long> orderedPlayerIds = configuredPlayerIds.stream().sorted().toList();
         List<Long> lockedPlayerIds = jdbc.queryForList("""
@@ -344,6 +477,23 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
     private static boolean sharedPerfect(List<StoredGameResult> results, List<Long> playerIds, LocalDate gameDate) {
         return playerIds.stream().allMatch(playerId -> perfect(results, playerId, gameDate));
     }
+    private Optional<StoredGameResult> insertResultIfAbsent(GameResultUpsert request, Instant now) {
+        ParsedGameResult parsed = request.parsedResult();
+        boolean solved = parsed.outcome() instanceof ShareOutcome.Solved;
+        Integer attempts = solved ? ((ShareOutcome.Solved) parsed.outcome()).attemptsUsed() : null;
+        return jdbc.query("""
+                INSERT INTO game_result (player_id, game_type, game_date, solved, attempts_used, max_attempts,
+                    duration_seconds, gridgames_streak, normalized_board, raw_share_text, parser_version,
+                    created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (player_id, game_type, game_date) DO NOTHING
+                RETURNING *
+                """, RESULT, request.playerId(), parsed.gameType().name(), parsed.gameDate(), solved, attempts,
+                parsed.outcome().maxAttempts(), parsed.duration().getSeconds(),
+                parsed.gridgamesStreak().isPresent() ? parsed.gridgamesStreak().getAsInt() : null,
+                parsed.board().map(NormalizedBoard::canonicalText).orElse(null), request.rawShareText(), request.parserVersion(),
+                databaseTime(now), databaseTime(now)).stream().findFirst();
+    }
     private StoredGameResult upsertResult(GameResultUpsert request, Instant now) {
         ParsedGameResult parsed = request.parsedResult();
         boolean solved = parsed.outcome() instanceof ShareOutcome.Solved;
@@ -376,6 +526,14 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                 .stream().findFirst().orElseThrow(() -> new IllegalStateException("submission not found: " + sourceMessageId));
     }
 
+    private Optional<StoredGameResult> findResultForUpdate(GameResultUpsert request) {
+        return jdbc.query("""
+                SELECT * FROM game_result
+                WHERE player_id = ? AND game_type = ? AND game_date = ?
+                FOR UPDATE
+                """, RESULT, request.playerId(), request.parsedResult().gameType().name(),
+                request.parsedResult().gameDate()).stream().findFirst();
+    }
     private StoredGameResult findResultById(long resultId) {
         return jdbc.query("SELECT * FROM game_result WHERE id = ?", RESULT, resultId).stream().findFirst()
                 .orElseThrow(() -> new IllegalStateException("game result not found: " + resultId));

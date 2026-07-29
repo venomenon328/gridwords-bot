@@ -86,19 +86,44 @@ public final class CanonicalGridWordsPublicationService {
 
     /** @return true only after the canonical ID and the submission state were persisted together. */
     public boolean publish(long sourceMessageId) {
+        return publishOutcome(sourceMessageId) == PublicationOutcome.PUBLISHED;
+    }
+
+    /** Replays open publications after startup; superseded sources neither publish nor receive an acceptance reaction. */
+    public void resumeOpenPublications() {
+        for (SubmissionStore.StoredSubmission submission : submissions.findGridWordsAwaitingCanonicalPublication()) {
+            if (publishOutcome(submission.sourceMessageId()) == PublicationOutcome.PUBLISHED) {
+                acknowledgeDeferredPublication(submission);
+            }
+        }
+    }
+
+    private PublicationOutcome publishOutcome(long sourceMessageId) {
         long resultId = 0;
         UUID claimToken = null;
         try {
             SubmissionStore.StoredSubmission submission = submissions.findBySourceMessageId(sourceMessageId)
                     .orElseThrow();
             if (submission.state() == SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED) {
-                return true;
+                return PublicationOutcome.PUBLISHED;
+            }
+            if (submission.state() == SubmissionStore.SubmissionState.SUPERSEDED) {
+                return PublicationOutcome.SUPERSEDED;
             }
 
             resultId = submission.gameResultId().orElseThrow();
             GameResultStore.StoredGameResult result = results.findById(resultId).orElseThrow();
             if (result.parsedResult().gameType() != GameType.GRIDWORDS) {
-                return true;
+                return PublicationOutcome.PUBLISHED;
+            }
+
+            SubmissionStore.CanonicalPublicationPreparation preparation =
+                    submissions.prepareCanonicalPublication(sourceMessageId, resultId);
+            if (preparation == SubmissionStore.CanonicalPublicationPreparation.ALREADY_PUBLISHED) {
+                return PublicationOutcome.PUBLISHED;
+            }
+            if (preparation == SubmissionStore.CanonicalPublicationPreparation.SUPERSEDED) {
+                return PublicationOutcome.SUPERSEDED;
             }
 
             GameResultStore.PublicationClaim claim = results.claimCanonicalPublication(
@@ -106,7 +131,7 @@ public final class CanonicalGridWordsPublicationService {
                     clock.instant().plusSeconds(LEASE_SECONDS)).orElse(null);
             if (claim == null) {
                 scheduleRetry(sourceMessageId);
-                return false;
+                return PublicationOutcome.RETRY_SCHEDULED;
             }
             claimToken = claim.token();
 
@@ -122,7 +147,7 @@ public final class CanonicalGridWordsPublicationService {
             if (!completed) {
                 throw new IllegalStateException("canonical publication completion was not accepted");
             }
-            return true;
+            return PublicationOutcome.PUBLISHED;
         } catch (RuntimeException exception) {
             if (resultId != 0) {
                 try {
@@ -134,16 +159,7 @@ public final class CanonicalGridWordsPublicationService {
                 }
             }
             scheduleRetry(sourceMessageId);
-            return false;
-        }
-    }
-
-    /** Replays open publications after startup; failed claims schedule their own idempotent source retry. */
-    public void resumeOpenPublications() {
-        for (SubmissionStore.StoredSubmission submission : submissions.findGridWordsAwaitingCanonicalPublication()) {
-            if (publish(submission.sourceMessageId())) {
-                acknowledgeDeferredPublication(submission);
-            }
+            return PublicationOutcome.RETRY_SCHEDULED;
         }
     }
 
@@ -160,13 +176,15 @@ public final class CanonicalGridWordsPublicationService {
     }
 
     private void retryPublication(long sourceMessageId) {
-        boolean published = publish(sourceMessageId);
+        PublicationOutcome outcome = publishOutcome(sourceMessageId);
         scheduledRetries.remove(sourceMessageId);
-        if (!published) {
+        if (outcome == PublicationOutcome.RETRY_SCHEDULED) {
             scheduleRetry(sourceMessageId);
             return;
         }
-        submissions.findBySourceMessageId(sourceMessageId).ifPresent(this::acknowledgeDeferredPublication);
+        if (outcome == PublicationOutcome.PUBLISHED) {
+            submissions.findBySourceMessageId(sourceMessageId).ifPresent(this::acknowledgeDeferredPublication);
+        }
     }
 
     private void acknowledgeDeferredPublication(SubmissionStore.StoredSubmission submission) {
@@ -221,5 +239,11 @@ public final class CanonicalGridWordsPublicationService {
 
     private static OptionalInt contextual(int streak, boolean establishedByThisSubmission) {
         return establishedByThisSubmission && streak > 0 ? OptionalInt.of(streak) : OptionalInt.empty();
+    }
+
+    private enum PublicationOutcome {
+        PUBLISHED,
+        RETRY_SCHEDULED,
+        SUPERSEDED
     }
 }

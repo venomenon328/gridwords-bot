@@ -83,6 +83,8 @@ class CanonicalGridWordsPublicationServiceTest {
                 Instant.EPOCH,
                 Instant.EPOCH)));
         when(results.findAll()).thenReturn(List.of(result));
+        when(submissions.prepareCanonicalPublication(anyLong(), anyLong()))
+                .thenReturn(SubmissionStore.CanonicalPublicationPreparation.PUBLISHABLE);
     }
 
     @Test
@@ -369,6 +371,66 @@ class CanonicalGridWordsPublicationServiceTest {
         verify(submissions).completeCanonicalPublication(correctionSource, RESULT, 99L, retryClaim.token());
         verify(recoveredReactionGateway).addAcceptedReaction(12L, correctionSource);
         verify(recoveredReactionGateway, never()).addAcceptedReaction(12L, SOURCE);
+    }
+    @Test
+    void doesNotLetAnOlderFailedPublicationOverwriteANewerCorrectionOnRetry() {
+        long correctionSource = 11L;
+        GameResultStore.StoredGameResult firstResult = gridResult(RESULT, TOBIAS, OptionalLong.of(88L), 4);
+        GameResultStore.StoredGameResult correctedResult = gridResult(RESULT, TOBIAS, OptionalLong.of(88L), 2);
+        SubmissionStore.StoredSubmission first = storedSubmission(
+                SOURCE,
+                SubmissionStore.SubmissionState.RESULT_STORED,
+                new SubmissionStore.PublicationContext(true, false, false, false));
+        SubmissionStore.StoredSubmission superseded = storedSubmission(
+                SOURCE,
+                SubmissionStore.SubmissionState.SUPERSEDED,
+                first.publicationContext());
+        SubmissionStore.StoredSubmission correction = storedSubmission(
+                correctionSource,
+                SubmissionStore.SubmissionState.RESULT_STORED,
+                SubmissionStore.PublicationContext.none());
+        when(submissions.findBySourceMessageId(SOURCE)).thenReturn(Optional.of(first), Optional.of(superseded));
+        when(submissions.findBySourceMessageId(correctionSource)).thenReturn(Optional.of(correction));
+        when(results.findById(RESULT)).thenReturn(Optional.of(firstResult), Optional.of(correctedResult));
+        when(results.findAll()).thenReturn(List.of(firstResult), List.of(correctedResult));
+        GameResultStore.PublicationClaim firstClaim = claim("00000000-0000-0000-0000-000000000014");
+        GameResultStore.PublicationClaim correctionClaim = claim("00000000-0000-0000-0000-000000000015");
+        when(results.claimCanonicalPublication(eq(RESULT), any()))
+                .thenReturn(Optional.of(firstClaim), Optional.of(correctionClaim));
+        doThrow(new IllegalStateException("Discord unavailable"))
+                .doNothing()
+                .when(discord)
+                .edit(eq(12L), eq(88L), any());
+        when(submissions.completeCanonicalPublication(correctionSource, RESULT, 88L, correctionClaim.token()))
+                .thenReturn(true);
+        ArgumentCaptor<Runnable> retry = ArgumentCaptor.forClass(Runnable.class);
+        ArgumentCaptor<CanonicalResultMessage> messages = ArgumentCaptor.forClass(CanonicalResultMessage.class);
+
+        assertThat(service.publish(SOURCE)).isFalse();
+        assertThat(service.publish(correctionSource)).isTrue();
+        verify(retryScheduler).schedule(eq(NOW.plusSeconds(61)), retry.capture());
+
+        retry.getValue().run();
+
+        verify(discord, times(2)).edit(eq(12L), eq(88L), messages.capture());
+        assertThat(((ShareOutcome.Solved) messages.getAllValues().get(1).outcome()).attemptsUsed()).isEqualTo(2);
+        verify(submissions, never()).completeCanonicalPublication(eq(SOURCE), anyLong(), anyLong(), any());
+        verify(results, times(2)).claimCanonicalPublication(eq(RESULT), any());
+        verify(recoveredReactionGateway, never()).addAcceptedReaction(12L, SOURCE);
+    }
+
+    @Test
+    void startupRecoverySkipsASubmissionSupersededAfterTheRecoveryScan() {
+        SubmissionStore.StoredSubmission recoverySnapshot = storedSubmission(
+                SOURCE, SubmissionStore.SubmissionState.RESULT_STORED, SubmissionStore.PublicationContext.none());
+        SubmissionStore.StoredSubmission superseded = storedSubmission(
+                SOURCE, SubmissionStore.SubmissionState.SUPERSEDED, SubmissionStore.PublicationContext.none());
+        when(submissions.findGridWordsAwaitingCanonicalPublication()).thenReturn(List.of(recoverySnapshot));
+        when(submissions.findBySourceMessageId(SOURCE)).thenReturn(Optional.of(superseded));
+
+        service.resumeOpenPublications();
+
+        verifyNoInteractions(results, players, discord, retryScheduler, recoveredReactionGateway);
     }
     private SubmissionStore.StoredSubmission stored(SubmissionStore.SubmissionState state) {
         return stored(state, SubmissionStore.PublicationContext.none());

@@ -188,7 +188,24 @@ class ProcessSharedResultServiceTest {
         assertThat(store.results).hasSize(1);
         assertThat(store.submissions.get(17L).state())
                 .isEqualTo(SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED);
-    }    @Test
+    }
+
+    @Test
+    void ignoresASupersededReplayWithoutTreatingItAsAcceptedAgain() {
+        InboundSharedMessage inbound = message(19L, TOBIAS, gridWords(29, 3));
+        assertThat(service.process(inbound)).isEqualTo(new ProcessingResult.Accepted());
+        SubmissionStore.StoredSubmission stored = store.submissions.get(19L);
+        store.submissions.put(19L, store.with(
+                stored,
+                SubmissionStore.SubmissionState.SUPERSEDED,
+                stored.gameResultId(),
+                Optional.empty()));
+
+        assertThat(service.process(inbound)).isEqualTo(new ProcessingResult.Ignored());
+        assertThat(store.results).hasSize(1);
+        assertThat(store.submissions.get(19L).state()).isEqualTo(SubmissionStore.SubmissionState.SUPERSEDED);
+    }
+    @Test
     void doesNotReturnSuccessWhenPersistenceFails() {
         InMemoryStore failingStore = new InMemoryStore() {
             @Override

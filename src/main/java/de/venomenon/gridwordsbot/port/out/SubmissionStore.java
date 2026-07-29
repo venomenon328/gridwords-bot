@@ -32,6 +32,11 @@ public interface SubmissionStore {
         throw new UnsupportedOperationException("canonical publication is not available");
     }
 
+    /** Atomically chooses the newest publishable submission for one mutable game result. */
+    default CanonicalPublicationPreparation prepareCanonicalPublication(long sourceMessageId, long gameResultId) {
+        throw new UnsupportedOperationException("canonical publication preparation is not available");
+    }
+
     default List<StoredSubmission> findGridWordsAwaitingCanonicalPublication() {
         throw new UnsupportedOperationException("publication recovery is not available");
     }
@@ -178,6 +183,13 @@ public interface SubmissionStore {
         COMPLETED,
         PARSE_REJECTED,
         FAILED_RETRYABLE,
-        FAILED_FINAL
+        FAILED_FINAL,
+        SUPERSEDED
+    }
+
+    enum CanonicalPublicationPreparation {
+        PUBLISHABLE,
+        ALREADY_PUBLISHED,
+        SUPERSEDED
     }
 }

@@ -111,8 +111,12 @@ class PostgresPersistenceAdapterIT {
         assertTrue(adapter.find(102L, GameType.GRIDWORDS, LocalDate.of(2026, 7, 29)).isEmpty());
     }
     private void registerSubmission(long sourceMessageId, long playerId) {
+        registerSubmission(sourceMessageId, playerId, now);
+    }
+
+    private void registerSubmission(long sourceMessageId, long playerId, Instant receivedAt) {
         adapter.register(new SubmissionStore.SubmissionRegistration(
-                sourceMessageId, 200L, 300L, playerId, "share " + sourceMessageId, List.of(), now));
+                sourceMessageId, 200L, 300L, playerId, "share " + sourceMessageId, List.of(), receivedAt));
     }
 
     private SubmissionStore.StoredSubmission store(
@@ -386,6 +390,93 @@ class PostgresPersistenceAdapterIT {
     }
 
     @Test
+    void keepsTheNewerCorrectionCanonicalWhenAnOlderFailedSubmissionRetriesLater() {
+        long playerId = 150L;
+        long firstSource = 950L;
+        long correctionSource = 951L;
+        adapter.upsert(new PlayerStore.PlayerUpsert(playerId, "Supersession", true, false));
+        registerSubmission(firstSource, playerId, now);
+        SubmissionStore.StoredSubmission first = store(firstSource, resultFor(playerId, 4, "first"), List.of());
+        long resultId = first.gameResultId().orElseThrow();
+        adapter.markRetryableFailure(firstSource, "Discord unavailable");
+
+        registerSubmission(correctionSource, playerId, now.plusSeconds(1));
+        SubmissionStore.StoredSubmission correction = store(
+                correctionSource, resultFor(playerId, 2, "correction"), List.of());
+
+        assertEquals(resultId, correction.gameResultId().orElseThrow());
+        assertEquals(SubmissionStore.SubmissionState.SUPERSEDED,
+                adapter.findBySourceMessageId(firstSource).orElseThrow().state());
+        assertEquals(SubmissionStore.CanonicalPublicationPreparation.SUPERSEDED,
+                transactions.execute(status -> adapter.prepareCanonicalPublication(firstSource, resultId)));
+        assertFalse(adapter.findGridWordsAwaitingCanonicalPublication().stream()
+                .anyMatch(submission -> submission.sourceMessageId() == firstSource));
+
+        GameResultStore.PublicationClaim correctionClaim = adapter.claimCanonicalPublication(resultId, now.plusSeconds(60))
+                .orElseThrow();
+        assertEquals(Boolean.TRUE, transactions.execute(status -> adapter.completeCanonicalPublication(
+                correctionSource, resultId, 5678L, correctionClaim.token())));
+
+        assertEquals(5678L, adapter.findById(resultId).orElseThrow().canonicalMessageId().orElseThrow());
+        assertEquals(SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED,
+                adapter.findBySourceMessageId(correctionSource).orElseThrow().state());
+        assertEquals(SubmissionStore.SubmissionState.SUPERSEDED,
+                adapter.findBySourceMessageId(firstSource).orElseThrow().state());
+    }
+
+    @Test
+    void doesNotOverwriteAPublishedNewerCorrectionWhenAnOlderSourceIsStoredLate() {
+        long playerId = 152L;
+        long olderSource = 954L;
+        long newerSource = 955L;
+        adapter.upsert(new PlayerStore.PlayerUpsert(playerId, "Late source", true, false));
+        registerSubmission(olderSource, playerId, now);
+        registerSubmission(newerSource, playerId, now.plusSeconds(1));
+        SubmissionStore.StoredSubmission newer = store(newerSource, resultFor(playerId, 2, "newer"), List.of());
+        long resultId = newer.gameResultId().orElseThrow();
+        GameResultStore.PublicationClaim newerClaim = adapter.claimCanonicalPublication(resultId, now.plusSeconds(60))
+                .orElseThrow();
+        assertEquals(Boolean.TRUE, transactions.execute(status -> adapter.completeCanonicalPublication(
+                newerSource, resultId, 5680L, newerClaim.token())));
+
+        SubmissionStore.StoredSubmission older = store(olderSource, resultFor(playerId, 4, "older"), List.of());
+
+        assertEquals(SubmissionStore.SubmissionState.SUPERSEDED, older.state());
+        assertEquals(2, ((ShareOutcome.Solved) adapter.findById(resultId).orElseThrow().parsedResult().outcome()).attemptsUsed());
+        assertEquals(5680L, adapter.findById(resultId).orElseThrow().canonicalMessageId().orElseThrow());
+        assertEquals(SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED,
+                adapter.findBySourceMessageId(newerSource).orElseThrow().state());
+    }
+    @Test
+    void rejectsAnInFlightOlderPublisherAfterANewerCorrectionSupersedesIt() {
+        long playerId = 151L;
+        long firstSource = 952L;
+        long correctionSource = 953L;
+        adapter.upsert(new PlayerStore.PlayerUpsert(playerId, "Supersession race", true, false));
+        registerSubmission(firstSource, playerId, now);
+        long resultId = store(firstSource, resultFor(playerId, 4, "first race"), List.of())
+                .gameResultId()
+                .orElseThrow();
+        GameResultStore.PublicationClaim oldClaim = adapter.claimCanonicalPublication(resultId, now.plusSeconds(60))
+                .orElseThrow();
+
+        registerSubmission(correctionSource, playerId, now.plusSeconds(1));
+        store(correctionSource, resultFor(playerId, 2, "correction race"), List.of());
+
+        assertEquals(SubmissionStore.SubmissionState.SUPERSEDED,
+                adapter.findBySourceMessageId(firstSource).orElseThrow().state());
+        assertThrows(SubmissionConflictException.class, () -> transactions.execute(status ->
+                adapter.completeCanonicalPublication(firstSource, resultId, 5678L, oldClaim.token())));
+        assertTrue(adapter.findById(resultId).orElseThrow().canonicalMessageId().isEmpty());
+        adapter.releaseCanonicalPublicationClaim(resultId, oldClaim.token());
+
+        GameResultStore.PublicationClaim correctionClaim = adapter.claimCanonicalPublication(resultId, now.plusSeconds(60))
+                .orElseThrow();
+        assertEquals(Boolean.TRUE, transactions.execute(status -> adapter.completeCanonicalPublication(
+                correctionSource, resultId, 5679L, correctionClaim.token())));
+        assertEquals(5679L, adapter.findById(resultId).orElseThrow().canonicalMessageId().orElseThrow());
+    }
+    @Test
     void reconstructsRetryableGridWordsSubmissionsForStartupRecovery() {
         adapter.upsert(new PlayerStore.PlayerUpsert(124L, "Retry", true, false));
         adapter.register(new SubmissionStore.SubmissionRegistration(925L, 200L, 300L, 124L, "retry", List.of(), now));
@@ -461,6 +552,15 @@ class PostgresPersistenceAdapterIT {
             assertEquals(1, stored.stream().filter(submission ->
                     submission.publicationContext().sharedPerfectEstablished()).count());
         }
+    }
+    @Test
+    void appliesTheSupersessionStateMigrationToAnEmptyDatabase() {
+        String definition = jdbc.queryForObject("""
+                SELECT pg_get_constraintdef(oid)
+                FROM pg_constraint
+                WHERE conname = 'ck_submission_state'
+                """, String.class);
+        assertTrue(definition.contains("SUPERSEDED"));
     }
     @Test
     void appliesThePublicationContextMigrationToAnEmptyDatabase() {

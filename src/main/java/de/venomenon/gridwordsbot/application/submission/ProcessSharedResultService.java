@@ -125,6 +125,9 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
         if (submission.state() == SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED) {
             return new ProcessingResult.Accepted();
         }
+        if (submission.state() == SubmissionStore.SubmissionState.SUPERSEDED) {
+            return new ProcessingResult.Ignored();
+        }
         if (submission.state() != SubmissionStore.SubmissionState.RESULT_STORED
                 && submission.state() != SubmissionStore.SubmissionState.FAILED_RETRYABLE
                 && !isTodayOrYesterday(parsed.gameDate())) {
@@ -132,7 +135,11 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
             return new ProcessingResult.Rejected(OUTSIDE_ALLOWED_DATE_WINDOW);
         }
 
-        submissionStore.storeResult(new SubmissionStore.ResultStorage(message.messageId(), result, configuredPlayerIds));
+        SubmissionStore.StoredSubmission stored = submissionStore.storeResult(
+                new SubmissionStore.ResultStorage(message.messageId(), result, configuredPlayerIds));
+        if (stored.state() == SubmissionStore.SubmissionState.SUPERSEDED) {
+            return new ProcessingResult.Ignored();
+        }
         if (parsed.gameType() == GameType.GRIDWORDS && !canonicalPublisher.test(message.messageId())) {
             return new ProcessingResult.Ignored();
         }
