@@ -111,7 +111,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         StoredGameResult result = upsertResult(request.result(), clock.instant());
         int changed = jdbc.update("""
                 UPDATE submission SET game_result_id = ?, processing_state = 'RESULT_STORED', updated_at = ?, version = version + 1
-                WHERE source_message_id = ? AND processing_state IN ('RECEIVED', 'VALIDATED', 'RESULT_STORED')
+                WHERE source_message_id = ? AND processing_state IN ('RECEIVED', 'VALIDATED')
                 """, result.id(), databaseTime(clock.instant()), request.sourceMessageId());
         if (changed != 1) throw new SubmissionConflictException("submission state changed during result storage");
         return findRequired(request.sourceMessageId());
