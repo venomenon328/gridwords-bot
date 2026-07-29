@@ -126,7 +126,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         if (existing.authorPlayerId() != request.result().playerId()) {
             throw new SubmissionConflictException("result player does not match submission author");
         }
-        if (existing.state() == SubmissionState.RESULT_STORED) {
+        if (existing.state() == SubmissionState.RESULT_STORED || existing.state() == SubmissionState.FAILED_RETRYABLE) {
             StoredGameResult storedResult = findResultById(existing.gameResultId().orElseThrow(
                     () -> new IllegalStateException("stored submission has no linked game result")));
             if (equivalent(storedResult, request.result())) {

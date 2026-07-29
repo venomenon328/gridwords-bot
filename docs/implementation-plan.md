@@ -93,7 +93,7 @@ Abnahmekriterium:
 
 ## Inkrement 3 – Discord-Inbound im Beobachtungsmodus
 
-**Status:** in Draft-Review (PR #8)
+**Status:** abgeschlossen (PR #8 gemergt)
 
 **Ziel:** Echte Channelnachrichten sicher filtern und verarbeiten, ohne sie zu verändern.
 
@@ -118,7 +118,9 @@ Abnahmekriterium:
 
 ## Inkrement 4 – Kanonische GridWords-Nachricht, zunächst ohne Löschung
 
-**Ziel:** GridWords-Ausgabe vollständig erzeugen und veröffentlichen.
+**Status:** in Draft-Review (PR #10; manueller Smoke-Test ausstehend)
+
+  **Ziel:** GridWords-Ausgabe vollständig erzeugen und veröffentlichen.
 
 Umfang:
 

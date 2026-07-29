@@ -162,3 +162,7 @@ Die verbindliche Entscheidung steht in [`docs/adr/0004-docker-optional-local-dev
 ## Geheimnisse
 
 Der Discord-Bot-Token darf niemals in Git, einen Chat, ein Issue, einen Screenshot oder einen Codex-Prompt gelangen. Er gehört ausschließlich in eine lokale, nicht versionierte Konfiguration beziehungsweise später in den Secret Store des Hosts.
+
+## Inkrement 4: manueller Canonical-Message-Smoke-Test
+
+Nach grünem CI und mit Profil `database`, PostgreSQL 16.6 sowie lokalem Discord-Token prüft Tobias im Zielchannel: gültiges GridWords bleibt als Original erhalten, genau ein kanonisches Embed erscheint und `✅` folgt erst danach; eine neue Korrektur bearbeitet dieses Embed; ein Neustart erzeugt keine Duplikate; QuadWords reagiert weiter nur mit `✅`; ungültige Shares weiter mit `⚠️`. Optional kann das kanonische Embed gelöscht und die kontrollierte Wiederherstellung durch eine Korrektur geprüft werden. Dieser Test wurde von Codex nicht ausgeführt.

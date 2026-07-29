@@ -376,3 +376,7 @@ Vor dem Hinzufügen oder Ändern:
 5. `mvn dependency:tree` bei Konflikten prüfen.
 
 Versionen nicht allein deshalb auf den neuesten Stand bringen, weil sie neuer sind. Der konkrete Nutzen und die Kompatibilität entscheiden.
+
+## Inkrement 4: manueller Canonical-Message-Smoke-Test
+
+Nach grünem CI und mit Profil `database`, PostgreSQL 16.6 sowie lokalem Discord-Token prüft Tobias im Zielchannel: gültiges GridWords bleibt als Original erhalten, genau ein kanonisches Embed erscheint und `✅` folgt erst danach; eine neue Korrektur bearbeitet dieses Embed; ein Neustart erzeugt keine Duplikate; QuadWords reagiert weiter nur mit `✅`; ungültige Shares weiter mit `⚠️`. Optional kann das kanonische Embed gelöscht und die kontrollierte Wiederherstellung durch eine Korrektur geprüft werden. Dieser Test wurde von Codex nicht ausgeführt.

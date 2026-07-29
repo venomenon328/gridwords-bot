@@ -48,6 +48,10 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
         this.canonicalPublisher = ignored -> true;
     }
 
+    public ProcessSharedResultService(GridWordsShareParser gridWordsParser, QuadWordsShareParser quadWordsParser, Clock clock, ZoneId timeZone, PlayerStore playerStore, SubmissionStore submissionStore, java.util.function.LongPredicate canonicalPublisher) {
+        this.gridWordsParser = gridWordsParser; this.quadWordsParser = quadWordsParser; this.clock = clock; this.timeZone = timeZone; this.playerStore = playerStore; this.submissionStore = submissionStore; this.canonicalPublisher = canonicalPublisher;
+    }
+
     @Override
     public ProcessingResult process(InboundSharedMessage message) {
         ParseResult parseResult = parse(message);
@@ -69,8 +73,9 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
                 message.authorId(), parsed, message.content(), parserVersion(parsed));
 
         // A source message that was stored already remains accepted after its date window has elapsed.
-        if (submission.state() == SubmissionStore.SubmissionState.RESULT_STORED) {
+        if (submission.state() == SubmissionStore.SubmissionState.RESULT_STORED || submission.state() == SubmissionStore.SubmissionState.FAILED_RETRYABLE) {
             submissionStore.storeResult(new SubmissionStore.ResultStorage(message.messageId(), result));
+            if (parsed.gameType() == de.venomenon.gridwordsbot.domain.model.GameType.GRIDWORDS && !canonicalPublisher.test(message.messageId())) return new ProcessingResult.Ignored();
             return new ProcessingResult.Accepted();
         }
         if (!isTodayOrYesterday(parsed.gameDate())) {

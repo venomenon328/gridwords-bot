@@ -1,6 +1,10 @@
 package de.venomenon.gridwordsbot.config;
 
 import de.venomenon.gridwordsbot.adapter.discord.inbound.DiscordInboundListener;
+import de.venomenon.gridwordsbot.adapter.discord.canonical.JdaCanonicalMessageGateway;
+import de.venomenon.gridwordsbot.application.canonical.CanonicalGridWordsPublicationService;
+import de.venomenon.gridwordsbot.port.out.GameResultStore;
+import de.venomenon.gridwordsbot.port.out.CanonicalMessageGateway;
 import de.venomenon.gridwordsbot.application.submission.ConfiguredPlayer;
 import de.venomenon.gridwordsbot.application.submission.ConfiguredPlayerSynchronizer;
 import de.venomenon.gridwordsbot.application.submission.ProcessSharedResultService;
@@ -18,6 +22,7 @@ import org.springframework.context.annotation.DependsOn;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 
 /** Wires database-backed inbound processing while leaving the offline gateway profile independent. */
 @Configuration(proxyBeanMethods = false)
@@ -29,11 +34,15 @@ class DatabaseInboundConfiguration {
             Clock clock,
             GridwordsBotProperties properties,
             PlayerStore playerStore,
-            SubmissionStore submissionStore) {
+            SubmissionStore submissionStore,
+            ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider) {
         return new ProcessSharedResultService(
                 new GridWordsShareParser(), new QuadWordsShareParser(), clock, properties.schedule().timeZone(), playerStore,
-                submissionStore);
+                submissionStore, sourceMessageId -> canonicalProvider.getIfAvailable(() -> new CanonicalGridWordsPublicationService(resultsUnavailable(), playerStore, submissionStore, null, clock, properties.schedule().timeZone())).publish(sourceMessageId));
     }
+
+    @Bean @ConditionalOnBean(JDA.class) CanonicalMessageGateway canonicalMessageGateway(JDA jda) { return new JdaCanonicalMessageGateway(jda); }
+    @Bean @ConditionalOnBean(CanonicalMessageGateway.class) CanonicalGridWordsPublicationService canonicalGridWordsPublicationService(GameResultStore results, PlayerStore players, SubmissionStore submissions, CanonicalMessageGateway discord, Clock clock, GridwordsBotProperties properties) { return new CanonicalGridWordsPublicationService(results,players,submissions,discord,clock,properties.schedule().timeZone()); }
 
     @Bean
     ConfiguredPlayerSynchronizer configuredPlayerSynchronizer(
@@ -52,6 +61,8 @@ class DatabaseInboundConfiguration {
             ObjectProvider<DiscordInboundListener> listenerProvider) {
         return new DatabaseInboundStartup(synchronizer, jdaProvider, listenerProvider);
     }
+
+    private static GameResultStore resultsUnavailable() { throw new IllegalStateException("canonical publication requires Discord"); }
 
     private ConfiguredPlayer configuredPlayer(GridwordsBotProperties.Player player, List<Long> administrators) {
         return new ConfiguredPlayer(player.userId(), player.displayName(), administrators.contains(player.userId()));
