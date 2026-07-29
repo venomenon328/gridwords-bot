@@ -4,13 +4,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verify;
 
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
+import de.venomenon.gridwordsbot.domain.model.QuadWordsBoard;
+import de.venomenon.gridwordsbot.domain.model.QuadWordsBoards;
+import de.venomenon.gridwordsbot.domain.parsing.AttachmentReference;
 import de.venomenon.gridwordsbot.domain.parsing.AttachmentMetadata;
 import de.venomenon.gridwordsbot.parser.gridwords.GridWordsShareParser;
 import de.venomenon.gridwordsbot.parser.quadwords.QuadWordsShareParser;
+import de.venomenon.gridwordsbot.parser.quadwords.QuadWordsImageParser;
 import de.venomenon.gridwordsbot.port.in.InboundSharedMessage;
 import de.venomenon.gridwordsbot.port.in.ProcessingResult;
+import de.venomenon.gridwordsbot.port.out.AttachmentContentLoader;
 import de.venomenon.gridwordsbot.port.out.GameResultStore;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
 import de.venomenon.gridwordsbot.port.out.SubmissionConflictException;
@@ -25,6 +31,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -79,17 +87,127 @@ class ProcessSharedResultServiceTest {
 
     @Test
     void storesQuadWordsForYesterdayWithAImageAttachment() {
+        AtomicReference<AttachmentMetadata> loaded = new AtomicReference<>();
+        service = quadService(attachment -> {
+            loaded.set(attachment);
+            return new byte[] {1, 2, 3};
+        }, imageParser(new QuadWordsImageParser.Parse.Parsed(boards(9))));
+        AttachmentMetadata image = image(4L, 700L);
+
         ProcessingResult result = service.process(message(
                 4L,
                 TOBIAS,
-                "QuadWords (28. Juli 2026) 9/9 in 4:18 🔥2",
-                List.of(new AttachmentMetadata("quad.png", "image/png", 42L))));
+                "QuadWords (28. Juli 2026) 9/9 in 4:18",
+                List.of(new AttachmentMetadata("note.txt", "text/plain", 1L), image)));
 
         assertThat(result).isEqualTo(new ProcessingResult.Accepted(de.venomenon.gridwordsbot.domain.model.GameType.QUADWORDS));
+        assertThat(loaded).hasValue(image);
         assertThat(store.results.values().iterator().next().result().parserVersion())
                 .isEqualTo(ProcessSharedResultService.QUADWORDS_PARSER_VERSION);
+        assertThat(store.results.values().iterator().next().result().parsedResult().quadWordsBoards()).isPresent();
+    }
+    @Test
+    void rejectsMissingOrAmbiguousPlausibleQuadWordsImagesWithoutLoading() {
+        AtomicInteger loads = new AtomicInteger();
+        service = quadService(attachment -> {
+            loads.incrementAndGet();
+            return new byte[] {1};
+        }, imageParser(new QuadWordsImageParser.Parse.Parsed(boards(9))));
+
+        assertThat(service.process(message(20L, TOBIAS, quadWords(), List.of())))
+                .isEqualTo(new ProcessingResult.Rejected("MISSING_IMAGE_ATTACHMENT"));
+        assertThat(service.process(message(21L, TOBIAS, quadWords(), List.of(image(21L, 701L), image(21L, 702L)))))
+                .isEqualTo(new ProcessingResult.Rejected("AMBIGUOUS_IMAGE_ATTACHMENT"));
+
+        assertThat(loads).hasValue(0);
+        assertThat(store.results).isEmpty();
+        assertThat(store.submissions.get(20L).state()).isEqualTo(SubmissionStore.SubmissionState.PARSE_REJECTED);
+        assertThat(store.submissions.get(21L).state()).isEqualTo(SubmissionStore.SubmissionState.PARSE_REJECTED);
     }
 
+    @Test
+    void rejectsAFactualImageParseFailureAfterLoadingTheSelectedAttachment() {
+        AtomicReference<AttachmentMetadata> loaded = new AtomicReference<>();
+        service = quadService(attachment -> {
+            loaded.set(attachment);
+            return new byte[] {1};
+        }, imageParser(new QuadWordsImageParser.Parse.Invalid(de.venomenon.gridwordsbot.domain.parsing.ParseErrorCode.INVALID_IMAGE_GEOMETRY)));
+        AttachmentMetadata image = image(22L, 700L);
+
+        assertThat(service.process(message(22L, TOBIAS, quadWords(), List.of(image))))
+                .isEqualTo(new ProcessingResult.Rejected("INVALID_IMAGE_GEOMETRY"));
+
+        assertThat(loaded).hasValue(image);
+        assertThat(store.results).isEmpty();
+        assertThat(store.submissions.get(22L).parserErrorCode()).contains("INVALID_IMAGE_GEOMETRY");
+    }
+
+    @Test
+    void rejectsAnAttachmentThatExceedsTheLoaderLimitAsAFactualImageFailure() {
+        service = quadService(attachment -> {
+            throw new AttachmentContentLoader.AttachmentTooLargeException("too large");
+        }, imageParser(new QuadWordsImageParser.Parse.Parsed(boards(9))));
+
+        assertThat(service.process(message(27L, TOBIAS, quadWords(), List.of(image(27L, 700L)))))
+                .isEqualTo(new ProcessingResult.Rejected("IMAGE_TOO_LARGE"));
+
+        assertThat(store.results).isEmpty();
+        assertThat(store.submissions.get(27L).parserErrorCode()).contains("IMAGE_TOO_LARGE");
+    }
+    @Test
+    void keepsTransientAttachmentFailuresRetryableAndWithoutAResult() {
+        AtomicInteger loads = new AtomicInteger();
+        service = quadService(attachment -> {
+            loads.incrementAndGet();
+            throw new AttachmentContentLoader.RetryableAttachmentException("network", null);
+        }, imageParser(new QuadWordsImageParser.Parse.Parsed(boards(9))));
+        InboundSharedMessage inbound = message(23L, TOBIAS, quadWords(), List.of(image(23L, 700L)));
+
+        assertThat(service.process(inbound)).isEqualTo(new ProcessingResult.Ignored());
+        assertThat(service.process(inbound)).isEqualTo(new ProcessingResult.Ignored());
+
+        assertThat(loads).hasValue(2);
+        assertThat(store.retryableFailures).isEqualTo(2);
+        assertThat(store.results).isEmpty();
+    }
+
+    @Test
+    void doesNotReloadOrStoreAnAlreadyAcceptedQuadWordsReplay() {
+        AtomicInteger loads = new AtomicInteger();
+        service = quadService(attachment -> {
+            loads.incrementAndGet();
+            return new byte[] {1};
+        }, imageParser(new QuadWordsImageParser.Parse.Parsed(boards(9))));
+        InboundSharedMessage inbound = message(24L, TOBIAS, quadWords(), List.of(image(24L, 700L)));
+
+        assertThat(service.process(inbound)).isEqualTo(new ProcessingResult.Accepted(de.venomenon.gridwordsbot.domain.model.GameType.QUADWORDS));
+        assertThat(service.process(inbound)).isEqualTo(new ProcessingResult.Accepted(de.venomenon.gridwordsbot.domain.model.GameType.QUADWORDS));
+
+        assertThat(loads).hasValue(1);
+        assertThat(store.results).hasSize(1);
+    }
+
+    @Test
+    void leavesGridWordsIndependentFromTheAttachmentPipeline() {
+        AttachmentContentLoader loader = mock(AttachmentContentLoader.class);
+        service = quadService(loader, imageParser(new QuadWordsImageParser.Parse.Parsed(boards(9))));
+
+        assertThat(service.process(message(25L, TOBIAS, gridWords(29, 3))))
+                .isEqualTo(new ProcessingResult.Accepted());
+
+        verifyNoInteractions(loader);
+    }
+
+    @Test
+    void validatesAnInvalidQuadWordsHeaderBeforeLoadingAnAttachment() {
+        AttachmentContentLoader loader = mock(AttachmentContentLoader.class);
+        service = quadService(loader, imageParser(new QuadWordsImageParser.Parse.Parsed(boards(9))));
+
+        assertThat(service.process(message(26L, TOBIAS, "QuadWords (29. Juli 2026) 10/9 in 4:18", List.of(image(26L, 700L)))))
+                .isEqualTo(new ProcessingResult.Rejected("INVALID_ATTEMPT_RESULT"));
+
+        verifyNoInteractions(loader);
+    }
     @Test
     void ignoresMessagesThatAreNotShares() {
         assertThat(service.process(message(5L, TOBIAS, "Guten Morgen"))).isEqualTo(new ProcessingResult.Ignored());
@@ -221,6 +339,34 @@ class ProcessSharedResultServiceTest {
                 .hasMessage("database unavailable");
     }
 
+    private ProcessSharedResultService quadService(AttachmentContentLoader loader, QuadWordsImageParser parser) {
+        return new ProcessSharedResultService(new GridWordsShareParser(), new QuadWordsShareParser(), loader, parser,
+                Clock.fixed(RECEIVED_AT, ZoneOffset.UTC), ZoneId.of("Europe/Berlin"), store, store, List.of(), ignored -> true);
+    }
+
+    private QuadWordsImageParser imageParser(QuadWordsImageParser.Parse parse) {
+        return new QuadWordsImageParser() {
+            @Override
+            public Parse parse(byte[] bytes, ShareOutcome outcome) {
+                return parse;
+            }
+        };
+    }
+
+    private AttachmentMetadata image(long sourceMessageId, long attachmentId) {
+        return new AttachmentMetadata("quad.png", "image/png", 42L,
+                Optional.of(new AttachmentReference(12L, sourceMessageId, attachmentId)));
+    }
+
+    private QuadWordsBoards boards(int rows) {
+        List<String> boardRows = java.util.stream.IntStream.range(0, rows).mapToObj(ignored -> "\u2B1C".repeat(5)).toList();
+        QuadWordsBoard board = new QuadWordsBoard(boardRows);
+        return new QuadWordsBoards(board, board, board, board);
+    }
+
+    private String quadWords() {
+        return "QuadWords (29. Juli 2026) 9/9 in 4:18";
+    }
     private ProcessSharedResultService service(Clock clock, InMemoryStore configuredStore) {
         return new ProcessSharedResultService(
                 new GridWordsShareParser(), new QuadWordsShareParser(), clock, ZoneId.of("Europe/Berlin"), configuredStore,
@@ -253,6 +399,7 @@ class ProcessSharedResultServiceTest {
         private final Map<ResultKey, StoredResult> results = new HashMap<>();
         private long nextResultId = 1L;
         private ResultStorage lastResultStorage;
+        private int retryableFailures;
 
         @Override
         public StoredPlayer upsert(PlayerUpsert request) {
@@ -334,6 +481,11 @@ class ProcessSharedResultServiceTest {
             return rejected;
         }
 
+        @Override
+        public void markRetryableFailure(long sourceMessageId, String safeTechnicalMessage) {
+            required(sourceMessageId);
+            retryableFailures++;
+        }
         @Override
         public boolean transition(long sourceMessageId, SubmissionState expectedState, SubmissionState targetState) {
             StoredSubmission submission = required(sourceMessageId);

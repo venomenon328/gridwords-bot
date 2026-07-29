@@ -3,7 +3,6 @@ package de.venomenon.gridwordsbot.parser.quadwords;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import de.venomenon.gridwordsbot.domain.parsing.AttachmentMetadata;
-import de.venomenon.gridwordsbot.domain.parsing.ParseErrorCode;
 import de.venomenon.gridwordsbot.domain.parsing.ParseResult;
 import de.venomenon.gridwordsbot.domain.parsing.ShareParseInput;
 import de.venomenon.gridwordsbot.parser.FixtureSupport;
@@ -37,12 +36,8 @@ class QuadWordsAttachmentMetadataFallbackTest {
 
     @ParameterizedTest
     @MethodSource("nonImageContentTypes")
-    void rejectsImageLookingFilenamesWhenANonImageContentTypeIsPresent(AttachmentMetadata attachment) {
-        ParseResult result = parser.parse(input(attachment));
-
-        assertThat(result).isEqualTo(new ParseResult.Invalid(
-                ParseErrorCode.MISSING_IMAGE_ATTACHMENT,
-                "A plausible QuadWords image attachment is missing."));
+    void leavesAttachmentClassificationToTheApplicationService(AttachmentMetadata attachment) {
+        assertThat(parser.parse(input(attachment))).isInstanceOf(ParseResult.Parsed.class);
     }
 
     static Stream<Arguments> nonImageContentTypes() {

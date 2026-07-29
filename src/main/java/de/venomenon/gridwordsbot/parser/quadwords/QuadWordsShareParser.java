@@ -8,7 +8,7 @@ import de.venomenon.gridwordsbot.domain.parsing.ShareParseInput;
 import de.venomenon.gridwordsbot.parser.common.ShareHeaderParser;
 import java.util.Optional;
 
-/** Deterministically parses the QuadWords header and checks only image metadata in version 1. */
+/** Deterministically parses the QuadWords header; attachment selection belongs to the application service. */
 public final class QuadWordsShareParser {
 
     private static final String GAME_NAME = "QuadWords";
@@ -35,10 +35,6 @@ public final class QuadWordsShareParser {
                 }
             }
         }
-        if (input.attachments().stream().noneMatch(attachment -> attachment.isPlausibleImage())) {
-            return invalid(ParseErrorCode.MISSING_IMAGE_ATTACHMENT, "A plausible QuadWords image attachment is missing.");
-        }
-
         return new ParseResult.Parsed(new ParsedGameResult(
                 GameType.QUADWORDS,
                 headerParse.header().date(),

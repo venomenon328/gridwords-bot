@@ -12,7 +12,7 @@ import java.util.List;
 import javax.imageio.ImageIO;
 
 /** Pure, conservative geometry and colour parser for a QuadWords 2x2 result image. */
-public final class QuadWordsImageParser {
+public class QuadWordsImageParser {
     public static final String VERSION = "quadwords-image-v1";
     private static final int MAX_BYTES = 8 * 1024 * 1024;
     private static final long MAX_PIXELS = 12_000_000L;
