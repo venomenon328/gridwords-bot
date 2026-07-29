@@ -35,20 +35,35 @@ final class CanonicalEmbedRenderer {
             return rendered;
         }
         String description = rendered.getDescription();
-        description = preserveLine(description, existingEmbed.getDescription(), PERSONAL_COMPLETE, true);
-        description = preserveLine(description, existingEmbed.getDescription(), SHARED_COMPLETE, true);
+        description = preserveLine(description, existingEmbed.getDescription(), PERSONAL_COMPLETE, "Komplett: ", true);
+        description = preserveLine(
+                description, existingEmbed.getDescription(), SHARED_COMPLETE, "Gemeinsam komplett: ", true);
         boolean stillSolved = message.outcome() instanceof ShareOutcome.Solved;
-        description = preserveLine(description, existingEmbed.getDescription(), PERSONAL_PERFECT, stillSolved);
-        description = preserveLine(description, existingEmbed.getDescription(), SHARED_PERFECT, stillSolved);
+        description = preserveLine(
+                description, existingEmbed.getDescription(), PERSONAL_PERFECT, "Perfekt: ", stillSolved);
+        description = preserveLine(
+                description, existingEmbed.getDescription(), SHARED_PERFECT, "Gemeinsam perfekt: ", stillSolved);
         return new EmbedBuilder(rendered).setDescription(description).build();
     }
 
-    private static String preserveLine(String current, String previous, String prefix, boolean preserve) {
-        if (!preserve || current.contains(prefix)) {
+    private static String preserveLine(
+            String current,
+            String previous,
+            String currentPrefix,
+            String legacyPrefix,
+            boolean preserve) {
+        if (!preserve || current.contains(currentPrefix)) {
             return current;
         }
-        Optional<String> previousLine = previous.lines().filter(line -> line.startsWith(prefix)).findFirst();
-        return previousLine.map(line -> current + "\n" + line).orElse(current);
+        Optional<String> previousLine = previous.lines()
+                .filter(line -> line.startsWith(currentPrefix) || line.startsWith(legacyPrefix))
+                .findFirst();
+        if (previousLine.isEmpty()) {
+            return current;
+        }
+        String line = previousLine.get();
+        String value = line.substring(line.startsWith(currentPrefix) ? currentPrefix.length() : legacyPrefix.length());
+        return current + "\n" + currentPrefix + value;
     }
 
     private static String outcome(CanonicalResultMessage message) {
