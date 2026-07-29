@@ -12,28 +12,15 @@ import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
 import java.util.OptionalInt;
+import net.dv8tion.jda.api.EmbedBuilder;
 import org.junit.jupiter.api.Test;
 
 class CanonicalEmbedRendererTest {
 
     @Test
-    void rendersMandatoryAndCurrentSeriesWithSymbolsAndHiddenPublicationKey() {
-        CanonicalResultMessage message = new CanonicalResultMessage(
-                "Tobias",
-                GameType.GRIDWORDS,
-                LocalDate.of(2026, 7, 29),
-                new ShareOutcome.Solved(3, 6),
-                Duration.ofSeconds(85),
-                new NormalizedBoard(List.of(
-                        "\u2b1c\u2b1c\u2b1c\u2b1c\u2b1c",
-                        "\ud83d\udfe8\ud83d\udfe8\ud83d\udfe8\ud83d\udfe8\ud83d\udfe8",
-                        "\ud83d\udfe9\ud83d\udfe9\ud83d\udfe9\ud83d\udfe9\ud83d\udfe9")),
-                new StreakSummary(12, 8, 7, 4, 3, 5, 2),
-                OptionalInt.empty(),
-                OptionalInt.empty(),
-                OptionalInt.empty(),
-                OptionalInt.empty(),
-                "gridwords-result-4");
+    void rendersMandatoryAndContextualSeriesWithSymbolsAndHiddenPublicationKey() {
+        CanonicalResultMessage message = solvedMessage(
+                OptionalInt.of(8), OptionalInt.of(3), OptionalInt.of(5), OptionalInt.of(2));
 
         var embed = new CanonicalEmbedRenderer().render(message);
 
@@ -48,6 +35,53 @@ class CanonicalEmbedRendererTest {
         assertThat(embed.getDescription()).doesNotContain("Spielserie", "@everyone");
         assertThat(embed.getFooter().getText()).doesNotContain("gridwords-result-4");
         assertThat(DiscordPublicationKey.matches("gridwords-result-4", embed.getFooter().getText())).isTrue();
+    }
+
+    @Test
+    void preservesCompletedDayLinesWhenAStillSolvedCorrectionIsEdited() {
+        CanonicalEmbedRenderer renderer = new CanonicalEmbedRenderer();
+        var previous = new EmbedBuilder()
+                .setDescription("alt\n\n✅ Komplett: 8 Tage\n💎 Perfekt: 3 Tage"
+                        + "\n🤝 Gemeinsam komplett: 5 Tage\n🏆 Gemeinsam perfekt: 2 Tage")
+                .build();
+        CanonicalResultMessage correction = solvedMessage(
+                OptionalInt.empty(), OptionalInt.empty(), OptionalInt.empty(), OptionalInt.empty());
+
+        var edited = renderer.renderForEdit(correction, previous);
+
+        assertThat(edited.getDescription()).contains(
+                "✅ Komplett: 8 Tage",
+                "💎 Perfekt: 3 Tage",
+                "🤝 Gemeinsam komplett: 5 Tage",
+                "🏆 Gemeinsam perfekt: 2 Tage");
+    }
+
+    @Test
+    void dropsPerfectLinesWhenACorrectionIsNowUnsolved() {
+        CanonicalEmbedRenderer renderer = new CanonicalEmbedRenderer();
+        var previous = new EmbedBuilder()
+                .setDescription("alt\n\n✅ Komplett: 8 Tage\n💎 Perfekt: 3 Tage"
+                        + "\n🤝 Gemeinsam komplett: 5 Tage\n🏆 Gemeinsam perfekt: 2 Tage")
+                .build();
+        CanonicalResultMessage correction = new CanonicalResultMessage(
+                "Tobias",
+                GameType.GRIDWORDS,
+                LocalDate.of(2026, 7, 29),
+                new ShareOutcome.Unsolved(6),
+                Duration.ofSeconds(10),
+                new NormalizedBoard(Collections.nCopies(6, "\u2b1c\u2b1c\u2b1c\u2b1c\u2b1c")),
+                new StreakSummary(1, 8, 0, 4, 0, 5, 0),
+                OptionalInt.empty(),
+                OptionalInt.empty(),
+                OptionalInt.empty(),
+                OptionalInt.empty(),
+                "key");
+
+        var edited = renderer.renderForEdit(correction, previous);
+
+        assertThat(edited.getDescription())
+                .contains("✅ Komplett: 8 Tage", "🤝 Gemeinsam komplett: 5 Tage")
+                .doesNotContain("💎 Perfekt", "🏆 Gemeinsam perfekt");
     }
 
     @Test
@@ -69,5 +103,28 @@ class CanonicalEmbedRendererTest {
         assertThat(new CanonicalEmbedRenderer().render(message).getDescription())
                 .contains("X/6", "keine laufende Serie")
                 .doesNotContain("Komplett", "Perfekt", "Gemeinsam");
+    }
+
+    private static CanonicalResultMessage solvedMessage(
+            OptionalInt personalComplete,
+            OptionalInt personalPerfect,
+            OptionalInt sharedComplete,
+            OptionalInt sharedPerfect) {
+        return new CanonicalResultMessage(
+                "Tobias",
+                GameType.GRIDWORDS,
+                LocalDate.of(2026, 7, 29),
+                new ShareOutcome.Solved(3, 6),
+                Duration.ofSeconds(85),
+                new NormalizedBoard(List.of(
+                        "\u2b1c\u2b1c\u2b1c\u2b1c\u2b1c",
+                        "\ud83d\udfe8\ud83d\udfe8\ud83d\udfe8\ud83d\udfe8\ud83d\udfe8",
+                        "\ud83d\udfe9\ud83d\udfe9\ud83d\udfe9\ud83d\udfe9\ud83d\udfe9")),
+                new StreakSummary(12, 8, 7, 4, 3, 5, 2),
+                personalComplete,
+                personalPerfect,
+                sharedComplete,
+                sharedPerfect,
+                "gridwords-result-4");
     }
 }
