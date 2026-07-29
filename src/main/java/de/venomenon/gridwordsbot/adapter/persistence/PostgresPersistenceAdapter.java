@@ -103,7 +103,11 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
 
     @Override
     @Transactional
-    public StoredSubmission storeResult(ResultStorage request) {
+    public StoredSubmission storeResult(ResultStorage request) {
+        StoredSubmission existing = findRequired(request.sourceMessageId());
+        if (existing.authorPlayerId() != request.result().playerId()) {
+            throw new SubmissionConflictException("result player does not match submission author");
+        }
         StoredGameResult result = upsertResult(request.result(), clock.instant());
         int changed = jdbc.update("""
                 UPDATE submission SET game_result_id = ?, processing_state = 'RESULT_STORED', updated_at = ?, version = version + 1
