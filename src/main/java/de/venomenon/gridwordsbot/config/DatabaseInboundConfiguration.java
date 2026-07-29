@@ -85,7 +85,9 @@ class DatabaseInboundConfiguration {
                 properties.schedule().timeZone(), List.of(properties.players().first().userId(), properties.players().second().userId()),
                 retryScheduler, sourceMessageId -> {
                     GridWordsSourceDeletionService deletion = deletionProvider.getIfAvailable();
-                    if (deletion != null) deletion.deleteAfterCanonicalPublication(sourceMessageId);
+                    if (deletion != null) {
+                        deletion.reconcileAfterCanonicalPublication(sourceMessageId);
+                    }
                 });
     }
 
