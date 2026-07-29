@@ -38,11 +38,11 @@ class CanonicalEmbedRendererTest {
     }
 
     @Test
-    void preservesCompletedDayLinesWhenAStillSolvedCorrectionIsEdited() {
+    void preservesAndMigratesCompletedDayLinesWhenAStillSolvedCorrectionIsEdited() {
         CanonicalEmbedRenderer renderer = new CanonicalEmbedRenderer();
         var previous = new EmbedBuilder()
-                .setDescription("alt\n\n✅ Komplett: 8 Tage\n💎 Perfekt: 3 Tage"
-                        + "\n🤝 Gemeinsam komplett: 5 Tage\n🏆 Gemeinsam perfekt: 2 Tage")
+                .setDescription("alt\n\nKomplett: 8 Tage\nPerfekt: 3 Tage"
+                        + "\nGemeinsam komplett: 5 Tage\nGemeinsam perfekt: 2 Tage")
                 .build();
         CanonicalResultMessage correction = solvedMessage(
                 OptionalInt.empty(), OptionalInt.empty(), OptionalInt.empty(), OptionalInt.empty());
@@ -54,14 +54,15 @@ class CanonicalEmbedRendererTest {
                 "💎 Perfekt: 3 Tage",
                 "🤝 Gemeinsam komplett: 5 Tage",
                 "🏆 Gemeinsam perfekt: 2 Tage");
+        assertThat(edited.getDescription()).doesNotContain("\nKomplett: ", "\nPerfekt: ");
     }
 
     @Test
     void dropsPerfectLinesWhenACorrectionIsNowUnsolved() {
         CanonicalEmbedRenderer renderer = new CanonicalEmbedRenderer();
         var previous = new EmbedBuilder()
-                .setDescription("alt\n\n✅ Komplett: 8 Tage\n💎 Perfekt: 3 Tage"
-                        + "\n🤝 Gemeinsam komplett: 5 Tage\n🏆 Gemeinsam perfekt: 2 Tage")
+                .setDescription("alt\n\nKomplett: 8 Tage\nPerfekt: 3 Tage"
+                        + "\nGemeinsam komplett: 5 Tage\nGemeinsam perfekt: 2 Tage")
                 .build();
         CanonicalResultMessage correction = new CanonicalResultMessage(
                 "Tobias",
