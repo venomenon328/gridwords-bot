@@ -39,6 +39,8 @@ Abschlussbedingung erfüllt:
 
 ## Inkrement 1 – Reine Share-Textparser
 
+**Status:** abgeschlossen (PR #4 gemergt)
+
 **Ziel:** GridWords- und QuadWords-Kopfzeilen sowie GridWords-Raster deterministisch parsen.
 
 Umfang:
@@ -64,7 +66,7 @@ Abnahmekriterium:
 
 ## Inkrement 2 – Persistenzmodell und Verarbeitungszustände
 
-**Status:** umgesetzt in Draft-PR #6 (Review- und CI-Freigabe ausstehend)
+**Status:** abgeschlossen (PR #6)
 
 **Ziel:** Ergebnisse und Submission-Ablauf idempotent speichern.
 
