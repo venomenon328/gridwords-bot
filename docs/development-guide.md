@@ -1,43 +1,38 @@
 # Entwicklungsleitfaden
 
-Dieser Leitfaden beschreibt die praktische Arbeitsweise für menschliche Entwicklung und Codex-Aufträge. Die fachlichen Anforderungen stehen in `anforderungsspezifikation.md`, die Architektur in `architecture.md`.
+Dieser Leitfaden beschreibt die praktische Arbeitsweise für menschliche Entwicklung und Codex-/Terra-Aufträge. Fachliche Anforderungen stehen in `anforderungsspezifikation.md`, Architekturentscheidungen in `architecture.md` und `adr/`.
 
 ## 1. Arbeitsmodell
 
 - `main` enthält nur geprüfte und mergefähige Stände.
 - Jede Aufgabe wird in einem eigenen Branch umgesetzt.
-- Ein GitHub-Issue beschreibt Ziel, Umfang und Abnahmekriterien.
-- Codex kann mit einem kurzen Auftrag wie `Bearbeite Issue #N vollständig` gestartet werden, weil dauerhafte Regeln in `AGENTS.md` und den verlinkten Dokumenten liegen.
-- Architekturänderungen werden nicht beiläufig durch ein Feature eingeführt, sondern vorab als ADR dokumentiert.
-- Docker Desktop ist keine Voraussetzung für die lokale Entwicklung.
+- Ein GitHub-Issue beschreibt Ziel, Umfang, Nicht-Ziele und Abnahmekriterien.
+- Ein Draft-PR wird früh angelegt und bleibt bis zur automatisierten sowie manuellen Abnahme ungemergt.
+- Architekturänderungen werden vor der Implementierung als ADR dokumentiert.
+- Docker Desktop und Docker Compose stehen lokal zur Verfügung und dürfen für Persistenz-, Integrations- und Smoke-Tests vorausgesetzt werden.
+- Der schnelle Standardbuild bleibt trotzdem infrastrukturunabhängig.
+
+Maßgeblich für die lokale Infrastruktur ist `adr/0010-docker-available-local-development.md`. ADR 0004 dokumentiert nur noch den historischen Ausgangspunkt.
 
 ## 2. Voraussetzungen
 
-### 2.1 Verbindliche lokale Werkzeuge
+Verbindlich:
 
 - Git
 - JDK 21
 - Maven 3.9 oder neuer
-- VS Code mit Codex beziehungsweise eine andere geeignete IDE
+- VS Code mit Codex/Terra oder eine andere geeignete IDE
+- Docker Desktop für vollständige lokale Persistenz-, Integrations- und Smoke-Tests
 
 Prüfen:
 
-```bash
+```powershell
 git --version
 java -version
 mvn --version
+docker version
+docker compose version
 ```
-
-### 2.2 Optionale Infrastruktur
-
-Für die normale Parser-, Domain-, Application- und Discord-Entwicklung ist keine lokale Datenbank und keine Container-Runtime erforderlich.
-
-Optional:
-
-- nativ installiertes PostgreSQL für einen manuellen lokalen Persistenzstart,
-- Docker Engine, Docker Desktop oder eine andere kompatible Compose-Umgebung als alternative Komfortlösung.
-
-Die Entscheidung ist in `adr/0004-docker-optional-local-development.md` dokumentiert.
 
 ## 3. Secrets und lokale Konfiguration
 
@@ -46,13 +41,13 @@ Der Discord-Token ist ein Secret.
 Verbindliche Regeln:
 
 - niemals committen,
-- niemals in einen Codex-Prompt einfügen,
+- niemals in Codex-/Terra-Prompts einfügen,
 - niemals in Issue, PR, Log oder Screenshot veröffentlichen,
 - ausschließlich lokal beziehungsweise später im Secret Store des Hosts setzen.
 
-`.env` bleibt in `.gitignore`. Die Anwendung importiert sie über `spring.config.import=optional:file:.env[.properties]`; damit liest Spring die Datei beim Anwendungsstart tatsächlich ein. Sie wird nicht als Betriebssystemumgebung exportiert. Betriebssystem-Umgebungsvariablen haben wegen der Spring-Property-Priorität Vorrang vor lokalen Dateiwerten.
+`.env` bleibt in `.gitignore`. Die Anwendung importiert sie über `spring.config.import=optional:file:.env[.properties]`. Betriebssystem-Umgebungsvariablen haben Vorrang.
 
-Unter PowerShell wird die Datei einmalig angelegt:
+Einmalig unter PowerShell:
 
 ```powershell
 Copy-Item .env.example .env
@@ -60,44 +55,82 @@ Copy-Item .env.example .env
 
 `DISCORD_BOT_TOKEN` wird ausschließlich in diese lokale Datei eingetragen.
 
-## 4. Build ohne externe Systeme
+## 4. Schneller Standardbuild
 
-Der lokale Standardbuild muss funktionieren ohne:
+Der Standardbuild muss ohne Discord, PostgreSQL und Container-Runtime funktionieren:
 
-- Discord-Token,
-- Discord-Netzwerkverbindung,
-- PostgreSQL,
-- Docker oder andere Container-Runtime,
-- manuell vorbereitete Infrastruktur.
-
-```bash
+```powershell
 mvn --batch-mode --no-transfer-progress clean verify
 ```
 
-Der Standardbuild umfasst alle Unit-, Parser-, Domain-, Application-, Architektur- und infrastrukturlosen Adaptertests.
+Er umfasst Unit-, Parser-, Domain-, Application-, Architektur- und infrastrukturlosen Discord-Adaptertests. Der Build öffnet keine echte Discord-Verbindung und startet keine Testcontainers-Umgebung.
 
-Datenbankintegrationstests sind im separaten Maven-Profil `database-integration` implementiert:
+Diese Eigenschaft ist eine bewusste Test- und Architekturgrenze. Sie verbietet nicht, Docker in der Implementierung oder bei vollständigen lokalen Prüfungen zu verwenden.
 
-```bash
+## 5. PostgreSQL-Integration lokal
+
+Bei Änderungen an Persistenz, Liquibase, Claims, Recovery oder PostgreSQL-spezifischem Verhalten ist zusätzlich lokal auszuführen:
+
+```powershell
 mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
 ```
 
-Dieses Profil ist im vollständigen GitHub-Actions-Build verpflichtend. Es darf in CI nicht unbemerkt übersprungen werden. Lokal muss es ohne Container-Runtime nicht ausgeführt werden können.
+Das Profil verwendet echtes PostgreSQL und darf Testcontainers beziehungsweise eine Container-Runtime verwenden. Es wird außerdem verpflichtend in GitHub Actions ausgeführt und darf dort nicht unbemerkt übersprungen werden.
 
-## 5. Lokaler Start ohne Datenbank
+H2 ersetzt diese Tests nicht.
 
-Die Anwendung startet standardmäßig im Profil `offline`. Dieses Profil deaktiviert die Datenbank-Autokonfiguration.
+## 6. Bevorzugte lokale PostgreSQL-Umgebung
 
-### 5.1 Vollständig offline
+Docker Desktop muss laufen.
+
+PostgreSQL starten:
+
+```powershell
+docker compose up -d postgres
+docker compose ps
+docker compose exec postgres pg_isready -U gridwords -d gridwords
+```
+
+Standardwerte aus `.env.example` und `compose.yaml`:
+
+```properties
+POSTGRES_DB=gridwords
+POSTGRES_USER=gridwords
+POSTGRES_PASSWORD=gridwords-local
+POSTGRES_PORT=5432
+DATABASE_URL=jdbc:postgresql://localhost:5432/gridwords
+DATABASE_USERNAME=gridwords
+DATABASE_PASSWORD=gridwords-local
+```
+
+PostgreSQL stoppen, Daten behalten:
+
+```powershell
+docker compose down
+```
+
+PostgreSQL einschließlich Volume löschen:
+
+```powershell
+docker compose down -v
+```
+
+`docker compose down -v` löscht alle lokalen Testdaten.
+
+Eine native PostgreSQL-Installation darf weiterhin als Alternative unterstützt werden, ist aber nicht die primär dokumentierte Vorgehensweise.
+
+## 7. Lokaler Anwendungsstart
+
+### 7.1 Vollständig offline
 
 ```powershell
 $env:SPRING_PROFILES_ACTIVE = "offline"
 mvn spring-boot:run
 ```
 
-Dabei werden weder Discord noch PostgreSQL kontaktiert, solange `DISCORD_ENABLED=false` ist.
+Solange `DISCORD_ENABLED=false` ist, werden weder Discord noch PostgreSQL kontaktiert.
 
-### 5.2 Discord-Gateway ohne Docker und PostgreSQL
+### 7.2 Discord-Gateway ohne Ergebnisverarbeitung
 
 In `.env`:
 
@@ -113,141 +146,111 @@ $env:SPRING_PROFILES_ACTIVE = "offline"
 mvn spring-boot:run
 ```
 
-Das Profil `offline` deaktiviert ausschließlich die Datenbank-Autokonfiguration. Die ausdrücklich aktivierte JDA-Verbindung wird trotzdem aufgebaut.
+Das Profil `offline` deaktiviert die Datenbank-Autokonfiguration. Der Gateway kann trotzdem aufgebaut werden; ein Ergebnislistener wird dort nicht registriert.
 
-Der reale Gateway-Smoke-Test wurde am 29. Juli 2026 erfolgreich auf Tobias' Entwicklungsrechner durchgeführt:
-
-- kein Docker Desktop,
-- kein PostgreSQL,
-- Bot auf dem vorgesehenen Server online,
-- JDA-Gatewayverbindung erfolgreich.
-
-Dieser Test enthält noch keine fachliche Ergebnisverarbeitung.
-
-## 6. Lokaler Start mit PostgreSQL
-
-Für spätere Persistenzentwicklung wird eine nativ installierte PostgreSQL-Instanz unterstützt. In `.env` werden die tatsächlichen lokalen Werte gesetzt:
-
-```properties
-DATABASE_URL=jdbc:postgresql://localhost:5432/gridwords
-DATABASE_USERNAME=gridwords
-DATABASE_PASSWORD=lokales-passwort
-```
-
-Start:
+### 7.3 Vollständiger Start mit PostgreSQL und Discord
 
 ```powershell
-mvn spring-boot:run -Dspring-boot.run.profiles=database
-```
-
-Liquibase wendet dabei dieselben Migrationen an, die auch in CI und im späteren Betrieb verwendet werden.
-
-Discord bleibt unabhängig steuerbar:
-
-```properties
-DISCORD_ENABLED=true
-```
-
-Eine native PostgreSQL-Installation ist nur erforderlich, wenn die Anwendung lokal tatsächlich mit Persistenz ausgeführt werden soll. Sie ist keine Voraussetzung für den Standardbuild.
-
-## 7. Optionale Docker-/Compose-Nutzung
-
-`compose.yaml` bleibt als Komfortoption bestehen und ist auf dieselbe CI-Image-Version `postgres:16.6-alpine` fest gepinnt. Bei verfügbarer Container-Runtime:
-
-```bash
 docker compose up -d postgres
-docker compose ps
-docker compose down
+mvn "-Dspring-boot.run.profiles=database" spring-boot:run
 ```
 
-Vollständiges Löschen einschließlich Datenbankvolume:
+Liquibase wendet dabei dieselben Migrationen an wie in CI. Discord bleibt über `DISCORD_ENABLED` steuerbar.
 
-```bash
-docker compose down -v
+## 8. Datenbankzugriff
+
+Direkt über `psql`:
+
+```powershell
+docker compose exec postgres psql -U gridwords -d gridwords
 ```
 
-Keiner dieser Befehle ist für den lokalen Standardbuild oder den Discord-Smoke-Test erforderlich.
+DBeaver kann über den veröffentlichten Host-Port zugreifen:
 
-## 8. Testpyramide
+```text
+Host: localhost
+Port: 5432
+Database: gridwords
+Username: gridwords
+Password: gridwords-local
+```
 
-### Unit-Tests
+JDBC-URL:
 
-Schnell und ohne Spring-Kontext, soweit möglich:
+```text
+jdbc:postgresql://localhost:5432/gridwords
+```
 
-- Parser
-- Datums- und Serienregeln
-- Ausgabeformatierung
-- Reminder-Entscheidungen
-- Zustandsübergänge
+Relevante Tabellen:
+
+- `player`
+- `submission`
+- `game_result`
+- `canonical_delivery_attempt`
+
+## 9. Testpyramide
+
+### Unit-, Domain- und Parsertests
+
+- kein Spring-Kontext, soweit möglich
+- feste `Clock` für zeitabhängige Logik
+- Fixture-basierte Parserfälle für Erfolg, nicht gelöst und Fehler
+- getrennte Tests für alle sieben Serien
 
 ### Application-Tests
 
-- Use Cases mit In-Memory-Fakes der Ports
+- Use Cases gegen Fakes oder Mocks der Ports
 - kein JDA
 - keine echte Datenbank
-- feste `Clock`
+- Happy Path, Fehlerpfade, Retry und Idempotenz
 
 ### Architekturtests
 
-- Domain hängt nicht von Spring, JDA oder JPA ab.
-- Application hängt nicht von Adapterpaketen ab.
-- JDA-Typen bleiben im Discord-Adapter beziehungsweise im Wiring.
+- Domain hängt nicht von Spring, JDA oder JPA ab
+- Application hängt nicht von Adapterpaketen ab
+- JDA-Typen bleiben im Discord-Adapter beziehungsweise Wiring
 
-### Persistence-Integrationstests
+### PostgreSQL-Integration
 
 - echtes PostgreSQL
-- Liquibase wird real ausgeführt
-- Constraints und Upsert-/Konfliktverhalten werden geprüft
-- Ausführung über das Maven-Profil `database-integration`
-- verpflichtend in GitHub Actions
-- lokal ohne Container-Runtime nicht Bestandteil des Standardbuilds
-
-Testcontainers ist für diese CI-Tests zulässig. H2 ersetzt die PostgreSQL-Integrationstests nicht.
+- Liquibase real ausführen
+- Constraints, Claims, Konflikte und Recovery prüfen
+- lokal mit Docker und zusätzlich in GitHub Actions
 
 ### Discord-Adaptertests
 
 - keine echte Netzwerkverbindung
-- JDA-Grenze mocken oder hinter einer schmalen Wrapper-Komponente testen
-- Umwandlung zwischen JDA-Ereignissen und internen DTOs prüfen
+- JDA-Grenze mocken
+- exakte IDs, Fehlerklassifikation und DTO-Übersetzung prüfen
 
-### Inbound-Beobachtungsmodus
+### Manuelle Smoke-Tests
 
-Inkrement 3 verarbeitet neue Guild-Textnachrichten nur im Profil `database`, wenn Discord aktiviert ist und die Persistenzkomponenten verfügbar sind. Der JDA-Event-Thread filtert und kopiert das Ereignis; Parser, Datenbankzugriffe und Reaktionen laufen danach über einen kleinen begrenzten Executor.
-
-Nach abgeschlossener Liquibase-Initialisierung synchronisiert ein einziger Startup-Pfad die beiden konfigurierten Spieler in `player` und registriert erst danach den Listener. Im Profil `offline` kann der Gateway weiterhin ohne PostgreSQL starten, dort ist kein Ergebnislistener registriert.
-
-Der manuelle Persistenz-/Discord-Smoke-Test gehört zum Abschluss von Inkrement 3 und wird gegen eine native PostgreSQL-Instanz oder bei optionaler Compose-Nutzung gegen `postgres:16.6-alpine` ausgeführt. Er prüft Zielserver/-channel, beide Spieler, gültige und ungültige Shares, Korrekturen mit neuer Message-ID sowie das Ausbleiben jeder Nachrichtenlöschung. Ein normaler Neustart stellt alte Gateway-Nachrichten nicht erneut zu; der identische Source-Event-Replay ist deshalb automatisiert statt manuell abgedeckt. Der Smoke-Test ist kein Teil des normalen lokalen Builds.
-
-### Manueller Smoke-Test
-
-- nur für echte Gateway-Verbindung und Channelrechte
-- kein PostgreSQL erforderlich
+- echte Discord-Verbindung
+- Compose-PostgreSQL
+- Channelrechte und sichtbares Verhalten
 - kein Ersatz für automatisierte Tests
-- bei späteren Persistenzinkrementen zusätzlicher manueller Start gegen natives PostgreSQL möglich
 
-## 9. CI-Strategie
-
-GitHub Actions ist die verbindliche Umgebung für Tests, die eine Container-Runtime benötigen.
+## 10. CI-Strategie
 
 Der Standardjob führt aus:
 
-```bash
+```powershell
 mvn --batch-mode --no-transfer-progress verify
 ```
 
-Der verpflichtende Datenbankjob führt aus:
+Der Datenbankjob führt aus:
 
-```bash
+```powershell
 mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
 ```
 
 Anforderungen:
 
-- Die Datenbankintegrationstests müssen in den Job-Logs eindeutig als ausgeführt erkennbar sein.
-- Ein fehlender Containerzugriff oder eine nicht gestartete Datenbank darf in CI nicht als erfolgreicher Skip durchgehen.
-- Der schnelle lokale Standardbuild bleibt unverändert Docker-frei.
+- Datenbankintegration muss in den Logs eindeutig ausgeführt worden sein.
+- Fehlender Containerzugriff darf nicht als erfolgreicher Skip durchgehen.
+- Beide Jobs müssen vor dem Merge grün sein.
 
-## 10. Fixtures
+## 11. Fixtures
 
 Vorgesehene Struktur:
 
@@ -266,135 +269,126 @@ fixtures/
     └── expected/
 ```
 
-Fixture-Regeln:
+Regeln:
 
-- Dateinamen beschreiben fachlichen Fall, nicht nur laufende Nummern.
+- Dateinamen beschreiben den fachlichen Fall.
 - Originale Share-Inhalte möglichst unverändert speichern.
-- Personenbezogene oder irrelevante Chat-Inhalte entfernen.
-- Zu jedem Bildfixture existiert eine erwartete Unicode-Ausgabe.
-- Parser-Regressionen werden zunächst als Fixture reproduziert und anschließend behoben.
+- Personenbezogene oder irrelevante Chatinhalte entfernen.
+- Zu jedem Bildfixture existiert eine erwartete normalisierte Ausgabe.
+- Parserregressionen zunächst als Fixture reproduzieren.
 
-## 11. Codex-Aufträge
+## 12. Codex-/Terra-Aufträge
 
-Ein guter Issue-Auftrag enthält:
+Ein Issue enthält:
 
 - klares Ziel,
 - Ausgangslage,
-- konkrete Aufgaben,
+- konkreten Umfang,
 - explizite Nicht-Ziele,
 - Abnahmekriterien,
+- verlangte Tests,
 - erwarteten Ergebnisbericht.
 
-Der eigentliche Codex-Prompt kann danach kurz bleiben:
+Ein kompakter Implementierungsauftrag kann danach lauten:
 
 ```text
 Bearbeite GitHub-Issue #N vollständig auf dem dort genannten Branch.
 Befolge AGENTS.md und führe alle verlangten Tests selbst aus.
 ```
 
-Bei einem Review-Auftrag:
+Bei Persistenzaufgaben darf und soll Docker verwendet werden. Automatisierte Tests öffnen weiterhin keine echte Discord-Verbindung und verwenden keinen Bot-Token.
 
-```text
-Reviewe Pull Request #N gegen das zugehörige Issue, AGENTS.md,
-docs/anforderungsspezifikation.md und docs/architecture.md.
-Melde zuerst Blocker, dann wichtige Risiken und zuletzt optionale Verbesserungen.
-```
+## 13. Erwartetes Verhalten von Codex/Terra
 
-## 12. Erwartetes Verhalten von Codex
+Soll:
 
-Codex soll:
-
-- vor Änderungen die verlinkte Dokumentation lesen,
-- den bestehenden Fehler reproduzieren,
+- Dokumentation und Issue vor Änderungen lesen,
+- kleine, prüfbare Änderungen bevorzugen,
 - keine Testergebnisse erfinden,
-- Abhängigkeiten nicht blind aktualisieren,
-- kleine und prüfbare Änderungen bevorzugen,
-- keine nicht angeforderte Fachlogik vorziehen,
-- nach Implementierung den lokalen Standardbuild ausführen,
-- Datenbankintegrationstests nur dort als erfolgreich melden, wo sie tatsächlich ausgeführt wurden,
-- im Abschlussbericht verbleibende manuelle und CI-Prüfungen nennen.
+- Standardbuild ausführen,
+- bei Persistenzumfang zusätzlich das Datenbankprofil lokal mit Docker ausführen,
+- CI-Ergebnisse konkret berichten,
+- verbleibende manuelle Prüfungen nennen.
 
-Codex soll nicht:
+Soll nicht:
 
-- Tokens oder Secrets anfordern,
-- eine echte Discord-Verbindung in automatisierten Tests öffnen,
-- Docker Desktop als lokale Voraussetzung einführen,
-- Datenbankintegrationstests im lokalen Standardbuild erzwingen,
+- Tokens anfordern oder verwenden,
+- echte Discord-Verbindungen in automatisierten Tests öffnen,
+- Datenbankintegration in den schnellen Standardbuild mischen,
 - Architekturgrenzen ohne ADR ändern,
 - komplette Anwendungsteile auf Verdacht neu schreiben,
-- einen roten Build als nebensächlich behandeln.
+- roten Build als nebensächlich behandeln.
 
-## 13. Pull-Request-Checkliste
+## 14. Pull-Request-Checkliste
 
 Vor Merge:
 
 - [ ] Issue-Umfang vollständig umgesetzt
-- [ ] Keine unangeforderten Zusatzfeatures
-- [ ] Lokaler `mvn clean verify` ohne Docker erfolgreich
-- [ ] GitHub Actions grün
-- [ ] Datenbankprofil in CI erfolgreich, sofern Persistenz betroffen
-- [ ] Neue Fachlogik mit Tests
+- [ ] keine unangeforderten Zusatzfeatures
+- [ ] lokaler Standardbuild erfolgreich
+- [ ] bei Persistenzumfang lokales Datenbankprofil mit Docker erfolgreich
+- [ ] GitHub Actions vollständig grün
+- [ ] neue Fachlogik automatisiert getestet
 - [ ] Architekturgrenzen eingehalten
-- [ ] Keine Secrets oder lokalen Dateien committed
+- [ ] keine Secrets oder lokalen Dateien committed
 - [ ] Dokumentation aktualisiert
-- [ ] Manuelle Tests durchgeführt oder klar als ausstehend markiert
+- [ ] notwendiger manueller Smoke-Test erfolgreich oder ausdrücklich ausstehend
 
 Nach Merge:
 
 - [ ] Issue geschlossen
-- [ ] Branch lokal und remote aufräumen
-- [ ] `main` aktualisieren
-- [ ] nächsten Issue-Umfang prüfen
+- [ ] `main` aktualisiert
+- [ ] Feature-Branch lokal und remote aufgeräumt
+- [ ] nächstes Issue und nächster Branch vorbereitet
 
-## 14. Reviewreihenfolge
+## 15. Reviewreihenfolge
 
-Reviews prüfen in dieser Reihenfolge:
-
-1. Sicherheits- und Datenverlustblocker,
-2. fachliche Korrektheit,
-3. Zustandsmaschine und Idempotenz,
-4. Parser- und Zeitregeln,
-5. Architekturgrenzen,
-6. Tests und CI,
-7. Dokumentation,
-8. Wartbarkeit und Stil.
+1. Sicherheits- und Datenverlustblocker
+2. fachliche Korrektheit
+3. Zustandsmaschine und Idempotenz
+4. Parser- und Zeitregeln
+5. Architekturgrenzen
+6. Tests und CI
+7. Dokumentation
+8. Wartbarkeit und Stil
 
 Optionales Refactoring darf einen fachlich vollständigen PR nicht unnötig blockieren.
 
-## 15. Logging
+## 16. Logging und Abhängigkeiten
 
-Logs sollen für den späteren Betrieb brauchbar sein:
+Logs:
 
-- strukturierte, verständliche Logtexte,
-- technische IDs sind zulässig,
-- keine Tokens, Passwörter oder vollständigen Umgebungsvariablen,
-- keine vollständigen fremden Nachrichteninhalte im normalen INFO-Log,
-- erwartbare Nutzerfehler nicht als ungefilterter Stacktrace auf ERROR,
-- Retry-fähige und endgültige Fehler unterscheidbar machen.
+- verständliche strukturierte Meldungen
+- technische IDs zulässig
+- keine Tokens, Passwörter oder vollständigen Umgebungsvariablen
+- keine vollständigen fremden Nachrichteninhalte im INFO-Log
+- retryfähige und permanente Fehler unterscheidbar
 
-## 16. Abhängigkeiten und Versionen
+Vor neuen oder geänderten Abhängigkeiten:
 
-Vor dem Hinzufügen oder Ändern:
+1. stabiles Release prüfen,
+2. Kompatibilität mit Java 21 und Spring Boot prüfen,
+3. bestehendes Dependency Management nutzen,
+4. transitive Laufzeitfolgen berücksichtigen,
+5. bei Konflikten `mvn dependency:tree` ausführen.
 
-1. tatsächliche Verfügbarkeit des stabilen Releases prüfen,
-2. Kompatibilität mit Java 21 und der verwendeten Spring-Boot-Linie prüfen,
-3. bestehende Dependency-Management-Funktionen nutzen,
-4. neue transitive Laufzeitfolgen berücksichtigen,
-5. `mvn dependency:tree` bei Konflikten prüfen.
+## 17. Abgeschlossene manuelle Smoke-Tests
 
-Versionen nicht allein deshalb auf den neuesten Stand bringen, weil sie neuer sind. Der konkrete Nutzen und die Kompatibilität entscheiden.
+### Inkrement 4 – kanonische GridWords-Nachricht
 
-## Inkrement 4: manueller Canonical-Message-Smoke-Test
+Tobias hat den echten Discord-/PostgreSQL-Smoke-Test am 29. Juli 2026 erfolgreich durchgeführt. Bestätigt wurden insbesondere die kanonische Veröffentlichung ohne Löschung des Originals, das Edit derselben Bot-Nachricht bei einer Korrektur, unsichtbare Publication-Keys und das getrennte QuadWords-Verhalten.
 
-Tobias hat den echten Discord-/PostgreSQL-Smoke-Test am 29. Juli 2026 erfolgreich im Zielchannel durchgeführt. Bestätigt wurden insbesondere die kanonische Veröffentlichung ohne Löschung der Originalnachricht, das Edit derselben Bot-Nachricht bei einer Korrektur, das Ausbleiben sichtbarer Publication-Keys sowie das weiterhin getrennte QuadWords-Verhalten. Der Nachtest bestätigte außerdem, dass Komplett- und Perfektserien nur angezeigt werden, wenn der Tageszustand tatsächlich erfüllt ist.
-## Inkrement 5: manueller Safe-Replacement-Smoke-Test
+### Inkrement 5 – sichere GridWords-Ersetzung
 
-Der abschliessende echte Test wird von Tobias im Profil `database` mit lokaler PostgreSQL-Instanz und lokalem Discord-Token durchgefuehrt; Codex fuehrt ihn weder mit Token noch durch manuelle Loeschung aus.
+Tobias hat den vollständigen Discord-/PostgreSQL-Smoke-Test am 30. Juli 2026 erfolgreich mit Docker-Compose-PostgreSQL durchgeführt. Bestätigt wurden:
 
-1. Ein gueltiges GridWords-Share muss genau eine kanonische Bot-Nachricht erzeugen; erst nach ihrer persistierten ID darf die exakte Originalquelle verschwinden. Es erscheint kein nachtraegliches `?` auf dieser Quelle.
-2. Eine Korrektur als neue GridWords-Quelle muss dieselbe kanonische Bot-Nachricht bearbeiten und erst die neue, dann gegebenenfalls die nun sichere supersedierte Quelle bereinigen.
-3. Ein nicht loeschbares Original darf Ergebnis und kanonische Nachricht nicht zurueckrollen oder faelschlich `COMPLETED` markieren; der persistierte Fehler ist als permanent oder retryable sichtbar.
-4. Ein Neustart mit einer bereits `ORIGINAL_MESSAGE_DELETED` markierten Submission darf keinen zweiten Discord-Delete ausfuehren und muss zu `COMPLETED` abschliessen.
-5. QuadWords behaelt sein `?`, und ein persistiert abgelehntes Share behaelt `??`.
-
-Die automatisierten Application-, JDA-Adapter- und PostgreSQL-Integrationstests decken die dazugehoerigen Crash-, Replay-, Unknown-Message- und Owner-Rennen ab.
+- genau eine kanonische GridWords-Bot-Nachricht,
+- Quelllöschung erst nach bestätigter Veröffentlichung,
+- Edit derselben Bot-Message-ID bei Korrekturen,
+- keine GridWords-`✅`-Reaktion,
+- unverändertes QuadWords- und Ablehnungsverhalten,
+- permanenter Fehlerzustand bei fehlender Löschberechtigung ohne Rückstufung der Veröffentlichung,
+- Bereinigung der aktuellen und der zuvor festhängenden supersedierten Quelle nach Wiederherstellung der Berechtigung,
+- Neustart ohne Duplikate,
+- Abschluss eines persistierten `ORIGINAL_MESSAGE_DELETED`-Zustands ohne sichtbare zusätzliche Discord-Aktion,
+- keine offenen Claims, Leases oder Delivery-Attempts am Ende des Tests.
