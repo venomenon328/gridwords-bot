@@ -30,6 +30,7 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
     private final ZoneId timeZone;
     private final PlayerStore playerStore;
     private final SubmissionStore submissionStore;
+    private final java.util.function.LongPredicate canonicalPublisher;
 
     public ProcessSharedResultService(
             GridWordsShareParser gridWordsParser,
@@ -44,6 +45,7 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
         this.timeZone = timeZone;
         this.playerStore = playerStore;
         this.submissionStore = submissionStore;
+        this.canonicalPublisher = ignored -> true;
     }
 
     @Override
@@ -77,6 +79,7 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
         }
 
         submissionStore.storeResult(new SubmissionStore.ResultStorage(message.messageId(), result));
+        if (parsed.gameType() == de.venomenon.gridwordsbot.domain.model.GameType.GRIDWORDS && !canonicalPublisher.test(message.messageId())) return new ProcessingResult.Ignored();
         return new ProcessingResult.Accepted();
     }
 
