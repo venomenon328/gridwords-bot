@@ -152,7 +152,7 @@ Eine native PostgreSQL-Installation ist nur erforderlich, wenn die Anwendung lok
 
 ## 7. Optionale Docker-/Compose-Nutzung
 
-`compose.yaml` bleibt als Komfortoption bestehen. Bei verfügbarer Container-Runtime:
+`compose.yaml` bleibt als Komfortoption bestehen und ist auf dieselbe CI-Image-Version `postgres:16.6-alpine` fest gepinnt. Bei verfügbarer Container-Runtime:
 
 ```bash
 docker compose up -d postgres
@@ -209,6 +209,14 @@ Testcontainers ist für diese CI-Tests zulässig. H2 ersetzt die PostgreSQL-Inte
 - keine echte Netzwerkverbindung
 - JDA-Grenze mocken oder hinter einer schmalen Wrapper-Komponente testen
 - Umwandlung zwischen JDA-Ereignissen und internen DTOs prüfen
+
+### Inbound-Beobachtungsmodus
+
+Inkrement 3 verarbeitet neue Guild-Textnachrichten nur im Profil `database`, wenn Discord aktiviert ist und die Persistenzkomponenten verfügbar sind. Der JDA-Event-Thread filtert und kopiert das Ereignis; Parser, Datenbankzugriffe und Reaktionen laufen danach über einen kleinen begrenzten Executor.
+
+Nach abgeschlossener Liquibase-Initialisierung synchronisiert ein einziger Startup-Pfad die beiden konfigurierten Spieler in `player` und registriert erst danach den Listener. Im Profil `offline` kann der Gateway weiterhin ohne PostgreSQL starten, dort ist kein Ergebnislistener registriert.
+
+Der manuelle Persistenz-/Discord-Smoke-Test gehört zum Abschluss von Inkrement 3 und wird gegen eine native PostgreSQL-Instanz oder bei optionaler Compose-Nutzung gegen `postgres:16.6-alpine` ausgeführt. Er prüft Zielserver/-channel, beide Spieler, gültige und ungültige Shares, Korrekturen mit neuer Message-ID sowie das Ausbleiben jeder Nachrichtenlöschung. Ein normaler Neustart stellt alte Gateway-Nachrichten nicht erneut zu; der identische Source-Event-Replay ist deshalb automatisiert statt manuell abgedeckt. Der Smoke-Test ist kein Teil des normalen lokalen Builds.
 
 ### Manueller Smoke-Test
 

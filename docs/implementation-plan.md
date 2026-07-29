@@ -93,6 +93,8 @@ Abnahmekriterium:
 
 ## Inkrement 3 – Discord-Inbound im Beobachtungsmodus
 
+**Status:** in Draft-Review (PR #8)
+
 **Ziel:** Echte Channelnachrichten sicher filtern und verarbeiten, ohne sie zu verändern.
 
 Umfang:
@@ -108,6 +110,7 @@ Umfang:
 - Adaptertests ohne echte Netzwerkverbindung
 - manueller Test im Discord-Testchannel
 - manueller Persistenztest wahlweise gegen natives PostgreSQL; Docker ist nicht erforderlich
+- dokumentierter manueller Smoke-Test für Tobias vor dem Merge
 
 Abnahmekriterium:
 

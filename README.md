@@ -21,13 +21,15 @@ Der aktuelle Projektstand umfasst:
 - PostgreSQL-Persistenzadapter und Liquibase-Migrationen
 - idempotente Spieler-, Ergebnis- und Submission-Speicherung
 - wiederaufnehmbaren Submission-Zustand mit konfliktfesten Replays
+- beobachtenden Discord-Inbound-Ablauf für die zwei konfigurierten Spieler
+- `✅` nach erfolgreich gespeicherten Ergebnissen und `⚠️` nach persistent abgelehnten Shares
 - gekapselte PostgreSQL-Integrationstests im Maven-Profil `database-integration`
 - optionale Docker-Compose-Konfiguration
 - externe Konfiguration und optionale Discord-Gateway-Verbindung
 
-Die Inkremente 0 bis 2 sind abgeschlossen. Ein JDA-Listener und die eigentliche Verarbeitung eingehender Discord-Nachrichten folgen im nächsten Inkrement. Sichere Nachrichtenersetzung, Tagesstatus, Serien und Erinnerungen bleiben bewusst späteren Inkrementen vorbehalten.
+Die Inkremente 0 bis 2 sind abgeschlossen. Inkrement 3 befindet sich in Draft-PR #8: Der JDA-Listener filtert und beobachtet neue Shares, ohne Originalnachrichten zu verändern. Sichere Nachrichtenersetzung, Tagesstatus, Serien und Erinnerungen bleiben bewusst späteren Inkrementen vorbehalten.
 
-Der lokale Standardbuild umfasst derzeit 54 Tests. Zusätzlich führt GitHub Actions 18 PostgreSQL-Integrationstests gegen echtes PostgreSQL aus.
+Der lokale Standardbuild umfasst Unit-, Parser-, Application-, Architektur- und Discord-Adaptertests. GitHub Actions führt zusätzlich PostgreSQL-Integrationstests gegen echtes PostgreSQL aus.
 
 Der reale Discord-Gateway-Smoke-Test wurde am 29. Juli 2026 mit lokalem Token erfolgreich **ohne Docker und ohne PostgreSQL** durchgeführt. Der Bot erschien im vorgesehenen Testserver online und die JDA-Verbindung wurde erfolgreich aufgebaut.
 
@@ -104,7 +106,7 @@ Bei erfolgreichem Start erscheint sinngemäß:
 Discord connection ready as <Bot-Name> (application user id <ID>).
 ```
 
-Der Bot reagiert im aktuellen Projektstand noch nicht auf Nachrichten, da noch kein Listener implementiert ist.
+Im Profil `offline` bleibt der Gateway-Start ohne Datenbank möglich; Ergebnisverarbeitung ist dort bewusst nicht aktiviert.
 
 ## Lokaler Start mit PostgreSQL
 
@@ -124,9 +126,22 @@ mvn spring-boot:run -Dspring-boot.run.profiles=database
 
 Discord kann dabei unabhängig über `DISCORD_ENABLED=true` aktiviert werden.
 
+## Manueller Inbound-Smoke-Test (durch Tobias)
+
+Der Test ist erst mit einer lokalen PostgreSQL-Instanz und lokal hinterlegtem Discord-Token im Profil `database` sinnvoll. Bei optionaler Compose-Nutzung verwendet `compose.yaml` dieselbe fest gepinnte Image-Version wie CI: `postgres:16.6-alpine`. Der Test wird nicht durch den Standardbuild ersetzt und wurde von Codex nicht ausgeführt.
+
+1. Eine normale Nachricht von Tobias im Zielchannel senden: keine Reaktion, kein Submission-Datensatz.
+2. Eine Nachricht in einem anderen Channel senden: keine Verarbeitung.
+3. Ein gültiges GridWords-Share für heute oder gestern senden: erst nach Speicherung `✅`; Ergebnis und Submission prüfen.
+4. Ein gültiges QuadWords-Share mit plausiblem Bildanhang senden: erst nach Speicherung `✅`; Ergebnis und Submission prüfen.
+5. Ein erkennbar ungültiges Share senden: `⚠️`, Submission mit `PARSE_REJECTED`, kein Ergebnis.
+6. Den Bot ohne neue Discord-Nachricht neu starten: Der Gateway stellt alte Nachrichten dabei nicht erneut zu; entsprechend dürfen keine neuen Submission-/Ergebniszeilen oder Reaktionen entstehen.
+7. Eine Korrektur als **neue** gültige Discord-Nachricht für denselben Spieler, Spieltyp und Spieltag senden: neue Submission, aber weiter genau ein aktualisiertes fachliches Ergebnis.
+8. Prüfen, dass alle Originalnachrichten unverändert bleiben; Inkrement 3 löscht und ersetzt keine Nachrichten. Der identische Source-Event-Replay ist automatisiert abgedeckt, nicht manuell durch einen normalen Neustart erzwingbar.
+
 ## Optionale Docker-Compose-Nutzung
 
-`compose.yaml` bleibt als optionale Alternative erhalten. Auf einem Rechner mit funktionierender Container-Runtime kann PostgreSQL weiterhin so gestartet werden:
+`compose.yaml` bleibt als optionale Alternative erhalten und verwendet wie die CI-Integrationstests `postgres:16.6-alpine`. Auf einem Rechner mit funktionierender Container-Runtime kann PostgreSQL weiterhin so gestartet werden:
 
 ```bash
 docker compose up -d postgres
