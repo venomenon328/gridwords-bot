@@ -107,7 +107,23 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         StoredSubmission existing = findRequired(request.sourceMessageId());
         if (existing.authorPlayerId() != request.result().playerId()) {
             throw new SubmissionConflictException("result player does not match submission author");
-        }
+        }
+        if (existing.state() == SubmissionState.RESULT_STORED) {
+            StoredGameResult stored = find(request.result().playerId(), request.result().parsedResult().gameType(), request.result().parsedResult().gameDate()).orElseThrow();
+            if (equivalent(stored, request.result())) return existing;
+            throw new SubmissionConflictException("result storage replay contradicts stored result data");
+        }
+        if (existing.state() != SubmissionState.RECEIVED && existing.state() != SubmissionState.VALIDATED) {
+            throw new SubmissionConflictException("submission is not eligible for result storage");
+        }
+        StoredGameResult result = upsertResult(request.result(), clock.instant());
+        int changed = jdbc.update("""
+                UPDATE submission SET game_result_id = ?, processing_state = 'RESULT_STORED', updated_at = ?, version = version + 1
+                WHERE source_message_id = ? AND processing_state IN ('RECEIVED', 'VALIDATED')
+                """, result.id(), databaseTime(clock.instant()), request.sourceMessageId());
+        if (changed != 1) throw new SubmissionConflictException("submission state changed during result storage");
+        return findRequired(request.sourceMessageId());
+    }
         StoredGameResult result = upsertResult(request.result(), clock.instant());
         int changed = jdbc.update("""
                 UPDATE submission SET game_result_id = ?, processing_state = 'RESULT_STORED', updated_at = ?, version = version + 1
