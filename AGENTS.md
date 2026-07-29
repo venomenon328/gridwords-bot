@@ -32,7 +32,7 @@ Widersprüche nicht stillschweigend auflösen. Im Ergebnisbericht benennen oder 
 - Genau ein konfigurierter Server, ein Channel und zwei Spieler in Version 1
 - Keine Microservices, keine verteilte Queue, kein generisches Plugin-Framework
 - Keine generative KI zur Laufzeit
-- Docker Desktop ist keine lokale Projektvoraussetzung
+- Docker Desktop und Docker Compose stehen auf dem primären Entwicklungsrechner zur Verfügung und dürfen für Persistenz-, Integrations- und Smoke-Tests vorausgesetzt werden.
 
 Einfachheit, Nachvollziehbarkeit und robuste Fehlerbehandlung sind wichtiger als abstrakte Wiederverwendbarkeit.
 
@@ -88,13 +88,13 @@ Jeder Schritt muss nach einem Absturz oder erneut zugestellten Event gefahrlos f
 - Schemaänderungen ausschließlich über Liquibase.
 - Hibernate `ddl-auto` bleibt `validate` oder `none`, niemals `update`/`create` in produktionsnaher Konfiguration.
 - Fachliche Eindeutigkeiten durch Datenbank-Constraints absichern.
-- Der lokale Standardbuild darf weder eine Datenbank noch Docker oder eine andere Container-Runtime voraussetzen.
-- Eine native lokale PostgreSQL-Installation wird für manuelle Persistenzstarts unterstützt, ist aber keine Standardvoraussetzung.
-- PostgreSQL-Integrationstests werden über ein eigenes Maven-Profil ausgeführt, vorgesehen `database-integration`.
-- Das Datenbankintegrationsprofil ist in GitHub Actions verpflichtend und darf dort nicht unbemerkt übersprungen werden.
-- Testcontainers darf für CI-Integrationstests verwendet werden, aber nicht beim normalen lokalen `mvn verify` initialisiert werden.
+- Der lokale Standardbuild bleibt ohne Datenbank und Container-Runtime ausführbar. Das ist eine bewusste Testtrennung, kein Verbot Docker in Implementierung, Integration oder manuellen Tests zu verwenden.
+- Docker Compose ist die bevorzugte lokale PostgreSQL-Umgebung; eine native PostgreSQL-Installation darf als Alternative unterstützt werden.
+- PostgreSQL-Integrationstests werden über das Maven-Profil `database-integration` ausgeführt.
+- Bei Persistenz-, Liquibase-, Claim-, Recovery- oder PostgreSQL-spezifischen Änderungen ist das Datenbankintegrationsprofil grundsätzlich auch lokal mit Docker auszuführen und zusätzlich in GitHub Actions verpflichtend.
+- Testcontainers darf für lokale und CI-Integrationstests verwendet werden, aber nicht beim normalen lokalen `mvn verify` initialisiert werden.
 - H2 ersetzt keine PostgreSQL-Integrationstests.
-- Maßgeblich ist `docs/adr/0004-docker-optional-local-development.md`.
+- Maßgeblich ist `docs/adr/0010-docker-available-local-development.md`; ADR 0004 dokumentiert nur noch den historischen Ausgangspunkt.
 
 ## 4. Code- und Testregeln
 
@@ -109,7 +109,7 @@ Jeder Schritt muss nach einem Absturz oder erneut zugestellten Event gefahrlos f
 - Tests dürfen keine echte Discord-Verbindung öffnen.
 - Zeitabhängige Tests verwenden eine feste `Clock`.
 - Fehlerpfade und Idempotenz sind ebenso zu testen wie der Happy Path.
-- Unit-, Domain-, Application-, Architektur- und Discord-Adaptertests müssen ohne Container-Runtime laufen.
+- Unit-, Domain-, Application-, Architektur- und Discord-Adaptertests müssen ohne Container-Runtime laufen; Persistenzintegration darf und soll Docker verwenden.
 
 ## 5. Standardbefehle
 
@@ -119,15 +119,22 @@ Vor Abschluss jeder Implementierungsaufgabe lokal ausführen:
 mvn --batch-mode --no-transfer-progress clean verify
 ```
 
-Dieser Befehl muss ohne Docker, PostgreSQL und Discord-Token funktionieren.
+Dieser schnelle Standardbuild bleibt bewusst ohne Docker, PostgreSQL und Discord-Token ausführbar.
 
-Falls die Aufgabe Datenbankintegration betrifft, muss zusätzlich das im Issue definierte Datenbankintegrationsprofil in einer Umgebung mit Container-Runtime ausgeführt werden, spätestens in GitHub Actions. Vorgesehener Befehl:
+Falls die Aufgabe Datenbankintegration betrifft, muss zusätzlich lokal mit verfügbarer Container-Runtime und anschließend in GitHub Actions ausgeführt werden:
 
 ```bash
-mvn --batch-mode --no-transfer-progress -Pdatabase-integration verify
+mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
 ```
 
-Nicht behaupten, Datenbankintegrationstests seien erfolgreich gewesen, wenn lokal keine Container-Runtime vorhanden war und nur der Standardbuild ausgeführt wurde.
+Vor manuellen Persistenzstarts beziehungsweise Smoke-Tests wird PostgreSQL bevorzugt mit Compose gestartet:
+
+```bash
+docker compose up -d postgres
+docker compose ps
+```
+
+Nicht behaupten, Datenbankintegrationstests seien erfolgreich gewesen, wenn nur der Standardbuild ausgeführt wurde.
 
 Für lokale manuelle Ausführung gelten die Befehle aus `README.md` und `docs/development-guide.md`.
 
@@ -155,7 +162,7 @@ Für lokale manuelle Ausführung gelten die Befehle aus `README.md` und `docs/de
 - Kleine logisch zusammengehörige Commits mit verständlichen Commit-Nachrichten.
 - Bestehende Nutzeränderungen nicht zurücksetzen.
 - Keine Secrets, lokalen Datenbanken, generierten Binärdateien oder IDE-Artefakte committen.
-- Docker Desktop darf nicht als Voraussetzung in README, Issue oder Codex-Auftrag eingeführt werden.
+- Docker darf in Issues, Codex-/Terra-Aufträgen und lokalen Prüfungen vorausgesetzt werden, wenn der Aufgabenbereich Persistenz oder Integration betrifft. Der infrastrukturlosen Standardbuild bleibt dennoch verpflichtend.
 
 ## 9. Abschlussbericht für Codex-Aufgaben
 
