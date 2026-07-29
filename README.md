@@ -22,12 +22,14 @@ Der aktuelle Projektstand umfasst:
 - idempotente Spieler-, Ergebnis- und Submission-Speicherung
 - wiederaufnehmbaren Submission-Zustand mit konfliktfesten Replays
 - beobachtenden Discord-Inbound-Ablauf für die zwei konfigurierten Spieler
-- `✅` nach erfolgreich gespeicherten Ergebnissen und `⚠️` nach persistent abgelehnten Shares
+- kanonische GridWords-Embeds mit vollständigem Raster und eindeutig benannten Serien
+- Korrekturen durch Edit derselben Bot-Nachricht, Lost-Message-Recovery und Duplikatbereinigung
+- `✅` nach erfolgreich gespeicherten beziehungsweise kanonisch veröffentlichten Ergebnissen und `⚠️` nach persistent abgelehnten Shares
 - gekapselte PostgreSQL-Integrationstests im Maven-Profil `database-integration`
 - optionale Docker-Compose-Konfiguration
 - externe Konfiguration und optionale Discord-Gateway-Verbindung
 
-Die Inkremente 0 bis 2 sind abgeschlossen. Inkrement 3 befindet sich in Draft-PR #8: Der JDA-Listener filtert und beobachtet neue Shares, ohne Originalnachrichten zu verändern. Sichere Nachrichtenersetzung, Tagesstatus, Serien und Erinnerungen bleiben bewusst späteren Inkrementen vorbehalten.
+Die Inkremente 0 bis 4 sind abgeschlossen. Originalnachrichten bleiben in Inkrement 4 weiterhin erhalten; ihre sichere Löschung folgt erst in Inkrement 5. Tagesstatus und Erinnerungen bleiben späteren Inkrementen vorbehalten.
 
 Der lokale Standardbuild umfasst Unit-, Parser-, Application-, Architektur- und Discord-Adaptertests. GitHub Actions führt zusätzlich PostgreSQL-Integrationstests gegen echtes PostgreSQL aus.
 
@@ -165,4 +167,4 @@ Der Discord-Bot-Token darf niemals in Git, einen Chat, ein Issue, einen Screensh
 
 ## Inkrement 4: manueller Canonical-Message-Smoke-Test
 
-Nach grünem CI und mit Profil `database`, PostgreSQL 16.6 sowie lokalem Discord-Token prüft Tobias im Zielchannel: gültiges GridWords bleibt als Original erhalten, genau ein kanonisches Embed erscheint und `✅` folgt erst danach; eine neue Korrektur bearbeitet dieses Embed; ein Neustart erzeugt keine Duplikate; QuadWords reagiert weiter nur mit `✅`; ungültige Shares weiter mit `⚠️`. Optional kann das kanonische Embed gelöscht und die kontrollierte Wiederherstellung durch eine Korrektur geprüft werden. Dieser Test wurde von Codex nicht ausgeführt.
+Tobias hat den echten Discord-/PostgreSQL-Smoke-Test am 29. Juli 2026 im Zielchannel erfolgreich durchgeführt. Bestätigt wurden insbesondere: Originalnachrichten bleiben erhalten, genau ein kanonisches GridWords-Embed wird erzeugt, Korrekturen bearbeiten dieselbe Bot-Nachricht, QuadWords behält sein bisheriges Verhalten und der Publication-Key ist nicht mehr sichtbar. Der fokussierte Nachtest bestätigte außerdem, dass bei einem Tag ohne QuadWords zu Recht keine Komplett- oder Perfektserie angezeigt wird.
