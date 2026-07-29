@@ -115,4 +115,14 @@ class PostgresPersistenceAdapterIT {
         String green = new String(Character.toChars(0x1F7E9)).repeat(5);
         return new NormalizedBoard(List.of(white, yellow, green, white, white, white).subList(0, attempts));
     }
+
+    @Test
+    void rejectsAResultForAPlayerOtherThanTheSubmissionAuthor() {
+        adapter.upsert(new PlayerStore.PlayerUpsert(103L, "Author", true, false));
+        adapter.upsert(new PlayerStore.PlayerUpsert(104L, "Other", true, false));
+        adapter.register(new SubmissionStore.SubmissionRegistration(903L, 200L, 300L, 103L, "share", List.of(), now));
+        assertThrows(SubmissionConflictException.class,
+                () -> adapter.storeResult(new SubmissionStore.ResultStorage(903L, resultFor(104L, 4, "wrong player"))));
+        assertEquals(SubmissionStore.SubmissionState.RECEIVED, adapter.findBySourceMessageId(903L).orElseThrow().state());
+    }
 }
