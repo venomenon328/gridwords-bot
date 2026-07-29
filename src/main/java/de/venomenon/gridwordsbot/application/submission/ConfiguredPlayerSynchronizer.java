@@ -1,6 +1,5 @@
 package de.venomenon.gridwordsbot.application.submission;
 
-import de.venomenon.gridwordsbot.config.GridwordsBotProperties;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
 import java.util.List;
 import java.util.Objects;
@@ -8,35 +7,29 @@ import java.util.Objects;
 /** Synchronizes the two intentionally fixed configured players before inbound processing starts. */
 public final class ConfiguredPlayerSynchronizer {
 
-    private final GridwordsBotProperties properties;
+    private final List<ConfiguredPlayer> players;
     private final PlayerStore playerStore;
 
-    public ConfiguredPlayerSynchronizer(GridwordsBotProperties properties, PlayerStore playerStore) {
-        this.properties = Objects.requireNonNull(properties, "properties");
+    public ConfiguredPlayerSynchronizer(List<ConfiguredPlayer> players, PlayerStore playerStore) {
+        this.players = List.copyOf(Objects.requireNonNull(players, "players"));
         this.playerStore = Objects.requireNonNull(playerStore, "playerStore");
-        validateConfiguredPlayers(properties.players());
+        validateConfiguredPlayers(this.players);
     }
 
     public void synchronize() {
-        GridwordsBotProperties.Players players = properties.players();
-        List<Long> administrators = properties.discord().adminUserIds();
-        upsert(players.first(), administrators);
-        upsert(players.second(), administrators);
+        players.forEach(this::upsert);
     }
 
-    private void upsert(GridwordsBotProperties.Player player, List<Long> administrators) {
+    private void upsert(ConfiguredPlayer player) {
         playerStore.upsert(new PlayerStore.PlayerUpsert(
-                player.userId(), player.displayName(), true, administrators.contains(player.userId())));
+                player.discordUserId(), player.displayName(), true, player.administrator()));
     }
 
-    private static void validateConfiguredPlayers(GridwordsBotProperties.Players players) {
-        Objects.requireNonNull(players, "players");
-        GridwordsBotProperties.Player first = Objects.requireNonNull(players.first(), "first player");
-        GridwordsBotProperties.Player second = Objects.requireNonNull(players.second(), "second player");
-        if (first.userId() <= 0 || second.userId() <= 0) {
-            throw new IllegalArgumentException("configured player IDs must be positive");
+    private static void validateConfiguredPlayers(List<ConfiguredPlayer> players) {
+        if (players.size() != 2) {
+            throw new IllegalArgumentException("exactly two configured players are required");
         }
-        if (first.userId() == second.userId()) {
+        if (players.getFirst().discordUserId() == players.getLast().discordUserId()) {
             throw new IllegalArgumentException("configured player IDs must be distinct");
         }
     }

@@ -128,19 +128,20 @@ Discord kann dabei unabhängig über `DISCORD_ENABLED=true` aktiviert werden.
 
 ## Manueller Inbound-Smoke-Test (durch Tobias)
 
-Der Test ist erst mit einer lokalen PostgreSQL-Instanz und lokal hinterlegtem Discord-Token im Profil `database` sinnvoll. Er wird nicht durch den Standardbuild ersetzt und wurde von Codex nicht ausgeführt.
+Der Test ist erst mit einer lokalen PostgreSQL-Instanz und lokal hinterlegtem Discord-Token im Profil `database` sinnvoll. Bei optionaler Compose-Nutzung verwendet `compose.yaml` dieselbe fest gepinnte Image-Version wie CI: `postgres:16.6-alpine`. Der Test wird nicht durch den Standardbuild ersetzt und wurde von Codex nicht ausgeführt.
 
 1. Eine normale Nachricht von Tobias im Zielchannel senden: keine Reaktion, kein Submission-Datensatz.
 2. Eine Nachricht in einem anderen Channel senden: keine Verarbeitung.
 3. Ein gültiges GridWords-Share für heute oder gestern senden: erst nach Speicherung `✅`; Ergebnis und Submission prüfen.
 4. Ein gültiges QuadWords-Share mit plausiblem Bildanhang senden: erst nach Speicherung `✅`; Ergebnis und Submission prüfen.
 5. Ein erkennbar ungültiges Share senden: `⚠️`, Submission mit `PARSE_REJECTED`, kein Ergebnis.
-6. Dieselbe Nachricht erneut zustellen beziehungsweise den Bot neu starten: keine doppelte Submission, kein doppeltes Ergebnis.
-7. Prüfen, dass alle Originalnachrichten unverändert bleiben; Inkrement 3 löscht und ersetzt keine Nachrichten.
+6. Den Bot ohne neue Discord-Nachricht neu starten: Der Gateway stellt alte Nachrichten dabei nicht erneut zu; entsprechend dürfen keine neuen Submission-/Ergebniszeilen oder Reaktionen entstehen.
+7. Eine Korrektur als **neue** gültige Discord-Nachricht für denselben Spieler, Spieltyp und Spieltag senden: neue Submission, aber weiter genau ein aktualisiertes fachliches Ergebnis.
+8. Prüfen, dass alle Originalnachrichten unverändert bleiben; Inkrement 3 löscht und ersetzt keine Nachrichten. Der identische Source-Event-Replay ist automatisiert abgedeckt, nicht manuell durch einen normalen Neustart erzwingbar.
 
 ## Optionale Docker-Compose-Nutzung
 
-`compose.yaml` bleibt als optionale Alternative erhalten. Auf einem Rechner mit funktionierender Container-Runtime kann PostgreSQL weiterhin so gestartet werden:
+`compose.yaml` bleibt als optionale Alternative erhalten und verwendet wie die CI-Integrationstests `postgres:16.6-alpine`. Auf einem Rechner mit funktionierender Container-Runtime kann PostgreSQL weiterhin so gestartet werden:
 
 ```bash
 docker compose up -d postgres

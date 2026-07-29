@@ -50,6 +50,13 @@ class ArchitectureTest {
                     "org.springframework.jdbc..", "jakarta.persistence..", "javax.persistence..", "org.hibernate..");
 
     @ArchTest
+    static final ArchRule applicationDoesNotDependOnConfigAdaptersOrFrameworks = noClasses()
+            .that().resideInAPackage("..application..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    "..adapter..", "..config..", "org.springframework..", "org.springframework.jdbc..",
+                    "net.dv8tion.jda..", "jakarta.persistence..", "javax.persistence..", "org.hibernate..");
+
+    @ArchTest
     static final ArchRule entitiesOnlyExistInPersistenceAdapters = classes()
             .that().areAnnotatedWith(Entity.class)
             .should().resideInAnyPackage("..adapter.persistence..").allowEmptyShould(true);

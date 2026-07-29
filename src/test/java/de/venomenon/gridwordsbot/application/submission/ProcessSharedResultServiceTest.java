@@ -2,6 +2,8 @@ package de.venomenon.gridwordsbot.application.submission;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
 import de.venomenon.gridwordsbot.domain.parsing.AttachmentMetadata;
@@ -83,6 +85,20 @@ class ProcessSharedResultServiceTest {
 
         assertThat(store.submissions).isEmpty();
         assertThat(store.results).isEmpty();
+    }
+
+    @Test
+    void doesNotAccessAnyPortForNotApplicableMessages() {
+        PlayerStore playerStore = mock(PlayerStore.class);
+        SubmissionStore submissionStore = mock(SubmissionStore.class);
+        ProcessSharedResultService isolatedService = new ProcessSharedResultService(
+                new GridWordsShareParser(), new QuadWordsShareParser(), Clock.fixed(RECEIVED_AT, ZoneOffset.UTC),
+                ZoneId.of("Europe/Berlin"), playerStore, submissionStore);
+
+        assertThat(isolatedService.process(message(16L, TOBIAS, "Guten Morgen")))
+                .isEqualTo(new ProcessingResult.Ignored());
+
+        verifyNoInteractions(playerStore, submissionStore);
     }
 
     @Test

@@ -48,12 +48,11 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
 
     @Override
     public ProcessingResult process(InboundSharedMessage message) {
-        if (playerStore.findByDiscordUserId(message.authorId()).filter(PlayerStore.StoredPlayer::active).isEmpty()) {
-            return new ProcessingResult.Ignored();
-        }
-
         ParseResult parseResult = parse(message);
         if (parseResult instanceof ParseResult.NotApplicable) {
+            return new ProcessingResult.Ignored();
+        }
+        if (playerStore.findByDiscordUserId(message.authorId()).filter(PlayerStore.StoredPlayer::active).isEmpty()) {
             return new ProcessingResult.Ignored();
         }
 

@@ -3,7 +3,6 @@ package de.venomenon.gridwordsbot.application.submission;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
-import de.venomenon.gridwordsbot.config.GridwordsBotProperties;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
 import java.time.Instant;
 import java.util.HashMap;
@@ -17,7 +16,7 @@ class ConfiguredPlayerSynchronizerTest {
     @Test
     void synchronizesBothConfiguredPlayersIdempotently() {
         RecordingPlayerStore store = new RecordingPlayerStore();
-        ConfiguredPlayerSynchronizer synchronizer = new ConfiguredPlayerSynchronizer(properties(101L, 102L), store);
+        ConfiguredPlayerSynchronizer synchronizer = new ConfiguredPlayerSynchronizer(players(101L, 102L), store);
 
         synchronizer.synchronize();
         synchronizer.synchronize();
@@ -31,25 +30,21 @@ class ConfiguredPlayerSynchronizerTest {
     @Test
     void rejectsEqualConfiguredPlayerIdsBeforeSynchronization() {
         assertThatIllegalArgumentException().isThrownBy(
-                () -> new ConfiguredPlayerSynchronizer(properties(101L, 101L), new RecordingPlayerStore()))
+                () -> new ConfiguredPlayerSynchronizer(players(101L, 101L), new RecordingPlayerStore()))
                 .withMessage("configured player IDs must be distinct");
     }
 
     @Test
     void rejectsNonPositiveConfiguredPlayerIdsBeforeSynchronization() {
         assertThatIllegalArgumentException().isThrownBy(
-                () -> new ConfiguredPlayerSynchronizer(properties(0L, 102L), new RecordingPlayerStore()))
-                .withMessage("configured player IDs must be positive");
+                () -> new ConfiguredPlayer(0L, "First", true))
+                .withMessage("configured player ID must be positive");
     }
 
-    private GridwordsBotProperties properties(long firstId, long secondId) {
-        return new GridwordsBotProperties(
-                new GridwordsBotProperties.Discord(false, "", 11L, 12L, List.of(firstId)),
-                new GridwordsBotProperties.Players(
-                        new GridwordsBotProperties.Player(firstId, "First"),
-                        new GridwordsBotProperties.Player(secondId, "Second")),
-                null,
-                null);
+    private List<ConfiguredPlayer> players(long firstId, long secondId) {
+        return List.of(
+                new ConfiguredPlayer(firstId, "First", true),
+                new ConfiguredPlayer(secondId, "Second", false));
     }
 
     private static final class RecordingPlayerStore implements PlayerStore {

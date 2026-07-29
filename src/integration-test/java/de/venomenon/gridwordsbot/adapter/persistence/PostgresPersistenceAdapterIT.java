@@ -5,9 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import de.venomenon.gridwordsbot.application.submission.ConfiguredPlayer;
 import de.venomenon.gridwordsbot.application.submission.ConfiguredPlayerSynchronizer;
 import de.venomenon.gridwordsbot.application.submission.ProcessSharedResultService;
-import de.venomenon.gridwordsbot.config.GridwordsBotProperties;
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.model.NormalizedBoard;
 import de.venomenon.gridwordsbot.domain.model.ParsedGameResult;
@@ -24,7 +24,6 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -216,8 +215,9 @@ class PostgresPersistenceAdapterIT {
 
     @Test
     void synchronizesConfiguredPlayersIdempotentlyWithAdministratorFlags() {
-        GridwordsBotProperties properties = properties(109L, "Tobias", 110L, "Georgia", List.of(109L));
-        ConfiguredPlayerSynchronizer synchronizer = new ConfiguredPlayerSynchronizer(properties, adapter);
+        ConfiguredPlayerSynchronizer synchronizer = new ConfiguredPlayerSynchronizer(List.of(
+                new ConfiguredPlayer(109L, "Tobias", true),
+                new ConfiguredPlayer(110L, "Georgia", false)), adapter);
 
         synchronizer.synchronize();
         synchronizer.synchronize();
@@ -250,8 +250,9 @@ class PostgresPersistenceAdapterIT {
 
     @Test
     void storesACompleteValidApplicationFlowAtomically() {
-        GridwordsBotProperties properties = properties(112L, "Application", 113L, "Second", List.of(112L));
-        new ConfiguredPlayerSynchronizer(properties, adapter).synchronize();
+        new ConfiguredPlayerSynchronizer(List.of(
+                new ConfiguredPlayer(112L, "Application", true),
+                new ConfiguredPlayer(113L, "Second", false)), adapter).synchronize();
         ProcessSharedResultService service = new ProcessSharedResultService(
                 new GridWordsShareParser(), new QuadWordsShareParser(), Clock.fixed(now, ZoneOffset.UTC),
                 ZoneId.of("Europe/Berlin"), adapter, adapter);
@@ -275,16 +276,4 @@ class PostgresPersistenceAdapterIT {
                 .orElseThrow().parsedResult().outcome()).attemptsUsed());
     }
 
-    private GridwordsBotProperties properties(
-            long firstId, String firstName, long secondId, String secondName, List<Long> administrators) {
-        return new GridwordsBotProperties(
-                new GridwordsBotProperties.Discord(false, "", 200L, 300L, administrators),
-                new GridwordsBotProperties.Players(
-                        new GridwordsBotProperties.Player(firstId, firstName),
-                        new GridwordsBotProperties.Player(secondId, secondName)),
-                new GridwordsBotProperties.Schedule(
-                        LocalTime.of(18, 0), LocalTime.of(23, 0), LocalTime.of(8, 0), LocalTime.of(8, 15),
-                        ZoneId.of("Europe/Berlin")),
-                new GridwordsBotProperties.Storage(48));
-    }
 }
