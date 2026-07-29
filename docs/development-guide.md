@@ -334,29 +334,36 @@ Vor Merge:
 - [ ] GitHub Actions grün
 - [ ] Datenbankprofil in CI erfolgreich, sofern Persistenz betroffen
 - [ ] Neue Fachlogik mit Tests
-- [ ] Fehler- und Idempotenzpfade getestet
+- [ ] Architekturgrenzen eingehalten
 - [ ] Keine Secrets oder lokalen Dateien committed
-- [ ] Liquibase für Schemaänderungen verwendet
-- [ ] README/Dokumentation aktualisiert, falls Bedienung oder Architektur betroffen
-- [ ] Erforderliche manuelle Discord- oder Persistenzprüfung dokumentiert
+- [ ] Dokumentation aktualisiert
+- [ ] Manuelle Tests durchgeführt oder klar als ausstehend markiert
 
-## 14. Commit-Konvention
+Nach Merge:
 
-Bevorzugte Präfixe:
+- [ ] Issue geschlossen
+- [ ] Branch lokal und remote aufräumen
+- [ ] `main` aktualisieren
+- [ ] nächsten Issue-Umfang prüfen
 
-```text
-build: ...
-chore: ...
-docs: ...
-feat: ...
-fix: ...
-refactor: ...
-test: ...
-```
+## 14. Reviewreihenfolge
 
-Commits sollen logisch zusammenhängend und reviewbar sein. Kein Zwang zu einem Commit pro Datei oder zu künstlich kleinen Commits.
+Reviews prüfen in dieser Reihenfolge:
+
+1. Sicherheits- und Datenverlustblocker,
+2. fachliche Korrektheit,
+3. Zustandsmaschine und Idempotenz,
+4. Parser- und Zeitregeln,
+5. Architekturgrenzen,
+6. Tests und CI,
+7. Dokumentation,
+8. Wartbarkeit und Stil.
+
+Optionales Refactoring darf einen fachlich vollständigen PR nicht unnötig blockieren.
 
 ## 15. Logging
+
+Logs sollen für den späteren Betrieb brauchbar sein:
 
 - strukturierte, verständliche Logtexte,
 - technische IDs sind zulässig,
@@ -379,4 +386,4 @@ Versionen nicht allein deshalb auf den neuesten Stand bringen, weil sie neuer si
 
 ## Inkrement 4: manueller Canonical-Message-Smoke-Test
 
-Nach grünem CI und mit Profil `database`, PostgreSQL 16.6 sowie lokalem Discord-Token prüft Tobias im Zielchannel: gültiges GridWords bleibt als Original erhalten, genau ein kanonisches Embed erscheint und `✅` folgt erst danach; eine neue Korrektur bearbeitet dieses Embed; ein Neustart erzeugt keine Duplikate; QuadWords reagiert weiter nur mit `✅`; ungültige Shares weiter mit `⚠️`. Optional kann das kanonische Embed gelöscht und die kontrollierte Wiederherstellung durch eine Korrektur geprüft werden. Dieser Test wurde von Codex nicht ausgeführt.
+Tobias hat den echten Discord-/PostgreSQL-Smoke-Test am 29. Juli 2026 erfolgreich im Zielchannel durchgeführt. Bestätigt wurden insbesondere die kanonische Veröffentlichung ohne Löschung der Originalnachricht, das Edit derselben Bot-Nachricht bei einer Korrektur, das Ausbleiben sichtbarer Publication-Keys sowie das weiterhin getrennte QuadWords-Verhalten. Der Nachtest bestätigte außerdem, dass Komplett- und Perfektserien nur angezeigt werden, wenn der Tageszustand tatsächlich erfüllt ist.
