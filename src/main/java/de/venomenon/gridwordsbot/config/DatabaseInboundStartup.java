@@ -17,7 +17,7 @@ final class DatabaseInboundStartup implements ApplicationRunner {
     private final ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider;
 
     DatabaseInboundStartup(ConfiguredPlayerSynchronizer playerSynchronizer, ObjectProvider<JDA> jdaProvider, ObjectProvider<DiscordInboundListener> listenerProvider) {
-        this(playerSynchronizer, jdaProvider, listenerProvider, () -> null);
+        this(playerSynchronizer, jdaProvider, listenerProvider, new ObjectProvider<CanonicalGridWordsPublicationService>() {});
     }
 
     DatabaseInboundStartup(
