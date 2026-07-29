@@ -1,6 +1,7 @@
 package de.venomenon.gridwordsbot.port.out;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -8,6 +9,7 @@ import java.util.Optional;
 public interface PlayerStore {
     StoredPlayer upsert(PlayerUpsert request);
     Optional<StoredPlayer> findByDiscordUserId(long discordUserId);
+    default List<StoredPlayer> findActivePlayers() { throw new UnsupportedOperationException("active-player lookup is not available"); }
 
     record PlayerUpsert(long discordUserId, String displayName, boolean active, boolean administrator) {
         public PlayerUpsert {

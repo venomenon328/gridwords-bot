@@ -22,12 +22,14 @@ Der aktuelle Projektstand umfasst:
 - idempotente Spieler-, Ergebnis- und Submission-Speicherung
 - wiederaufnehmbaren Submission-Zustand mit konfliktfesten Replays
 - beobachtenden Discord-Inbound-Ablauf für die zwei konfigurierten Spieler
-- `✅` nach erfolgreich gespeicherten Ergebnissen und `⚠️` nach persistent abgelehnten Shares
+- kanonische GridWords-Embeds mit vollständigem Raster und eindeutig benannten Serien
+- Korrekturen durch Edit derselben Bot-Nachricht, Lost-Message-Recovery und Duplikatbereinigung
+- `✅` nach erfolgreich gespeicherten beziehungsweise kanonisch veröffentlichten Ergebnissen und `⚠️` nach persistent abgelehnten Shares
 - gekapselte PostgreSQL-Integrationstests im Maven-Profil `database-integration`
 - optionale Docker-Compose-Konfiguration
 - externe Konfiguration und optionale Discord-Gateway-Verbindung
 
-Die Inkremente 0 bis 2 sind abgeschlossen. Inkrement 3 befindet sich in Draft-PR #8: Der JDA-Listener filtert und beobachtet neue Shares, ohne Originalnachrichten zu verändern. Sichere Nachrichtenersetzung, Tagesstatus, Serien und Erinnerungen bleiben bewusst späteren Inkrementen vorbehalten.
+Die Inkremente 0 bis 4 sind abgeschlossen. Originalnachrichten bleiben in Inkrement 4 weiterhin erhalten; ihre sichere Löschung folgt erst in Inkrement 5. Tagesstatus und Erinnerungen bleiben späteren Inkrementen vorbehalten.
 
 Der lokale Standardbuild umfasst Unit-, Parser-, Application-, Architektur- und Discord-Adaptertests. GitHub Actions führt zusätzlich PostgreSQL-Integrationstests gegen echtes PostgreSQL aus.
 
@@ -162,3 +164,7 @@ Die verbindliche Entscheidung steht in [`docs/adr/0004-docker-optional-local-dev
 ## Geheimnisse
 
 Der Discord-Bot-Token darf niemals in Git, einen Chat, ein Issue, einen Screenshot oder einen Codex-Prompt gelangen. Er gehört ausschließlich in eine lokale, nicht versionierte Konfiguration beziehungsweise später in den Secret Store des Hosts.
+
+## Inkrement 4: manueller Canonical-Message-Smoke-Test
+
+Tobias hat den echten Discord-/PostgreSQL-Smoke-Test am 29. Juli 2026 im Zielchannel erfolgreich durchgeführt. Bestätigt wurden insbesondere: Originalnachrichten bleiben erhalten, genau ein kanonisches GridWords-Embed wird erzeugt, Korrekturen bearbeiten dieselbe Bot-Nachricht, QuadWords behält sein bisheriges Verhalten und der Publication-Key ist nicht mehr sichtbar. Ein zusätzlicher fokussierter Lauf bestätigte außerdem, dass bei einem Tag ohne QuadWords zu Recht keine Komplett- oder Perfektserie angezeigt wird; die Erhaltung bereits sichtbarer Kontextserien bei Korrekturen ist automatisiert abgedeckt. Inkrement 4 ist damit abgeschlossen.

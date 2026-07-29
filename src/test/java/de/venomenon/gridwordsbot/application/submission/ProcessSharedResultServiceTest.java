@@ -57,6 +57,17 @@ class ProcessSharedResultServiceTest {
     }
 
     @Test
+    void passesTheConfiguredPlayerPairToResultStorage() {
+        service = new ProcessSharedResultService(
+                new GridWordsShareParser(), new QuadWordsShareParser(), Clock.fixed(RECEIVED_AT, ZoneOffset.UTC),
+                ZoneId.of("Europe/Berlin"), store, store, List.of(TOBIAS, GEORGIA), ignored -> true);
+
+        assertThat(service.process(message(18L, TOBIAS, gridWords(29, 3))))
+                .isEqualTo(new ProcessingResult.Accepted());
+
+        assertThat(store.lastResultStorage.configuredPlayerIds()).containsExactly(TOBIAS, GEORGIA);
+    }
+    @Test
     void storesSolvedAndUnsolvedResults() {
         assertThat(service.process(message(2L, TOBIAS, gridWords(29, 4)))).isEqualTo(new ProcessingResult.Accepted());
         assertThat(service.process(message(3L, GEORGIA, gridWordsUnsolved(29)))).isEqualTo(new ProcessingResult.Accepted());
@@ -161,6 +172,39 @@ class ProcessSharedResultServiceTest {
         assertThat(((ShareOutcome.Solved) result.parsedResult().outcome()).attemptsUsed()).isEqualTo(2);
     }
 
+
+    @Test
+    void replaysAnAlreadyPublishedSourceWithoutTryingToStoreOrPublishAgain() {
+        InboundSharedMessage inbound = message(17L, TOBIAS, gridWords(29, 3));
+        assertThat(service.process(inbound)).isEqualTo(new ProcessingResult.Accepted());
+        SubmissionStore.StoredSubmission stored = store.submissions.get(17L);
+        store.submissions.put(17L, store.with(
+                stored,
+                SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED,
+                stored.gameResultId(),
+                Optional.empty()));
+
+        assertThat(service.process(inbound)).isEqualTo(new ProcessingResult.Accepted());
+        assertThat(store.results).hasSize(1);
+        assertThat(store.submissions.get(17L).state())
+                .isEqualTo(SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED);
+    }
+
+    @Test
+    void ignoresASupersededReplayWithoutTreatingItAsAcceptedAgain() {
+        InboundSharedMessage inbound = message(19L, TOBIAS, gridWords(29, 3));
+        assertThat(service.process(inbound)).isEqualTo(new ProcessingResult.Accepted());
+        SubmissionStore.StoredSubmission stored = store.submissions.get(19L);
+        store.submissions.put(19L, store.with(
+                stored,
+                SubmissionStore.SubmissionState.SUPERSEDED,
+                stored.gameResultId(),
+                Optional.empty()));
+
+        assertThat(service.process(inbound)).isEqualTo(new ProcessingResult.Ignored());
+        assertThat(store.results).hasSize(1);
+        assertThat(store.submissions.get(19L).state()).isEqualTo(SubmissionStore.SubmissionState.SUPERSEDED);
+    }
     @Test
     void doesNotReturnSuccessWhenPersistenceFails() {
         InMemoryStore failingStore = new InMemoryStore() {
@@ -208,6 +252,7 @@ class ProcessSharedResultServiceTest {
         private final Map<Long, StoredSubmission> submissions = new HashMap<>();
         private final Map<ResultKey, StoredResult> results = new HashMap<>();
         private long nextResultId = 1L;
+        private ResultStorage lastResultStorage;
 
         @Override
         public StoredPlayer upsert(PlayerUpsert request) {
@@ -249,6 +294,7 @@ class ProcessSharedResultServiceTest {
 
         @Override
         public StoredSubmission storeResult(ResultStorage request) {
+            lastResultStorage = request;
             StoredSubmission submission = required(request.sourceMessageId());
             if (submission.authorPlayerId() != request.result().playerId()) {
                 throw new SubmissionConflictException("wrong player");
