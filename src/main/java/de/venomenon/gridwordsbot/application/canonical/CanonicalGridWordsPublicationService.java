@@ -360,10 +360,15 @@ public final class CanonicalGridWordsPublicationService {
     }
 
     private long findOrCreateCanonicalMessage(long channelId, CanonicalResultMessage message) {
-        return discord.findAllByPublicationKey(channelId, message.publicationKey()).stream()
+        java.util.OptionalLong existing = discord.findAllByPublicationKey(channelId, message.publicationKey()).stream()
                 .mapToLong(Long::longValue)
-                .min()
-                .orElseGet(() -> discord.create(channelId, message));
+                .min();
+        if (existing.isPresent()) {
+            long canonicalMessageId = existing.getAsLong();
+            discord.edit(channelId, canonicalMessageId, message);
+            return canonicalMessageId;
+        }
+        return discord.create(channelId, message);
     }
 
     /** The persisted canonical ID wins; without one, the oldest Discord snowflake is the deterministic winner. */

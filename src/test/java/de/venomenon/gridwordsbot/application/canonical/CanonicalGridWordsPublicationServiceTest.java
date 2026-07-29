@@ -121,6 +121,22 @@ class CanonicalGridWordsPublicationServiceTest {
     }
 
     @Test
+    void reRendersTheKeyedWinnerBeforePersistingPublicationWithoutACanonicalId() {
+        stored(SubmissionStore.SubmissionState.RESULT_STORED);
+        when(results.findById(RESULT)).thenReturn(Optional.of(result));
+        GameResultStore.PublicationClaim claim = claim("00000000-0000-0000-0000-000000000022");
+        when(results.claimCanonicalPublication(eq(RESULT), any())).thenReturn(Optional.of(claim));
+        doReturn(List.of(77L), List.of(77L)).when(discord).findAllByPublicationKey(anyLong(), any());
+        when(submissions.completeCanonicalPublication(SOURCE, RESULT, 77L, claim.token())).thenReturn(true);
+
+        assertThat(service.publish(SOURCE)).isTrue();
+
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(discord, submissions);
+        order.verify(discord).edit(eq(12L), eq(77L), any());
+        order.verify(submissions).completeCanonicalPublication(SOURCE, RESULT, 77L, claim.token());
+        verify(discord, never()).create(anyLong(), any());
+    }
+    @Test
     void persistsTheDeliveryFenceBeforeCreateAndRemovesRecognizedDuplicateMessages() {
         stored(SubmissionStore.SubmissionState.RESULT_STORED);
         when(results.findById(RESULT)).thenReturn(Optional.of(result));
