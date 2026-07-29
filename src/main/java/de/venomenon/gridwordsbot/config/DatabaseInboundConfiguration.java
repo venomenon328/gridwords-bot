@@ -58,8 +58,9 @@ class DatabaseInboundConfiguration {
     ApplicationRunner databaseInboundStartup(
             ConfiguredPlayerSynchronizer synchronizer,
             ObjectProvider<JDA> jdaProvider,
-            ObjectProvider<DiscordInboundListener> listenerProvider) {
-        return new DatabaseInboundStartup(synchronizer, jdaProvider, listenerProvider);
+            ObjectProvider<DiscordInboundListener> listenerProvider,
+            ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider) {
+        return new DatabaseInboundStartup(synchronizer, jdaProvider, listenerProvider, canonicalProvider);
     }
 
     private static GameResultStore resultsUnavailable() { throw new IllegalStateException("canonical publication requires Discord"); }
