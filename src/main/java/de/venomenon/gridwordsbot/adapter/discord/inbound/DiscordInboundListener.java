@@ -1,6 +1,7 @@
 package de.venomenon.gridwordsbot.adapter.discord.inbound;
 
 import de.venomenon.gridwordsbot.config.GridwordsBotProperties;
+import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.parsing.AttachmentMetadata;
 import de.venomenon.gridwordsbot.port.in.InboundSharedMessage;
 import de.venomenon.gridwordsbot.port.in.ProcessSharedResultUseCase;
@@ -92,7 +93,8 @@ public final class DiscordInboundListener extends ListenerAdapter {
     private void process(InboundSharedMessage inbound, Message message) {
         try {
             ProcessingResult result = useCase.process(inbound);
-            if (result instanceof ProcessingResult.Accepted) {
+            if (result instanceof ProcessingResult.Accepted accepted
+                    && accepted.gameType() == GameType.QUADWORDS) {
                 reactions.addReaction(message, ACCEPTED);
             } else if (result instanceof ProcessingResult.Rejected) {
                 reactions.addReaction(message, REJECTED);

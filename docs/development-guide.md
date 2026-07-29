@@ -387,3 +387,14 @@ Versionen nicht allein deshalb auf den neuesten Stand bringen, weil sie neuer si
 ## Inkrement 4: manueller Canonical-Message-Smoke-Test
 
 Tobias hat den echten Discord-/PostgreSQL-Smoke-Test am 29. Juli 2026 erfolgreich im Zielchannel durchgeführt. Bestätigt wurden insbesondere die kanonische Veröffentlichung ohne Löschung der Originalnachricht, das Edit derselben Bot-Nachricht bei einer Korrektur, das Ausbleiben sichtbarer Publication-Keys sowie das weiterhin getrennte QuadWords-Verhalten. Der Nachtest bestätigte außerdem, dass Komplett- und Perfektserien nur angezeigt werden, wenn der Tageszustand tatsächlich erfüllt ist.
+## Inkrement 5: manueller Safe-Replacement-Smoke-Test
+
+Der abschliessende echte Test wird von Tobias im Profil `database` mit lokaler PostgreSQL-Instanz und lokalem Discord-Token durchgefuehrt; Codex fuehrt ihn weder mit Token noch durch manuelle Loeschung aus.
+
+1. Ein gueltiges GridWords-Share muss genau eine kanonische Bot-Nachricht erzeugen; erst nach ihrer persistierten ID darf die exakte Originalquelle verschwinden. Es erscheint kein nachtraegliches `?` auf dieser Quelle.
+2. Eine Korrektur als neue GridWords-Quelle muss dieselbe kanonische Bot-Nachricht bearbeiten und erst die neue, dann gegebenenfalls die nun sichere supersedierte Quelle bereinigen.
+3. Ein nicht loeschbares Original darf Ergebnis und kanonische Nachricht nicht zurueckrollen oder faelschlich `COMPLETED` markieren; der persistierte Fehler ist als permanent oder retryable sichtbar.
+4. Ein Neustart mit einer bereits `ORIGINAL_MESSAGE_DELETED` markierten Submission darf keinen zweiten Discord-Delete ausfuehren und muss zu `COMPLETED` abschliessen.
+5. QuadWords behaelt sein `?`, und ein persistiert abgelehntes Share behaelt `??`.
+
+Die automatisierten Application-, JDA-Adapter- und PostgreSQL-Integrationstests decken die dazugehoerigen Crash-, Replay-, Unknown-Message- und Owner-Rennen ab.

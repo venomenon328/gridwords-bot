@@ -73,6 +73,32 @@ public interface SubmissionStore {
         throw new UnsupportedOperationException("publication recovery is not available");
     }
 
+    /** Acquires a short, token-owned claim for one source-message delete REST call. */
+    default Optional<SourceDeletionClaim> claimOriginalSourceDeletion(long sourceMessageId, Instant leaseUntil) {
+        throw new UnsupportedOperationException("source deletion is not available");
+    }
+
+    /** Persists the external delete outcome only for the worker that owns the token. */
+    default boolean recordOriginalSourceDeleted(long sourceMessageId, UUID claimToken) {
+        throw new UnsupportedOperationException("source deletion is not available");
+    }
+
+    /** Records a classified failure while retaining the eligible canonical state for recovery. */
+    default boolean recordOriginalSourceDeletionFailure(
+            long sourceMessageId, UUID claimToken, OriginalDeletionFailure failure, String safeTechnicalMessage) {
+        throw new UnsupportedOperationException("source deletion is not available");
+    }
+
+    /** Completes a durably recorded delete without issuing another Discord request. */
+    default boolean completeOriginalSourceDeletion(long sourceMessageId) {
+        throw new UnsupportedOperationException("source deletion is not available");
+    }
+
+    /** Lists only persisted GridWords source-delete work that has not reached the terminal completed state. */
+    default List<StoredSubmission> findGridWordsAwaitingOriginalSourceDeletion() {
+        throw new UnsupportedOperationException("source deletion recovery is not available");
+    }
+
     record SubmissionRegistration(
             long sourceMessageId,
             long guildId,
@@ -171,6 +197,14 @@ public interface SubmissionStore {
     /** A refresh completion can succeed while a newer late side effect already requires another pass. */
     record CanonicalRefreshCompletion(boolean refreshStillRequired) {
     }
+
+    record SourceDeletionClaim(UUID token, Instant leaseUntil) {
+        public SourceDeletionClaim {
+            Objects.requireNonNull(token, "token");
+            Objects.requireNonNull(leaseUntil, "leaseUntil");
+        }
+    }
+
     record StoredSubmission(
             long sourceMessageId,
             long guildId,
@@ -183,6 +217,8 @@ public interface SubmissionStore {
             Optional<String> parserErrorCode,
             Optional<String> technicalErrorMessage,
             PublicationContext publicationContext,
+            Optional<Instant> originalDeletedAt,
+            OriginalDeletionFailure originalDeletionFailure,
             Instant receivedAt,
             Instant updatedAt) {
 
@@ -211,6 +247,40 @@ public interface SubmissionStore {
                     parserErrorCode,
                     technicalErrorMessage,
                     PublicationContext.none(),
+                    Optional.empty(),
+                    OriginalDeletionFailure.NONE,
+                    receivedAt,
+                    updatedAt);
+        }
+
+        public StoredSubmission(
+                long sourceMessageId,
+                long guildId,
+                long channelId,
+                long authorPlayerId,
+                String rawMessageContent,
+                SubmissionState state,
+                Optional<Long> gameResultId,
+                List<AttachmentSnapshot> attachments,
+                Optional<String> parserErrorCode,
+                Optional<String> technicalErrorMessage,
+                PublicationContext publicationContext,
+                Instant receivedAt,
+                Instant updatedAt) {
+            this(
+                    sourceMessageId,
+                    guildId,
+                    channelId,
+                    authorPlayerId,
+                    rawMessageContent,
+                    state,
+                    gameResultId,
+                    attachments,
+                    parserErrorCode,
+                    technicalErrorMessage,
+                    publicationContext,
+                    Optional.empty(),
+                    OriginalDeletionFailure.NONE,
                     receivedAt,
                     updatedAt);
         }
@@ -222,6 +292,8 @@ public interface SubmissionStore {
             Objects.requireNonNull(parserErrorCode, "parserErrorCode");
             Objects.requireNonNull(technicalErrorMessage, "technicalErrorMessage");
             Objects.requireNonNull(publicationContext, "publicationContext");
+            Objects.requireNonNull(originalDeletedAt, "originalDeletedAt");
+            Objects.requireNonNull(originalDeletionFailure, "originalDeletionFailure");
             Objects.requireNonNull(receivedAt, "receivedAt");
             Objects.requireNonNull(updatedAt, "updatedAt");
         }
@@ -238,6 +310,12 @@ public interface SubmissionStore {
         FAILED_RETRYABLE,
         FAILED_FINAL,
         SUPERSEDED
+    }
+
+    enum OriginalDeletionFailure {
+        NONE,
+        RETRYABLE,
+        PERMANENT
     }
 
     enum CanonicalPublicationPreparation {

@@ -4,11 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import de.venomenon.gridwordsbot.application.canonical.CanonicalGridWordsPublicationService;
+import de.venomenon.gridwordsbot.application.canonical.GridWordsSourceDeletionService;
 import de.venomenon.gridwordsbot.port.out.CanonicalMessageGateway;
 import de.venomenon.gridwordsbot.port.out.GameResultStore;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
 import de.venomenon.gridwordsbot.port.out.PublicationRetryScheduler;
-import de.venomenon.gridwordsbot.port.out.SourceMessageReactionGateway;
+import de.venomenon.gridwordsbot.port.out.SourceMessageDeletionGateway;
 import de.venomenon.gridwordsbot.port.out.SubmissionStore;
 import java.time.Clock;
 import java.time.LocalTime;
@@ -21,7 +22,7 @@ import org.springframework.context.annotation.AnnotationConfigApplicationContext
 class DatabaseInboundConfigurationTest {
 
     @Test
-    void wiresCanonicalRecoveryWithJdaReactionAndSchedulerAdapters() {
+    void wiresCanonicalPublicationDeletionAndSchedulerAdapters() {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
             context.getEnvironment().setActiveProfiles("database");
             context.registerBean("liquibase", Object.class, Object::new);
@@ -35,7 +36,8 @@ class DatabaseInboundConfigurationTest {
             context.refresh();
 
             assertThat(context.getBean(CanonicalMessageGateway.class)).isNotNull();
-            assertThat(context.getBean(SourceMessageReactionGateway.class)).isNotNull();
+            assertThat(context.getBean(SourceMessageDeletionGateway.class)).isNotNull();
+            assertThat(context.getBean(GridWordsSourceDeletionService.class)).isNotNull();
             assertThat(context.getBean(PublicationRetryScheduler.class)).isNotNull();
             assertThat(context.getBean(CanonicalGridWordsPublicationService.class)).isNotNull();
         }

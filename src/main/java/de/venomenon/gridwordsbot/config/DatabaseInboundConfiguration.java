@@ -2,12 +2,13 @@ package de.venomenon.gridwordsbot.config;
 
 import de.venomenon.gridwordsbot.adapter.discord.inbound.DiscordInboundListener;
 import de.venomenon.gridwordsbot.adapter.discord.canonical.JdaCanonicalMessageGateway;
-import de.venomenon.gridwordsbot.adapter.discord.canonical.JdaSourceMessageReactionGateway;
+import de.venomenon.gridwordsbot.adapter.discord.canonical.JdaSourceMessageDeletionGateway;
 import de.venomenon.gridwordsbot.application.canonical.CanonicalGridWordsPublicationService;
+import de.venomenon.gridwordsbot.application.canonical.GridWordsSourceDeletionService;
 import de.venomenon.gridwordsbot.port.out.GameResultStore;
 import de.venomenon.gridwordsbot.port.out.CanonicalMessageGateway;
 import de.venomenon.gridwordsbot.port.out.PublicationRetryScheduler;
-import de.venomenon.gridwordsbot.port.out.SourceMessageReactionGateway;
+import de.venomenon.gridwordsbot.port.out.SourceMessageDeletionGateway;
 import de.venomenon.gridwordsbot.application.submission.ConfiguredPlayer;
 import de.venomenon.gridwordsbot.application.submission.ConfiguredPlayerSynchronizer;
 import de.venomenon.gridwordsbot.application.submission.ProcessSharedResultService;
@@ -39,14 +40,24 @@ class DatabaseInboundConfiguration {
             GridwordsBotProperties properties,
             PlayerStore playerStore,
             SubmissionStore submissionStore,
-            ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider) {
+            ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider,
+            ObjectProvider<GridWordsSourceDeletionService> deletionProvider) {
         List<Long> configuredPlayerIds = List.of(
                 properties.players().first().userId(), properties.players().second().userId());
         return new ProcessSharedResultService(
                 new GridWordsShareParser(), new QuadWordsShareParser(), clock, properties.schedule().timeZone(), playerStore,
                 submissionStore, configuredPlayerIds, sourceMessageId -> {
                     CanonicalGridWordsPublicationService canonical = canonicalProvider.getIfAvailable();
-                    return canonical == null || canonical.publish(sourceMessageId);
+                    if (canonical == null || !canonical.publish(sourceMessageId)) {
+                        return canonical == null;
+                    }
+                    GridWordsSourceDeletionService deletion = deletionProvider.getIfAvailable();
+                    if (deletion == null) {
+                        return false;
+                    }
+                    boolean completed = deletion.deleteAfterCanonicalPublication(sourceMessageId);
+                    deletion.resumeOpenDeletions();
+                    return completed;
                 });
     }
     @Bean
@@ -57,8 +68,8 @@ class DatabaseInboundConfiguration {
 
     @Bean
     @ConditionalOnBean(JDA.class)
-    SourceMessageReactionGateway sourceMessageReactionGateway(JDA jda) {
-        return new JdaSourceMessageReactionGateway(jda);
+    SourceMessageDeletionGateway sourceMessageDeletionGateway(JDA jda) {
+        return new JdaSourceMessageDeletionGateway(jda);
     }
 
     @Bean(destroyMethod = "shutdown")
@@ -78,11 +89,20 @@ class DatabaseInboundConfiguration {
     @ConditionalOnBean(CanonicalMessageGateway.class)
     CanonicalGridWordsPublicationService canonicalGridWordsPublicationService(
             GameResultStore results, PlayerStore players, SubmissionStore submissions, CanonicalMessageGateway discord,
-            Clock clock, GridwordsBotProperties properties, PublicationRetryScheduler retryScheduler,
-            SourceMessageReactionGateway reactionGateway) {
+            Clock clock, GridwordsBotProperties properties, PublicationRetryScheduler retryScheduler) {
         return new CanonicalGridWordsPublicationService(results, players, submissions, discord, clock,
                 properties.schedule().timeZone(), List.of(properties.players().first().userId(), properties.players().second().userId()),
-                retryScheduler, reactionGateway);
+                retryScheduler);
+    }
+
+    @Bean
+    @ConditionalOnBean(SourceMessageDeletionGateway.class)
+    GridWordsSourceDeletionService gridWordsSourceDeletionService(
+            SubmissionStore submissions,
+            SourceMessageDeletionGateway deletionGateway,
+            Clock clock,
+            PublicationRetryScheduler retryScheduler) {
+        return new GridWordsSourceDeletionService(submissions, deletionGateway, clock, retryScheduler);
     }
 
     @Bean
@@ -100,8 +120,9 @@ class DatabaseInboundConfiguration {
             ConfiguredPlayerSynchronizer synchronizer,
             ObjectProvider<JDA> jdaProvider,
             ObjectProvider<DiscordInboundListener> listenerProvider,
-            ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider) {
-        return new DatabaseInboundStartup(synchronizer, jdaProvider, listenerProvider, canonicalProvider);
+            ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider,
+            ObjectProvider<GridWordsSourceDeletionService> deletionProvider) {
+        return new DatabaseInboundStartup(synchronizer, jdaProvider, listenerProvider, canonicalProvider, deletionProvider);
     }
 
     private ConfiguredPlayer configuredPlayer(GridwordsBotProperties.Player player, List<Long> administrators) {

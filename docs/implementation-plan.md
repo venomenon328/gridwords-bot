@@ -145,7 +145,7 @@ Abnahmekriterium erfüllt:
 
 ## Inkrement 5 – Sichere GridWords-Ersetzung
 
-**Status:** vorbereitet (Issue #11; Branch `feature/safe-gridwords-replacement`)
+**Status:** implementiert (Issue #11, Draft-PR #12; CI und abschliessender Smoke-Test stehen aus)
 
 **Ziel:** Original-GridWords-Nachricht erst nach nachweislich sicherer Wiederveröffentlichung löschen.
 

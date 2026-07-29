@@ -25,11 +25,13 @@ Der aktuelle Projektstand umfasst:
 - kanonische GridWords-Embeds mit vollständigem Raster und eindeutig benannten Serien
 - Korrekturen durch Edit derselben Bot-Nachricht, Lost-Message-Recovery und Duplikatbereinigung
 - `✅` nach erfolgreich gespeicherten beziehungsweise kanonisch veröffentlichten Ergebnissen und `⚠️` nach persistent abgelehnten Shares
+- für GridWords keine Erfolgsreaktion auf der verschwindenden Quelle: erst persistierte kanonische Message-ID, dann exakte idempotente Quelllöschung und Recovery
+
 - gekapselte PostgreSQL-Integrationstests im Maven-Profil `database-integration`
 - optionale Docker-Compose-Konfiguration
 - externe Konfiguration und optionale Discord-Gateway-Verbindung
 
-Die Inkremente 0 bis 4 sind abgeschlossen. Originalnachrichten bleiben in Inkrement 4 weiterhin erhalten; ihre sichere Löschung folgt erst in Inkrement 5. Tagesstatus und Erinnerungen bleiben späteren Inkrementen vorbehalten.
+Die Inkremente 0 bis 5 sind implementiert; Issue #11 befindet sich als Draft-PR #12 noch in CI und im abschliessenden manuellen Smoke-Test. GridWords ersetzt seine Quelle erst nach persistierter kanonischer Message-ID und kann die Löschphase nach einem Neustart fortsetzen. QuadWords, Tagesstatus und Erinnerungen bleiben ausserhalb dieses Inkrements.
 
 Der lokale Standardbuild umfasst Unit-, Parser-, Application-, Architektur- und Discord-Adaptertests. GitHub Actions führt zusätzlich PostgreSQL-Integrationstests gegen echtes PostgreSQL aus.
 
@@ -128,9 +130,19 @@ mvn spring-boot:run -Dspring-boot.run.profiles=database
 
 Discord kann dabei unabhängig über `DISCORD_ENABLED=true` aktiviert werden.
 
-## Manueller Inbound-Smoke-Test (durch Tobias)
+## Manueller Inbound-Smoke-Test bis Inkrement 4 (durch Tobias)
 
 Der Test ist erst mit einer lokalen PostgreSQL-Instanz und lokal hinterlegtem Discord-Token im Profil `database` sinnvoll. Bei optionaler Compose-Nutzung verwendet `compose.yaml` dieselbe fest gepinnte Image-Version wie CI: `postgres:16.6-alpine`. Der Test wird nicht durch den Standardbuild ersetzt und wurde von Codex nicht ausgeführt.
+
+### Ergänzung für Inkrement 5
+
+Der Abschluss-Smoketest für die sichere Ersetzung wird ausschliesslich von Tobias mit lokalem Token und PostgreSQL ausgeführt; Codex führt keinen echten Discord-Zugriff und keine manuelle Löschprüfung durch.
+
+1. Ein gültiges GridWords-Share erzeugt genau eine kanonische Bot-Nachricht. Erst nach deren persistierter ID darf exakt diese Originalquelle verschwinden; ein `✅` auf der Quelle entfällt.
+2. Eine GridWords-Korrektur bearbeitet dieselbe kanonische Bot-Nachricht und löscht die neue Quelle erst nach ihrer bestätigten Veröffentlichung. Eine supersedierte Quelle bleibt bis dahin sichtbar.
+3. Ein unberechtigter Delete darf Ergebnis und kanonische Bot-Nachricht nicht zurückrollen oder die Submission fälschlich abschliessen.
+4. Eine schon als `ORIGINAL_MESSAGE_DELETED` persistierte Submission wird nach Neustart ohne zweiten Discord-Delete nur abgeschlossen.
+5. QuadWords und persistente Ablehnungen behalten ihre bisherigen `✅` beziehungsweise `⚠️`.
 
 1. Eine normale Nachricht von Tobias im Zielchannel senden: keine Reaktion, kein Submission-Datensatz.
 2. Eine Nachricht in einem anderen Channel senden: keine Verarbeitung.

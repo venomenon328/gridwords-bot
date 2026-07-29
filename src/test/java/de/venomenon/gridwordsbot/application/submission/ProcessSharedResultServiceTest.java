@@ -85,7 +85,7 @@ class ProcessSharedResultServiceTest {
                 "QuadWords (28. Juli 2026) 9/9 in 4:18 🔥2",
                 List.of(new AttachmentMetadata("quad.png", "image/png", 42L))));
 
-        assertThat(result).isEqualTo(new ProcessingResult.Accepted());
+        assertThat(result).isEqualTo(new ProcessingResult.Accepted(de.venomenon.gridwordsbot.domain.model.GameType.QUADWORDS));
         assertThat(store.results.values().iterator().next().result().parserVersion())
                 .isEqualTo(ProcessSharedResultService.QUADWORDS_PARSER_VERSION);
     }

@@ -237,16 +237,28 @@ Nicht jeder Zustand muss eine eigene Tabelle oder öffentliche Enum erhalten; di
 8. **Transaktion C:** Löschung und Abschluss persistieren.
 9. **Tagesstatus aktualisieren:** Fehler hierbei dürfen das gespeicherte Ergebnis nicht zurückrollen.
 
-### 9.3 Wiederaufnahme
+### 9.3 Persistierte GridWords-Quellloeschung
+
+Nach der bereits persistierten kanonischen Message-ID beansprucht ein kurzer, token-geschuetzter Persistence-Schritt die Loeschung der exakten `(channelId, sourceMessageId)`. Der Discord-Delete erfolgt ausserhalb einer Datenbanktransaktion. Sein Ergebnis wird nur vom Claim-Inhaber gespeichert.
+
+- `DELETED` und `UNKNOWN_MESSAGE` fuehren zu `ORIGINAL_MESSAGE_DELETED` mit Zeitstempel und anschliessend zu `COMPLETED`.
+- transiente Fehler bleiben mit Fehlerklasse `RETRYABLE` wiederaufnehmbar; permanente Rechte- oder Channel-Fehler mit `PERMANENT` lassen die Quelle sichtbar.
+- eine nach `SUPERSEDED` verschobene Quelle ist erst berechtigt, wenn die neuere kanonische Veroeffentlichung bestaetigt ist.
+- der Scheduler beschleunigt Wiederholungen, die Start-Recovery liest jedoch immer die Datenbank als Wahrheit.
+
+Die konkrete Claim- und Fehlersemantik ist in ADR 0009 festgelegt.
+
 
 Bei erneutem Event oder Neustart:
+### 9.4 Wiederaufnahme
+
 
 - Existiert bereits ein vollständig abgeschlossenes Submission-Objekt, geschieht nichts.
 - Ist das Ergebnis gespeichert, aber keine Bot-Message-ID vorhanden, wird die Veröffentlichung erneut versucht.
 - Ist eine Bot-Message-ID gespeichert, wird keine zweite kanonische Nachricht erzeugt; stattdessen wird der Zustand geprüft und gegebenenfalls nur die Originallöschung fortgesetzt.
 - Ist das Original bereits gelöscht, darf ein nachträgliches Discord-Delete-Event das Ergebnis nicht entfernen.
 
-### 9.4 Eindeutigkeiten
+### 9.5 Eindeutigkeiten
 
 Mindestens:
 
