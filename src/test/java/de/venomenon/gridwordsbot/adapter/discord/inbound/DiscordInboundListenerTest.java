@@ -3,12 +3,14 @@ package de.venomenon.gridwordsbot.adapter.discord.inbound;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import de.venomenon.gridwordsbot.config.GridwordsBotProperties;
 import de.venomenon.gridwordsbot.domain.model.GameType;
+import de.venomenon.gridwordsbot.domain.parsing.AttachmentReference;
 import de.venomenon.gridwordsbot.port.in.InboundSharedMessage;
 import de.venomenon.gridwordsbot.port.in.ProcessSharedResultUseCase;
 import de.venomenon.gridwordsbot.port.in.ProcessingResult;
@@ -67,6 +69,29 @@ class DiscordInboundListenerTest {
         verify(reactions).addReaction(message, "✅");
     }
 
+    @Test
+    void copiesTheExactAttachmentIdIntoTheTransportNeutralInboundSnapshot() {
+        QueueingExecutor executor = new QueueingExecutor();
+        ProcessSharedResultUseCase useCase = mock(ProcessSharedResultUseCase.class);
+        DiscordReactionGateway reactions = mock(DiscordReactionGateway.class);
+        MessageReceivedEvent event = event(GUILD, CHANNEL, TOBIAS, false, false);
+        Message.Attachment attachment = mock(Message.Attachment.class);
+        when(attachment.getFileName()).thenReturn("quadwords.png");
+        when(attachment.getContentType()).thenReturn("image/png");
+        when(attachment.getSize()).thenReturn(42);
+        when(attachment.getIdLong()).thenReturn(700L);
+        when(event.getMessage().getAttachments()).thenReturn(List.of(attachment));
+        when(useCase.process(any())).thenReturn(new ProcessingResult.Ignored());
+
+        listener(executor, useCase, reactions).onMessageReceived(event);
+        executor.runAll();
+
+        ArgumentCaptor<InboundSharedMessage> inbound = ArgumentCaptor.forClass(InboundSharedMessage.class);
+        verify(useCase).process(inbound.capture());
+        assertThat(inbound.getValue().attachments()).singleElement().satisfies(metadata ->
+                assertThat(metadata.reference()).contains(new AttachmentReference(CHANNEL, 500L, 700L)));
+        verify(attachment, never()).getUrl();
+    }
     @Test
     void reactsWithWarningOnlyAfterRejectedProcessing() {
         QueueingExecutor executor = new QueueingExecutor();

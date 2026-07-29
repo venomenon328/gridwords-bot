@@ -3,11 +3,13 @@ package de.venomenon.gridwordsbot.adapter.discord.inbound;
 import de.venomenon.gridwordsbot.config.GridwordsBotProperties;
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.parsing.AttachmentMetadata;
+import de.venomenon.gridwordsbot.domain.parsing.AttachmentReference;
 import de.venomenon.gridwordsbot.port.in.InboundSharedMessage;
 import de.venomenon.gridwordsbot.port.in.ProcessSharedResultUseCase;
 import de.venomenon.gridwordsbot.port.in.ProcessingResult;
 import java.time.Clock;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import net.dv8tion.jda.api.entities.Member;
@@ -83,7 +85,11 @@ public final class DiscordInboundListener extends ListenerAdapter {
         String displayName = member == null ? author.getName() : member.getEffectiveName();
         List<AttachmentMetadata> attachments = message.getAttachments().stream()
                 .map(attachment -> new AttachmentMetadata(
-                        attachment.getFileName(), attachment.getContentType(), attachment.getSize(), attachment.getUrl()))
+                        attachment.getFileName(),
+                        attachment.getContentType(),
+                        attachment.getSize(),
+                        Optional.of(new AttachmentReference(
+                                event.getChannel().getIdLong(), message.getIdLong(), attachment.getIdLong()))))
                 .toList();
         return new InboundSharedMessage(
                 event.getGuild().getIdLong(), event.getChannel().getIdLong(), message.getIdLong(), author.getIdLong(),
