@@ -14,17 +14,17 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 ## Aktueller Stand
 
-Der Branch `setup/project-scaffold` enthält das technische Grundgerüst:
+Der Branch `feature/persistence-model` ergänzt das technische Grundgerüst um das Persistenzmodell aus Issue #5:
 
 - Java 21
 - Spring Boot
 - JDA
-- PostgreSQL-Unterstützung und Liquibase
+- PostgreSQL-Persistenzadapter, Liquibase-Migrationen und ein gekapseltes Datenbankintegrationsprofil
 - optionale Docker-Compose-Konfiguration
 - externe Konfiguration
 - optionale Discord-Gateway-Verbindung
 
-Die eigentliche Ergebnisverarbeitung ist noch nicht implementiert.
+Die sichere Discord-Ersetzung sowie Tagesstatus, Serien und Erinnerungen bleiben bewusst in späteren Inkrementen.
 
 Der technische Stabilisierungsauftrag aus GitHub-Issue #2 ist umgesetzt:
 

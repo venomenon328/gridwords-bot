@@ -76,7 +76,7 @@ mvn --batch-mode --no-transfer-progress clean verify
 
 Der Standardbuild umfasst alle Unit-, Parser-, Domain-, Application-, Architektur- und infrastrukturlosen Adaptertests.
 
-Datenbankintegrationstests werden mit dem Persistenzinkrement in einem separaten Maven-Profil eingeführt, vorgesehen:
+Datenbankintegrationstests sind im separaten Maven-Profil `database-integration` implementiert:
 
 ```bash
 mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
@@ -221,13 +221,13 @@ Testcontainers ist für diese CI-Tests zulässig. H2 ersetzt die PostgreSQL-Inte
 
 GitHub Actions ist die verbindliche Umgebung für Tests, die eine Container-Runtime benötigen.
 
-Bis zum Persistenzinkrement genügt:
+Der Standardjob führt aus:
 
 ```bash
 mvn --batch-mode --no-transfer-progress verify
 ```
 
-Mit dem Persistenzinkrement wird der Workflow so erweitert, dass zusätzlich beziehungsweise stattdessen das vollständige Profil läuft:
+Der verpflichtende Datenbankjob führt aus:
 
 ```bash
 mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify

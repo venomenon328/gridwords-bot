@@ -1,32 +1,32 @@
-name: CI
-
-on:
-  push:
-    branches:
-      - main
-      - "setup/**"
-      - "feature/**"
-  pull_request:
-
-permissions:
-  contents: read
-
-jobs:
-  standard-build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Java 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "21"
-          cache: maven
-
-      - name: Verify project
-        run: mvn --batch-mode --no-transfer-progress verify
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - "setup/**"
+      - "feature/**"
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  standard-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Verify project
+        run: mvn --batch-mode --no-transfer-progress clean verify
 
   database-integration:
     runs-on: ubuntu-latest
