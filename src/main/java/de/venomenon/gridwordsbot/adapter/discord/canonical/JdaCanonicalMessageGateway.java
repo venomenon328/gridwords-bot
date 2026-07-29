@@ -61,7 +61,7 @@ public final class JdaCanonicalMessageGateway implements CanonicalMessageGateway
             page.stream()
                     .filter(message -> message.getAuthor().equals(jda.getSelfUser()))
                     .filter(message -> message.getEmbeds().stream().anyMatch(embed -> embed.getFooter() != null
-                            && publicationKey.equals(embed.getFooter().getText())))
+                            && DiscordPublicationKey.matches(publicationKey, embed.getFooter().getText())))
                     .mapToLong(Message::getIdLong)
                     .forEach(matching::add);
             if (page.size() < 100) {
