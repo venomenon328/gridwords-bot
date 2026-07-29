@@ -10,7 +10,7 @@ Dieser Plan zerlegt die Anforderungsspezifikation in kleine, reviewbare Inkremen
 - PostgreSQL-Integrationstests laufen verpflichtend in GitHub Actions über ein separates Maven-Profil.
 - Persistenz und Idempotenz vor dem automatischen Löschen fremder Nachrichten fertigstellen.
 - Eine Originalnachricht wird erst gelöscht, wenn der vollständige sichere Ersetzungsablauf automatisiert getestet ist.
-- Version-2- und Version-3-Funktionen werden nicht vorgezogen.
+- QuadWords-Bildparser und sichere QuadWords-Konsolidierung werden bewusst vor Tagesstatus und Erinnerungen umgesetzt; andere spätere Berichts- und Version-3-Funktionen werden nicht vorgezogen.
 
 ## Inkrement 0 – Grundgerüst stabilisieren
 
@@ -61,12 +61,12 @@ Umfang:
 
 Abnahmekriterium:
 
-- alle vorhandenen echten Fixtures und definierte Fehlerfälle werden korrekt klassifiziert
+- alle vorhandenen echten Fixtures und definierten Fehlerfälle werden korrekt klassifiziert
 - lokaler `mvn clean verify` benötigt keine externe Infrastruktur
 
 ## Inkrement 2 – Persistenzmodell und Verarbeitungszustände
 
-**Status:** abgeschlossen (PR #6)
+**Status:** abgeschlossen (PR #6 gemergt)
 
 **Ziel:** Ergebnisse und Submission-Ablauf idempotent speichern.
 
@@ -118,7 +118,7 @@ Abnahmekriterium:
 
 ## Inkrement 4 – Kanonische GridWords-Nachricht, zunächst ohne Löschung
 
-**Status:** abgeschlossen und mergebereit (PR #10; manueller Discord-/PostgreSQL-Smoke-Test am 29. Juli 2026 erfolgreich)
+**Status:** abgeschlossen (PR #10 gemergt; manueller Discord-/PostgreSQL-Smoke-Test am 29. Juli 2026 erfolgreich)
 
 **Ziel:** GridWords-Ausgabe vollständig erzeugen und veröffentlichen.
 
@@ -145,6 +145,8 @@ Abnahmekriterium erfüllt:
 
 ## Inkrement 5 – Sichere GridWords-Ersetzung
 
+**Status:** vorbereitet (Issue #11; Branch `feature/safe-gridwords-replacement`)
+
 **Ziel:** Original-GridWords-Nachricht erst nach nachweislich sicherer Wiederveröffentlichung löschen.
 
 Voraussetzungen:
@@ -154,19 +156,73 @@ Voraussetzungen:
 
 Umfang:
 
-- Original löschen, nachdem Bot-Message-ID persistiert ist
-- Neustart-/Retry-Fälle
-- Delete-Event des Bots ignorieren
+- Original ausschließlich nach persistierter kanonischer Bot-Message-ID löschen
+- persistierte und wiederaufnehmbare Löschphase
+- Zustände `CANONICAL_MESSAGE_PUBLISHED`, `ORIGINAL_MESSAGE_DELETED`, `COMPLETED`
+- Neustart-, Retry-, Replay- und Konkurrenzfälle
+- `UNKNOWN_MESSAGE` als idempotenter Lösch-Erfolg
+- permanente und transiente Löschfehler unterscheiden
+- Delete-Events dürfen keine neue Verarbeitung auslösen
 - Korrektur durch erneute Einreichung
-- klare Fehlerzustände
+- supersedierte sichtbare gültige Quellen erst nach bestätigter aktueller Veröffentlichung bereinigen
+- GridWords-Erfolg nicht von einer Reaktion auf eine anschließend gelöschte Nachricht abhängig machen
+- QuadWords und Ablehnungen unverändert lassen
 
 Abnahmekriterium:
 
 - Publish- oder Persistenzfehler können niemals zum Verlust der Originalnachricht führen
+- erfolgreich ersetzte Quellen werden konfliktfest, idempotent und nach Neustart abschließbar gelöscht
 
-## Inkrement 6 – Tagesstatus, vollständige Serien und Erinnerungen
+## Inkrement 6 – QuadWords-Bildparser
 
-**Ziel:** Version-1-Kernnutzen vollständig herstellen.
+**Ziel:** Vier QuadWords-Grids robust geometrisch und farbbasiert normalisieren.
+
+Umfang:
+
+- freigegebene Originalbild-Fixtures
+- Attachment-Bytes hinter einem schmalen Port laden; keine JDA-Typen im Parser
+- reine Java-Bildverarbeitung mit `ImageIO`/`BufferedImage`
+- Erkennung und Gruppierung der vier Boards
+- kanonische Reihenfolge und Überschriften `Oben links`, `Oben rechts`, `Unten links`, `Unten rechts`
+- robuste Farbklassifikation und Unicode-Normalisierung
+- Konfidenz-, Struktur- und Plausibilitätsvalidierung
+- Parser-Versionierung
+- Rohbildaufbewahrung für höchstens 48 Stunden
+- keine Veröffentlichung oder Löschung bei unsicherem Parse
+- Standardtests vollständig ohne Netzwerk, Discord und Datenbank
+
+Abnahmekriterium:
+
+- alle freigegebenen Originalfixtures werden exakt korrekt normalisiert
+- beschädigte, unbekannte oder nicht ausreichend sichere Bilder brechen kontrolliert ab und lassen die Originalnachricht bestehen
+
+## Inkrement 7 – Kanonische QuadWords-Konsolidierung und sichere Ersetzung
+
+**Ziel:** QuadWords-Text und Bild in genau eine kanonische, korrigierbare Bot-Nachricht überführen und die Quelle erst danach sicher löschen.
+
+Umfang:
+
+- kanonische Unicode-Ausgabe aller vier Grids in eindeutiger Reihenfolge
+- Spieler, Datum, Ergebnis, Versuche und Dauer darstellen
+- Aktivitätsserie und QuadWords-Lösungsserie ausgeben
+- bei Tagesabschluss gegebenenfalls Komplett- und Perfektserie ergänzen
+- Bot-Message-ID persistieren
+- Korrekturen bearbeiten dieselbe kanonische Bot-Nachricht
+- Publication-Key, Recovery, Supersession und Duplikatbereinigung analog zu GridWords
+- Originalnachricht mit Bildanhang erst nach persistierter kanonischer Veröffentlichung löschen
+- sichere Lösch-, Retry-, Neustart- und Crashpfade analog zu Inkrement 5
+- unsicher oder fehlerhaft geparste Bilder niemals löschen
+- Rohbild nach der festgelegten Aufbewahrungsfrist entfernen
+
+Abnahmekriterium:
+
+- pro Spieler und QuadWords-Spieltag existiert höchstens eine kanonische Bot-Nachricht
+- eine gültige Quelle wird erst nach sicherer Konsolidierung gelöscht
+- Parse-, Publish- oder Persistenzfehler können das Originalbild niemals verlieren lassen
+
+## Inkrement 8 – Tagesstatus, vollständige Serien und Erinnerungen
+
+**Ziel:** Den täglichen Kernnutzen nach sicherer Konsolidierung beider Spiele vollständig herstellen.
 
 Umfang:
 
@@ -192,9 +248,9 @@ Abnahmekriterium:
 
 - keine doppelten Erinnerungen, korrekte Erwähnungen und korrekte Berechnung aller sieben Serien über Lücken, Teilaktivität, nicht gelöste Spiele, unvollständige heutige Tage und Vortagsnachträge hinweg
 
-## Inkrement 7 – Version 1 härten und veröffentlichen
+## Inkrement 9 – Kernversion härten und veröffentlichen
 
-**Ziel:** Version 1 produktionsreif machen.
+**Ziel:** Den bis dahin vollständigen Bot produktionsreif machen.
 
 Umfang:
 
@@ -208,40 +264,9 @@ Umfang:
 
 Nicht enthalten:
 
-- QuadWords-Bildparser
-- Berichte
+- Wochen- und Monatsberichte
 - Statistik-Commands
 - Kommentare
-
-## Inkrement 8 – QuadWords-Bildparser
-
-**Ziel:** Vier Grids robust geometrisch und farbbasiert normalisieren.
-
-Umfang:
-
-- Originalbild-Fixtures
-- reine Java-Bildverarbeitung mit `ImageIO`/`BufferedImage`
-- Board-Gruppierung
-- Überschriften `Oben links`, `Oben rechts`, `Unten links`, `Unten rechts`
-- Konfidenz-/Strukturvalidierung
-- Parser-Versionierung
-- Rohbildaufbewahrung 48 Stunden
-- keine Löschung bei unsicherem Parse
-
-Abnahmekriterium:
-
-- alle freigegebenen Originalfixtures exakt korrekt; beschädigte oder unbekannte Bilder brechen kontrolliert ab
-
-## Inkrement 9 – Sichere QuadWords-Ersetzung
-
-Analog zur GridWords-Ersetzung:
-
-- kanonische Unicode-Ausgabe
-- Aktivitätsserie und QuadWords-Lösungsserie ausgeben
-- bei Tagesabschluss gegebenenfalls Komplett- und Perfektserie ergänzen
-- Bot-Message-ID persistieren
-- erst danach Original und Bildnachricht löschen
-- Retry-/Neustartpfade
 
 ## Inkrement 10 – Wochen- und Monatsberichte
 
@@ -290,7 +315,9 @@ Umfang:
 Folgende Abhängigkeiten sind bewusst sequenziell:
 
 - Persistenzzustände vor automatischer Löschung
-- GridWords-Ersetzung vor QuadWords-Ersetzung
+- sichere GridWords-Ersetzung vor sicherer QuadWords-Ersetzung
+- QuadWords-Bildparser vor kanonischer QuadWords-Konsolidierung
+- sichere Konsolidierung beider Spiele vor Tagesstatus und Erinnerungen
 - robuste Serienlogik vor Berichten und Kommentaren
 - stabiler Scheduler vor dynamischer Slash-Command-Konfiguration
 
