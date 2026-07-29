@@ -35,16 +35,16 @@ final class CanonicalEmbedRenderer {
                 .append("\uD83D\uDD25 Aktivität: ").append(days(message.streaks().personalActivity()))
                 .append("\n\uD83D\uDFE9 GridWords gelöst: ")
                 .append(daysOrNone(message.streaks().personalGridWordsSolved()));
-        appendOptional(series, "✅ Komplett", message.personalComplete());
-        appendOptional(series, "💎 Perfekt", message.personalPerfect());
-        appendOptional(series, "🤝 Gemeinsam komplett", message.sharedComplete());
-        appendOptional(series, "🏆 Gemeinsam perfekt", message.sharedPerfect());
+        appendCurrent(series, "✅ Komplett", message.streaks().personalComplete());
+        appendCurrent(series, "💎 Perfekt", message.streaks().personalPerfect());
+        appendCurrent(series, "🤝 Gemeinsam komplett", message.streaks().sharedComplete());
+        appendCurrent(series, "🏆 Gemeinsam perfekt", message.streaks().sharedPerfect());
         return series.toString();
     }
 
-    private static void appendOptional(StringBuilder series, String label, java.util.OptionalInt streak) {
-        if (streak.isPresent()) {
-            series.append("\n").append(label).append(": ").append(days(streak.getAsInt()));
+    private static void appendCurrent(StringBuilder series, String label, int streak) {
+        if (streak > 0) {
+            series.append("\n").append(label).append(": ").append(days(streak));
         }
     }
 
