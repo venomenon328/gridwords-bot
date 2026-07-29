@@ -89,6 +89,26 @@ public final class GridWordsSourceDeletionService {
         };
     }
 
+    /**
+     * Starts deletion for the newly confirmed source and any older sources of the same result that became safe.
+     * Each source is considered at most once during this reconciliation pass.
+     */
+    public void reconcileAfterCanonicalPublication(long sourceMessageId) {
+        SubmissionStore.StoredSubmission current = submissions.findBySourceMessageId(sourceMessageId).orElse(null);
+        if (current == null || current.gameResultId().isEmpty()) {
+            return;
+        }
+        long resultId = current.gameResultId().orElseThrow();
+
+        deleteAfterCanonicalPublication(sourceMessageId);
+        for (SubmissionStore.StoredSubmission candidate : submissions.findGridWordsAwaitingOriginalSourceDeletion()) {
+            if (candidate.sourceMessageId() != sourceMessageId
+                    && candidate.gameResultId().filter(candidateResultId -> candidateResultId == resultId).isPresent()) {
+                deleteAfterCanonicalPublication(candidate.sourceMessageId());
+            }
+        }
+    }
+
     /** Startup recovery reads durable work; it never relies on a scheduler wake-up as its source of truth. */
     public void resumeOpenDeletions() {
         for (SubmissionStore.StoredSubmission submission : submissions.findGridWordsAwaitingOriginalSourceDeletion()) {
