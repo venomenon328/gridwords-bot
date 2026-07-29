@@ -1,7 +1,6 @@
 package de.venomenon.gridwordsbot.application.canonical;
 
 import de.venomenon.gridwordsbot.domain.model.GameType;
-import de.venomenon.gridwordsbot.domain.model.NormalizedBoard;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
 import de.venomenon.gridwordsbot.domain.streak.StreakCalculator;
 import de.venomenon.gridwordsbot.domain.streak.StreakSummary;
@@ -13,42 +12,138 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Objects;
 import java.util.OptionalInt;
 
-/** Publishes one GridWords result outside database transactions and resumes it safely. */
+/** Coordinates one resumable canonical GridWords publication without a Discord call in a transaction. */
 public final class CanonicalGridWordsPublicationService {
-    private final GameResultStore results; private final PlayerStore players; private final SubmissionStore submissions;
-    private final CanonicalMessageGateway discord; private final Clock clock; private final ZoneId zoneId; private final StreakCalculator streaks = new StreakCalculator();
-    public CanonicalGridWordsPublicationService(GameResultStore results, PlayerStore players, SubmissionStore submissions, CanonicalMessageGateway discord, Clock clock, ZoneId zoneId) { this.results=results;this.players=players;this.submissions=submissions;this.discord=discord;this.clock=clock;this.zoneId=zoneId; }
+    private static final long LEASE_SECONDS = 60;
+
+    private final GameResultStore results;
+    private final PlayerStore players;
+    private final SubmissionStore submissions;
+    private final CanonicalMessageGateway discord;
+    private final Clock clock;
+    private final ZoneId zoneId;
+    private final List<Long> configuredPlayerIds;
+    private final StreakCalculator streakCalculator;
+
+    public CanonicalGridWordsPublicationService(
+            GameResultStore results,
+            PlayerStore players,
+            SubmissionStore submissions,
+            CanonicalMessageGateway discord,
+            Clock clock,
+            ZoneId zoneId,
+            List<Long> configuredPlayerIds) {
+        this.results = Objects.requireNonNull(results);
+        this.players = Objects.requireNonNull(players);
+        this.submissions = Objects.requireNonNull(submissions);
+        this.discord = Objects.requireNonNull(discord);
+        this.clock = Objects.requireNonNull(clock);
+        this.zoneId = Objects.requireNonNull(zoneId);
+        this.configuredPlayerIds = List.copyOf(Objects.requireNonNull(configuredPlayerIds));
+        if (this.configuredPlayerIds.size() != 2 || this.configuredPlayerIds.stream().distinct().count() != 2
+                || this.configuredPlayerIds.stream().anyMatch(id -> id <= 0)) {
+            throw new IllegalArgumentException("exactly two distinct configured player IDs are required");
+        }
+        this.streakCalculator = new StreakCalculator();
+    }
+
+    /** @return true only after the canonical ID and the submission state were persisted together. */
     public boolean publish(long sourceMessageId) {
-        SubmissionStore.StoredSubmission submission=submissions.findBySourceMessageId(sourceMessageId).orElseThrow();
-        if (submission.state()==SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED) return true;
-        long resultId=submission.gameResultId().orElseThrow(); GameResultStore.StoredGameResult result=results.findById(resultId).orElseThrow();
-        if (result.parsedResult().gameType()!=GameType.GRIDWORDS) return true;
-        CanonicalResultMessage message=message(result,submission.authorPlayerId());
+        long resultId = 0;
+        boolean claimed = false;
         try {
-            long canonicalId;
-            if(result.canonicalMessageId().isPresent()) {
-                canonicalId=result.canonicalMessageId().getAsLong();
-                try { discord.edit(submission.channelId(),canonicalId,message); }
-                catch(CanonicalMessageGateway.UnknownMessageException missing) { canonicalId=replaceMissing(submission,result,message); if(canonicalId==0)return false; }
-            } else { canonicalId=createOnce(submission,result,message); if(canonicalId==0)return false; }
-            return submissions.completeCanonicalPublication(sourceMessageId,resultId,canonicalId);
-        } catch (CanonicalMessageGateway.UnknownMessageException e) { submissions.markRetryableFailure(sourceMessageId,"canonical message lookup failed"); return false;
-        } catch (RuntimeException e) { submissions.markRetryableFailure(sourceMessageId,"canonical Discord publication failed"); return false; }
+            SubmissionStore.StoredSubmission submission = submissions.findBySourceMessageId(sourceMessageId).orElseThrow();
+            if (submission.state() == SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED) {
+                return true;
+            }
+            resultId = submission.gameResultId().orElseThrow();
+            GameResultStore.StoredGameResult result = results.findById(resultId).orElseThrow();
+            if (result.parsedResult().gameType() != GameType.GRIDWORDS) {
+                return true;
+            }
+            if (!results.claimCanonicalPublication(resultId, clock.instant().plusSeconds(LEASE_SECONDS))) {
+                return false;
+            }
+            claimed = true;
+            CanonicalResultMessage message = canonicalMessage(result, submission.authorPlayerId());
+            long canonicalMessageId = publishOrEdit(submission, result, message);
+            boolean completed = submissions.completeCanonicalPublication(sourceMessageId, resultId, canonicalMessageId);
+            results.releaseCanonicalPublicationClaim(resultId);
+            return completed;
+        } catch (RuntimeException exception) {
+            if (resultId != 0) {
+                try {
+                    submissions.markRetryableFailure(sourceMessageId, "canonical publication failed");
+                } finally {
+                    if (claimed) {
+                        results.releaseCanonicalPublicationClaim(resultId);
+                    }
+                }
+            }
+            return false;
+        }
     }
-    public void resumeOpenPublications() { for (SubmissionStore.StoredSubmission submission:submissions.findGridWordsAwaitingCanonicalPublication()) publish(submission.sourceMessageId()); }
-    private long createOnce(SubmissionStore.StoredSubmission submission,GameResultStore.StoredGameResult result,CanonicalResultMessage message) {
-        if(!results.claimCanonicalPublication(result.id(),clock.instant().plusSeconds(60))) return 0;
-        try { return discord.findByPublicationKey(submission.channelId(),message.publicationKey()).orElseGet(() -> discord.create(submission.channelId(),message)); }
-        finally { results.releaseCanonicalPublicationClaim(result.id()); }
+
+    public void resumeOpenPublications() {
+        for (SubmissionStore.StoredSubmission submission : submissions.findGridWordsAwaitingCanonicalPublication()) {
+            publish(submission.sourceMessageId());
+        }
     }
-    private long replaceMissing(SubmissionStore.StoredSubmission submission,GameResultStore.StoredGameResult result,CanonicalResultMessage message) { return createOnce(submission,result,message); }
-    private CanonicalResultMessage message(GameResultStore.StoredGameResult result,long playerId) {
-        List<GameResultStore.StoredGameResult> all=results.findAll(); List<Long> active=players.findActivePlayers().stream().map(PlayerStore.StoredPlayer::discordUserId).toList();
-        LocalDate today=clock.instant().atZone(zoneId).toLocalDate(); StreakSummary summary=streaks.calculate(all.stream().map(r->new StreakCalculator.PlayerResult(r.playerId(),r.parsedResult())).toList(),active,playerId,today);
-        var parsed=result.parsedResult(); boolean complete=all.stream().filter(r->r.playerId()==playerId&&r.parsedResult().gameDate().equals(parsed.gameDate())).map(r->r.parsedResult().gameType()).distinct().count()==2;
-        boolean perfect=complete&&all.stream().filter(r->r.playerId()==playerId&&r.parsedResult().gameDate().equals(parsed.gameDate())).allMatch(r->r.parsedResult().outcome() instanceof ShareOutcome.Solved);
-        boolean sharedComplete=active.stream().allMatch(player -> all.stream().filter(r -> r.playerId()==player && r.parsedResult().gameDate().equals(parsed.gameDate())).map(r -> r.parsedResult().gameType()).distinct().count()==2); boolean sharedPerfect=sharedComplete && active.stream().allMatch(player -> all.stream().filter(r -> r.playerId()==player && r.parsedResult().gameDate().equals(parsed.gameDate())).allMatch(r -> r.parsedResult().outcome() instanceof ShareOutcome.Solved)); return new CanonicalResultMessage(players.findByDiscordUserId(playerId).orElseThrow().displayName(),GameType.GRIDWORDS,parsed.gameDate(),parsed.outcome(),parsed.duration(),parsed.board().orElseThrow(),summary,complete?OptionalInt.of(summary.personalComplete()):OptionalInt.empty(),perfect?OptionalInt.of(summary.personalPerfect()):OptionalInt.empty(),sharedComplete?OptionalInt.of(summary.sharedComplete()):OptionalInt.empty(),sharedPerfect?OptionalInt.of(summary.sharedPerfect()):OptionalInt.empty(),"gridwords-result-"+result.id());
+
+    private long publishOrEdit(
+            SubmissionStore.StoredSubmission submission,
+            GameResultStore.StoredGameResult result,
+            CanonicalResultMessage message) {
+        if (result.canonicalMessageId().isPresent()) {
+            long existingId = result.canonicalMessageId().getAsLong();
+            try {
+                discord.edit(submission.channelId(), existingId, message);
+                return existingId;
+            } catch (CanonicalMessageGateway.UnknownMessageException ignored) {
+                // The held result lease makes the controlled replacement unique.
+            }
+        }
+        return discord.findByPublicationKey(submission.channelId(), message.publicationKey())
+                .orElseGet(() -> discord.create(submission.channelId(), message));
+    }
+
+    private CanonicalResultMessage canonicalMessage(GameResultStore.StoredGameResult result, long playerId) {
+        List<GameResultStore.StoredGameResult> allResults = results.findAll();
+        LocalDate date = result.parsedResult().gameDate();
+        StreakSummary streaks = streakCalculator.calculate(
+                allResults.stream().map(stored -> new StreakCalculator.PlayerResult(stored.playerId(), stored.parsedResult())).toList(),
+                configuredPlayerIds,
+                playerId,
+                clock.instant().atZone(zoneId).toLocalDate());
+        boolean personalComplete = complete(allResults, playerId, date);
+        boolean personalPerfect = personalComplete && perfect(allResults, playerId, date);
+        boolean sharedComplete = configuredPlayerIds.stream().allMatch(id -> complete(allResults, id, date));
+        boolean sharedPerfect = sharedComplete && configuredPlayerIds.stream().allMatch(id -> perfect(allResults, id, date));
+        return new CanonicalResultMessage(
+                players.findByDiscordUserId(playerId).orElseThrow().displayName(),
+                GameType.GRIDWORDS,
+                date,
+                result.parsedResult().outcome(),
+                result.parsedResult().duration(),
+                result.parsedResult().board().orElseThrow(),
+                streaks,
+                personalComplete ? OptionalInt.of(streaks.personalComplete()) : OptionalInt.empty(),
+                personalPerfect ? OptionalInt.of(streaks.personalPerfect()) : OptionalInt.empty(),
+                sharedComplete ? OptionalInt.of(streaks.sharedComplete()) : OptionalInt.empty(),
+                sharedPerfect ? OptionalInt.of(streaks.sharedPerfect()) : OptionalInt.empty(),
+                "gridwords-result-" + result.id());
+    }
+
+    private static boolean complete(List<GameResultStore.StoredGameResult> results, long playerId, LocalDate date) {
+        return results.stream().filter(result -> result.playerId() == playerId && result.parsedResult().gameDate().equals(date))
+                .map(result -> result.parsedResult().gameType()).distinct().count() == 2;
+    }
+
+    private static boolean perfect(List<GameResultStore.StoredGameResult> results, long playerId, LocalDate date) {
+        return results.stream().filter(result -> result.playerId() == playerId && result.parsedResult().gameDate().equals(date))
+                .allMatch(result -> result.parsedResult().outcome() instanceof ShareOutcome.Solved);
     }
 }

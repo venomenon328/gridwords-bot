@@ -73,6 +73,9 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
                 message.authorId(), parsed, message.content(), parserVersion(parsed));
 
         // A source message that was stored already remains accepted after its date window has elapsed.
+        if (submission.state() == SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED) {
+            return new ProcessingResult.Accepted();
+        }
         if (submission.state() == SubmissionStore.SubmissionState.RESULT_STORED || submission.state() == SubmissionStore.SubmissionState.FAILED_RETRYABLE) {
             submissionStore.storeResult(new SubmissionStore.ResultStorage(message.messageId(), result));
             if (parsed.gameType() == de.venomenon.gridwordsbot.domain.model.GameType.GRIDWORDS && !canonicalPublisher.test(message.messageId())) return new ProcessingResult.Ignored();

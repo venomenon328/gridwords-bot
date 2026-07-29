@@ -38,11 +38,11 @@ class DatabaseInboundConfiguration {
             ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider) {
         return new ProcessSharedResultService(
                 new GridWordsShareParser(), new QuadWordsShareParser(), clock, properties.schedule().timeZone(), playerStore,
-                submissionStore, sourceMessageId -> canonicalProvider.getIfAvailable(() -> new CanonicalGridWordsPublicationService(resultsUnavailable(), playerStore, submissionStore, null, clock, properties.schedule().timeZone())).publish(sourceMessageId));
+                submissionStore, sourceMessageId -> { CanonicalGridWordsPublicationService canonical = canonicalProvider.getIfAvailable(); return canonical == null || canonical.publish(sourceMessageId); });
     }
 
     @Bean @ConditionalOnBean(JDA.class) CanonicalMessageGateway canonicalMessageGateway(JDA jda) { return new JdaCanonicalMessageGateway(jda); }
-    @Bean @ConditionalOnBean(CanonicalMessageGateway.class) CanonicalGridWordsPublicationService canonicalGridWordsPublicationService(GameResultStore results, PlayerStore players, SubmissionStore submissions, CanonicalMessageGateway discord, Clock clock, GridwordsBotProperties properties) { return new CanonicalGridWordsPublicationService(results,players,submissions,discord,clock,properties.schedule().timeZone()); }
+    @Bean @ConditionalOnBean(CanonicalMessageGateway.class) CanonicalGridWordsPublicationService canonicalGridWordsPublicationService(GameResultStore results, PlayerStore players, SubmissionStore submissions, CanonicalMessageGateway discord, Clock clock, GridwordsBotProperties properties) { return new CanonicalGridWordsPublicationService(results, players, submissions, discord, clock, properties.schedule().timeZone(), List.of(properties.players().first().userId(), properties.players().second().userId())); }
 
     @Bean
     ConfiguredPlayerSynchronizer configuredPlayerSynchronizer(
@@ -62,8 +62,6 @@ class DatabaseInboundConfiguration {
             ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider) {
         return new DatabaseInboundStartup(synchronizer, jdaProvider, listenerProvider, canonicalProvider);
     }
-
-    private static GameResultStore resultsUnavailable() { throw new IllegalStateException("canonical publication requires Discord"); }
 
     private ConfiguredPlayer configuredPlayer(GridwordsBotProperties.Player player, List<Long> administrators) {
         return new ConfiguredPlayer(player.userId(), player.displayName(), administrators.contains(player.userId()));
