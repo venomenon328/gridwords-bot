@@ -244,26 +244,74 @@ class GridWordsSourceDeletionServiceTest {
         verify(scheduler).schedule(eq(NOW.plusSeconds(61)), any());
         verifyNoInteractions(discord);
     }
+
+    @Test
+    void confirmedCorrectionReconcilesItsSourceAndOlderEligibleSourcesOfTheSameResult() {
+        long olderSource = 9L;
+        long unrelatedSource = 11L;
+        long resultId = 20L;
+        SubmissionStore.StoredSubmission current = stored(
+                SOURCE, resultId, SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED);
+        SubmissionStore.StoredSubmission older = stored(
+                olderSource, resultId, SubmissionStore.SubmissionState.SUPERSEDED);
+        SubmissionStore.StoredSubmission unrelated = stored(
+                unrelatedSource, 21L, SubmissionStore.SubmissionState.SUPERSEDED);
+        UUID olderToken = UUID.fromString("00000000-0000-0000-0000-000000000003");
+
+        when(submissions.findBySourceMessageId(SOURCE)).thenReturn(Optional.of(current), Optional.of(current));
+        when(submissions.findBySourceMessageId(olderSource)).thenReturn(Optional.of(older));
+        when(submissions.findGridWordsAwaitingOriginalSourceDeletion())
+                .thenReturn(List.of(current, older, unrelated));
+        when(submissions.claimOriginalSourceDeletion(eq(SOURCE), any()))
+                .thenReturn(Optional.of(new SubmissionStore.SourceDeletionClaim(TOKEN, NOW.plusSeconds(60))));
+        when(submissions.claimOriginalSourceDeletion(eq(olderSource), any()))
+                .thenReturn(Optional.of(new SubmissionStore.SourceDeletionClaim(olderToken, NOW.plusSeconds(60))));
+        when(discord.deleteSourceMessage(12L, SOURCE))
+                .thenReturn(SourceMessageDeletionGateway.DeletionResult.DELETED);
+        when(discord.deleteSourceMessage(12L, olderSource))
+                .thenReturn(SourceMessageDeletionGateway.DeletionResult.DELETED);
+        when(submissions.recordOriginalSourceDeleted(SOURCE, TOKEN)).thenReturn(true);
+        when(submissions.recordOriginalSourceDeleted(olderSource, olderToken)).thenReturn(true);
+        when(submissions.completeOriginalSourceDeletion(SOURCE)).thenReturn(true);
+        when(submissions.completeOriginalSourceDeletion(olderSource)).thenReturn(true);
+
+        service.reconcileAfterCanonicalPublication(SOURCE);
+
+        InOrder order = inOrder(discord);
+        order.verify(discord).deleteSourceMessage(12L, SOURCE);
+        order.verify(discord).deleteSourceMessage(12L, olderSource);
+        verify(discord, never()).deleteSourceMessage(12L, unrelatedSource);
+        verify(submissions, times(1)).claimOriginalSourceDeletion(eq(SOURCE), any());
+        verify(submissions, times(1)).claimOriginalSourceDeletion(eq(olderSource), any());
+        verify(submissions, never()).claimOriginalSourceDeletion(eq(unrelatedSource), any());
+    }
+
     private void published() {
         when(submissions.findBySourceMessageId(SOURCE)).thenReturn(Optional.of(
                 stored(SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED)));
     }
 
     private static SubmissionStore.StoredSubmission stored(SubmissionStore.SubmissionState state) {
+        return stored(SOURCE, 20L, state);
+    }
+
+    private static SubmissionStore.StoredSubmission stored(
+            long sourceMessageId, long resultId, SubmissionStore.SubmissionState state) {
         return new SubmissionStore.StoredSubmission(
-                SOURCE,
+                sourceMessageId,
                 11L,
                 12L,
                 101L,
                 "share",
                 state,
-                Optional.of(20L),
+                Optional.of(resultId),
                 List.of(),
                 Optional.empty(),
                 Optional.empty(),
                 Instant.EPOCH,
                 Instant.EPOCH);
     }
+
     private static SubmissionStore.StoredSubmission storedWithLease(Instant leaseUntil) {
         return new SubmissionStore.StoredSubmission(
                 SOURCE, 11L, 12L, 101L, "share",
