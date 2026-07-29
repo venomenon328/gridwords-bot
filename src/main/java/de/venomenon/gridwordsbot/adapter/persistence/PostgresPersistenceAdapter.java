@@ -893,6 +893,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                     rs.getBoolean("shared_perfect_established")),
             optionalInstant(rs, "original_deleted_at"),
             OriginalDeletionFailure.valueOf(rs.getString("source_delete_failure_class")),
+            optionalInstant(rs, "source_delete_lease_until"),
             instant(rs, "received_at"), instant(rs, "updated_at"));
 
     private List<AttachmentSnapshot> attachments(long sourceMessageId) {

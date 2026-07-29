@@ -45,9 +45,16 @@ public final class GridWordsSourceDeletionService {
             return false;
         }
 
+        java.time.Instant now = clock.instant();
+        if (submission.sourceDeletionLeaseUntil().filter(leaseUntil -> leaseUntil.isAfter(now)).isPresent()) {
+            scheduleRetryAt(sourceMessageId, submission.sourceDeletionLeaseUntil().orElseThrow().plusSeconds(1));
+            return false;
+        }
+
         SubmissionStore.SourceDeletionClaim claim = submissions.claimOriginalSourceDeletion(
-                sourceMessageId, clock.instant().plusSeconds(LEASE_SECONDS)).orElse(null);
+                sourceMessageId, now.plusSeconds(LEASE_SECONDS)).orElse(null);
         if (claim == null) {
+            scheduleRetryAfterBusyClaim(sourceMessageId, now);
             return false;
         }
 
@@ -67,7 +74,7 @@ public final class GridWordsSourceDeletionService {
                         SubmissionStore.OriginalDeletionFailure.RETRYABLE,
                         "source message deletion failed transiently");
                 if (recorded) {
-                    scheduleRetry(sourceMessageId);
+                    scheduleRetryAt(sourceMessageId, clock.instant().plusSeconds(LEASE_SECONDS + 1));
                 }
                 yield false;
             }
@@ -96,12 +103,19 @@ public final class GridWordsSourceDeletionService {
         return submissions.completeOriginalSourceDeletion(sourceMessageId);
     }
 
-    private void scheduleRetry(long sourceMessageId) {
+    private void scheduleRetryAfterBusyClaim(long sourceMessageId, java.time.Instant now) {
+        submissions.findBySourceMessageId(sourceMessageId)
+                .flatMap(SubmissionStore.StoredSubmission::sourceDeletionLeaseUntil)
+                .filter(leaseUntil -> leaseUntil.isAfter(now))
+                .ifPresent(leaseUntil -> scheduleRetryAt(sourceMessageId, leaseUntil.plusSeconds(1)));
+    }
+
+    private void scheduleRetryAt(long sourceMessageId, java.time.Instant retryAt) {
         if (!scheduledRetries.add(sourceMessageId)) {
             return;
         }
         try {
-            retryScheduler.schedule(clock.instant().plusSeconds(LEASE_SECONDS + 1), () -> {
+            retryScheduler.schedule(retryAt, () -> {
                 scheduledRetries.remove(sourceMessageId);
                 deleteAfterCanonicalPublication(sourceMessageId);
             });

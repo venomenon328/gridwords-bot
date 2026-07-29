@@ -53,6 +53,31 @@ class JdaSourceMessageDeletionGatewayTest {
                 .isEqualTo(SourceMessageDeletionGateway.DeletionResult.RETRYABLE_FAILURE);
     }
 
+    @Test
+    void classifiesSynchronousPermissionFailureWhenCreatingTheDeleteActionAsPermanent() {
+        JDA jda = mock(JDA.class);
+        TextChannel channel = mock(TextChannel.class);
+        when(jda.getTextChannelById(12L)).thenReturn(channel);
+        when(channel.deleteMessageById(10L)).thenThrow(mock(
+                net.dv8tion.jda.api.exceptions.InsufficientPermissionException.class));
+
+        assertThat(new JdaSourceMessageDeletionGateway(jda).deleteSourceMessage(12L, 10L))
+                .isEqualTo(SourceMessageDeletionGateway.DeletionResult.PERMANENT_FAILURE);
+    }
+
+    @Test
+    void classifiesSynchronousMissingAccessWhenExecutingTheDeleteActionAsPermanent() {
+        JDA jda = mock(JDA.class);
+        TextChannel channel = mock(TextChannel.class);
+        @SuppressWarnings("unchecked")
+        AuditableRestAction<Void> delete = mock(AuditableRestAction.class);
+        when(jda.getTextChannelById(12L)).thenReturn(channel);
+        when(channel.deleteMessageById(10L)).thenReturn(delete);
+        when(delete.complete()).thenThrow(mock(net.dv8tion.jda.api.exceptions.MissingAccessException.class));
+
+        assertThat(new JdaSourceMessageDeletionGateway(jda).deleteSourceMessage(12L, 10L))
+                .isEqualTo(SourceMessageDeletionGateway.DeletionResult.PERMANENT_FAILURE);
+    }
     private static SourceMessageDeletionGateway.DeletionResult resultFor(ErrorResponse error) {
         JDA jda = mock(JDA.class);
         TextChannel channel = mock(TextChannel.class);

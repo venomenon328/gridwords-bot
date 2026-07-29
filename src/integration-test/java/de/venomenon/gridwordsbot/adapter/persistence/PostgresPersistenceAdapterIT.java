@@ -713,6 +713,33 @@ class PostgresPersistenceAdapterIT {
     }
 
     @Test
+    void keepsAnActiveSourceDeletionLeaseVisibleAcrossRestartUntilItCanBeClaimedAgain() {
+        long playerId = 173L;
+        long sourceMessageId = 974L;
+        Instant leaseUntil = now.plusSeconds(60);
+        adapter.upsert(new PlayerStore.PlayerUpsert(playerId, "Delete lease recovery", true, false));
+        registerSubmission(sourceMessageId, playerId);
+        long resultId = store(sourceMessageId, resultFor(playerId, 3, "delete lease recovery"), List.of())
+                .gameResultId().orElseThrow();
+        GameResultStore.PublicationClaim publicationClaim = adapter.claimCanonicalPublication(resultId, leaseUntil)
+                .orElseThrow();
+        transactions.execute(status -> adapter.completeCanonicalPublication(
+                sourceMessageId, resultId, 9740L, publicationClaim.token()));
+        transactions.execute(status -> adapter.claimOriginalSourceDeletion(sourceMessageId, leaseUntil).orElseThrow());
+
+        PostgresPersistenceAdapter restarted = new PostgresPersistenceAdapter(jdbc, Clock.fixed(now, ZoneOffset.UTC));
+        SubmissionStore.StoredSubmission recovered = restarted.findGridWordsAwaitingOriginalSourceDeletion().stream()
+                .filter(submission -> submission.sourceMessageId() == sourceMessageId)
+                .findFirst().orElseThrow();
+        assertEquals(Optional.of(leaseUntil), recovered.sourceDeletionLeaseUntil());
+        assertTrue(transactions.execute(status -> restarted.claimOriginalSourceDeletion(sourceMessageId, leaseUntil)).isEmpty());
+
+        PostgresPersistenceAdapter afterLeaseExpiry = new PostgresPersistenceAdapter(
+                jdbc, Clock.fixed(leaseUntil.plusSeconds(1), ZoneOffset.UTC));
+        assertTrue(transactions.execute(status -> afterLeaseExpiry.claimOriginalSourceDeletion(
+                sourceMessageId, leaseUntil.plusSeconds(61))).isPresent());
+    }
+    @Test
     void rejectsAStaleSourceDeletionOwnerAndAllowsExactlyOneConcurrentOwner() throws Exception {
         long playerId = 171L;
         long sourceMessageId = 971L;

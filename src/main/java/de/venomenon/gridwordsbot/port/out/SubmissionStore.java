@@ -219,6 +219,7 @@ public interface SubmissionStore {
             PublicationContext publicationContext,
             Optional<Instant> originalDeletedAt,
             OriginalDeletionFailure originalDeletionFailure,
+            Optional<Instant> sourceDeletionLeaseUntil,
             Instant receivedAt,
             Instant updatedAt) {
 
@@ -249,6 +250,7 @@ public interface SubmissionStore {
                     PublicationContext.none(),
                     Optional.empty(),
                     OriginalDeletionFailure.NONE,
+                    Optional.empty(),
                     receivedAt,
                     updatedAt);
         }
@@ -281,6 +283,7 @@ public interface SubmissionStore {
                     publicationContext,
                     Optional.empty(),
                     OriginalDeletionFailure.NONE,
+                    Optional.empty(),
                     receivedAt,
                     updatedAt);
         }

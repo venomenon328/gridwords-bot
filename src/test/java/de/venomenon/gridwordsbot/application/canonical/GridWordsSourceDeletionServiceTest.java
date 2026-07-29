@@ -205,6 +205,45 @@ class GridWordsSourceDeletionServiceTest {
         verifyNoInteractions(discord);
     }
 
+    @Test
+    void startupRecoverySchedulesAnActivePersistedLeaseAndRetriesItAfterExpiry() {
+        MutableClock mutableClock = new MutableClock(NOW);
+        service = new GridWordsSourceDeletionService(submissions, discord, mutableClock, scheduler);
+        SubmissionStore.StoredSubmission busy = storedWithLease(NOW.plusSeconds(60));
+        SubmissionStore.StoredSubmission available = stored(SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED);
+        when(submissions.findGridWordsAwaitingOriginalSourceDeletion()).thenReturn(List.of(busy));
+        when(submissions.findBySourceMessageId(SOURCE)).thenReturn(Optional.of(busy), Optional.of(available));
+        when(submissions.claimOriginalSourceDeletion(eq(SOURCE), any())).thenReturn(
+                Optional.of(new SubmissionStore.SourceDeletionClaim(TOKEN, NOW.plusSeconds(121))));
+        when(discord.deleteSourceMessage(12L, SOURCE))
+                .thenReturn(SourceMessageDeletionGateway.DeletionResult.DELETED);
+        when(submissions.recordOriginalSourceDeleted(SOURCE, TOKEN)).thenReturn(true);
+        when(submissions.completeOriginalSourceDeletion(SOURCE)).thenReturn(true);
+        ArgumentCaptor<Runnable> retry = ArgumentCaptor.forClass(Runnable.class);
+
+        service.resumeOpenDeletions();
+
+        verify(scheduler).schedule(eq(NOW.plusSeconds(61)), retry.capture());
+        verify(submissions, never()).claimOriginalSourceDeletion(eq(SOURCE), any());
+        mutableClock.set(NOW.plusSeconds(61));
+        retry.getValue().run();
+
+        verify(discord).deleteSourceMessage(12L, SOURCE);
+        verify(submissions).completeOriginalSourceDeletion(SOURCE);
+    }
+
+    @Test
+    void claimCollisionSchedulesThePersistedBusyLeaseForRecovery() {
+        SubmissionStore.StoredSubmission available = stored(SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED);
+        SubmissionStore.StoredSubmission busy = storedWithLease(NOW.plusSeconds(60));
+        when(submissions.findBySourceMessageId(SOURCE)).thenReturn(Optional.of(available), Optional.of(busy));
+        when(submissions.claimOriginalSourceDeletion(eq(SOURCE), any())).thenReturn(Optional.empty());
+
+        assertThat(service.deleteAfterCanonicalPublication(SOURCE)).isFalse();
+
+        verify(scheduler).schedule(eq(NOW.plusSeconds(61)), any());
+        verifyNoInteractions(discord);
+    }
     private void published() {
         when(submissions.findBySourceMessageId(SOURCE)).thenReturn(Optional.of(
                 stored(SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED)));
@@ -224,5 +263,40 @@ class GridWordsSourceDeletionServiceTest {
                 Optional.empty(),
                 Instant.EPOCH,
                 Instant.EPOCH);
+    }
+    private static SubmissionStore.StoredSubmission storedWithLease(Instant leaseUntil) {
+        return new SubmissionStore.StoredSubmission(
+                SOURCE, 11L, 12L, 101L, "share",
+                SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED,
+                Optional.of(20L), List.of(), Optional.empty(), Optional.empty(),
+                SubmissionStore.PublicationContext.none(), Optional.empty(),
+                SubmissionStore.OriginalDeletionFailure.NONE, Optional.of(leaseUntil), Instant.EPOCH, Instant.EPOCH);
+    }
+
+    private static final class MutableClock extends Clock {
+        private Instant instant;
+
+        private MutableClock(Instant instant) {
+            this.instant = instant;
+        }
+
+        void set(Instant instant) {
+            this.instant = instant;
+        }
+
+        @Override
+        public java.time.ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(java.time.ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return instant;
+        }
     }
 }
