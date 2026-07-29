@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -29,11 +30,19 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -420,6 +429,134 @@ class CanonicalGridWordsPublicationServiceTest {
     }
 
     @Test
+    void compensatesAStaleOlderEditAfterANewerCorrectionWasPersisted() throws Exception {
+        long correctionSource = 11L;
+        SubmissionStore.StoredSubmission older = storedSubmission(
+                SOURCE, SubmissionStore.SubmissionState.RESULT_STORED, SubmissionStore.PublicationContext.none());
+        SubmissionStore.StoredSubmission newerOpen = storedSubmission(
+                correctionSource, SubmissionStore.SubmissionState.RESULT_STORED, SubmissionStore.PublicationContext.none());
+        SubmissionStore.StoredSubmission newerPublished = storedSubmission(
+                correctionSource,
+                SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED,
+                SubmissionStore.PublicationContext.none());
+        AtomicReference<SubmissionStore.StoredSubmission> olderState = new AtomicReference<>(older);
+        AtomicReference<SubmissionStore.StoredSubmission> newerState = new AtomicReference<>(newerOpen);
+        AtomicReference<GameResultStore.StoredGameResult> currentResult = new AtomicReference<>(
+                gridResult(RESULT, TOBIAS, OptionalLong.of(88L), 4));
+        AtomicReference<CanonicalResultMessage> visibleEmbed = new AtomicReference<>();
+        AtomicReference<Instant> currentTime = new AtomicReference<>(NOW);
+        Clock controlledClock = new Clock() {
+            @Override
+            public ZoneId getZone() {
+                return ZoneOffset.UTC;
+            }
+
+            @Override
+            public Clock withZone(ZoneId zone) {
+                return this;
+            }
+
+            @Override
+            public Instant instant() {
+                return currentTime.get();
+            }
+        };
+        CountDownLatch olderEditStarted = new CountDownLatch(1);
+        CountDownLatch allowOlderEditToReturn = new CountDownLatch(1);
+        List<ScheduledAction> scheduled = new ArrayList<>();
+        List<Instant> requestedLeaseEnds = new ArrayList<>();
+        service = new CanonicalGridWordsPublicationService(
+                results,
+                players,
+                submissions,
+                discord,
+                controlledClock,
+                ZoneId.of("Europe/Berlin"),
+                List.of(TOBIAS, GEORGIA),
+                (at, action) -> scheduled.add(new ScheduledAction(at, action)),
+                recoveredReactionGateway);
+        when(submissions.findBySourceMessageId(anyLong())).thenAnswer(invocation -> {
+            long sourceMessageId = invocation.getArgument(0);
+            if (sourceMessageId == SOURCE) {
+                return Optional.of(olderState.get());
+            }
+            if (sourceMessageId == correctionSource) {
+                return Optional.of(newerState.get());
+            }
+            return Optional.empty();
+        });
+        when(submissions.findCurrentCanonicalPublicationCandidate(RESULT)).thenAnswer(
+                invocation -> Optional.of(newerState.get()));
+        when(submissions.prepareCanonicalPublication(anyLong(), anyLong()))
+                .thenReturn(SubmissionStore.CanonicalPublicationPreparation.PUBLISHABLE);
+        when(results.findById(RESULT)).thenAnswer(invocation -> Optional.of(currentResult.get()));
+        when(results.findAll()).thenAnswer(invocation -> List.of(currentResult.get()));
+        AtomicInteger claims = new AtomicInteger();
+        when(results.claimCanonicalPublication(eq(RESULT), any())).thenAnswer(invocation -> {
+            Instant leaseUntil = invocation.getArgument(1);
+            requestedLeaseEnds.add(leaseUntil);
+            return Optional.of(new GameResultStore.PublicationClaim(UUID.fromString(switch (claims.incrementAndGet()) {
+                case 1 -> "00000000-0000-0000-0000-000000000016";
+                case 2 -> "00000000-0000-0000-0000-000000000017";
+                case 3 -> "00000000-0000-0000-0000-000000000018";
+                default -> throw new AssertionError("unexpected additional claim");
+            }), leaseUntil));
+        });
+        doAnswer(invocation -> {
+            CanonicalResultMessage message = invocation.getArgument(2);
+            int attempts = ((ShareOutcome.Solved) message.outcome()).attemptsUsed();
+            if (attempts == 4) {
+                olderEditStarted.countDown();
+                if (!allowOlderEditToReturn.await(5, TimeUnit.SECONDS)) {
+                    throw new AssertionError("older edit was not released");
+                }
+            }
+            visibleEmbed.set(message);
+            return null;
+        }).when(discord).edit(eq(12L), eq(88L), any());
+        when(submissions.completeCanonicalPublication(anyLong(), eq(RESULT), eq(88L), any())).thenAnswer(invocation -> {
+            long sourceMessageId = invocation.getArgument(0);
+            if (sourceMessageId == SOURCE) {
+                throw new SubmissionConflictException("older publisher was superseded");
+            }
+            newerState.set(newerPublished);
+            return true;
+        });
+        when(submissions.completeCanonicalRefresh(correctionSource, RESULT, 88L,
+                UUID.fromString("00000000-0000-0000-0000-000000000018"))).thenReturn(true);
+
+        try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
+            Future<Boolean> olderPublish = executor.submit(() -> service.publish(SOURCE));
+            assertThat(olderEditStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+            currentTime.set(NOW.plusSeconds(61));
+            olderState.set(storedSubmission(
+                    SOURCE, SubmissionStore.SubmissionState.SUPERSEDED, SubmissionStore.PublicationContext.none()));
+            currentResult.set(gridResult(RESULT, TOBIAS, OptionalLong.of(88L), 2));
+            assertThat(service.publish(correctionSource)).isTrue();
+            assertThat(requestedLeaseEnds).containsExactly(NOW.plusSeconds(60), NOW.plusSeconds(121));
+
+            allowOlderEditToReturn.countDown();
+            assertThat(olderPublish.get(5, TimeUnit.SECONDS)).isFalse();
+        }
+
+        assertThat(((ShareOutcome.Solved) visibleEmbed.get().outcome()).attemptsUsed()).isEqualTo(4);
+        assertThat(scheduled).hasSize(2);
+        ScheduledAction compensation = scheduled.stream()
+                .filter(action -> action.at().equals(NOW.plusSeconds(62)))
+                .findFirst()
+                .orElseThrow();
+        compensation.action().run();
+
+        assertThat(((ShareOutcome.Solved) visibleEmbed.get().outcome()).attemptsUsed()).isEqualTo(2);
+        assertThat(requestedLeaseEnds).containsExactly(NOW.plusSeconds(60), NOW.plusSeconds(121), NOW.plusSeconds(121));
+        verify(discord, times(3)).edit(eq(12L), eq(88L), any());
+        verify(submissions).completeCanonicalRefresh(
+                correctionSource, RESULT, 88L, UUID.fromString("00000000-0000-0000-0000-000000000018"));
+        verify(recoveredReactionGateway, never()).addAcceptedReaction(12L, SOURCE);
+        verifyNoInteractions(retryScheduler);
+    }
+    @Test
     void startupRecoverySkipsASubmissionSupersededAfterTheRecoveryScan() {
         SubmissionStore.StoredSubmission recoverySnapshot = storedSubmission(
                 SOURCE, SubmissionStore.SubmissionState.RESULT_STORED, SubmissionStore.PublicationContext.none());
@@ -464,6 +601,8 @@ class CanonicalGridWordsPublicationServiceTest {
                 Instant.EPOCH);
     }
 
+    private record ScheduledAction(Instant at, Runnable action) {
+    }
     private static GameResultStore.PublicationClaim claim(String token) {
         return new GameResultStore.PublicationClaim(UUID.fromString(token), NOW.plusSeconds(60));
     }

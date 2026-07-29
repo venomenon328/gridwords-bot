@@ -24,6 +24,7 @@ import java.util.concurrent.RejectedExecutionException;
 public final class CanonicalGridWordsPublicationService {
 
     private static final long LEASE_SECONDS = 60;
+    private static final long REFRESH_DELAY_SECONDS = 1;
 
     private final GameResultStore results;
     private final PlayerStore players;
@@ -36,6 +37,7 @@ public final class CanonicalGridWordsPublicationService {
     private final PublicationRetryScheduler retryScheduler;
     private final SourceMessageReactionGateway acceptedReactionGateway;
     private final Set<Long> scheduledRetries = ConcurrentHashMap.newKeySet();
+    private final Set<Long> scheduledRefreshes = ConcurrentHashMap.newKeySet();
 
     public CanonicalGridWordsPublicationService(
             GameResultStore results,
@@ -101,6 +103,7 @@ public final class CanonicalGridWordsPublicationService {
     private PublicationOutcome publishOutcome(long sourceMessageId) {
         long resultId = 0;
         UUID claimToken = null;
+        boolean discordSideEffectCompleted = false;
         try {
             SubmissionStore.StoredSubmission submission = submissions.findBySourceMessageId(sourceMessageId)
                     .orElseThrow();
@@ -139,6 +142,7 @@ public final class CanonicalGridWordsPublicationService {
                     submission,
                     result,
                     canonicalMessage(result, submission.authorPlayerId(), submission.publicationContext()));
+            discordSideEffectCompleted = true;
             boolean completed = submissions.completeCanonicalPublication(
                     sourceMessageId,
                     resultId,
@@ -153,8 +157,14 @@ public final class CanonicalGridWordsPublicationService {
                 try {
                     submissions.markRetryableFailure(sourceMessageId, "canonical publication failed");
                 } finally {
-                    if (claimToken != null) {
-                        results.releaseCanonicalPublicationClaim(resultId, claimToken);
+                    try {
+                        if (claimToken != null) {
+                            results.releaseCanonicalPublicationClaim(resultId, claimToken);
+                        }
+                    } finally {
+                        if (discordSideEffectCompleted) {
+                            scheduleCurrentRefresh(resultId, REFRESH_DELAY_SECONDS);
+                        }
                     }
                 }
             }
@@ -184,6 +194,68 @@ public final class CanonicalGridWordsPublicationService {
         }
         if (outcome == PublicationOutcome.PUBLISHED) {
             submissions.findBySourceMessageId(sourceMessageId).ifPresent(this::acknowledgeDeferredPublication);
+        }
+    }
+
+    /** Restores the visible canonical embed after a stale publisher completed its Discord call too late. */
+    private void scheduleCurrentRefresh(long resultId, long delaySeconds) {
+        if (!scheduledRefreshes.add(resultId)) {
+            return;
+        }
+        try {
+            retryScheduler.schedule(clock.instant().plusSeconds(delaySeconds), () -> retryCurrentRefresh(resultId));
+        } catch (RejectedExecutionException ignored) {
+            // A later startup publication/retry remains able to restore the canonical message.
+            scheduledRefreshes.remove(resultId);
+        }
+    }
+
+    private void retryCurrentRefresh(long resultId) {
+        RefreshOutcome outcome = refreshCurrentPublication(resultId);
+        scheduledRefreshes.remove(resultId);
+        if (outcome == RefreshOutcome.RETRY_SCHEDULED) {
+            scheduleCurrentRefresh(resultId, LEASE_SECONDS + 1);
+        }
+    }
+
+    private RefreshOutcome refreshCurrentPublication(long resultId) {
+        UUID claimToken = null;
+        try {
+            SubmissionStore.StoredSubmission current = submissions.findCurrentCanonicalPublicationCandidate(resultId)
+                    .orElse(null);
+            if (current == null) {
+                return RefreshOutcome.COMPLETED;
+            }
+            if (current.state() != SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED) {
+                return publishOutcome(current.sourceMessageId()) == PublicationOutcome.SUPERSEDED
+                        ? RefreshOutcome.RETRY_SCHEDULED
+                        : RefreshOutcome.COMPLETED;
+            }
+
+            GameResultStore.StoredGameResult result = results.findById(resultId).orElseThrow();
+            if (result.parsedResult().gameType() != GameType.GRIDWORDS) {
+                return RefreshOutcome.COMPLETED;
+            }
+            GameResultStore.PublicationClaim claim = results.claimCanonicalPublication(
+                    resultId,
+                    clock.instant().plusSeconds(LEASE_SECONDS)).orElse(null);
+            if (claim == null) {
+                return RefreshOutcome.RETRY_SCHEDULED;
+            }
+            claimToken = claim.token();
+            long canonicalMessageId = publishOrEdit(
+                    current,
+                    result,
+                    canonicalMessage(result, current.authorPlayerId(), current.publicationContext()));
+            if (!submissions.completeCanonicalRefresh(current.sourceMessageId(), resultId, canonicalMessageId, claimToken)) {
+                throw new IllegalStateException("canonical refresh completion was not accepted");
+            }
+            return RefreshOutcome.COMPLETED;
+        } catch (RuntimeException exception) {
+            if (claimToken != null) {
+                results.releaseCanonicalPublicationClaim(resultId, claimToken);
+            }
+            return RefreshOutcome.RETRY_SCHEDULED;
         }
     }
 
@@ -245,5 +317,10 @@ public final class CanonicalGridWordsPublicationService {
         PUBLISHED,
         RETRY_SCHEDULED,
         SUPERSEDED
+    }
+
+    private enum RefreshOutcome {
+        COMPLETED,
+        RETRY_SCHEDULED
     }
 }

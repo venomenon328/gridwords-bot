@@ -37,6 +37,20 @@ public interface SubmissionStore {
         throw new UnsupportedOperationException("canonical publication preparation is not available");
     }
 
+    /** Returns the current source according to the persisted correction order for one result. */
+    default Optional<StoredSubmission> findCurrentCanonicalPublicationCandidate(long gameResultId) {
+        throw new UnsupportedOperationException("current canonical publication lookup is not available");
+    }
+
+    /** Persists a token-owned refresh of an already published current canonical message. */
+    default boolean completeCanonicalRefresh(
+            long sourceMessageId,
+            long gameResultId,
+            long canonicalMessageId,
+            UUID claimToken) {
+        throw new UnsupportedOperationException("canonical refresh is not available");
+    }
+
     default List<StoredSubmission> findGridWordsAwaitingCanonicalPublication() {
         throw new UnsupportedOperationException("publication recovery is not available");
     }

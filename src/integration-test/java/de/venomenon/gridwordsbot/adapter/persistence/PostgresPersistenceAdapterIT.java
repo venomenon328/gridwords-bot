@@ -477,6 +477,40 @@ class PostgresPersistenceAdapterIT {
         assertEquals(5679L, adapter.findById(resultId).orElseThrow().canonicalMessageId().orElseThrow());
     }
     @Test
+    void refreshFenceSelectsOnlyTheNewestPublishedCorrection() {
+        long playerId = 153L;
+        long olderSource = 956L;
+        long newerSource = 957L;
+        adapter.upsert(new PlayerStore.PlayerUpsert(playerId, "Refresh fence", true, false));
+        registerSubmission(olderSource, playerId, now);
+        long resultId = store(olderSource, resultFor(playerId, 4, "older refresh"), List.of())
+                .gameResultId()
+                .orElseThrow();
+        GameResultStore.PublicationClaim staleClaim = adapter.claimCanonicalPublication(resultId, now.minusSeconds(1))
+                .orElseThrow();
+        adapter.markRetryableFailure(olderSource, "older Discord call is still returning");
+
+        registerSubmission(newerSource, playerId, now.plusSeconds(1));
+        store(newerSource, resultFor(playerId, 2, "newer refresh"), List.of());
+        GameResultStore.PublicationClaim newerClaim = adapter.claimCanonicalPublication(resultId, now.plusSeconds(60))
+                .orElseThrow();
+        assertEquals(Boolean.TRUE, transactions.execute(status -> adapter.completeCanonicalPublication(
+                newerSource, resultId, 5681L, newerClaim.token())));
+
+        SubmissionStore.StoredSubmission current = adapter.findCurrentCanonicalPublicationCandidate(resultId).orElseThrow();
+        assertEquals(newerSource, current.sourceMessageId());
+        assertEquals(SubmissionStore.SubmissionState.SUPERSEDED,
+                adapter.findBySourceMessageId(olderSource).orElseThrow().state());
+        assertThrows(SubmissionConflictException.class, () -> transactions.execute(status ->
+                adapter.completeCanonicalRefresh(olderSource, resultId, 9999L, staleClaim.token())));
+
+        GameResultStore.PublicationClaim refreshClaim = adapter.claimCanonicalPublication(resultId, now.plusSeconds(60))
+                .orElseThrow();
+        assertEquals(Boolean.TRUE, transactions.execute(status -> adapter.completeCanonicalRefresh(
+                newerSource, resultId, 5681L, refreshClaim.token())));
+        assertEquals(5681L, adapter.findById(resultId).orElseThrow().canonicalMessageId().orElseThrow());
+    }
+    @Test
     void reconstructsRetryableGridWordsSubmissionsForStartupRecovery() {
         adapter.upsert(new PlayerStore.PlayerUpsert(124L, "Retry", true, false));
         adapter.register(new SubmissionStore.SubmissionRegistration(925L, 200L, 300L, 124L, "retry", List.of(), now));

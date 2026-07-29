@@ -302,6 +302,48 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         return CanonicalPublicationPreparation.PUBLISHABLE;
     }
     @Override
+    public Optional<StoredSubmission> findCurrentCanonicalPublicationCandidate(long gameResultId) {
+        return jdbc.query("""
+                SELECT * FROM submission
+                WHERE game_result_id = ?
+                  AND processing_state IN ('RESULT_STORED', 'FAILED_RETRYABLE', 'CANONICAL_MESSAGE_PUBLISHED')
+                ORDER BY received_at DESC, source_message_id DESC
+                LIMIT 1
+                """, SUBMISSION, gameResultId).stream().findFirst();
+    }
+
+    /**
+     * Fences a compensating refresh after a stale Discord side effect. The source must still be the newest
+     * linked submission and the token must still own the result lease when the refreshed canonical ID is saved.
+     */
+    @Override
+    @Transactional
+    public boolean completeCanonicalRefresh(
+            long sourceMessageId,
+            long resultId,
+            long canonicalMessageId,
+            UUID claimToken) {
+        StoredSubmission submission = lockRequired(sourceMessageId);
+        if (submission.gameResultId().filter(id -> id == resultId).isEmpty()
+                || submission.state() != SubmissionState.CANONICAL_MESSAGE_PUBLISHED) {
+            throw new SubmissionConflictException("submission is not the published current source");
+        }
+        lockResult(resultId);
+        if (hasNewerLinkedSubmission(submission, resultId)) {
+            throw new SubmissionConflictException("a newer submission superseded the refresh source");
+        }
+        int changed = jdbc.update("""
+                UPDATE game_result
+                SET canonical_message_id = ?, canonical_publish_lease_until = NULL,
+                    canonical_publish_claim_token = NULL, updated_at = ?, version = version + 1
+                WHERE id = ? AND canonical_publish_claim_token = ?
+                """, canonicalMessageId, databaseTime(clock.instant()), resultId, claimToken);
+        if (changed != 1) {
+            throw new SubmissionConflictException("canonical refresh claim was lost");
+        }
+        return true;
+    }
+    @Override
     public Optional<PublicationClaim> claimCanonicalPublication(long resultId, Instant leaseUntil) {
         UUID token = UUID.randomUUID();
         Instant now = clock.instant();
