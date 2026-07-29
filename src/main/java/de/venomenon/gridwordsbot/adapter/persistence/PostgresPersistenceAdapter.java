@@ -468,19 +468,28 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         Long deliveryGeneration = generations.isEmpty() ? null : generations.getFirst();
         boolean otherOutstanding = hasOutstandingCanonicalDeliveryAttemptExcept(resultId, claimToken);
         Instant now = clock.instant();
-        int claimedResult = jdbc.update("""
-                UPDATE game_result
-                SET canonical_message_id = ?, canonical_publish_lease_until = NULL,
-                    canonical_publish_claim_token = NULL,
-                    canonical_refresh_required = CASE
-                        WHEN ? IS NULL THEN canonical_refresh_required
-                        WHEN canonical_refresh_generation = ? AND ? = FALSE THEN FALSE
-                        ELSE TRUE
-                    END,
-                    updated_at = ?, version = version + 1
-                WHERE id = ? AND canonical_publish_claim_token = ?
-                """, canonicalMessageId, deliveryGeneration, deliveryGeneration, otherOutstanding,
-                databaseTime(now), resultId, claimToken);
+        int claimedResult;
+        if (deliveryGeneration == null) {
+            claimedResult = jdbc.update("""
+                    UPDATE game_result
+                    SET canonical_message_id = ?, canonical_publish_lease_until = NULL,
+                        canonical_publish_claim_token = NULL, updated_at = ?, version = version + 1
+                    WHERE id = ? AND canonical_publish_claim_token = ?
+                    """, canonicalMessageId, databaseTime(now), resultId, claimToken);
+        } else {
+            claimedResult = jdbc.update("""
+                    UPDATE game_result
+                    SET canonical_message_id = ?, canonical_publish_lease_until = NULL,
+                        canonical_publish_claim_token = NULL,
+                        canonical_refresh_required = CASE
+                            WHEN canonical_refresh_generation = ? AND ? = FALSE THEN FALSE
+                            ELSE TRUE
+                        END,
+                        updated_at = ?, version = version + 1
+                    WHERE id = ? AND canonical_publish_claim_token = ?
+                    """, canonicalMessageId, deliveryGeneration, otherOutstanding,
+                    databaseTime(now), resultId, claimToken);
+        }
         if (claimedResult != 1) {
             throw new SubmissionConflictException("publication claim was lost");
         }
