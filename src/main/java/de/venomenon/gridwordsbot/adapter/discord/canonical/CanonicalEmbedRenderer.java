@@ -19,7 +19,7 @@ final class CanonicalEmbedRenderer {
                 .setDescription(message.playerDisplayName() + " · " + outcome + " · " + duration
                         + "\n\n" + message.board().canonicalText()
                         + "\n\n" + series(message))
-                .setFooter(message.publicationKey())
+                .setFooter(DiscordPublicationKey.encode(message.publicationKey()))
                 .build();
     }
 
@@ -33,15 +33,16 @@ final class CanonicalEmbedRenderer {
     private static String series(CanonicalResultMessage message) {
         StringBuilder series = new StringBuilder()
                 .append("\uD83D\uDD25 Aktivität: ").append(days(message.streaks().personalActivity()))
-                .append("\n\uD83D\uDFE9 GridWords gelöst: ").append(daysOrNone(message.streaks().personalGridWordsSolved()));
-        appendContextual(series, "Komplett", message.personalComplete());
-        appendContextual(series, "Perfekt", message.personalPerfect());
-        appendContextual(series, "Gemeinsam komplett", message.sharedComplete());
-        appendContextual(series, "Gemeinsam perfekt", message.sharedPerfect());
+                .append("\n\uD83D\uDFE9 GridWords gelöst: ")
+                .append(daysOrNone(message.streaks().personalGridWordsSolved()));
+        appendOptional(series, "✅ Komplett", message.personalComplete());
+        appendOptional(series, "💎 Perfekt", message.personalPerfect());
+        appendOptional(series, "🤝 Gemeinsam komplett", message.sharedComplete());
+        appendOptional(series, "🏆 Gemeinsam perfekt", message.sharedPerfect());
         return series.toString();
     }
 
-    private static void appendContextual(StringBuilder series, String label, java.util.OptionalInt streak) {
+    private static void appendOptional(StringBuilder series, String label, java.util.OptionalInt streak) {
         if (streak.isPresent()) {
             series.append("\n").append(label).append(": ").append(days(streak.getAsInt()));
         }
