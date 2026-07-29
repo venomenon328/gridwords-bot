@@ -276,4 +276,17 @@ class PostgresPersistenceAdapterIT {
                 .orElseThrow().parsedResult().outcome()).attemptsUsed());
     }
 
+    @Test
+    void claimsCanonicalPublicationAndCompletesOnlyForTheExpectedSubmissionResult() {
+        adapter.upsert(new PlayerStore.PlayerUpsert(120L, "Canonical", true, false));
+        adapter.register(new SubmissionStore.SubmissionRegistration(920L, 200L, 300L, 120L, "share", List.of(), now));
+        SubmissionStore.StoredSubmission stored = adapter.storeResult(new SubmissionStore.ResultStorage(920L, resultFor(120L, 3, "canonical")));
+        long resultId = stored.gameResultId().orElseThrow();
+        assertTrue(adapter.claimCanonicalPublication(resultId, now.plusSeconds(60)));
+        assertFalse(adapter.claimCanonicalPublication(resultId, now.plusSeconds(60)));
+        assertTrue(adapter.completeCanonicalPublication(920L, resultId, 1234L));
+        assertEquals(1234L, adapter.findById(resultId).orElseThrow().canonicalMessageId().orElseThrow());
+        assertEquals(SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED, adapter.findBySourceMessageId(920L).orElseThrow().state());
+        assertThrows(SubmissionConflictException.class, () -> adapter.completeCanonicalPublication(920L, resultId + 1, 1235L));
+    }
 }
