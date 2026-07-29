@@ -2,6 +2,7 @@ package de.venomenon.gridwordsbot.port.out;
 
 import de.venomenon.gridwordsbot.domain.model.ParsedGameResult;
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
@@ -11,6 +12,11 @@ public interface GameResultStore {
     StoredGameResult upsert(GameResultUpsert request);
     Optional<StoredGameResult> find(long playerId, de.venomenon.gridwordsbot.domain.model.GameType gameType, java.time.LocalDate gameDate);
     StoredGameResult setCanonicalMessageId(long resultId, long canonicalMessageId);
+    default Optional<StoredGameResult> findById(long resultId) { throw new UnsupportedOperationException("findById is not available"); }
+    default List<StoredGameResult> findAll() { throw new UnsupportedOperationException("findAll is not available"); }
+    default boolean claimCanonicalPublication(long resultId, Instant leaseUntil) { throw new UnsupportedOperationException("publication claims are not available"); }
+    default void releaseCanonicalPublicationClaim(long resultId) { throw new UnsupportedOperationException("publication claims are not available"); }
+    default StoredGameResult persistCanonicalPublication(long resultId, long canonicalMessageId) { return setCanonicalMessageId(resultId, canonicalMessageId); }
 
     record GameResultUpsert(long playerId, ParsedGameResult parsedResult, String rawShareText, String parserVersion) {
         public GameResultUpsert {
