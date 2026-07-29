@@ -32,10 +32,17 @@ public record CanonicalResultMessage(
         Objects.requireNonNull(duration);
         Objects.requireNonNull(board);
         Objects.requireNonNull(streaks);
-        Objects.requireNonNull(personalComplete);
-        Objects.requireNonNull(personalPerfect);
-        Objects.requireNonNull(sharedComplete);
-        Objects.requireNonNull(sharedPerfect);
         Objects.requireNonNull(publicationKey);
+
+        // A canonical message represents the current result state. Corrections must therefore retain
+        // complete/perfect streaks while the corresponding day condition remains fulfilled.
+        personalComplete = positive(streaks.personalComplete());
+        personalPerfect = positive(streaks.personalPerfect());
+        sharedComplete = positive(streaks.sharedComplete());
+        sharedPerfect = positive(streaks.sharedPerfect());
+    }
+
+    private static OptionalInt positive(int streak) {
+        return streak > 0 ? OptionalInt.of(streak) : OptionalInt.empty();
     }
 }
