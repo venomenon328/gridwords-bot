@@ -86,7 +86,7 @@ class JdaCanonicalMessageGatewayTest {
     }
 
     @Test
-    void searchesPastTheFirstHundredMessagesForThePublicationKey() {
+    void searchesPastTheFirstHundredMessagesForTheHiddenPublicationKey() {
         JDA jda = mock(JDA.class);
         TextChannel channel = mock(TextChannel.class);
         MessageHistory history = mock(MessageHistory.class);
@@ -101,7 +101,9 @@ class JdaCanonicalMessageGatewayTest {
         when(pageRequest.complete()).thenReturn(Collections.nCopies(100, otherMessage), List.of(matchingMessage));
         when(otherMessage.getAuthor()).thenReturn(mock(User.class));
         when(matchingMessage.getAuthor()).thenReturn(self);
-        when(matchingMessage.getEmbeds()).thenReturn(List.of(new EmbedBuilder().setFooter("gridwords-result-20").build()));
+        when(matchingMessage.getEmbeds()).thenReturn(List.of(new EmbedBuilder()
+                .setFooter(DiscordPublicationKey.encode("gridwords-result-20"))
+                .build()));
         when(matchingMessage.getIdLong()).thenReturn(99L);
 
         assertThat(new JdaCanonicalMessageGateway(jda).findByPublicationKey(12L, "gridwords-result-20"))
