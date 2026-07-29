@@ -57,6 +57,17 @@ class ProcessSharedResultServiceTest {
     }
 
     @Test
+    void passesTheConfiguredPlayerPairToResultStorage() {
+        service = new ProcessSharedResultService(
+                new GridWordsShareParser(), new QuadWordsShareParser(), Clock.fixed(RECEIVED_AT, ZoneOffset.UTC),
+                ZoneId.of("Europe/Berlin"), store, store, List.of(TOBIAS, GEORGIA), ignored -> true);
+
+        assertThat(service.process(message(18L, TOBIAS, gridWords(29, 3))))
+                .isEqualTo(new ProcessingResult.Accepted());
+
+        assertThat(store.lastResultStorage.configuredPlayerIds()).containsExactly(TOBIAS, GEORGIA);
+    }
+    @Test
     void storesSolvedAndUnsolvedResults() {
         assertThat(service.process(message(2L, TOBIAS, gridWords(29, 4)))).isEqualTo(new ProcessingResult.Accepted());
         assertThat(service.process(message(3L, GEORGIA, gridWordsUnsolved(29)))).isEqualTo(new ProcessingResult.Accepted());
@@ -224,6 +235,7 @@ class ProcessSharedResultServiceTest {
         private final Map<Long, StoredSubmission> submissions = new HashMap<>();
         private final Map<ResultKey, StoredResult> results = new HashMap<>();
         private long nextResultId = 1L;
+        private ResultStorage lastResultStorage;
 
         @Override
         public StoredPlayer upsert(PlayerUpsert request) {
@@ -265,6 +277,7 @@ class ProcessSharedResultServiceTest {
 
         @Override
         public StoredSubmission storeResult(ResultStorage request) {
+            lastResultStorage = request;
             StoredSubmission submission = required(request.sourceMessageId());
             if (submission.authorPlayerId() != request.result().playerId()) {
                 throw new SubmissionConflictException("wrong player");

@@ -1,5 +1,6 @@
 package de.venomenon.gridwordsbot.application.submission;
 
+import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.model.ParsedGameResult;
 import de.venomenon.gridwordsbot.domain.parsing.AttachmentMetadata;
 import de.venomenon.gridwordsbot.domain.parsing.ParseResult;
@@ -16,6 +17,8 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Objects;
+import java.util.function.LongPredicate;
 
 /** Parses and persists an already filtered shared message without framework-specific types. */
 public final class ProcessSharedResultService implements ProcessSharedResultUseCase {
@@ -30,7 +33,8 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
     private final ZoneId timeZone;
     private final PlayerStore playerStore;
     private final SubmissionStore submissionStore;
-    private final java.util.function.LongPredicate canonicalPublisher;
+    private final List<Long> configuredPlayerIds;
+    private final LongPredicate canonicalPublisher;
 
     public ProcessSharedResultService(
             GridWordsShareParser gridWordsParser,
@@ -39,17 +43,59 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
             ZoneId timeZone,
             PlayerStore playerStore,
             SubmissionStore submissionStore) {
-        this.gridWordsParser = gridWordsParser;
-        this.quadWordsParser = quadWordsParser;
-        this.clock = clock;
-        this.timeZone = timeZone;
-        this.playerStore = playerStore;
-        this.submissionStore = submissionStore;
-        this.canonicalPublisher = ignored -> true;
+        this(
+                gridWordsParser,
+                quadWordsParser,
+                clock,
+                timeZone,
+                playerStore,
+                submissionStore,
+                List.of(),
+                ignored -> true);
     }
 
-    public ProcessSharedResultService(GridWordsShareParser gridWordsParser, QuadWordsShareParser quadWordsParser, Clock clock, ZoneId timeZone, PlayerStore playerStore, SubmissionStore submissionStore, java.util.function.LongPredicate canonicalPublisher) {
-        this.gridWordsParser = gridWordsParser; this.quadWordsParser = quadWordsParser; this.clock = clock; this.timeZone = timeZone; this.playerStore = playerStore; this.submissionStore = submissionStore; this.canonicalPublisher = canonicalPublisher;
+    public ProcessSharedResultService(
+            GridWordsShareParser gridWordsParser,
+            QuadWordsShareParser quadWordsParser,
+            Clock clock,
+            ZoneId timeZone,
+            PlayerStore playerStore,
+            SubmissionStore submissionStore,
+            LongPredicate canonicalPublisher) {
+        this(
+                gridWordsParser,
+                quadWordsParser,
+                clock,
+                timeZone,
+                playerStore,
+                submissionStore,
+                List.of(),
+                canonicalPublisher);
+    }
+
+    public ProcessSharedResultService(
+            GridWordsShareParser gridWordsParser,
+            QuadWordsShareParser quadWordsParser,
+            Clock clock,
+            ZoneId timeZone,
+            PlayerStore playerStore,
+            SubmissionStore submissionStore,
+            List<Long> configuredPlayerIds,
+            LongPredicate canonicalPublisher) {
+        this.gridWordsParser = Objects.requireNonNull(gridWordsParser);
+        this.quadWordsParser = Objects.requireNonNull(quadWordsParser);
+        this.clock = Objects.requireNonNull(clock);
+        this.timeZone = Objects.requireNonNull(timeZone);
+        this.playerStore = Objects.requireNonNull(playerStore);
+        this.submissionStore = Objects.requireNonNull(submissionStore);
+        this.configuredPlayerIds = List.copyOf(Objects.requireNonNull(configuredPlayerIds));
+        if (!this.configuredPlayerIds.isEmpty()
+                && (this.configuredPlayerIds.size() != 2
+                || this.configuredPlayerIds.stream().distinct().count() != 2
+                || this.configuredPlayerIds.stream().anyMatch(playerId -> playerId <= 0))) {
+            throw new IllegalArgumentException("configuredPlayerIds must contain exactly two distinct positive IDs");
+        }
+        this.canonicalPublisher = Objects.requireNonNull(canonicalPublisher);
     }
 
     @Override
@@ -70,24 +116,26 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
 
         ParsedGameResult parsed = ((ParseResult.Parsed) parseResult).result();
         GameResultStore.GameResultUpsert result = new GameResultStore.GameResultUpsert(
-                message.authorId(), parsed, message.content(), parserVersion(parsed));
+                message.authorId(),
+                parsed,
+                message.content(),
+                parserVersion(parsed));
 
         // A source message that was stored already remains accepted after its date window has elapsed.
         if (submission.state() == SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED) {
             return new ProcessingResult.Accepted();
         }
-        if (submission.state() == SubmissionStore.SubmissionState.RESULT_STORED || submission.state() == SubmissionStore.SubmissionState.FAILED_RETRYABLE) {
-            submissionStore.storeResult(new SubmissionStore.ResultStorage(message.messageId(), result));
-            if (parsed.gameType() == de.venomenon.gridwordsbot.domain.model.GameType.GRIDWORDS && !canonicalPublisher.test(message.messageId())) return new ProcessingResult.Ignored();
-            return new ProcessingResult.Accepted();
-        }
-        if (!isTodayOrYesterday(parsed.gameDate())) {
+        if (submission.state() != SubmissionStore.SubmissionState.RESULT_STORED
+                && submission.state() != SubmissionStore.SubmissionState.FAILED_RETRYABLE
+                && !isTodayOrYesterday(parsed.gameDate())) {
             submissionStore.reject(new SubmissionStore.RejectedSubmission(message.messageId(), OUTSIDE_ALLOWED_DATE_WINDOW));
             return new ProcessingResult.Rejected(OUTSIDE_ALLOWED_DATE_WINDOW);
         }
 
-        submissionStore.storeResult(new SubmissionStore.ResultStorage(message.messageId(), result));
-        if (parsed.gameType() == de.venomenon.gridwordsbot.domain.model.GameType.GRIDWORDS && !canonicalPublisher.test(message.messageId())) return new ProcessingResult.Ignored();
+        submissionStore.storeResult(new SubmissionStore.ResultStorage(message.messageId(), result, configuredPlayerIds));
+        if (parsed.gameType() == GameType.GRIDWORDS && !canonicalPublisher.test(message.messageId())) {
+            return new ProcessingResult.Ignored();
+        }
         return new ProcessingResult.Accepted();
     }
 
@@ -103,13 +151,22 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
                 .mapToObj(index -> snapshot(index, message.attachments().get(index)))
                 .toList();
         return new SubmissionStore.SubmissionRegistration(
-                message.messageId(), message.guildId(), message.channelId(), message.authorId(), message.content(),
-                attachments, message.receivedAt());
+                message.messageId(),
+                message.guildId(),
+                message.channelId(),
+                message.authorId(),
+                message.content(),
+                attachments,
+                message.receivedAt());
     }
 
     private SubmissionStore.AttachmentSnapshot snapshot(int index, AttachmentMetadata attachment) {
-        return new SubmissionStore.AttachmentSnapshot(index, attachment.filename(),
-                attachment.contentType().isBlank() ? java.util.Optional.empty() : java.util.Optional.of(attachment.contentType()),
+        return new SubmissionStore.AttachmentSnapshot(
+                index,
+                attachment.filename(),
+                attachment.contentType().isBlank()
+                        ? java.util.Optional.empty()
+                        : java.util.Optional.of(attachment.contentType()),
                 attachment.size());
     }
 
@@ -118,7 +175,7 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
         return gameDate.equals(today) || gameDate.equals(today.minusDays(1));
     }
 
-    private String parserVersion(ParsedGameResult parsed) {
+    private static String parserVersion(ParsedGameResult parsed) {
         return switch (parsed.gameType()) {
             case GRIDWORDS -> GRIDWORDS_PARSER_VERSION;
             case QUADWORDS -> QUADWORDS_PARSER_VERSION;

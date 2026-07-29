@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -247,9 +248,146 @@ class CanonicalGridWordsPublicationServiceTest {
 
         verify(discord).edit(eq(12L), eq(88L), any());
         verify(discord, never()).create(anyLong(), any());
-    }    private SubmissionStore.StoredSubmission stored(SubmissionStore.SubmissionState state) {
-        SubmissionStore.StoredSubmission submission = new SubmissionStore.StoredSubmission(
-                SOURCE,
+    }
+
+    @Test
+    void delayedFirstPublicationDoesNotTreatALaterCompletionAsItsOwnContext() {
+        result = gridResult(RESULT, TOBIAS, OptionalLong.empty(), 3);
+        GameResultStore.StoredGameResult personalQuad = quadResult(21L, TOBIAS);
+        GameResultStore.StoredGameResult georgiaGrid = gridResult(22L, GEORGIA, OptionalLong.empty(), 3);
+        GameResultStore.StoredGameResult georgiaQuad = quadResult(23L, GEORGIA);
+        when(results.findAll()).thenReturn(List.of(result, personalQuad, georgiaGrid, georgiaQuad));
+        stored(SubmissionStore.SubmissionState.RESULT_STORED, SubmissionStore.PublicationContext.none());
+        when(results.findById(RESULT)).thenReturn(Optional.of(result));
+        GameResultStore.PublicationClaim claim = claim("00000000-0000-0000-0000-000000000009");
+        when(results.claimCanonicalPublication(eq(RESULT), any())).thenReturn(Optional.of(claim));
+        when(discord.findByPublicationKey(anyLong(), any())).thenReturn(OptionalLong.empty());
+        when(discord.create(anyLong(), any())).thenReturn(99L);
+        when(submissions.completeCanonicalPublication(SOURCE, RESULT, 99L, claim.token())).thenReturn(true);
+        ArgumentCaptor<CanonicalResultMessage> message = ArgumentCaptor.forClass(CanonicalResultMessage.class);
+
+        assertThat(service.publish(SOURCE)).isTrue();
+
+        verify(discord).create(eq(12L), message.capture());
+        assertThat(message.getValue().personalComplete()).isEmpty();
+        assertThat(message.getValue().personalPerfect()).isEmpty();
+        assertThat(message.getValue().sharedComplete()).isEmpty();
+        assertThat(message.getValue().sharedPerfect()).isEmpty();
+    }
+
+    @Test
+    void correctionBeforeFirstPublicationDoesNotReannounceStatesItDidNotEstablish() {
+        long correctionSource = 11L;
+        result = gridResult(RESULT, TOBIAS, OptionalLong.empty(), 2);
+        GameResultStore.StoredGameResult personalQuad = quadResult(21L, TOBIAS);
+        GameResultStore.StoredGameResult georgiaGrid = gridResult(22L, GEORGIA, OptionalLong.empty(), 3);
+        GameResultStore.StoredGameResult georgiaQuad = quadResult(23L, GEORGIA);
+        when(results.findAll()).thenReturn(List.of(result, personalQuad, georgiaGrid, georgiaQuad));
+        SubmissionStore.StoredSubmission correction = storedSubmission(
+                correctionSource,
+                SubmissionStore.SubmissionState.RESULT_STORED,
+                SubmissionStore.PublicationContext.none());
+        when(submissions.findBySourceMessageId(correctionSource)).thenReturn(Optional.of(correction));
+        when(results.findById(RESULT)).thenReturn(Optional.of(result));
+        GameResultStore.PublicationClaim claim = claim("00000000-0000-0000-0000-000000000010");
+        when(results.claimCanonicalPublication(eq(RESULT), any())).thenReturn(Optional.of(claim));
+        when(discord.findByPublicationKey(anyLong(), any())).thenReturn(OptionalLong.empty());
+        when(discord.create(anyLong(), any())).thenReturn(99L);
+        when(submissions.completeCanonicalPublication(correctionSource, RESULT, 99L, claim.token())).thenReturn(true);
+        ArgumentCaptor<CanonicalResultMessage> message = ArgumentCaptor.forClass(CanonicalResultMessage.class);
+
+        assertThat(service.publish(correctionSource)).isTrue();
+
+        verify(discord).create(eq(12L), message.capture());
+        assertThat(message.getValue().personalComplete()).isEmpty();
+        assertThat(message.getValue().personalPerfect()).isEmpty();
+        assertThat(message.getValue().sharedComplete()).isEmpty();
+        assertThat(message.getValue().sharedPerfect()).isEmpty();
+    }
+
+    @Test
+    void omitsZeroValuedContextualPerfectSeriesAfterTheDayStateWasEstablished() {
+        result = gridResultForDate(RESULT, TOBIAS, LocalDate.of(2026, 7, 28), OptionalLong.empty(), true, 3);
+        GameResultStore.StoredGameResult personalQuad = quadResultForDate(21L, TOBIAS, LocalDate.of(2026, 7, 28), true);
+        GameResultStore.StoredGameResult georgiaGrid = gridResultForDate(22L, GEORGIA, LocalDate.of(2026, 7, 28), OptionalLong.empty(), true, 3);
+        GameResultStore.StoredGameResult georgiaQuad = quadResultForDate(23L, GEORGIA, LocalDate.of(2026, 7, 28), true);
+        GameResultStore.StoredGameResult unsolvedGridToday = gridResultForDate(
+                24L, TOBIAS, LocalDate.of(2026, 7, 29), OptionalLong.empty(), false, 6);
+        GameResultStore.StoredGameResult solvedQuadToday = quadResultForDate(25L, TOBIAS, LocalDate.of(2026, 7, 29), true);
+        when(results.findAll()).thenReturn(List.of(
+                result, personalQuad, georgiaGrid, georgiaQuad, unsolvedGridToday, solvedQuadToday));
+        stored(SubmissionStore.SubmissionState.RESULT_STORED, new SubmissionStore.PublicationContext(
+                true, true, true, true));
+        when(results.findById(RESULT)).thenReturn(Optional.of(result));
+        GameResultStore.PublicationClaim claim = claim("00000000-0000-0000-0000-000000000011");
+        when(results.claimCanonicalPublication(eq(RESULT), any())).thenReturn(Optional.of(claim));
+        when(discord.findByPublicationKey(anyLong(), any())).thenReturn(OptionalLong.empty());
+        when(discord.create(anyLong(), any())).thenReturn(99L);
+        when(submissions.completeCanonicalPublication(SOURCE, RESULT, 99L, claim.token())).thenReturn(true);
+        ArgumentCaptor<CanonicalResultMessage> message = ArgumentCaptor.forClass(CanonicalResultMessage.class);
+
+        assertThat(service.publish(SOURCE)).isTrue();
+
+        verify(discord).create(eq(12L), message.capture());
+        assertThat(message.getValue().personalComplete()).isEqualTo(OptionalInt.of(2));
+        assertThat(message.getValue().sharedComplete()).isEqualTo(OptionalInt.of(1));
+        assertThat(message.getValue().personalPerfect()).isEmpty();
+        assertThat(message.getValue().sharedPerfect()).isEmpty();
+    }
+
+    @Test
+    void retriesALiveClaimCollisionWithoutAnEarlyAcceptedReaction() {
+        long correctionSource = 11L;
+        GameResultStore.StoredGameResult publishedResult = gridResult(RESULT, TOBIAS, OptionalLong.of(99L), 3);
+        SubmissionStore.StoredSubmission first = stored(SubmissionStore.SubmissionState.RESULT_STORED);
+        SubmissionStore.StoredSubmission correction = storedSubmission(
+                correctionSource, SubmissionStore.SubmissionState.RESULT_STORED, SubmissionStore.PublicationContext.none());
+        when(submissions.findBySourceMessageId(correctionSource)).thenReturn(Optional.of(correction));
+        when(results.findById(RESULT)).thenReturn(
+                Optional.of(result), Optional.of(result), Optional.of(result), Optional.of(publishedResult));
+        GameResultStore.PublicationClaim firstClaim = claim("00000000-0000-0000-0000-000000000012");
+        GameResultStore.PublicationClaim retryClaim = claim("00000000-0000-0000-0000-000000000013");
+        when(results.claimCanonicalPublication(eq(RESULT), any()))
+                .thenReturn(Optional.of(firstClaim), Optional.empty(), Optional.empty(), Optional.of(retryClaim));
+        when(discord.findByPublicationKey(anyLong(), any())).thenReturn(OptionalLong.empty());
+        when(discord.create(anyLong(), any())).thenReturn(99L);
+        when(submissions.completeCanonicalPublication(SOURCE, RESULT, 99L, firstClaim.token())).thenReturn(true);
+        when(submissions.completeCanonicalPublication(correctionSource, RESULT, 99L, retryClaim.token())).thenReturn(true);
+        ArgumentCaptor<Runnable> retry = ArgumentCaptor.forClass(Runnable.class);
+
+        assertThat(service.publish(first.sourceMessageId())).isTrue();
+        assertThat(service.publish(correctionSource)).isFalse();
+        assertThat(service.publish(correctionSource)).isFalse();
+
+        verify(retryScheduler, times(1)).schedule(eq(NOW.plusSeconds(61)), retry.capture());
+        verifyNoInteractions(recoveredReactionGateway);
+
+        retry.getValue().run();
+
+        verify(discord, times(1)).create(eq(12L), any());
+        verify(discord, times(1)).edit(eq(12L), eq(99L), any());
+        verify(submissions).completeCanonicalPublication(correctionSource, RESULT, 99L, retryClaim.token());
+        verify(recoveredReactionGateway).addAcceptedReaction(12L, correctionSource);
+        verify(recoveredReactionGateway, never()).addAcceptedReaction(12L, SOURCE);
+    }
+    private SubmissionStore.StoredSubmission stored(SubmissionStore.SubmissionState state) {
+        return stored(state, SubmissionStore.PublicationContext.none());
+    }
+
+    private SubmissionStore.StoredSubmission stored(
+            SubmissionStore.SubmissionState state,
+            SubmissionStore.PublicationContext publicationContext) {
+        SubmissionStore.StoredSubmission submission = storedSubmission(SOURCE, state, publicationContext);
+        when(submissions.findBySourceMessageId(SOURCE)).thenReturn(Optional.of(submission));
+        return submission;
+    }
+
+    private static SubmissionStore.StoredSubmission storedSubmission(
+            long sourceMessageId,
+            SubmissionStore.SubmissionState state,
+            SubmissionStore.PublicationContext publicationContext) {
+        return new SubmissionStore.StoredSubmission(
+                sourceMessageId,
                 11L,
                 12L,
                 TOBIAS,
@@ -259,10 +397,9 @@ class CanonicalGridWordsPublicationServiceTest {
                 List.of(),
                 Optional.empty(),
                 Optional.empty(),
+                publicationContext,
                 Instant.EPOCH,
                 Instant.EPOCH);
-        when(submissions.findBySourceMessageId(SOURCE)).thenReturn(Optional.of(submission));
-        return submission;
     }
 
     private static GameResultStore.PublicationClaim claim(String token) {
@@ -274,43 +411,48 @@ class CanonicalGridWordsPublicationServiceTest {
             long playerId,
             OptionalLong canonicalMessageId,
             int attempts) {
+        return gridResultForDate(id, playerId, LocalDate.of(2026, 7, 29), canonicalMessageId, true, attempts);
+    }
+
+    private static GameResultStore.StoredGameResult gridResultForDate(
+            long id,
+            long playerId,
+            LocalDate gameDate,
+            OptionalLong canonicalMessageId,
+            boolean solved,
+            int attempts) {
+        List<String> rows = List.of(
+                "\u2B1C\u2B1C\u2B1C\u2B1C\u2B1C",
+                "\uD83D\uDFE8\uD83D\uDFE8\uD83D\uDFE8\uD83D\uDFE8\uD83D\uDFE8",
+                "\uD83D\uDFE9\uD83D\uDFE9\uD83D\uDFE9\uD83D\uDFE9\uD83D\uDFE9",
+                "\u2B1C\u2B1C\u2B1C\u2B1C\u2B1C",
+                "\uD83D\uDFE8\uD83D\uDFE8\uD83D\uDFE8\uD83D\uDFE8\uD83D\uDFE8",
+                "\uD83D\uDFE9\uD83D\uDFE9\uD83D\uDFE9\uD83D\uDFE9\uD83D\uDFE9");
         ParsedGameResult parsed = new ParsedGameResult(
                 GameType.GRIDWORDS,
-                LocalDate.of(2026, 7, 29),
-                new ShareOutcome.Solved(attempts, 6),
+                gameDate,
+                solved ? new ShareOutcome.Solved(attempts, 6) : new ShareOutcome.Unsolved(6),
                 Duration.ofSeconds(85),
                 OptionalInt.empty(),
-                Optional.of(new NormalizedBoard(List.of(
-                        "\u2B1C\u2B1C\u2B1C\u2B1C\u2B1C",
-                        "\uD83D\uDFE8\uD83D\uDFE8\uD83D\uDFE8\uD83D\uDFE8\uD83D\uDFE8",
-                        "\uD83D\uDFE9\uD83D\uDFE9\uD83D\uDFE9\uD83D\uDFE9\uD83D\uDFE9").subList(0, attempts))));
+                Optional.of(new NormalizedBoard(rows.subList(0, solved ? attempts : 6))));
         return new GameResultStore.StoredGameResult(
-                id,
-                playerId,
-                parsed,
-                "share",
-                "v1",
-                canonicalMessageId,
-                Instant.EPOCH,
-                Instant.EPOCH);
+                id, playerId, parsed, "share", "v1", canonicalMessageId, Instant.EPOCH, Instant.EPOCH);
     }
 
     private static GameResultStore.StoredGameResult quadResult(long id, long playerId) {
+        return quadResultForDate(id, playerId, LocalDate.of(2026, 7, 29), true);
+    }
+
+    private static GameResultStore.StoredGameResult quadResultForDate(
+            long id, long playerId, LocalDate gameDate, boolean solved) {
         ParsedGameResult parsed = new ParsedGameResult(
                 GameType.QUADWORDS,
-                LocalDate.of(2026, 7, 29),
-                new ShareOutcome.Solved(4, 9),
+                gameDate,
+                solved ? new ShareOutcome.Solved(4, 9) : new ShareOutcome.Unsolved(9),
                 Duration.ofSeconds(90),
                 OptionalInt.empty(),
                 Optional.empty());
         return new GameResultStore.StoredGameResult(
-                id,
-                playerId,
-                parsed,
-                "quad",
-                "v1",
-                OptionalLong.empty(),
-                Instant.EPOCH,
-                Instant.EPOCH);
+                id, playerId, parsed, "quad", "v1", OptionalLong.empty(), Instant.EPOCH, Instant.EPOCH);
     }
 }

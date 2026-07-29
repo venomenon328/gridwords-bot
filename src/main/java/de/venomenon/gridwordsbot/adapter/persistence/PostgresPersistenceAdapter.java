@@ -13,6 +13,7 @@ import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -139,17 +140,33 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
             throw new SubmissionConflictException("submission state does not allow result storage: " + existing.state());
         }
 
+        boolean recordsPublicationContext = request.result().parsedResult().gameType() == GameType.GRIDWORDS
+                && !request.configuredPlayerIds().isEmpty();
+        List<StoredGameResult> before = List.of();
+        if (recordsPublicationContext) {
+            lockConfiguredPlayers(request.configuredPlayerIds());
+            before = findAll();
+        }
+
         StoredGameResult result = upsertResult(request.result(), clock.instant());
+        PublicationContext publicationContext = recordsPublicationContext
+                ? publicationContext(before, findAll(), request.result().playerId(), result.parsedResult().gameDate(),
+                request.configuredPlayerIds())
+                : PublicationContext.none();
         int changed = jdbc.update("""
-                UPDATE submission SET game_result_id = ?, processing_state = 'RESULT_STORED', updated_at = ?, version = version + 1
+                UPDATE submission SET game_result_id = ?, processing_state = 'RESULT_STORED',
+                    personal_complete_established = ?, personal_perfect_established = ?,
+                    shared_complete_established = ?, shared_perfect_established = ?,
+                    updated_at = ?, version = version + 1
                 WHERE source_message_id = ? AND processing_state IN ('RECEIVED', 'VALIDATED')
-                """, result.id(), databaseTime(clock.instant()), request.sourceMessageId());
+                """, result.id(), publicationContext.personalCompleteEstablished(),
+                publicationContext.personalPerfectEstablished(), publicationContext.sharedCompleteEstablished(),
+                publicationContext.sharedPerfectEstablished(), databaseTime(clock.instant()), request.sourceMessageId());
         if (changed != 1) {
             throw new SubmissionConflictException("submission state changed during result storage");
         }
         return findRequired(request.sourceMessageId());
     }
-
     @Override
     @Transactional
     public StoredSubmission reject(RejectedSubmission request) {
@@ -273,6 +290,60 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                   AND s.processing_state IN ('RESULT_STORED', 'FAILED_RETRYABLE')
                 """, SUBMISSION);
     }
+    private void lockConfiguredPlayers(List<Long> configuredPlayerIds) {
+        List<Long> orderedPlayerIds = configuredPlayerIds.stream().sorted().toList();
+        List<Long> lockedPlayerIds = jdbc.queryForList("""
+                SELECT discord_user_id
+                FROM player
+                WHERE discord_user_id IN (?, ?)
+                ORDER BY discord_user_id
+                FOR UPDATE
+                """, Long.class, orderedPlayerIds.get(0), orderedPlayerIds.get(1));
+        if (lockedPlayerIds.size() != 2) {
+            throw new IllegalStateException("configured players are not persisted");
+        }
+    }
+
+    private static PublicationContext publicationContext(
+            List<StoredGameResult> before,
+            List<StoredGameResult> after,
+            long playerId,
+            LocalDate gameDate,
+            List<Long> configuredPlayerIds) {
+        boolean personalCompleteBefore = complete(before, playerId, gameDate);
+        boolean personalPerfectBefore = perfect(before, playerId, gameDate);
+        boolean sharedCompleteBefore = sharedComplete(before, configuredPlayerIds, gameDate);
+        boolean sharedPerfectBefore = sharedPerfect(before, configuredPlayerIds, gameDate);
+        return new PublicationContext(
+                !personalCompleteBefore && complete(after, playerId, gameDate),
+                !personalPerfectBefore && perfect(after, playerId, gameDate),
+                !sharedCompleteBefore && sharedComplete(after, configuredPlayerIds, gameDate),
+                !sharedPerfectBefore && sharedPerfect(after, configuredPlayerIds, gameDate));
+    }
+
+    private static boolean complete(List<StoredGameResult> results, long playerId, LocalDate gameDate) {
+        return results.stream()
+                .filter(result -> result.playerId() == playerId && result.parsedResult().gameDate().equals(gameDate))
+                .map(result -> result.parsedResult().gameType())
+                .distinct()
+                .count() == GameType.values().length;
+    }
+
+    private static boolean perfect(List<StoredGameResult> results, long playerId, LocalDate gameDate) {
+        List<StoredGameResult> games = results.stream()
+                .filter(result -> result.playerId() == playerId && result.parsedResult().gameDate().equals(gameDate))
+                .toList();
+        return complete(results, playerId, gameDate)
+                && games.stream().allMatch(result -> result.parsedResult().outcome() instanceof ShareOutcome.Solved);
+    }
+
+    private static boolean sharedComplete(List<StoredGameResult> results, List<Long> playerIds, LocalDate gameDate) {
+        return playerIds.stream().allMatch(playerId -> complete(results, playerId, gameDate));
+    }
+
+    private static boolean sharedPerfect(List<StoredGameResult> results, List<Long> playerIds, LocalDate gameDate) {
+        return playerIds.stream().allMatch(playerId -> perfect(results, playerId, gameDate));
+    }
     private StoredGameResult upsertResult(GameResultUpsert request, Instant now) {
         ParsedGameResult parsed = request.parsedResult();
         boolean solved = parsed.outcome() instanceof ShareOutcome.Solved;
@@ -349,6 +420,11 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
             Optional.ofNullable(rs.getObject("game_result_id", Long.class)), attachments(rs.getLong("source_message_id")),
             Optional.ofNullable(rs.getString("parser_error_code")),
             Optional.ofNullable(rs.getString("technical_error_message")),
+            new PublicationContext(
+                    rs.getBoolean("personal_complete_established"),
+                    rs.getBoolean("personal_perfect_established"),
+                    rs.getBoolean("shared_complete_established"),
+                    rs.getBoolean("shared_perfect_established")),
             instant(rs, "received_at"), instant(rs, "updated_at"));
 
     private List<AttachmentSnapshot> attachments(long sourceMessageId) {

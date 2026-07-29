@@ -26,7 +26,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
-import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 /** Wires database-backed inbound processing while leaving the offline gateway profile independent. */
@@ -41,11 +40,15 @@ class DatabaseInboundConfiguration {
             PlayerStore playerStore,
             SubmissionStore submissionStore,
             ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider) {
+        List<Long> configuredPlayerIds = List.of(
+                properties.players().first().userId(), properties.players().second().userId());
         return new ProcessSharedResultService(
                 new GridWordsShareParser(), new QuadWordsShareParser(), clock, properties.schedule().timeZone(), playerStore,
-                submissionStore, sourceMessageId -> { CanonicalGridWordsPublicationService canonical = canonicalProvider.getIfAvailable(); return canonical == null || canonical.publish(sourceMessageId); });
+                submissionStore, configuredPlayerIds, sourceMessageId -> {
+                    CanonicalGridWordsPublicationService canonical = canonicalProvider.getIfAvailable();
+                    return canonical == null || canonical.publish(sourceMessageId);
+                });
     }
-
     @Bean
     @ConditionalOnBean(JDA.class)
     CanonicalMessageGateway canonicalMessageGateway(JDA jda) {

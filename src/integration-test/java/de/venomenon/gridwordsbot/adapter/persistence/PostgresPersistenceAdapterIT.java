@@ -110,6 +110,29 @@ class PostgresPersistenceAdapterIT {
         assertEquals(SubmissionStore.SubmissionState.RECEIVED, adapter.findBySourceMessageId(902L).orElseThrow().state());
         assertTrue(adapter.find(102L, GameType.GRIDWORDS, LocalDate.of(2026, 7, 29)).isEmpty());
     }
+    private void registerSubmission(long sourceMessageId, long playerId) {
+        adapter.register(new SubmissionStore.SubmissionRegistration(
+                sourceMessageId, 200L, 300L, playerId, "share " + sourceMessageId, List.of(), now));
+    }
+
+    private SubmissionStore.StoredSubmission store(
+            long sourceMessageId,
+            GameResultStore.GameResultUpsert result,
+            List<Long> configuredPlayerIds) {
+        return transactions.execute(status -> adapter.storeResult(
+                new SubmissionStore.ResultStorage(sourceMessageId, result, configuredPlayerIds)));
+    }
+
+    private GameResultStore.GameResultUpsert quadResultFor(long playerId, boolean solved, String text) {
+        ParsedGameResult parsed = new ParsedGameResult(
+                GameType.QUADWORDS,
+                LocalDate.of(2026, 7, 29),
+                solved ? new ShareOutcome.Solved(4, 9) : new ShareOutcome.Unsolved(9),
+                Duration.ofSeconds(42),
+                OptionalInt.empty(),
+                Optional.empty());
+        return new GameResultStore.GameResultUpsert(playerId, parsed, text, "v1");
+    }
     private GameResultStore.GameResultUpsert result(int attempts, String text) {
         NormalizedBoard board = board(attempts);
         ParsedGameResult parsed = new ParsedGameResult(GameType.GRIDWORDS, LocalDate.of(2026, 7, 29), new ShareOutcome.Solved(attempts, 6), Duration.ofSeconds(42), OptionalInt.empty(), Optional.of(board));
@@ -375,6 +398,83 @@ class PostgresPersistenceAdapterIT {
                 .anyMatch(submission -> submission.sourceMessageId() == 925L));
     }
 
+    @Test
+    void persistsPublicationContextForTheActualGridWordsTransitionAndNotForACorrection() {
+        long tobias = 130L;
+        long georgia = 131L;
+        List<Long> configuredPlayerIds = List.of(tobias, georgia);
+        adapter.upsert(new PlayerStore.PlayerUpsert(tobias, "Context Tobias", true, false));
+        adapter.upsert(new PlayerStore.PlayerUpsert(georgia, "Context Georgia", true, false));
+
+        registerSubmission(930L, tobias);
+        store(930L, quadResultFor(tobias, true, "tobias quad"), configuredPlayerIds);
+        registerSubmission(931L, georgia);
+        store(931L, resultFor(georgia, 3, "georgia grid"), configuredPlayerIds);
+        registerSubmission(932L, georgia);
+        store(932L, quadResultFor(georgia, true, "georgia quad"), configuredPlayerIds);
+        registerSubmission(933L, tobias);
+
+        SubmissionStore.StoredSubmission trigger = store(933L, resultFor(tobias, 3, "tobias grid"), configuredPlayerIds);
+
+        assertTrue(trigger.publicationContext().personalCompleteEstablished());
+        assertTrue(trigger.publicationContext().personalPerfectEstablished());
+        assertTrue(trigger.publicationContext().sharedCompleteEstablished());
+        assertTrue(trigger.publicationContext().sharedPerfectEstablished());
+
+        registerSubmission(934L, tobias);
+        SubmissionStore.StoredSubmission correction = store(
+                934L, resultFor(tobias, 2, "tobias correction"), configuredPlayerIds);
+
+        assertFalse(correction.publicationContext().personalCompleteEstablished());
+        assertFalse(correction.publicationContext().personalPerfectEstablished());
+        assertFalse(correction.publicationContext().sharedCompleteEstablished());
+        assertFalse(correction.publicationContext().sharedPerfectEstablished());
+    }
+
+    @Test
+    void serializesConcurrentPublicationContextTransitionsForBothPlayers() throws Exception {
+        long tobias = 140L;
+        long georgia = 141L;
+        List<Long> configuredPlayerIds = List.of(tobias, georgia);
+        adapter.upsert(new PlayerStore.PlayerUpsert(tobias, "Concurrent Tobias", true, false));
+        adapter.upsert(new PlayerStore.PlayerUpsert(georgia, "Concurrent Georgia", true, false));
+        registerSubmission(940L, tobias);
+        store(940L, quadResultFor(tobias, true, "tobias quad"), configuredPlayerIds);
+        registerSubmission(941L, georgia);
+        store(941L, quadResultFor(georgia, true, "georgia quad"), configuredPlayerIds);
+        registerSubmission(942L, tobias);
+        registerSubmission(943L, georgia);
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            Future<SubmissionStore.StoredSubmission> tobiasGrid = executor.submit(
+                    () -> store(942L, resultFor(tobias, 3, "tobias grid"), configuredPlayerIds));
+            Future<SubmissionStore.StoredSubmission> georgiaGrid = executor.submit(
+                    () -> store(943L, resultFor(georgia, 3, "georgia grid"), configuredPlayerIds));
+            List<SubmissionStore.StoredSubmission> stored = List.of(tobiasGrid.get(), georgiaGrid.get());
+
+            assertEquals(2, stored.stream().filter(submission ->
+                    submission.publicationContext().personalCompleteEstablished()).count());
+            assertEquals(2, stored.stream().filter(submission ->
+                    submission.publicationContext().personalPerfectEstablished()).count());
+            assertEquals(1, stored.stream().filter(submission ->
+                    submission.publicationContext().sharedCompleteEstablished()).count());
+            assertEquals(1, stored.stream().filter(submission ->
+                    submission.publicationContext().sharedPerfectEstablished()).count());
+        }
+    }
+    @Test
+    void appliesThePublicationContextMigrationToAnEmptyDatabase() {
+        assertEquals(4, jdbc.queryForObject("""
+                SELECT count(*)
+                FROM information_schema.columns
+                WHERE table_name = 'submission'
+                  AND column_name IN (
+                      'personal_complete_established',
+                      'personal_perfect_established',
+                      'shared_complete_established',
+                      'shared_perfect_established')
+                """, Integer.class));
+    }
     @Test
     void appliesTheOwnershipMigrationToAnEmptyDatabase() {
         assertEquals(1, jdbc.queryForObject("""

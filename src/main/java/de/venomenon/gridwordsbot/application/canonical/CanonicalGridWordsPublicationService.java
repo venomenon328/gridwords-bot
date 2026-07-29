@@ -1,7 +1,6 @@
 package de.venomenon.gridwordsbot.application.canonical;
 
 import de.venomenon.gridwordsbot.domain.model.GameType;
-import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
 import de.venomenon.gridwordsbot.domain.streak.StreakCalculator;
 import de.venomenon.gridwordsbot.domain.streak.StreakSummary;
 import de.venomenon.gridwordsbot.port.out.CanonicalMessageGateway;
@@ -16,7 +15,10 @@ import java.time.ZoneId;
 import java.util.List;
 import java.util.Objects;
 import java.util.OptionalInt;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.RejectedExecutionException;
 
 /** Coordinates one resumable canonical GridWords publication without a Discord call in a transaction. */
 public final class CanonicalGridWordsPublicationService {
@@ -32,7 +34,8 @@ public final class CanonicalGridWordsPublicationService {
     private final List<Long> configuredPlayerIds;
     private final StreakCalculator streakCalculator;
     private final PublicationRetryScheduler retryScheduler;
-    private final SourceMessageReactionGateway recoveredReactionGateway;
+    private final SourceMessageReactionGateway acceptedReactionGateway;
+    private final Set<Long> scheduledRetries = ConcurrentHashMap.newKeySet();
 
     public CanonicalGridWordsPublicationService(
             GameResultStore results,
@@ -63,7 +66,7 @@ public final class CanonicalGridWordsPublicationService {
             ZoneId zoneId,
             List<Long> configuredPlayerIds,
             PublicationRetryScheduler retryScheduler,
-            SourceMessageReactionGateway recoveredReactionGateway) {
+            SourceMessageReactionGateway acceptedReactionGateway) {
         this.results = Objects.requireNonNull(results);
         this.players = Objects.requireNonNull(players);
         this.submissions = Objects.requireNonNull(submissions);
@@ -78,7 +81,7 @@ public final class CanonicalGridWordsPublicationService {
         }
         this.streakCalculator = new StreakCalculator();
         this.retryScheduler = Objects.requireNonNull(retryScheduler);
-        this.recoveredReactionGateway = Objects.requireNonNull(recoveredReactionGateway);
+        this.acceptedReactionGateway = Objects.requireNonNull(acceptedReactionGateway);
     }
 
     /** @return true only after the canonical ID and the submission state were persisted together. */
@@ -102,11 +105,15 @@ public final class CanonicalGridWordsPublicationService {
                     resultId,
                     clock.instant().plusSeconds(LEASE_SECONDS)).orElse(null);
             if (claim == null) {
+                scheduleRetry(sourceMessageId);
                 return false;
             }
             claimToken = claim.token();
 
-            long canonicalMessageId = publishOrEdit(submission, result, canonicalMessage(result, submission.authorPlayerId()));
+            long canonicalMessageId = publishOrEdit(
+                    submission,
+                    result,
+                    canonicalMessage(result, submission.authorPlayerId(), submission.publicationContext()));
             boolean completed = submissions.completeCanonicalPublication(
                     sourceMessageId,
                     resultId,
@@ -126,25 +133,44 @@ public final class CanonicalGridWordsPublicationService {
                     }
                 }
             }
+            scheduleRetry(sourceMessageId);
             return false;
         }
     }
 
-    /**
-     * Replays open publications after startup. A skipped active lease is retried after expiry rather than left open.
-     */
+    /** Replays open publications after startup; failed claims schedule their own idempotent source retry. */
     public void resumeOpenPublications() {
-        boolean retryRequired = false;
         for (SubmissionStore.StoredSubmission submission : submissions.findGridWordsAwaitingCanonicalPublication()) {
             if (publish(submission.sourceMessageId())) {
-                recoveredReactionGateway.addAcceptedReaction(submission.channelId(), submission.sourceMessageId());
-            } else {
-                retryRequired = true;
+                acknowledgeDeferredPublication(submission);
             }
         }
-        if (retryRequired) {
-            retryScheduler.schedule(clock.instant().plusSeconds(LEASE_SECONDS + 1), this::resumeOpenPublications);
+    }
+
+    private void scheduleRetry(long sourceMessageId) {
+        if (!scheduledRetries.add(sourceMessageId)) {
+            return;
         }
+        try {
+            retryScheduler.schedule(clock.instant().plusSeconds(LEASE_SECONDS + 1), () -> retryPublication(sourceMessageId));
+        } catch (RejectedExecutionException ignored) {
+            // Recovery on a subsequent startup remains available if scheduling is unavailable during shutdown.
+            scheduledRetries.remove(sourceMessageId);
+        }
+    }
+
+    private void retryPublication(long sourceMessageId) {
+        boolean published = publish(sourceMessageId);
+        scheduledRetries.remove(sourceMessageId);
+        if (!published) {
+            scheduleRetry(sourceMessageId);
+            return;
+        }
+        submissions.findBySourceMessageId(sourceMessageId).ifPresent(this::acknowledgeDeferredPublication);
+    }
+
+    private void acknowledgeDeferredPublication(SubmissionStore.StoredSubmission submission) {
+        acceptedReactionGateway.addAcceptedReaction(submission.channelId(), submission.sourceMessageId());
     }
 
     private long publishOrEdit(
@@ -164,7 +190,10 @@ public final class CanonicalGridWordsPublicationService {
                 .orElseGet(() -> discord.create(submission.channelId(), message));
     }
 
-    private CanonicalResultMessage canonicalMessage(GameResultStore.StoredGameResult result, long playerId) {
+    private CanonicalResultMessage canonicalMessage(
+            GameResultStore.StoredGameResult result,
+            long playerId,
+            SubmissionStore.PublicationContext publicationContext) {
         List<GameResultStore.StoredGameResult> allResults = results.findAll();
         LocalDate date = result.parsedResult().gameDate();
         StreakSummary streaks = streakCalculator.calculate(
@@ -175,14 +204,6 @@ public final class CanonicalGridWordsPublicationService {
                 playerId,
                 clock.instant().atZone(zoneId).toLocalDate());
 
-        boolean personalComplete = complete(allResults, playerId, date);
-        boolean personalPerfect = personalComplete && perfect(allResults, playerId, date);
-        boolean sharedComplete = configuredPlayerIds.stream().allMatch(id -> complete(allResults, id, date));
-        boolean sharedPerfect = sharedComplete
-                && configuredPlayerIds.stream().allMatch(id -> perfect(allResults, id, date));
-
-        // A persisted canonical ID identifies a correction/re-render, not the event that established a day state.
-        boolean establishesDayState = result.canonicalMessageId().isEmpty();
         return new CanonicalResultMessage(
                 players.findByDiscordUserId(playerId).orElseThrow().displayName(),
                 GameType.GRIDWORDS,
@@ -191,34 +212,14 @@ public final class CanonicalGridWordsPublicationService {
                 result.parsedResult().duration(),
                 result.parsedResult().board().orElseThrow(),
                 streaks,
-                contextual(streaks.personalComplete(), establishesDayState && personalComplete),
-                contextual(streaks.personalPerfect(), establishesDayState && personalPerfect),
-                contextual(streaks.sharedComplete(), establishesDayState && sharedComplete),
-                contextual(streaks.sharedPerfect(), establishesDayState && sharedPerfect),
+                contextual(streaks.personalComplete(), publicationContext.personalCompleteEstablished()),
+                contextual(streaks.personalPerfect(), publicationContext.personalPerfectEstablished()),
+                contextual(streaks.sharedComplete(), publicationContext.sharedCompleteEstablished()),
+                contextual(streaks.sharedPerfect(), publicationContext.sharedPerfectEstablished()),
                 "gridwords-result-" + result.id());
     }
 
-    private static OptionalInt contextual(int streak, boolean establishedByThisPublication) {
-        return establishedByThisPublication ? OptionalInt.of(streak) : OptionalInt.empty();
-    }
-
-    private static boolean complete(
-            List<GameResultStore.StoredGameResult> results,
-            long playerId,
-            LocalDate date) {
-        return results.stream()
-                .filter(result -> result.playerId() == playerId && result.parsedResult().gameDate().equals(date))
-                .map(result -> result.parsedResult().gameType())
-                .distinct()
-                .count() == 2;
-    }
-
-    private static boolean perfect(
-            List<GameResultStore.StoredGameResult> results,
-            long playerId,
-            LocalDate date) {
-        return results.stream()
-                .filter(result -> result.playerId() == playerId && result.parsedResult().gameDate().equals(date))
-                .allMatch(result -> result.parsedResult().outcome() instanceof ShareOutcome.Solved);
+    private static OptionalInt contextual(int streak, boolean establishedByThisSubmission) {
+        return establishedByThisSubmission && streak > 0 ? OptionalInt.of(streak) : OptionalInt.empty();
     }
 }
