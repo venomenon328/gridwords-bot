@@ -1,6 +1,5 @@
 package de.venomenon.gridwordsbot.application.submission;
 
-import de.venomenon.gridwordsbot.config.GridwordsBotProperties;
 import de.venomenon.gridwordsbot.domain.model.ParsedGameResult;
 import de.venomenon.gridwordsbot.domain.parsing.AttachmentMetadata;
 import de.venomenon.gridwordsbot.domain.parsing.ParseResult;
@@ -15,6 +14,7 @@ import de.venomenon.gridwordsbot.port.out.PlayerStore;
 import de.venomenon.gridwordsbot.port.out.SubmissionStore;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 
 /** Parses and persists an already filtered shared message without framework-specific types. */
@@ -27,7 +27,7 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
     private final GridWordsShareParser gridWordsParser;
     private final QuadWordsShareParser quadWordsParser;
     private final Clock clock;
-    private final GridwordsBotProperties properties;
+    private final ZoneId timeZone;
     private final PlayerStore playerStore;
     private final SubmissionStore submissionStore;
 
@@ -35,13 +35,13 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
             GridWordsShareParser gridWordsParser,
             QuadWordsShareParser quadWordsParser,
             Clock clock,
-            GridwordsBotProperties properties,
+            ZoneId timeZone,
             PlayerStore playerStore,
             SubmissionStore submissionStore) {
         this.gridWordsParser = gridWordsParser;
         this.quadWordsParser = quadWordsParser;
         this.clock = clock;
-        this.properties = properties;
+        this.timeZone = timeZone;
         this.playerStore = playerStore;
         this.submissionStore = submissionStore;
     }
@@ -104,7 +104,7 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
     }
 
     private boolean isTodayOrYesterday(LocalDate gameDate) {
-        LocalDate today = clock.instant().atZone(properties.schedule().timeZone()).toLocalDate();
+        LocalDate today = clock.instant().atZone(timeZone).toLocalDate();
         return gameDate.equals(today) || gameDate.equals(today.minusDays(1));
     }
 

@@ -210,6 +210,14 @@ Testcontainers ist für diese CI-Tests zulässig. H2 ersetzt die PostgreSQL-Inte
 - JDA-Grenze mocken oder hinter einer schmalen Wrapper-Komponente testen
 - Umwandlung zwischen JDA-Ereignissen und internen DTOs prüfen
 
+### Inbound-Beobachtungsmodus
+
+Inkrement 3 verarbeitet neue Guild-Textnachrichten nur im Profil `database`, wenn Discord aktiviert ist und die Persistenzkomponenten verfügbar sind. Der JDA-Event-Thread filtert und kopiert das Ereignis; Parser, Datenbankzugriffe und Reaktionen laufen danach über einen kleinen begrenzten Executor.
+
+Vor der Listenerregistrierung werden die beiden konfigurierten Spieler idempotent in `player` synchronisiert. Im Profil `offline` kann der Gateway weiterhin ohne PostgreSQL starten, dort ist kein Ergebnislistener registriert.
+
+Der manuelle Persistenz-/Discord-Smoke-Test gehört zum Abschluss von Inkrement 3 und wird gegen eine native PostgreSQL-Instanz oder eine ausdrücklich verfügbare alternative Infrastruktur ausgeführt. Er prüft insbesondere Zielserver/-channel, beide Spieler, gültige und ungültige Shares, Replays sowie das Ausbleiben jeder Nachrichtenlöschung. Er ist kein Teil des normalen lokalen Builds.
+
 ### Manueller Smoke-Test
 
 - nur für echte Gateway-Verbindung und Channelrechte

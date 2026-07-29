@@ -5,6 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import de.venomenon.gridwordsbot.application.submission.ConfiguredPlayerSynchronizer;
+import de.venomenon.gridwordsbot.application.submission.ProcessSharedResultService;
+import de.venomenon.gridwordsbot.config.GridwordsBotProperties;
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.model.NormalizedBoard;
 import de.venomenon.gridwordsbot.domain.model.ParsedGameResult;
@@ -12,11 +15,17 @@ import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
 import de.venomenon.gridwordsbot.port.out.GameResultStore;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
 import de.venomenon.gridwordsbot.port.out.SubmissionStore;
+import de.venomenon.gridwordsbot.port.in.InboundSharedMessage;
+import de.venomenon.gridwordsbot.port.in.ProcessingResult;
+import de.venomenon.gridwordsbot.parser.gridwords.GridWordsShareParser;
+import de.venomenon.gridwordsbot.parser.quadwords.QuadWordsShareParser;
 import de.venomenon.gridwordsbot.port.out.SubmissionConflictException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
@@ -203,5 +212,79 @@ class PostgresPersistenceAdapterIT {
                     SubmissionStore.SubmissionState.RECEIVED, SubmissionStore.SubmissionState.VALIDATED));
             assertTrue(transitionOne.get() ^ transitionTwo.get());
         }
+    }
+
+    @Test
+    void synchronizesConfiguredPlayersIdempotentlyWithAdministratorFlags() {
+        GridwordsBotProperties properties = properties(109L, "Tobias", 110L, "Georgia", List.of(109L));
+        ConfiguredPlayerSynchronizer synchronizer = new ConfiguredPlayerSynchronizer(properties, adapter);
+
+        synchronizer.synchronize();
+        synchronizer.synchronize();
+
+        assertTrue(adapter.findByDiscordUserId(109L).orElseThrow().administrator());
+        assertFalse(adapter.findByDiscordUserId(110L).orElseThrow().administrator());
+        assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM player WHERE discord_user_id = 109", Integer.class));
+        assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM player WHERE discord_user_id = 110", Integer.class));
+    }
+
+    @Test
+    void persistsAndRoundTripsFinalRejectionsWithoutCreatingAResult() {
+        adapter.upsert(new PlayerStore.PlayerUpsert(111L, "Rejected", true, false));
+        SubmissionStore.SubmissionRegistration registration = new SubmissionStore.SubmissionRegistration(
+                909L, 200L, 300L, 111L, "invalid share", List.of(), now);
+        adapter.register(registration);
+
+        SubmissionStore.StoredSubmission rejected = transactions.execute(status -> adapter.reject(
+                new SubmissionStore.RejectedSubmission(909L, "OUTSIDE_ALLOWED_DATE_WINDOW")));
+        SubmissionStore.StoredSubmission replay = transactions.execute(status -> adapter.reject(
+                new SubmissionStore.RejectedSubmission(909L, "OUTSIDE_ALLOWED_DATE_WINDOW")));
+
+        assertEquals(SubmissionStore.SubmissionState.PARSE_REJECTED, rejected.state());
+        assertEquals(Optional.of("OUTSIDE_ALLOWED_DATE_WINDOW"), rejected.parserErrorCode());
+        assertEquals(rejected, replay);
+        assertTrue(adapter.find(111L, GameType.GRIDWORDS, LocalDate.of(2026, 7, 29)).isEmpty());
+        assertThrows(SubmissionConflictException.class, () -> transactions.execute(status -> adapter.reject(
+                new SubmissionStore.RejectedSubmission(909L, "MISSING_BOARD"))));
+    }
+
+    @Test
+    void storesACompleteValidApplicationFlowAtomically() {
+        GridwordsBotProperties properties = properties(112L, "Application", 113L, "Second", List.of(112L));
+        new ConfiguredPlayerSynchronizer(properties, adapter).synchronize();
+        ProcessSharedResultService service = new ProcessSharedResultService(
+                new GridWordsShareParser(), new QuadWordsShareParser(), Clock.fixed(now, ZoneOffset.UTC),
+                ZoneId.of("Europe/Berlin"), adapter, adapter);
+        InboundSharedMessage message = new InboundSharedMessage(
+                200L,
+                300L,
+                910L,
+                112L,
+                "Application",
+                "GridWords (29. Juli 2026) 3/6 in 1:25\n⬜⬜⬜⬜⬜\n🟨🟨🟨🟨🟨\n🟩🟩🟩🟩🟩",
+                List.of(),
+                now);
+
+        ProcessingResult outcome = transactions.execute(status -> service.process(message));
+
+        assertEquals(new ProcessingResult.Accepted(), outcome);
+        SubmissionStore.StoredSubmission submission = adapter.findBySourceMessageId(910L).orElseThrow();
+        assertEquals(SubmissionStore.SubmissionState.RESULT_STORED, submission.state());
+        assertTrue(submission.gameResultId().isPresent());
+        assertEquals(3, ((ShareOutcome.Solved) adapter.find(112L, GameType.GRIDWORDS, LocalDate.of(2026, 7, 29))
+                .orElseThrow().parsedResult().outcome()).attemptsUsed());
+    }
+
+    private GridwordsBotProperties properties(
+            long firstId, String firstName, long secondId, String secondName, List<Long> administrators) {
+        return new GridwordsBotProperties(
+                new GridwordsBotProperties.Discord(false, "", 200L, 300L, administrators),
+                new GridwordsBotProperties.Players(
+                        new GridwordsBotProperties.Player(firstId, firstName),
+                        new GridwordsBotProperties.Player(secondId, secondName)),
+                new GridwordsBotProperties.Schedule(
+                        LocalTime.of(18, 0), LocalTime.of(23, 0), LocalTime.of(8, 0), LocalTime.of(8, 15),
+                        ZoneId.of("Europe/Berlin")),
+                new GridwordsBotProperties.Storage(48));
     }
 }
