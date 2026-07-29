@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.never;
@@ -94,6 +95,12 @@ class CanonicalGridWordsPublicationServiceTest {
         when(results.findAll()).thenReturn(List.of(result));
         when(submissions.prepareCanonicalPublication(anyLong(), anyLong()))
                 .thenReturn(SubmissionStore.CanonicalPublicationPreparation.PUBLISHABLE);
+        when(submissions.beginCanonicalDelivery(anyLong(), anyLong(), any()))
+                .thenReturn(new SubmissionStore.CanonicalDeliveryAttempt(1));
+        when(discord.findAllByPublicationKey(anyLong(), any())).thenAnswer(invocation -> {
+            OptionalLong found = discord.findByPublicationKey(invocation.getArgument(0), invocation.getArgument(1));
+            return found.isPresent() ? List.of(found.getAsLong()) : List.of();
+        });
     }
 
     @Test
@@ -113,6 +120,23 @@ class CanonicalGridWordsPublicationServiceTest {
         verify(results, never()).releaseCanonicalPublicationClaim(RESULT, claim.token());
     }
 
+    @Test
+    void persistsTheDeliveryFenceBeforeCreateAndRemovesRecognizedDuplicateMessages() {
+        stored(SubmissionStore.SubmissionState.RESULT_STORED);
+        when(results.findById(RESULT)).thenReturn(Optional.of(result));
+        GameResultStore.PublicationClaim claim = claim("00000000-0000-0000-0000-000000000021");
+        when(results.claimCanonicalPublication(eq(RESULT), any())).thenReturn(Optional.of(claim));
+        doReturn(List.of(), List.of(99L, 100L)).when(discord).findAllByPublicationKey(anyLong(), any());
+        when(discord.create(anyLong(), any())).thenReturn(99L);
+        when(submissions.completeCanonicalPublication(SOURCE, RESULT, 99L, claim.token())).thenReturn(true);
+
+        assertThat(service.publish(SOURCE)).isTrue();
+
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(submissions, discord);
+        order.verify(submissions).beginCanonicalDelivery(SOURCE, RESULT, claim.token());
+        order.verify(discord).create(eq(12L), any());
+        verify(discord).delete(12L, 100L);
+    }
     @Test
     void replayOfPublishedSubmissionDoesNotSendOrEdit() {
         stored(SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED);
@@ -167,8 +191,8 @@ class CanonicalGridWordsPublicationServiceTest {
         GameResultStore.PublicationClaim retryClaim = claim("00000000-0000-0000-0000-000000000005");
         when(results.claimCanonicalPublication(eq(RESULT), any()))
                 .thenReturn(Optional.of(firstClaim), Optional.of(retryClaim));
-        when(discord.findByPublicationKey(anyLong(), any()))
-                .thenReturn(OptionalLong.empty(), OptionalLong.of(99L));
+        doReturn(List.of(), List.of(), List.of(99L), List.of(99L))
+                .when(discord).findAllByPublicationKey(anyLong(), any());
         when(discord.create(anyLong(), any())).thenReturn(99L);
         when(submissions.completeCanonicalPublication(SOURCE, RESULT, 99L, firstClaim.token()))
                 .thenThrow(new SubmissionConflictException("database unavailable"));
@@ -688,13 +712,13 @@ class CanonicalGridWordsPublicationServiceTest {
         when(results.findById(RESULT)).thenReturn(Optional.of(result));
         GameResultStore.PublicationClaim claim = claim("00000000-0000-0000-0000-000000000019");
         when(results.claimCanonicalPublication(eq(RESULT), any())).thenReturn(Optional.of(claim));
-        when(submissions.completeCanonicalRefresh(SOURCE, RESULT, 88L, claim.token(), 7))
+        when(submissions.completeCanonicalRefresh(SOURCE, RESULT, 88L, claim.token(), 1))
                 .thenReturn(new SubmissionStore.CanonicalRefreshCompletion(false));
 
         service.resumeOpenPublications();
 
         verify(discord).edit(eq(12L), eq(88L), any());
-        verify(submissions).completeCanonicalRefresh(SOURCE, RESULT, 88L, claim.token(), 7);
+        verify(submissions).completeCanonicalRefresh(SOURCE, RESULT, 88L, claim.token(), 1);
         verify(recoveredReactionGateway, never()).addAcceptedReaction(anyLong(), anyLong());
     }
     @Test

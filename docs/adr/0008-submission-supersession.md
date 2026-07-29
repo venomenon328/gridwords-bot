@@ -26,3 +26,18 @@ Die Discord-Operationen bleiben außerhalb der Datenbanktransaktion. Der bestehe
 ## Folgen
 
 Die neueste bekannte Korrektur bleibt nach Retry und Neustart maßgeblich. Eine in-flight ältere Discord-Operation kann nicht rückwirkend verhindert werden und kann das sichtbare Embed nach einem neueren Edit noch einmal verändern. Ihr abgewiesener Abschluss löst deshalb einen persistent vorgemerkten Refresh der aktuell maßgeblichen Quelle aus. Ein weiterer verspäteter Edit während dieses Refreshs wird weder durch In-Memory-Deduplizierung verloren noch durch dessen Abschluss gelöscht: Generation und Rerun erzwingen einen weiteren Durchlauf. Nach einem Prozessende bleibt der Refreshbedarf erhalten und wird beim Startup kontrolliert reconciled. Die Schema-Constraint akzeptiert weiterhin den zusätzlichen terminalen Submission-Zustand `SUPERSEDED`.
+
+## Ergänzung: Write-ahead-Delivery-Fence und Duplikat-Reconciliation
+
+Vor jedem kanonischen Discord-Create oder -Edit wird ein tokengebundener Eintrag in
+`canonical_delivery_attempt` zusammen mit einer neuen Refresh-Generation persistiert. Dieser Eintrag bleibt nach
+Prozessabbruch erhalten. Ein erfolgreicher tokengebundener Abschluss entfernt nur seinen eigenen Eintrag; ältere
+noch offene Einträge halten den Refreshbedarf bewusst aufrecht. Ein erfolgreicher Refresh entfernt ausschließlich
+Versuche bis zu seiner gerenderten Generation. Kehrt ein lebender, verspäteter Publisher danach zurück, fordert sein
+Fehlerpfad erneut einen Refresh an.
+
+Die Wiedererkennung über den stabilen Publication-Key liefert alle passenden Bot-Nachrichten. Die persistierte
+`canonical_message_id` gewinnt; ohne sie gewinnt die kleinste Discord-Snowflake. Alle anderen gefundenen Bot-Nachrichten
+werden außerhalb der Datenbanktransaktion gelöscht. Damit kann ein Lease-Takeover während eines langsamen ersten
+Creates zwar kurzfristig zwei sichtbare Nachrichten erzeugen, aber nicht dauerhaft zwei kanonische Nachrichten
+hinterlassen. Ein fehlgeschlagener Bereinigungsschritt bleibt durch den Write-ahead-Fence wiederaufnehmbar.

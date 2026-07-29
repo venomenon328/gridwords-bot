@@ -32,6 +32,13 @@ public interface SubmissionStore {
         throw new UnsupportedOperationException("canonical publication is not available");
     }
 
+    /**
+     * Records a write-ahead delivery attempt before any Discord REST call.  A surviving attempt makes startup
+     * reconciliation mandatory even when the process dies after Discord has accepted the request.
+     */
+    default CanonicalDeliveryAttempt beginCanonicalDelivery(long sourceMessageId, long gameResultId, UUID claimToken) {
+        throw new UnsupportedOperationException("canonical delivery fencing is not available");
+    }
     /** Atomically chooses the newest publishable submission for one mutable game result. */
     default CanonicalPublicationPreparation prepareCanonicalPublication(long sourceMessageId, long gameResultId) {
         throw new UnsupportedOperationException("canonical publication preparation is not available");
@@ -143,6 +150,14 @@ public interface SubmissionStore {
         }
     }
 
+    /** Durable write-ahead attempt identified by the owning publication claim token. */
+    record CanonicalDeliveryAttempt(long refreshGeneration) {
+        public CanonicalDeliveryAttempt {
+            if (refreshGeneration < 0) {
+                throw new IllegalArgumentException("refreshGeneration must not be negative");
+            }
+        }
+    }
     /** A current source paired with the generation that made a canonical refresh necessary. */
     record CanonicalRefreshCandidate(StoredSubmission submission, long refreshGeneration) {
         public CanonicalRefreshCandidate {

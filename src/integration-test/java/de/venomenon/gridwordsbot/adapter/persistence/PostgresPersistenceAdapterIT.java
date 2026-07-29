@@ -628,6 +628,57 @@ class PostgresPersistenceAdapterIT {
         }
     }
     @Test
+    void retainsAWriteAheadDeliveryAcrossRestartUntilTheCurrentPublicationIsReconciled() {
+        long playerId = 160L;
+        long source = 960L;
+        adapter.upsert(new PlayerStore.PlayerUpsert(playerId, "Crash recovery", true, false));
+        registerSubmission(source, playerId);
+        long resultId = store(source, resultFor(playerId, 3, "crash recovery"), List.of()).gameResultId().orElseThrow();
+        GameResultStore.PublicationClaim interrupted = adapter.claimCanonicalPublication(resultId, now.minusSeconds(1)).orElseThrow();
+        assertEquals(1, transactions.execute(status -> adapter.beginCanonicalDelivery(source, resultId, interrupted.token())).refreshGeneration());
+
+        PostgresPersistenceAdapter restarted = new PostgresPersistenceAdapter(jdbc, Clock.fixed(now, ZoneOffset.UTC));
+        assertTrue(restarted.findCanonicalRefreshCandidates().stream()
+                .anyMatch(candidate -> candidate.submission().sourceMessageId() == source));
+        GameResultStore.PublicationClaim recovered = restarted.claimCanonicalPublication(resultId, now.plusSeconds(60)).orElseThrow();
+        transactions.execute(status -> restarted.beginCanonicalDelivery(source, resultId, recovered.token()));
+        assertEquals(Boolean.TRUE, transactions.execute(status -> restarted.completeCanonicalPublication(source, resultId, 9600L, recovered.token())));
+
+        GameResultStore.PublicationClaim refresh = restarted.claimCanonicalPublication(resultId, now.plusSeconds(60)).orElseThrow();
+        SubmissionStore.CanonicalDeliveryAttempt refreshAttempt = transactions.execute(status ->
+                restarted.beginCanonicalDelivery(source, resultId, refresh.token()));
+        assertEquals(new SubmissionStore.CanonicalRefreshCompletion(false), transactions.execute(status ->
+                restarted.completeCanonicalRefresh(source, resultId, 9600L, refresh.token(), refreshAttempt.refreshGeneration())));
+        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM canonical_delivery_attempt WHERE game_result_id = ?", Integer.class, resultId));
+        assertTrue(restarted.findCanonicalRefreshCandidates().isEmpty());
+    }
+
+    @Test
+    void retainsTheSlowFirstDeliveryFenceAfterLeaseTakeoverUntilDeterministicReconciliation() {
+        long playerId = 161L;
+        long source = 961L;
+        adapter.upsert(new PlayerStore.PlayerUpsert(playerId, "Slow create", true, false));
+        registerSubmission(source, playerId);
+        long resultId = store(source, resultFor(playerId, 3, "slow create"), List.of()).gameResultId().orElseThrow();
+        GameResultStore.PublicationClaim slow = adapter.claimCanonicalPublication(resultId, now.minusSeconds(1)).orElseThrow();
+        transactions.execute(status -> adapter.beginCanonicalDelivery(source, resultId, slow.token()));
+        GameResultStore.PublicationClaim takeover = adapter.claimCanonicalPublication(resultId, now.plusSeconds(60)).orElseThrow();
+        SubmissionStore.CanonicalDeliveryAttempt takeoverAttempt = transactions.execute(status ->
+                adapter.beginCanonicalDelivery(source, resultId, takeover.token()));
+        assertEquals(Boolean.TRUE, transactions.execute(status -> adapter.completeCanonicalPublication(source, resultId, 9610L, takeover.token())));
+
+        assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM canonical_delivery_attempt WHERE game_result_id = ?", Integer.class, resultId));
+        SubmissionStore.CanonicalRefreshCandidate pending = adapter.findCanonicalRefreshCandidates().stream()
+                .filter(candidate -> candidate.submission().sourceMessageId() == source).findFirst().orElseThrow();
+        assertEquals(takeoverAttempt.refreshGeneration(), pending.refreshGeneration());
+        GameResultStore.PublicationClaim refresh = adapter.claimCanonicalPublication(resultId, now.plusSeconds(60)).orElseThrow();
+        SubmissionStore.CanonicalDeliveryAttempt refreshAttempt = transactions.execute(status ->
+                adapter.beginCanonicalDelivery(source, resultId, refresh.token()));
+        assertEquals(new SubmissionStore.CanonicalRefreshCompletion(false), transactions.execute(status ->
+                adapter.completeCanonicalRefresh(source, resultId, 9610L, refresh.token(), refreshAttempt.refreshGeneration())));
+        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM canonical_delivery_attempt WHERE game_result_id = ?", Integer.class, resultId));
+    }
+    @Test
     void appliesTheCanonicalRefreshReconciliationMigrationToAnEmptyDatabase() {
         assertEquals(2, jdbc.queryForObject("""
                 SELECT count(*)

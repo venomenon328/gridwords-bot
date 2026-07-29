@@ -301,6 +301,44 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         supersedeOlderOpenSubmissions(submission, gameResultId);
         return CanonicalPublicationPreparation.PUBLISHABLE;
     }
+    /**
+     * Write-ahead fence for a Discord operation. It is committed before the REST call; a process death can only
+     * leave reconciliation work, never an unrecorded visible side effect.
+     */
+    @Override
+    @Transactional
+    public CanonicalDeliveryAttempt beginCanonicalDelivery(long sourceMessageId, long resultId, UUID claimToken) {
+        StoredSubmission submission = lockRequired(sourceMessageId);
+        if (submission.gameResultId().filter(id -> id == resultId).isEmpty()
+                || (submission.state() != SubmissionState.RESULT_STORED
+                && submission.state() != SubmissionState.FAILED_RETRYABLE
+                && submission.state() != SubmissionState.CANONICAL_MESSAGE_PUBLISHED)) {
+            throw new SubmissionConflictException("submission is not publishable for canonical delivery");
+        }
+        lockResult(resultId);
+        List<Long> existing = jdbc.queryForList("SELECT refresh_generation FROM canonical_delivery_attempt WHERE claim_token = ? FOR UPDATE", Long.class, claimToken);
+        if (!existing.isEmpty()) {
+            return new CanonicalDeliveryAttempt(existing.getFirst());
+        }
+        Long generation = jdbc.query("""
+                UPDATE game_result
+                SET canonical_refresh_required = TRUE,
+                    canonical_refresh_generation = canonical_refresh_generation + 1,
+                    updated_at = ?, version = version + 1
+                WHERE id = ? AND canonical_publish_claim_token = ?
+                RETURNING canonical_refresh_generation
+                """, rs -> rs.next() ? rs.getLong(1) : null,
+                databaseTime(clock.instant()), resultId, claimToken);
+        if (generation == null) {
+            throw new SubmissionConflictException("canonical delivery claim was lost");
+        }
+        jdbc.update("""
+                INSERT INTO canonical_delivery_attempt
+                    (claim_token, game_result_id, source_message_id, refresh_generation, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """, claimToken, resultId, sourceMessageId, generation, databaseTime(clock.instant()));
+        return new CanonicalDeliveryAttempt(generation);
+    }
     @Override
     public Optional<CanonicalRefreshCandidate> findCurrentCanonicalPublicationCandidate(long gameResultId) {
         return jdbc.query("""
@@ -347,8 +385,8 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
     }
 
     /**
-     * Fences a compensating refresh after a stale Discord side effect. A newer refresh generation remains pending
-     * even when this token-owned edit successfully persists its canonical message ID.
+     * Completes one reconciliation generation and consumes every older write-ahead attempt. Attempts inserted by a
+     * newer publisher remain durable, so a slow stale publisher cannot erase its own recovery obligation.
      */
     @Override
     @Transactional
@@ -367,11 +405,14 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         if (hasNewerLinkedSubmission(submission, resultId)) {
             throw new SubmissionConflictException("a newer submission superseded the refresh source");
         }
+        jdbc.update("DELETE FROM canonical_delivery_attempt WHERE game_result_id = ? AND refresh_generation <= ?",
+                resultId, refreshGeneration);
+        boolean outstanding = hasOutstandingCanonicalDeliveryAttempt(resultId);
         Boolean refreshStillRequired = jdbc.query("""
                 UPDATE game_result
                 SET canonical_message_id = ?,
                     canonical_refresh_required = CASE
-                        WHEN canonical_refresh_generation = ? THEN FALSE
+                        WHEN canonical_refresh_generation = ? AND ? = FALSE THEN FALSE
                         ELSE TRUE
                     END,
                     canonical_publish_lease_until = NULL, canonical_publish_claim_token = NULL,
@@ -379,7 +420,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                 WHERE id = ? AND canonical_publish_claim_token = ?
                 RETURNING canonical_refresh_required
                 """, rs -> rs.next() ? rs.getBoolean(1) : null,
-                canonicalMessageId, refreshGeneration, databaseTime(clock.instant()), resultId, claimToken);
+                canonicalMessageId, refreshGeneration, outstanding, databaseTime(clock.instant()), resultId, claimToken);
         if (refreshStillRequired == null) {
             throw new SubmissionConflictException("canonical refresh claim was lost");
         }
@@ -414,17 +455,36 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
             long resultId,
             long canonicalMessageId,
             UUID claimToken) {
+        StoredSubmission submission = lockRequired(sourceMessageId);
+        if (submission.gameResultId().filter(id -> id == resultId).isEmpty()
+                || (submission.state() != SubmissionState.RESULT_STORED
+                && submission.state() != SubmissionState.FAILED_RETRYABLE)) {
+            throw new SubmissionConflictException("submission changed during canonical publication");
+        }
+        lockResult(resultId);
+        List<Long> generations = jdbc.queryForList(
+                "SELECT refresh_generation FROM canonical_delivery_attempt WHERE claim_token = ? FOR UPDATE",
+                Long.class, claimToken);
+        Long deliveryGeneration = generations.isEmpty() ? null : generations.getFirst();
+        boolean otherOutstanding = hasOutstandingCanonicalDeliveryAttemptExcept(resultId, claimToken);
         Instant now = clock.instant();
         int claimedResult = jdbc.update("""
                 UPDATE game_result
                 SET canonical_message_id = ?, canonical_publish_lease_until = NULL,
-                    canonical_publish_claim_token = NULL, updated_at = ?, version = version + 1
+                    canonical_publish_claim_token = NULL,
+                    canonical_refresh_required = CASE
+                        WHEN ? IS NULL THEN canonical_refresh_required
+                        WHEN canonical_refresh_generation = ? AND ? = FALSE THEN FALSE
+                        ELSE TRUE
+                    END,
+                    updated_at = ?, version = version + 1
                 WHERE id = ? AND canonical_publish_claim_token = ?
-                """, canonicalMessageId, databaseTime(now), resultId, claimToken);
+                """, canonicalMessageId, deliveryGeneration, deliveryGeneration, otherOutstanding,
+                databaseTime(now), resultId, claimToken);
         if (claimedResult != 1) {
             throw new SubmissionConflictException("publication claim was lost");
         }
-
+        jdbc.update("DELETE FROM canonical_delivery_attempt WHERE claim_token = ?", claimToken);
         int completedSubmission = jdbc.update("""
                 UPDATE submission
                 SET processing_state = 'CANONICAL_MESSAGE_PUBLISHED', technical_error_message = NULL,
@@ -438,7 +498,6 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         }
         return true;
     }
-
     @Override
     public void markRetryableFailure(long sourceMessageId, String detail) {
         jdbc.update("""
@@ -459,6 +518,15 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                 WHERE r.game_type = 'GRIDWORDS'
                   AND s.processing_state IN ('RESULT_STORED', 'FAILED_RETRYABLE')
                 """, SUBMISSION);
+    }
+    private boolean hasOutstandingCanonicalDeliveryAttempt(long resultId) {
+        return !jdbc.queryForList("SELECT claim_token FROM canonical_delivery_attempt WHERE game_result_id = ? LIMIT 1",
+                UUID.class, resultId).isEmpty();
+    }
+
+    private boolean hasOutstandingCanonicalDeliveryAttemptExcept(long resultId, UUID claimToken) {
+        return !jdbc.queryForList("SELECT claim_token FROM canonical_delivery_attempt WHERE game_result_id = ? AND claim_token <> ? LIMIT 1",
+                UUID.class, resultId, claimToken).isEmpty();
     }
     private CanonicalRefreshCandidate refreshCandidate(ResultSet resultSet, int rowNumber) throws SQLException {
         return new CanonicalRefreshCandidate(SUBMISSION.mapRow(resultSet, rowNumber),

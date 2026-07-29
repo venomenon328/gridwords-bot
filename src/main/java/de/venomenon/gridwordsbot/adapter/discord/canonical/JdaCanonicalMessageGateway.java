@@ -49,18 +49,36 @@ public final class JdaCanonicalMessageGateway implements CanonicalMessageGateway
 
     @Override
     public OptionalLong findByPublicationKey(long channelId, String publicationKey) {
+        return findAllByPublicationKey(channelId, publicationKey).stream().mapToLong(Long::longValue).findFirst();
+    }
+
+    @Override
+    public List<Long> findAllByPublicationKey(long channelId, String publicationKey) {
         MessageHistory history = channel(channelId).getHistory();
+        List<Long> matching = new java.util.ArrayList<>();
         while (true) {
             List<Message> page = history.retrievePast(100).complete();
-            OptionalLong found = page.stream()
+            page.stream()
                     .filter(message -> message.getAuthor().equals(jda.getSelfUser()))
                     .filter(message -> message.getEmbeds().stream().anyMatch(embed -> embed.getFooter() != null
                             && publicationKey.equals(embed.getFooter().getText())))
                     .mapToLong(Message::getIdLong)
-                    .findFirst();
-            if (found.isPresent() || page.size() < 100) {
-                return found;
+                    .forEach(matching::add);
+            if (page.size() < 100) {
+                return List.copyOf(matching);
             }
+        }
+    }
+
+    @Override
+    public void delete(long channelId, long messageId) {
+        try {
+            channel(channelId).deleteMessageById(messageId).complete();
+        } catch (ErrorResponseException exception) {
+            if (isUnknownMessage(exception)) {
+                return;
+            }
+            throw exception;
         }
     }
 

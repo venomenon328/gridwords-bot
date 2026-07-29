@@ -107,7 +107,7 @@ public final class CanonicalGridWordsPublicationService {
     private PublicationOutcome publishOutcome(long sourceMessageId) {
         long resultId = 0;
         UUID claimToken = null;
-        boolean discordSideEffectCompleted = false;
+        boolean deliveryAttemptRecorded = false;
         try {
             SubmissionStore.StoredSubmission submission = submissions.findBySourceMessageId(sourceMessageId)
                     .orElseThrow();
@@ -141,12 +141,13 @@ public final class CanonicalGridWordsPublicationService {
                 return PublicationOutcome.RETRY_SCHEDULED;
             }
             claimToken = claim.token();
+            submissions.beginCanonicalDelivery(sourceMessageId, resultId, claimToken);
+            deliveryAttemptRecorded = true;
 
             long canonicalMessageId = publishOrEdit(
                     submission,
                     result,
                     canonicalMessage(result, submission.authorPlayerId(), submission.publicationContext()));
-            discordSideEffectCompleted = true;
             boolean completed = submissions.completeCanonicalPublication(
                     sourceMessageId,
                     resultId,
@@ -166,7 +167,7 @@ public final class CanonicalGridWordsPublicationService {
                             results.releaseCanonicalPublicationClaim(resultId, claimToken);
                         }
                     } finally {
-                        if (discordSideEffectCompleted) {
+                        if (deliveryAttemptRecorded) {
                             requestCurrentRefresh(resultId, REFRESH_DELAY_SECONDS);
                         }
                     }
@@ -314,12 +315,14 @@ public final class CanonicalGridWordsPublicationService {
                 return RefreshOutcome.RETRY_SCHEDULED;
             }
             claimToken = claim.token();
+            SubmissionStore.CanonicalDeliveryAttempt deliveryAttempt = submissions.beginCanonicalDelivery(
+                    current.sourceMessageId(), resultId, claimToken);
             long canonicalMessageId = publishOrEdit(
                     current,
                     result,
                     canonicalMessage(result, current.authorPlayerId(), current.publicationContext()));
             SubmissionStore.CanonicalRefreshCompletion completion = submissions.completeCanonicalRefresh(
-                    current.sourceMessageId(), resultId, canonicalMessageId, claimToken, candidate.refreshGeneration());
+                    current.sourceMessageId(), resultId, canonicalMessageId, claimToken, deliveryAttempt.refreshGeneration());
             return completion.refreshStillRequired() ? RefreshOutcome.RETRY_SCHEDULED : RefreshOutcome.COMPLETED;
         } catch (RuntimeException exception) {
             if (claimToken != null) {
@@ -340,19 +343,37 @@ public final class CanonicalGridWordsPublicationService {
             SubmissionStore.StoredSubmission submission,
             GameResultStore.StoredGameResult result,
             CanonicalResultMessage message) {
+        long canonicalMessageId;
         if (result.canonicalMessageId().isPresent()) {
             long existingId = result.canonicalMessageId().getAsLong();
             try {
                 discord.edit(submission.channelId(), existingId, message);
-                return existingId;
+                canonicalMessageId = existingId;
             } catch (CanonicalMessageGateway.UnknownMessageException ignored) {
-                // The held result lease makes this controlled replacement unique.
+                canonicalMessageId = findOrCreateCanonicalMessage(submission.channelId(), message);
             }
+        } else {
+            canonicalMessageId = findOrCreateCanonicalMessage(submission.channelId(), message);
         }
-        return discord.findByPublicationKey(submission.channelId(), message.publicationKey())
-                .orElseGet(() -> discord.create(submission.channelId(), message));
+        removeDuplicateCanonicalMessages(submission.channelId(), message.publicationKey(), canonicalMessageId);
+        return canonicalMessageId;
     }
 
+    private long findOrCreateCanonicalMessage(long channelId, CanonicalResultMessage message) {
+        return discord.findAllByPublicationKey(channelId, message.publicationKey()).stream()
+                .mapToLong(Long::longValue)
+                .min()
+                .orElseGet(() -> discord.create(channelId, message));
+    }
+
+    /** The persisted canonical ID wins; without one, the oldest Discord snowflake is the deterministic winner. */
+    private void removeDuplicateCanonicalMessages(long channelId, String publicationKey, long canonicalMessageId) {
+        for (Long messageId : discord.findAllByPublicationKey(channelId, publicationKey)) {
+            if (messageId != canonicalMessageId) {
+                discord.delete(channelId, messageId);
+            }
+        }
+    }
     private CanonicalResultMessage canonicalMessage(
             GameResultStore.StoredGameResult result,
             long playerId,
