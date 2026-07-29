@@ -118,7 +118,7 @@ Abnahmekriterium:
 
 ## Inkrement 4 – Kanonische GridWords-Nachricht, zunächst ohne Löschung
 
-**Status:** abgeschlossen (PR #10; manueller Discord-/PostgreSQL-Smoke-Test am 29. Juli 2026 erfolgreich)
+**Status:** abgeschlossen und mergebereit (PR #10; manueller Discord-/PostgreSQL-Smoke-Test am 29. Juli 2026 erfolgreich)
 
 **Ziel:** GridWords-Ausgabe vollständig erzeugen und veröffentlichen.
 
