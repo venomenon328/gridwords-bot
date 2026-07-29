@@ -122,8 +122,10 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
                 parserVersion(parsed));
 
         // A source message that was stored already remains accepted after its date window has elapsed.
-        if (submission.state() == SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED) {
-            return new ProcessingResult.Accepted();
+        if (submission.state() == SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED
+                || submission.state() == SubmissionStore.SubmissionState.ORIGINAL_MESSAGE_DELETED
+                || submission.state() == SubmissionStore.SubmissionState.COMPLETED) {
+            return new ProcessingResult.Accepted(parsed.gameType());
         }
         if (submission.state() == SubmissionStore.SubmissionState.SUPERSEDED) {
             return new ProcessingResult.Ignored();
@@ -143,7 +145,7 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
         if (parsed.gameType() == GameType.GRIDWORDS && !canonicalPublisher.test(message.messageId())) {
             return new ProcessingResult.Ignored();
         }
-        return new ProcessingResult.Accepted();
+        return new ProcessingResult.Accepted(parsed.gameType());
     }
 
     private ParseResult parse(InboundSharedMessage message) {

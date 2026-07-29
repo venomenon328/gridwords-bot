@@ -7,7 +7,6 @@ import de.venomenon.gridwordsbot.port.out.CanonicalMessageGateway;
 import de.venomenon.gridwordsbot.port.out.GameResultStore;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
 import de.venomenon.gridwordsbot.port.out.PublicationRetryScheduler;
-import de.venomenon.gridwordsbot.port.out.SourceMessageReactionGateway;
 import de.venomenon.gridwordsbot.port.out.SubmissionStore;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -20,6 +19,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.function.LongConsumer;
 
 /** Coordinates one resumable canonical GridWords publication without a Discord call in a transaction. */
 public final class CanonicalGridWordsPublicationService {
@@ -36,7 +36,7 @@ public final class CanonicalGridWordsPublicationService {
     private final List<Long> configuredPlayerIds;
     private final StreakCalculator streakCalculator;
     private final PublicationRetryScheduler retryScheduler;
-    private final SourceMessageReactionGateway acceptedReactionGateway;
+    private final LongConsumer postPublication;
     private final Set<Long> scheduledRetries = ConcurrentHashMap.newKeySet();
     private final ConcurrentMap<Long, RefreshSchedule> scheduledRefreshes = new ConcurrentHashMap<>();
 
@@ -56,8 +56,20 @@ public final class CanonicalGridWordsPublicationService {
                 clock,
                 zoneId,
                 configuredPlayerIds,
-                (at, action) -> { },
-                (channelId, sourceMessageId) -> { });
+                (at, action) -> { });
+    }
+
+    public CanonicalGridWordsPublicationService(
+            GameResultStore results,
+            PlayerStore players,
+            SubmissionStore submissions,
+            CanonicalMessageGateway discord,
+            Clock clock,
+            ZoneId zoneId,
+            List<Long> configuredPlayerIds,
+            PublicationRetryScheduler retryScheduler) {
+        this(results, players, submissions, discord, clock, zoneId, configuredPlayerIds, retryScheduler,
+                sourceMessageId -> { });
     }
 
     public CanonicalGridWordsPublicationService(
@@ -69,7 +81,7 @@ public final class CanonicalGridWordsPublicationService {
             ZoneId zoneId,
             List<Long> configuredPlayerIds,
             PublicationRetryScheduler retryScheduler,
-            SourceMessageReactionGateway acceptedReactionGateway) {
+            LongConsumer postPublication) {
         this.results = Objects.requireNonNull(results);
         this.players = Objects.requireNonNull(players);
         this.submissions = Objects.requireNonNull(submissions);
@@ -84,26 +96,30 @@ public final class CanonicalGridWordsPublicationService {
         }
         this.streakCalculator = new StreakCalculator();
         this.retryScheduler = Objects.requireNonNull(retryScheduler);
-        this.acceptedReactionGateway = Objects.requireNonNull(acceptedReactionGateway);
+        this.postPublication = Objects.requireNonNull(postPublication);
     }
-
     /** @return true only after the canonical ID and the submission state were persisted together. */
     public boolean publish(long sourceMessageId) {
-        return publishOutcome(sourceMessageId) == PublicationOutcome.PUBLISHED;
+        return publishAndHandOff(sourceMessageId) == PublicationOutcome.PUBLISHED;
     }
 
     /** Replays open publications and persisted refresh work after startup. */
     public void resumeOpenPublications() {
         for (SubmissionStore.StoredSubmission submission : submissions.findGridWordsAwaitingCanonicalPublication()) {
-            if (publishOutcome(submission.sourceMessageId()) == PublicationOutcome.PUBLISHED) {
-                acknowledgeDeferredPublication(submission);
-            }
+            publishAndHandOff(submission.sourceMessageId());
         }
         for (SubmissionStore.CanonicalRefreshCandidate refresh : submissions.findCanonicalRefreshCandidates()) {
             resumeCurrentRefresh(refresh.submission().gameResultId().orElseThrow());
         }
     }
 
+private PublicationOutcome publishAndHandOff(long sourceMessageId) {
+        PublicationOutcome outcome = publishOutcome(sourceMessageId);
+        if (outcome == PublicationOutcome.PUBLISHED) {
+            postPublication.accept(sourceMessageId);
+        }
+        return outcome;
+    }
     private PublicationOutcome publishOutcome(long sourceMessageId) {
         long resultId = 0;
         UUID claimToken = null;
@@ -111,7 +127,9 @@ public final class CanonicalGridWordsPublicationService {
         try {
             SubmissionStore.StoredSubmission submission = submissions.findBySourceMessageId(sourceMessageId)
                     .orElseThrow();
-            if (submission.state() == SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED) {
+            if (submission.state() == SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED
+                    || submission.state() == SubmissionStore.SubmissionState.ORIGINAL_MESSAGE_DELETED
+                    || submission.state() == SubmissionStore.SubmissionState.COMPLETED) {
                 return PublicationOutcome.PUBLISHED;
             }
             if (submission.state() == SubmissionStore.SubmissionState.SUPERSEDED) {
@@ -193,7 +211,7 @@ public final class CanonicalGridWordsPublicationService {
     private void retryPublication(long sourceMessageId) {
         PublicationOutcome outcome;
         try {
-            outcome = publishOutcome(sourceMessageId);
+            outcome = publishAndHandOff(sourceMessageId);
         } finally {
             scheduledRetries.remove(sourceMessageId);
         }
@@ -201,11 +219,8 @@ public final class CanonicalGridWordsPublicationService {
             scheduleRetry(sourceMessageId);
             return;
         }
-        if (outcome == PublicationOutcome.PUBLISHED) {
-            submissions.findBySourceMessageId(sourceMessageId).ifPresent(this::acknowledgeDeferredPublication);
-        }
-    }
 
+    }
     /** Persists and schedules the reconciliation needed after a late stale Discord side effect. */
     private void requestCurrentRefresh(long resultId, long delaySeconds) {
         submissions.requestCanonicalRefresh(resultId);
@@ -298,8 +313,10 @@ public final class CanonicalGridWordsPublicationService {
                 return RefreshOutcome.COMPLETED;
             }
             SubmissionStore.StoredSubmission current = candidate.submission();
-            if (current.state() != SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED) {
-                return switch (publishOutcome(current.sourceMessageId())) {
+            if (current.state() != SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED
+                    && current.state() != SubmissionStore.SubmissionState.ORIGINAL_MESSAGE_DELETED
+                    && current.state() != SubmissionStore.SubmissionState.COMPLETED) {
+                return switch (publishAndHandOff(current.sourceMessageId())) {
                     case PUBLISHED, RETRY_SCHEDULED, SUPERSEDED -> RefreshOutcome.RETRY_SCHEDULED;
                 };
             }
@@ -334,9 +351,6 @@ public final class CanonicalGridWordsPublicationService {
             }
             return RefreshOutcome.RETRY_SCHEDULED;
         }
-    }
-    private void acknowledgeDeferredPublication(SubmissionStore.StoredSubmission submission) {
-        acceptedReactionGateway.addAcceptedReaction(submission.channelId(), submission.sourceMessageId());
     }
 
     private long publishOrEdit(

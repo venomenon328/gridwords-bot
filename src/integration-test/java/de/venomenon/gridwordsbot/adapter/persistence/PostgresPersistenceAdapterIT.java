@@ -28,6 +28,7 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.OptionalInt;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -679,6 +680,144 @@ class PostgresPersistenceAdapterIT {
         assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM canonical_delivery_attempt WHERE game_result_id = ?", Integer.class, resultId));
     }
     @Test
+    void persistsTheSourceDeletionTransitionAndCompletesItAfterRestartWithoutAnotherDelete() {
+        long playerId = 170L;
+        long sourceMessageId = 970L;
+        adapter.upsert(new PlayerStore.PlayerUpsert(playerId, "Delete recovery", true, false));
+        registerSubmission(sourceMessageId, playerId);
+        long resultId = store(sourceMessageId, resultFor(playerId, 3, "delete recovery"), List.of())
+                .gameResultId().orElseThrow();
+        GameResultStore.PublicationClaim publicationClaim = adapter.claimCanonicalPublication(resultId, now.plusSeconds(60))
+                .orElseThrow();
+        assertEquals(Boolean.TRUE, transactions.execute(status -> adapter.completeCanonicalPublication(
+                sourceMessageId, resultId, 9700L, publicationClaim.token())));
+
+        SubmissionStore.SourceDeletionClaim deletionClaim = transactions.execute(status ->
+                adapter.claimOriginalSourceDeletion(sourceMessageId, now.plusSeconds(60)).orElseThrow());
+        assertEquals(Boolean.TRUE, transactions.execute(status -> adapter.recordOriginalSourceDeleted(
+                sourceMessageId, deletionClaim.token())));
+        SubmissionStore.StoredSubmission deleted = adapter.findBySourceMessageId(sourceMessageId).orElseThrow();
+        assertEquals(SubmissionStore.SubmissionState.ORIGINAL_MESSAGE_DELETED, deleted.state());
+        assertTrue(deleted.originalDeletedAt().isPresent());
+        assertEquals(SubmissionStore.OriginalDeletionFailure.NONE, deleted.originalDeletionFailure());
+
+        PostgresPersistenceAdapter restarted = new PostgresPersistenceAdapter(jdbc, Clock.fixed(now, ZoneOffset.UTC));
+        assertTrue(restarted.findGridWordsAwaitingOriginalSourceDeletion().stream()
+                .anyMatch(submission -> submission.sourceMessageId() == sourceMessageId));
+        assertEquals(Boolean.TRUE, transactions.execute(status -> restarted.completeOriginalSourceDeletion(sourceMessageId)));
+        assertEquals(Boolean.TRUE, transactions.execute(status -> restarted.completeOriginalSourceDeletion(sourceMessageId)));
+        assertEquals(SubmissionStore.SubmissionState.COMPLETED,
+                restarted.findBySourceMessageId(sourceMessageId).orElseThrow().state());
+        assertFalse(restarted.findGridWordsAwaitingOriginalSourceDeletion().stream()
+                .anyMatch(submission -> submission.sourceMessageId() == sourceMessageId));
+    }
+
+    @Test
+    void keepsAnActiveSourceDeletionLeaseVisibleAcrossRestartUntilItCanBeClaimedAgain() {
+        long playerId = 173L;
+        long sourceMessageId = 974L;
+        Instant leaseUntil = now.plusSeconds(60);
+        adapter.upsert(new PlayerStore.PlayerUpsert(playerId, "Delete lease recovery", true, false));
+        registerSubmission(sourceMessageId, playerId);
+        long resultId = store(sourceMessageId, resultFor(playerId, 3, "delete lease recovery"), List.of())
+                .gameResultId().orElseThrow();
+        GameResultStore.PublicationClaim publicationClaim = adapter.claimCanonicalPublication(resultId, leaseUntil)
+                .orElseThrow();
+        transactions.execute(status -> adapter.completeCanonicalPublication(
+                sourceMessageId, resultId, 9740L, publicationClaim.token()));
+        transactions.execute(status -> adapter.claimOriginalSourceDeletion(sourceMessageId, leaseUntil).orElseThrow());
+
+        PostgresPersistenceAdapter restarted = new PostgresPersistenceAdapter(jdbc, Clock.fixed(now, ZoneOffset.UTC));
+        SubmissionStore.StoredSubmission recovered = restarted.findGridWordsAwaitingOriginalSourceDeletion().stream()
+                .filter(submission -> submission.sourceMessageId() == sourceMessageId)
+                .findFirst().orElseThrow();
+        assertEquals(Optional.of(leaseUntil), recovered.sourceDeletionLeaseUntil());
+        assertTrue(transactions.execute(status -> restarted.claimOriginalSourceDeletion(sourceMessageId, leaseUntil)).isEmpty());
+
+        PostgresPersistenceAdapter afterLeaseExpiry = new PostgresPersistenceAdapter(
+                jdbc, Clock.fixed(leaseUntil.plusSeconds(1), ZoneOffset.UTC));
+        assertTrue(transactions.execute(status -> afterLeaseExpiry.claimOriginalSourceDeletion(
+                sourceMessageId, leaseUntil.plusSeconds(61))).isPresent());
+    }
+    @Test
+    void rejectsAStaleSourceDeletionOwnerAndAllowsExactlyOneConcurrentOwner() throws Exception {
+        long playerId = 171L;
+        long sourceMessageId = 971L;
+        adapter.upsert(new PlayerStore.PlayerUpsert(playerId, "Delete owner", true, false));
+        registerSubmission(sourceMessageId, playerId);
+        long resultId = store(sourceMessageId, resultFor(playerId, 3, "delete owner"), List.of())
+                .gameResultId().orElseThrow();
+        GameResultStore.PublicationClaim publicationClaim = adapter.claimCanonicalPublication(resultId, now.plusSeconds(60))
+                .orElseThrow();
+        transactions.execute(status -> adapter.completeCanonicalPublication(
+                sourceMessageId, resultId, 9710L, publicationClaim.token()));
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            Future<Optional<SubmissionStore.SourceDeletionClaim>> first = executor.submit(() ->
+                    transactions.execute(status -> adapter.claimOriginalSourceDeletion(sourceMessageId, now.plusSeconds(60))));
+            Future<Optional<SubmissionStore.SourceDeletionClaim>> second = executor.submit(() ->
+                    transactions.execute(status -> adapter.claimOriginalSourceDeletion(sourceMessageId, now.plusSeconds(60))));
+            List<Optional<SubmissionStore.SourceDeletionClaim>> claims = List.of(first.get(), second.get());
+            assertEquals(1, claims.stream().filter(Optional::isPresent).count());
+            SubmissionStore.SourceDeletionClaim owner = claims.stream().flatMap(Optional::stream).findFirst().orElseThrow();
+
+            assertEquals(Boolean.FALSE, transactions.execute(status -> adapter.recordOriginalSourceDeleted(
+                    sourceMessageId, UUID.randomUUID())));
+            assertEquals(SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED,
+                    adapter.findBySourceMessageId(sourceMessageId).orElseThrow().state());
+            assertEquals(Boolean.TRUE, transactions.execute(status -> adapter.recordOriginalSourceDeleted(sourceMessageId, owner.token())));
+        }
+    }
+
+    @Test
+    void keepsASupersededSourceVisibleUntilTheNewerCanonicalPublicationIsConfirmed() {
+        long playerId = 172L;
+        long olderSource = 972L;
+        long newerSource = 973L;
+        adapter.upsert(new PlayerStore.PlayerUpsert(playerId, "Superseded deletion", true, false));
+        registerSubmission(olderSource, playerId, now);
+        long resultId = store(olderSource, resultFor(playerId, 4, "older"), List.of()).gameResultId().orElseThrow();
+        GameResultStore.PublicationClaim firstPublication = adapter.claimCanonicalPublication(resultId, now.plusSeconds(60))
+                .orElseThrow();
+        transactions.execute(status -> adapter.completeCanonicalPublication(
+                olderSource, resultId, 9720L, firstPublication.token()));
+
+        registerSubmission(newerSource, playerId, now.plusSeconds(1));
+        store(newerSource, resultFor(playerId, 2, "newer"), List.of());
+        assertEquals(SubmissionStore.CanonicalPublicationPreparation.PUBLISHABLE,
+                transactions.execute(status -> adapter.prepareCanonicalPublication(newerSource, resultId)));
+        assertEquals(SubmissionStore.SubmissionState.SUPERSEDED,
+                adapter.findBySourceMessageId(olderSource).orElseThrow().state());
+        assertFalse(adapter.findGridWordsAwaitingOriginalSourceDeletion().stream()
+                .anyMatch(submission -> submission.sourceMessageId() == olderSource));
+
+        GameResultStore.PublicationClaim newerPublication = adapter.claimCanonicalPublication(resultId, now.plusSeconds(60))
+                .orElseThrow();
+        transactions.execute(status -> adapter.completeCanonicalPublication(
+                newerSource, resultId, 9720L, newerPublication.token()));
+        assertTrue(adapter.findGridWordsAwaitingOriginalSourceDeletion().stream()
+                .anyMatch(submission -> submission.sourceMessageId() == olderSource));
+    }
+
+    @Test
+    void appliesTheSourceDeletionRecoveryMigrationToAnEmptyDatabase() {
+        assertEquals(3, jdbc.queryForObject("""
+                SELECT count(*)
+                FROM information_schema.columns
+                WHERE table_name = 'submission'
+                  AND column_name IN (
+                      'source_delete_claim_token',
+                      'source_delete_lease_until',
+                      'source_delete_failure_class')
+                """, Integer.class));
+        String constraint = jdbc.queryForObject("""
+                SELECT pg_get_constraintdef(oid)
+                FROM pg_constraint
+                WHERE conname = 'ck_submission_source_delete_failure_class'
+                """, String.class);
+        assertTrue(constraint.contains("PERMANENT"));
+    }
+
     void appliesTheCanonicalRefreshReconciliationMigrationToAnEmptyDatabase() {
         assertEquals(2, jdbc.queryForObject("""
                 SELECT count(*)

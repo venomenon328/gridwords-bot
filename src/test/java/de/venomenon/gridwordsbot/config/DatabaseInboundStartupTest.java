@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import de.venomenon.gridwordsbot.adapter.discord.inbound.DiscordInboundListener;
 import de.venomenon.gridwordsbot.application.submission.ConfiguredPlayerSynchronizer;
 import de.venomenon.gridwordsbot.application.canonical.CanonicalGridWordsPublicationService;
+import de.venomenon.gridwordsbot.application.canonical.GridWordsSourceDeletionService;
 import net.dv8tion.jda.api.JDA;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
@@ -57,6 +58,23 @@ class DatabaseInboundStartupTest {
         InOrder order = inOrder(synchronizer, canonical, jda);
         order.verify(synchronizer).synchronize();
         order.verify(canonical).resumeOpenPublications();
+        order.verify(jda).addEventListener(listener);
+    }
+    @Test
+    void resumesSourceDeletionRecoveryBeforeAttachingTheListener() throws Exception {
+        ConfiguredPlayerSynchronizer synchronizer = mock(ConfiguredPlayerSynchronizer.class);
+        CanonicalGridWordsPublicationService canonical = mock(CanonicalGridWordsPublicationService.class);
+        GridWordsSourceDeletionService deletion = mock(GridWordsSourceDeletionService.class);
+        JDA jda = mock(JDA.class);
+        DiscordInboundListener listener = mock(DiscordInboundListener.class);
+
+        new DatabaseInboundStartup(synchronizer, provider(jda), provider(listener), provider(canonical), provider(deletion))
+                .run(new DefaultApplicationArguments());
+
+        InOrder order = inOrder(synchronizer, canonical, deletion, jda);
+        order.verify(synchronizer).synchronize();
+        order.verify(canonical).resumeOpenPublications();
+        order.verify(deletion).resumeOpenDeletions();
         order.verify(jda).addEventListener(listener);
     }
     @SuppressWarnings("unchecked")

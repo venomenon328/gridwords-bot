@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import de.venomenon.gridwordsbot.config.GridwordsBotProperties;
+import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.port.in.InboundSharedMessage;
 import de.venomenon.gridwordsbot.port.in.ProcessSharedResultUseCase;
 import de.venomenon.gridwordsbot.port.in.ProcessingResult;
@@ -50,7 +51,7 @@ class DiscordInboundListenerTest {
         DiscordReactionGateway reactions = mock(DiscordReactionGateway.class);
         MessageReceivedEvent event = event(GUILD, CHANNEL, TOBIAS, false, false);
         Message message = event.getMessage();
-        when(useCase.process(any())).thenReturn(new ProcessingResult.Accepted());
+        when(useCase.process(any())).thenReturn(new ProcessingResult.Accepted(GameType.QUADWORDS));
 
         listener(executor, useCase, reactions).onMessageReceived(event);
 

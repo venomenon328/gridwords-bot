@@ -283,7 +283,9 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
             throw new SubmissionConflictException("submission is not linked to the expected game result");
         }
         lockResult(gameResultId);
-        if (submission.state() == SubmissionState.CANONICAL_MESSAGE_PUBLISHED) {
+        if (submission.state() == SubmissionState.CANONICAL_MESSAGE_PUBLISHED
+                || submission.state() == SubmissionState.ORIGINAL_MESSAGE_DELETED
+                || submission.state() == SubmissionState.COMPLETED) {
             return CanonicalPublicationPreparation.ALREADY_PUBLISHED;
         }
         if (submission.state() == SubmissionState.SUPERSEDED) {
@@ -312,7 +314,9 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         if (submission.gameResultId().filter(id -> id == resultId).isEmpty()
                 || (submission.state() != SubmissionState.RESULT_STORED
                 && submission.state() != SubmissionState.FAILED_RETRYABLE
-                && submission.state() != SubmissionState.CANONICAL_MESSAGE_PUBLISHED)) {
+                && submission.state() != SubmissionState.CANONICAL_MESSAGE_PUBLISHED
+                && submission.state() != SubmissionState.ORIGINAL_MESSAGE_DELETED
+                && submission.state() != SubmissionState.COMPLETED)) {
             throw new SubmissionConflictException("submission is not publishable for canonical delivery");
         }
         lockResult(resultId);
@@ -346,7 +350,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                 FROM submission s
                 JOIN game_result r ON r.id = s.game_result_id
                 WHERE s.game_result_id = ?
-                  AND s.processing_state IN ('RESULT_STORED', 'FAILED_RETRYABLE', 'CANONICAL_MESSAGE_PUBLISHED')
+                  AND s.processing_state IN ('RESULT_STORED', 'FAILED_RETRYABLE', 'CANONICAL_MESSAGE_PUBLISHED', 'ORIGINAL_MESSAGE_DELETED', 'COMPLETED')
                 ORDER BY s.received_at DESC, s.source_message_id DESC
                 LIMIT 1
                 """, this::refreshCandidate, gameResultId).stream().findFirst();
@@ -398,7 +402,9 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
             long refreshGeneration) {
         StoredSubmission submission = lockRequired(sourceMessageId);
         if (submission.gameResultId().filter(id -> id == resultId).isEmpty()
-                || submission.state() != SubmissionState.CANONICAL_MESSAGE_PUBLISHED) {
+                || (submission.state() != SubmissionState.CANONICAL_MESSAGE_PUBLISHED
+                && submission.state() != SubmissionState.ORIGINAL_MESSAGE_DELETED
+                && submission.state() != SubmissionState.COMPLETED)) {
             throw new SubmissionConflictException("submission is not the published current source");
         }
         lockResult(resultId);
@@ -528,6 +534,143 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                   AND s.processing_state IN ('RESULT_STORED', 'FAILED_RETRYABLE')
                 """, SUBMISSION);
     }
+
+    @Override
+    @Transactional
+    public Optional<SourceDeletionClaim> claimOriginalSourceDeletion(long sourceMessageId, Instant leaseUntil) {
+        StoredSubmission submission = lockRequired(sourceMessageId);
+        if (submission.state() != SubmissionState.CANONICAL_MESSAGE_PUBLISHED
+                && submission.state() != SubmissionState.SUPERSEDED) {
+            return Optional.empty();
+        }
+        long resultId = submission.gameResultId().orElseThrow(
+                () -> new SubmissionConflictException("source deletion requires a stored result"));
+        lockResult(resultId);
+        if (!isEligibleForOriginalSourceDeletion(submission, resultId)) {
+            return Optional.empty();
+        }
+        UUID token = UUID.randomUUID();
+        Instant now = clock.instant();
+        int claimed = jdbc.update("""
+                UPDATE submission
+                SET source_delete_claim_token = ?, source_delete_lease_until = ?,
+                    updated_at = ?, version = version + 1
+                WHERE source_message_id = ?
+                  AND processing_state IN ('CANONICAL_MESSAGE_PUBLISHED', 'SUPERSEDED')
+                  AND (source_delete_lease_until IS NULL OR source_delete_lease_until < ?)
+                """, token, databaseTime(leaseUntil), databaseTime(now), sourceMessageId, databaseTime(now));
+        return claimed == 1 ? Optional.of(new SourceDeletionClaim(token, leaseUntil)) : Optional.empty();
+    }
+
+    @Override
+    @Transactional
+    public boolean recordOriginalSourceDeleted(long sourceMessageId, UUID claimToken) {
+        int changed = jdbc.update("""
+                UPDATE submission
+                SET processing_state = 'ORIGINAL_MESSAGE_DELETED', original_deleted_at = ?,
+                    source_delete_claim_token = NULL, source_delete_lease_until = NULL,
+                    source_delete_failure_class = 'NONE', technical_error_message = NULL,
+                    updated_at = ?, version = version + 1
+                WHERE source_message_id = ?
+                  AND source_delete_claim_token = ?
+                  AND processing_state IN ('CANONICAL_MESSAGE_PUBLISHED', 'SUPERSEDED')
+                """, databaseTime(clock.instant()), databaseTime(clock.instant()), sourceMessageId, claimToken);
+        return changed == 1;
+    }
+
+    @Override
+    @Transactional
+    public boolean recordOriginalSourceDeletionFailure(
+            long sourceMessageId, UUID claimToken, OriginalDeletionFailure failure, String safeTechnicalMessage) {
+        if (failure == OriginalDeletionFailure.NONE) {
+            throw new IllegalArgumentException("source deletion failure must be classified");
+        }
+        int changed = jdbc.update("""
+                UPDATE submission
+                SET source_delete_claim_token = NULL, source_delete_lease_until = NULL,
+                    source_delete_failure_class = ?, technical_error_message = ?,
+                    updated_at = ?, version = version + 1
+                WHERE source_message_id = ?
+                  AND source_delete_claim_token = ?
+                  AND processing_state IN ('CANONICAL_MESSAGE_PUBLISHED', 'SUPERSEDED')
+                """, failure.name(), safeTechnicalMessage, databaseTime(clock.instant()), sourceMessageId, claimToken);
+        return changed == 1;
+    }
+
+    @Override
+    @Transactional
+    public boolean completeOriginalSourceDeletion(long sourceMessageId) {
+        int changed = jdbc.update("""
+                UPDATE submission
+                SET processing_state = 'COMPLETED', updated_at = ?, version = version + 1
+                WHERE source_message_id = ? AND processing_state = 'ORIGINAL_MESSAGE_DELETED'
+                """, databaseTime(clock.instant()), sourceMessageId);
+        if (changed == 1) {
+            return true;
+        }
+        return findBySourceMessageId(sourceMessageId)
+                .map(submission -> submission.state() == SubmissionState.COMPLETED)
+                .orElse(false);
+    }
+
+    @Override
+    public List<StoredSubmission> findGridWordsAwaitingOriginalSourceDeletion() {
+        return jdbc.query("""
+                SELECT s.*
+                FROM submission s
+                JOIN game_result r ON r.id = s.game_result_id
+                WHERE r.game_type = 'GRIDWORDS'
+                  AND (
+                    s.processing_state = 'ORIGINAL_MESSAGE_DELETED'
+                    OR (
+                        s.processing_state = 'CANONICAL_MESSAGE_PUBLISHED'
+                        AND r.canonical_message_id IS NOT NULL
+                        AND r.canonical_message_id <> s.source_message_id
+                    )
+                    OR (
+                        s.processing_state = 'SUPERSEDED'
+                        AND r.canonical_message_id IS NOT NULL
+                        AND r.canonical_message_id <> s.source_message_id
+                        AND EXISTS (
+                            SELECT 1
+                            FROM submission newer
+                            WHERE newer.game_result_id = s.game_result_id
+                              AND newer.processing_state IN (
+                                  'CANONICAL_MESSAGE_PUBLISHED', 'ORIGINAL_MESSAGE_DELETED', 'COMPLETED')
+                              AND (newer.received_at > s.received_at
+                                   OR (newer.received_at = s.received_at
+                                       AND newer.source_message_id > s.source_message_id))
+                        )
+                    )
+                  )
+                ORDER BY s.source_message_id
+                """, SUBMISSION);
+    }
+
+    private boolean isEligibleForOriginalSourceDeletion(StoredSubmission submission, long resultId) {
+        return jdbc.queryForList("""
+                SELECT r.id
+                FROM game_result r
+                WHERE r.id = ?
+                  AND r.game_type = 'GRIDWORDS'
+                  AND r.canonical_message_id IS NOT NULL
+                  AND r.canonical_message_id <> ?
+                """, Long.class, resultId, submission.sourceMessageId()).size() == 1
+                && (submission.state() == SubmissionState.CANONICAL_MESSAGE_PUBLISHED
+                || hasNewerConfirmedCanonicalSource(submission, resultId));
+    }
+
+    private boolean hasNewerConfirmedCanonicalSource(StoredSubmission submission, long resultId) {
+        return !jdbc.queryForList("""
+                SELECT source_message_id
+                FROM submission
+                WHERE game_result_id = ?
+                  AND processing_state IN ('CANONICAL_MESSAGE_PUBLISHED', 'ORIGINAL_MESSAGE_DELETED', 'COMPLETED')
+                  AND (received_at > ? OR (received_at = ? AND source_message_id > ?))
+                LIMIT 1
+                """, Long.class, resultId, databaseTime(submission.receivedAt()),
+                databaseTime(submission.receivedAt()), submission.sourceMessageId()).isEmpty();
+    }
     private boolean hasOutstandingCanonicalDeliveryAttempt(long resultId) {
         return !jdbc.queryForList("SELECT claim_token FROM canonical_delivery_attempt WHERE game_result_id = ? LIMIT 1",
                 UUID.class, resultId).isEmpty();
@@ -569,7 +712,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                 SET processing_state = 'SUPERSEDED', technical_error_message = NULL,
                     updated_at = ?, version = version + 1
                 WHERE game_result_id = ?
-                  AND processing_state IN ('RESULT_STORED', 'FAILED_RETRYABLE')
+                  AND processing_state IN ('RESULT_STORED', 'FAILED_RETRYABLE', 'CANONICAL_MESSAGE_PUBLISHED')
                   AND (received_at < ? OR (received_at = ? AND source_message_id < ?))
                 """, databaseTime(clock.instant()), gameResultId, databaseTime(submission.receivedAt()),
                 databaseTime(submission.receivedAt()), submission.sourceMessageId());
@@ -748,6 +891,9 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                     rs.getBoolean("personal_perfect_established"),
                     rs.getBoolean("shared_complete_established"),
                     rs.getBoolean("shared_perfect_established")),
+            optionalInstant(rs, "original_deleted_at"),
+            OriginalDeletionFailure.valueOf(rs.getString("source_delete_failure_class")),
+            optionalInstant(rs, "source_delete_lease_until"),
             instant(rs, "received_at"), instant(rs, "updated_at"));
 
     private List<AttachmentSnapshot> attachments(long sourceMessageId) {
@@ -763,6 +909,11 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
 
     private static Instant instant(ResultSet rs, String column) throws SQLException {
         return rs.getObject(column, OffsetDateTime.class).toInstant();
+    }
+
+    private static Optional<Instant> optionalInstant(ResultSet rs, String column) throws SQLException {
+        OffsetDateTime value = rs.getObject(column, OffsetDateTime.class);
+        return value == null ? Optional.empty() : Optional.of(value.toInstant());
     }
 
     private static OptionalInt optionalInt(ResultSet rs, String column) throws SQLException {

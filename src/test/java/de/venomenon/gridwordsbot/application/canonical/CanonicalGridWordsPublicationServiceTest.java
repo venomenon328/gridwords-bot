@@ -22,7 +22,6 @@ import de.venomenon.gridwordsbot.port.out.CanonicalMessageGateway;
 import de.venomenon.gridwordsbot.port.out.GameResultStore;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
 import de.venomenon.gridwordsbot.port.out.PublicationRetryScheduler;
-import de.venomenon.gridwordsbot.port.out.SourceMessageReactionGateway;
 import de.venomenon.gridwordsbot.port.out.SubmissionConflictException;
 import de.venomenon.gridwordsbot.port.out.SubmissionStore;
 import java.time.Clock;
@@ -61,7 +60,6 @@ class CanonicalGridWordsPublicationServiceTest {
     private SubmissionStore submissions;
     private CanonicalMessageGateway discord;
     private PublicationRetryScheduler retryScheduler;
-    private SourceMessageReactionGateway recoveredReactionGateway;
     private CanonicalGridWordsPublicationService service;
     private GameResultStore.StoredGameResult result;
 
@@ -72,7 +70,6 @@ class CanonicalGridWordsPublicationServiceTest {
         submissions = mock(SubmissionStore.class);
         discord = mock(CanonicalMessageGateway.class);
         retryScheduler = mock(PublicationRetryScheduler.class);
-        recoveredReactionGateway = mock(SourceMessageReactionGateway.class);
         result = gridResult(RESULT, TOBIAS, OptionalLong.empty(), 3);
         service = new CanonicalGridWordsPublicationService(
                 results,
@@ -82,8 +79,7 @@ class CanonicalGridWordsPublicationServiceTest {
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 ZoneId.of("Europe/Berlin"),
                 List.of(TOBIAS, GEORGIA),
-                retryScheduler,
-                recoveredReactionGateway);
+                retryScheduler);
 
         when(players.findByDiscordUserId(TOBIAS)).thenReturn(Optional.of(new PlayerStore.StoredPlayer(
                 TOBIAS,
@@ -103,6 +99,59 @@ class CanonicalGridWordsPublicationServiceTest {
         });
     }
 
+    @Test
+    void handsOffSuccessfulScheduledPublicationRetryToTheExactSourceDeletionWithoutAnotherEvent() {
+        GridWordsSourceDeletionService deletion = mock(GridWordsSourceDeletionService.class);
+        CanonicalGridWordsPublicationService retryingService = new CanonicalGridWordsPublicationService(
+                results, players, submissions, discord, Clock.fixed(NOW, ZoneOffset.UTC), ZoneId.of("Europe/Berlin"),
+                List.of(TOBIAS, GEORGIA), retryScheduler, deletion::deleteAfterCanonicalPublication);
+        SubmissionStore.StoredSubmission pending = stored(SubmissionStore.SubmissionState.RESULT_STORED);
+        when(submissions.findBySourceMessageId(SOURCE)).thenReturn(Optional.of(pending));
+        when(results.findById(RESULT)).thenReturn(Optional.of(result));
+        GameResultStore.PublicationClaim claim = claim("00000000-0000-0000-0000-000000000024");
+        when(results.claimCanonicalPublication(eq(RESULT), any())).thenReturn(Optional.empty(), Optional.of(claim));
+        when(discord.findByPublicationKey(anyLong(), any())).thenReturn(OptionalLong.empty());
+        when(discord.create(anyLong(), any())).thenReturn(99L);
+        when(submissions.completeCanonicalPublication(SOURCE, RESULT, 99L, claim.token())).thenReturn(true);
+        when(deletion.deleteAfterCanonicalPublication(SOURCE)).thenReturn(true);
+        ArgumentCaptor<Runnable> retry = ArgumentCaptor.forClass(Runnable.class);
+
+        assertThat(retryingService.publish(SOURCE)).isFalse();
+        verify(retryScheduler).schedule(eq(NOW.plusSeconds(61)), retry.capture());
+        retry.getValue().run();
+
+        verify(discord, times(1)).create(eq(12L), any());
+        verify(submissions).completeCanonicalPublication(SOURCE, RESULT, 99L, claim.token());
+        verify(deletion).deleteAfterCanonicalPublication(SOURCE);
+        verify(submissions, never()).markRetryableFailure(SOURCE, "canonical publication failed");
+    }
+
+    @Test
+    void deleteFailureAfterSuccessfulScheduledPublicationDoesNotDowngradeCanonicalPublication() {
+        GridWordsSourceDeletionService deletion = mock(GridWordsSourceDeletionService.class);
+        CanonicalGridWordsPublicationService retryingService = new CanonicalGridWordsPublicationService(
+                results, players, submissions, discord, Clock.fixed(NOW, ZoneOffset.UTC), ZoneId.of("Europe/Berlin"),
+                List.of(TOBIAS, GEORGIA), retryScheduler, deletion::deleteAfterCanonicalPublication);
+        SubmissionStore.StoredSubmission pending = stored(SubmissionStore.SubmissionState.RESULT_STORED);
+        when(submissions.findBySourceMessageId(SOURCE)).thenReturn(Optional.of(pending));
+        when(results.findById(RESULT)).thenReturn(Optional.of(result));
+        GameResultStore.PublicationClaim claim = claim("00000000-0000-0000-0000-000000000025");
+        when(results.claimCanonicalPublication(eq(RESULT), any())).thenReturn(Optional.empty(), Optional.of(claim));
+        when(discord.findByPublicationKey(anyLong(), any())).thenReturn(OptionalLong.empty());
+        when(discord.create(anyLong(), any())).thenReturn(99L);
+        when(submissions.completeCanonicalPublication(SOURCE, RESULT, 99L, claim.token())).thenReturn(true);
+        when(deletion.deleteAfterCanonicalPublication(SOURCE)).thenReturn(false);
+        ArgumentCaptor<Runnable> retry = ArgumentCaptor.forClass(Runnable.class);
+
+        assertThat(retryingService.publish(SOURCE)).isFalse();
+        verify(retryScheduler).schedule(eq(NOW.plusSeconds(61)), retry.capture());
+        retry.getValue().run();
+
+        verify(submissions).completeCanonicalPublication(SOURCE, RESULT, 99L, claim.token());
+        verify(submissions, never()).markRetryableFailure(SOURCE, "canonical publication failed");
+        verify(retryScheduler, times(1)).schedule(any(), any());
+        verify(deletion).deleteAfterCanonicalPublication(SOURCE);
+    }
     @Test
     void publishesFirstGridWordsExactlyOnceAndPersistsStateWithTheClaimToken() {
         stored(SubmissionStore.SubmissionState.RESULT_STORED);
@@ -224,7 +273,7 @@ class CanonicalGridWordsPublicationServiceTest {
     }
 
     @Test
-    void retriesAnActiveStartupLeaseAndAddsTheAcceptedReactionAfterRecoveredSuccess() {
+    void retriesAnActiveStartupLeaseWithoutAddingASourceReaction() {
         SubmissionStore.StoredSubmission submission = stored(SubmissionStore.SubmissionState.RESULT_STORED);
         when(submissions.findGridWordsAwaitingCanonicalPublication()).thenReturn(List.of(submission));
         when(results.findById(RESULT)).thenReturn(Optional.of(result));
@@ -239,11 +288,9 @@ class CanonicalGridWordsPublicationServiceTest {
         service.resumeOpenPublications();
 
         verify(retryScheduler).schedule(eq(NOW.plusSeconds(61)), retry.capture());
-        verifyNoInteractions(recoveredReactionGateway);
 
         retry.getValue().run();
 
-        verify(recoveredReactionGateway).addAcceptedReaction(12L, SOURCE);
         verify(discord).create(eq(12L), any());
     }
 
@@ -411,15 +458,12 @@ class CanonicalGridWordsPublicationServiceTest {
         assertThat(service.publish(correctionSource)).isFalse();
 
         verify(retryScheduler, times(1)).schedule(eq(NOW.plusSeconds(61)), retry.capture());
-        verifyNoInteractions(recoveredReactionGateway);
 
         retry.getValue().run();
 
         verify(discord, times(1)).create(eq(12L), any());
         verify(discord, times(1)).edit(eq(12L), eq(99L), any());
         verify(submissions).completeCanonicalPublication(correctionSource, RESULT, 99L, retryClaim.token());
-        verify(recoveredReactionGateway).addAcceptedReaction(12L, correctionSource);
-        verify(recoveredReactionGateway, never()).addAcceptedReaction(12L, SOURCE);
     }
     @Test
     void doesNotLetAnOlderFailedPublicationOverwriteANewerCorrectionOnRetry() {
@@ -465,7 +509,6 @@ class CanonicalGridWordsPublicationServiceTest {
         assertThat(((ShareOutcome.Solved) messages.getAllValues().get(1).outcome()).attemptsUsed()).isEqualTo(2);
         verify(submissions, never()).completeCanonicalPublication(eq(SOURCE), anyLong(), anyLong(), any());
         verify(results, times(2)).claimCanonicalPublication(eq(RESULT), any());
-        verify(recoveredReactionGateway, never()).addAcceptedReaction(12L, SOURCE);
     }
 
     @Test
@@ -513,8 +556,7 @@ class CanonicalGridWordsPublicationServiceTest {
                 controlledClock,
                 ZoneId.of("Europe/Berlin"),
                 List.of(TOBIAS, GEORGIA),
-                (at, action) -> scheduled.add(new ScheduledAction(at, action)),
-                recoveredReactionGateway);
+                (at, action) -> scheduled.add(new ScheduledAction(at, action)));
         when(submissions.findBySourceMessageId(anyLong())).thenAnswer(invocation -> {
             long sourceMessageId = invocation.getArgument(0);
             if (sourceMessageId == SOURCE) {
@@ -594,7 +636,6 @@ class CanonicalGridWordsPublicationServiceTest {
         verify(discord, times(3)).edit(eq(12L), eq(88L), any());
         verify(submissions).completeCanonicalRefresh(
                 correctionSource, RESULT, 88L, UUID.fromString("00000000-0000-0000-0000-000000000018"), 1);
-        verify(recoveredReactionGateway, never()).addAcceptedReaction(12L, SOURCE);
         verifyNoInteractions(retryScheduler);
     }
     @Test
@@ -639,8 +680,7 @@ class CanonicalGridWordsPublicationServiceTest {
                 controlledClock,
                 ZoneId.of("Europe/Berlin"),
                 List.of(TOBIAS, GEORGIA),
-                (at, action) -> scheduled.add(new ScheduledAction(at, action)),
-                recoveredReactionGateway);
+                (at, action) -> scheduled.add(new ScheduledAction(at, action)));
         when(submissions.findBySourceMessageId(SOURCE)).thenReturn(Optional.of(older));
         when(submissions.findCurrentCanonicalPublicationCandidate(RESULT)).thenReturn(Optional.of(refresh));
         when(submissions.prepareCanonicalPublication(SOURCE, RESULT))
@@ -710,7 +750,6 @@ class CanonicalGridWordsPublicationServiceTest {
         verify(discord, times(4)).edit(eq(12L), eq(88L), any());
         verify(submissions).completeCanonicalRefresh(correctionSource, RESULT, 88L,
                 UUID.fromString("00000000-0000-0000-0000-000000000023"), 1);
-        verify(recoveredReactionGateway, never()).addAcceptedReaction(anyLong(), anyLong());
     }
     @Test
     void startupReconcilesAPersistedCanonicalRefreshWithoutAcknowledgingASupersededSource() {
@@ -735,7 +774,6 @@ class CanonicalGridWordsPublicationServiceTest {
 
         verify(discord).edit(eq(12L), eq(88L), any());
         verify(submissions).completeCanonicalRefresh(SOURCE, RESULT, 88L, claim.token(), 1);
-        verify(recoveredReactionGateway, never()).addAcceptedReaction(anyLong(), anyLong());
     }
     @Test
     void startupRecoverySkipsASubmissionSupersededAfterTheRecoveryScan() {
@@ -748,7 +786,7 @@ class CanonicalGridWordsPublicationServiceTest {
 
         service.resumeOpenPublications();
 
-        verifyNoInteractions(results, players, discord, retryScheduler, recoveredReactionGateway);
+        verifyNoInteractions(results, players, discord, retryScheduler);
     }
     private SubmissionStore.StoredSubmission stored(SubmissionStore.SubmissionState state) {
         return stored(state, SubmissionStore.PublicationContext.none());

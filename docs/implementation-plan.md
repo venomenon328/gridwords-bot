@@ -1,41 +1,33 @@
 # Implementierungsplan
 
-Dieser Plan zerlegt die Anforderungsspezifikation in kleine, reviewbare Inkremente. Er beschreibt Reihenfolge und Grenzen, nicht zwingend die endgültige Anzahl der Pull Requests. Für Serien, Tagesmerkmale, Status und Berichte gilt zusätzlich verbindlich `docs/requirements/series-model.md`. Für lokale Infrastruktur und Datenbanktests gilt `docs/adr/0004-docker-optional-local-development.md`.
+Dieser Plan zerlegt die Anforderungsspezifikation in kleine, reviewbare Inkremente. Für Serien, Tagesmerkmale, Status und Berichte gilt zusätzlich verbindlich `docs/requirements/series-model.md`. Für lokale Infrastruktur und Datenbanktests gilt `docs/adr/0010-docker-available-local-development.md`; ADR 0004 dokumentiert den historischen Ausgangspunkt.
 
 ## Leitprinzipien
 
 - Erst stabiler Build, dann Fachlogik.
 - Parser und Regeln zunächst ohne Discord und Datenbank entwickeln.
-- Der lokale Standardbuild bleibt ohne Docker, PostgreSQL und Discord-Token ausführbar.
-- PostgreSQL-Integrationstests laufen verpflichtend in GitHub Actions über ein separates Maven-Profil.
-- Persistenz und Idempotenz vor dem automatischen Löschen fremder Nachrichten fertigstellen.
+- Der schnelle Standardbuild bleibt ohne Docker, PostgreSQL und Discord-Token ausführbar.
+- Docker Compose ist die bevorzugte lokale PostgreSQL-Umgebung.
+- Bei Persistenz-, Liquibase-, Claim-, Recovery- oder PostgreSQL-spezifischen Änderungen läuft das Datenbankintegrationsprofil lokal mit Docker und zusätzlich verpflichtend in GitHub Actions.
+- Persistenz und Idempotenz werden vor dem automatischen Löschen fremder Nachrichten fertiggestellt.
 - Eine Originalnachricht wird erst gelöscht, wenn der vollständige sichere Ersetzungsablauf automatisiert getestet ist.
-- Version-2- und Version-3-Funktionen werden nicht vorgezogen.
+- QuadWords-Bildparser und sichere QuadWords-Konsolidierung werden bewusst vor Tagesstatus und Erinnerungen umgesetzt.
 
 ## Inkrement 0 – Grundgerüst stabilisieren
 
 **Status:** abgeschlossen (PR #1 gemergt)
 
-**Ziel:** Reproduzierbarer grüner Build und zuverlässige lokale Konfiguration.
+**Ziel:** reproduzierbarer grüner Build und zuverlässige lokale Konfiguration.
 
 Umgesetzt:
 
-- reale, stabile und kompatible Dependency-Versionen
-- `mvn clean verify` ohne Discord, lokale Datenbank und Container-Runtime
+- Java-21-/Spring-Boot-/JDA-Grundgerüst
+- stabiler infrastrukturloser Standardbuild
 - Discord standardmäßig deaktiviert
 - verständlicher Fehler bei aktiviertem Discord ohne Token
-- funktionierender plattformtauglicher lokaler Secret-/Konfigurationsweg
+- lokaler Secret-/Konfigurationsweg
 - GitHub Actions grün
-- erfolgreicher realer Discord-Gateway-Smoke-Test am 29. Juli 2026 ohne Docker und PostgreSQL
-- keine Fachlogik
-
-Zugehöriger Auftrag: GitHub-Issue #2.
-
-Abschlussbedingung erfüllt:
-
-- Offline-Build grün
-- Discord-Smoke-Test durch Tobias erfolgreich
-- PR #1 wurde gemergt
+- realer Discord-Gateway-Smoke-Test
 
 ## Inkrement 1 – Reine Share-Textparser
 
@@ -43,130 +35,161 @@ Abschlussbedingung erfüllt:
 
 **Ziel:** GridWords- und QuadWords-Kopfzeilen sowie GridWords-Raster deterministisch parsen.
 
-Umfang:
+Umgesetzt:
 
 - reine Domain-/Parser-Typen
 - `ParseResult` mit `NotApplicable`, `Parsed`, `Invalid`
 - deutsche Monatsnamen und bestätigte Share-Formate
-- gelöst: numerischer Wert
-- nicht gelöst: `X/6` beziehungsweise `X/9`
+- gelöst und nicht gelöst
 - Dauer und optionale Gridgames-Flamme
 - GridWords-Unicode-Raster validieren und normalisieren
-- QuadWords-Anhangsanforderung als Metadatenprüfung, noch ohne Bildanalyse
+- QuadWords-Anhangsanforderung als Metadatenprüfung
 - Fixture-basierte Tests
-- Architekturtests für die ersten fachlichen Pakete
-- keine Datenbank
-- kein JDA-Listener
-- vollständig lokal ohne Docker ausführbar
-
-Abnahmekriterium:
-
-- alle vorhandenen echten Fixtures und definierte Fehlerfälle werden korrekt klassifiziert
-- lokaler `mvn clean verify` benötigt keine externe Infrastruktur
 
 ## Inkrement 2 – Persistenzmodell und Verarbeitungszustände
 
-**Status:** abgeschlossen (PR #6)
+**Status:** abgeschlossen (PR #6 gemergt)
 
 **Ziel:** Ergebnisse und Submission-Ablauf idempotent speichern.
 
-Umfang:
+Umgesetzt:
 
-- erste Liquibase-Migrationen
-- Tabellen/Constraints für Spieler, Ergebnis, Submission und Tagesstatus-Grundlage
-- Persistence-Ports und PostgreSQL-Adapter
-- `player + game type + game date` eindeutig
-- Quell-Message-ID eindeutig
+- Liquibase-Migrationen
+- Tabellen und Constraints für Spieler, Ergebnis und Submission
+- PostgreSQL-Adapter und Ports
+- Eindeutigkeit für Spieler, Spieltyp und Spieltag
+- eindeutige Quell-Message-ID
 - persistierte Zustände des Ersetzungsablaufs
-- PostgreSQL-Integrationstests gegen echtes PostgreSQL
 - separates Maven-Profil `database-integration`
-- vollständige Ausführung dieses Profils in GitHub Actions
-- lokaler Standardbuild weiterhin ohne Container-Runtime
-- optionaler manueller lokaler Start gegen nativ installiertes PostgreSQL
-- keine Discord-Nachrichten löschen oder veröffentlichen
-
-Abnahmekriterium:
-
-- doppeltes Event beziehungsweise konkurrierender Upsert erzeugt keinen doppelten fachlichen Datensatz
-- Liquibase, Constraints und Konfliktverhalten sind in CI gegen echtes PostgreSQL getestet
-- die Datenbanktests werden in CI nachweislich ausgeführt und nicht nur übersprungen
+- PostgreSQL-Integration in GitHub Actions
 
 ## Inkrement 3 – Discord-Inbound im Beobachtungsmodus
 
 **Status:** abgeschlossen (PR #8 gemergt)
 
-**Ziel:** Echte Channelnachrichten sicher filtern und verarbeiten, ohne sie zu verändern.
+**Ziel:** echte Channelnachrichten sicher filtern und verarbeiten, ohne sie zu verändern.
 
-Umfang:
+Umgesetzt:
 
 - dünner JDA-Listener
 - Filter für Server, Channel, Nutzer, Bots und Webhooks
 - internes unveränderliches Eingabe-DTO
 - begrenzter Application Executor
-- Parse + Persistenz
-- `✅` bei gültigem Ergebnis, `⚠️` bei eindeutig ungültigem Share-Format
-- kein Löschen
-- keine kanonische Wiederveröffentlichung
+- Parse und Persistenz
+- `✅` bei gültigem Ergebnis, `⚠️` bei eindeutig ungültigem Share
 - Adaptertests ohne echte Netzwerkverbindung
-- manueller Test im Discord-Testchannel
-- manueller Persistenztest wahlweise gegen natives PostgreSQL; Docker ist nicht erforderlich
-- dokumentierter manueller Smoke-Test für Tobias vor dem Merge
+- manueller Discord-/PostgreSQL-Test
 
-Abnahmekriterium:
+## Inkrement 4 – Kanonische GridWords-Nachricht ohne Löschung
 
-- echte Ergebnisse beider Nutzer werden gespeichert; andere Nachrichten und Channels bleiben vollständig unbeachtet
-
-## Inkrement 4 – Kanonische GridWords-Nachricht, zunächst ohne Löschung
-
-**Status:** abgeschlossen und mergebereit (PR #10; manueller Discord-/PostgreSQL-Smoke-Test am 29. Juli 2026 erfolgreich)
+**Status:** abgeschlossen (PR #10 gemergt; Smoke-Test am 29. Juli 2026 erfolgreich)
 
 **Ziel:** GridWords-Ausgabe vollständig erzeugen und veröffentlichen.
 
-Umfang:
+Umgesetzt:
 
 - transportneutrales `CanonicalResultMessage`
-- Discord-Embed-/Textadapter
-- GridWords ohne Gridgames-Link schön darstellen
-- persönliche Aktivitätsserie und GridWords-Lösungsserie aus vorhandenen Daten berechnen
-- Komplett- und Perfektserie ergänzen, wenn das Ergebnis den betreffenden Tageszustand herstellt
-- keine unspezifische persönliche „Spielserie“ oder „Lösungsserie“ ausgeben
-- Bot-Message-ID persistieren
-- Retry und Idempotenz der Veröffentlichung
-- Original bleibt weiterhin bestehen
-- Korrekturen bearbeiten dieselbe kanonische Bot-Nachricht
-- Recovery, Supersession, Delivery-Fences und Duplikatbereinigung sichern den Publish-Ablauf
-- technische Publication-Keys bleiben für Recovery erhalten, werden aber nicht sichtbar dargestellt
-
-Abnahmekriterium erfüllt:
-
-- wiederholte Verarbeitung erzeugt keine zweite kanonische Nachricht
-- die angezeigten Serien entsprechen `docs/requirements/series-model.md`
-- der echte Test im Zielchannel bestätigte Veröffentlichung, Korrektur und unveränderte Originalnachrichten
+- Discord-Embed-Adapter
+- vollständiges GridWords-Raster
+- Aktivitäts- und GridWords-Lösungsserie
+- kontextabhängige Komplett- und Perfektserie
+- persistierte Bot-Message-ID
+- Retry und Idempotenz
+- Korrektur durch Edit derselben Bot-Nachricht
+- Lost-Message-Recovery, Supersession, Delivery-Fences und Duplikatbereinigung
+- unsichtbarer technischer Publication-Key
 
 ## Inkrement 5 – Sichere GridWords-Ersetzung
 
-**Ziel:** Original-GridWords-Nachricht erst nach nachweislich sicherer Wiederveröffentlichung löschen.
+**Status:** abgeschlossen (Issue #11, PR #12; vollständiger Discord-/PostgreSQL-Smoke-Test am 30. Juli 2026 erfolgreich)
 
-Voraussetzungen:
+**Ziel:** Original-GridWords-Nachricht erst nach nachweislich sicherer kanonischer Veröffentlichung löschen.
 
-- automatisierte Tests für alle Zustandsübergänge aus ADR 0002
-- erfolgreicher manueller Test im Testchannel
+Umgesetzt:
+
+- Quelllöschung ausschließlich nach persistierter kanonischer Bot-Message-ID
+- getrennte, persistierte und wiederaufnehmbare Löschphase
+- Zustände `CANONICAL_MESSAGE_PUBLISHED`, `ORIGINAL_MESSAGE_DELETED`, `COMPLETED`
+- token- und lease-geschützte Claims
+- Neustart-, Retry-, Replay-, Konkurrenz- und Crash-Recovery
+- `UNKNOWN_MESSAGE` als idempotenter Erfolg
+- transiente und permanente Discord-Fehler
+- synchrone JDA-Berechtigungsfehler als permanent
+- automatischer Wake-up nach aktiver Lease
+- Handoff nach erfolgreichem asynchronem Publish-Retry
+- Korrektur durch Edit derselben kanonischen Nachricht
+- gezielte Bereinigung älterer, nun sicher löschbarer supersedierter Quellen
+- keine GridWords-`✅`-Reaktion auf eine verschwindende Quelle
+- unverändertes QuadWords- und Ablehnungsverhalten
+- lokaler Standardbuild, lokales PostgreSQL-Integrationsprofil und GitHub Actions grün
+
+Abnahme bestätigt:
+
+- kein Fehler vor der persistierten kanonischen Veröffentlichung kann das Original löschen
+- sichere Quellen werden konfliktfest, idempotent und nach Neustart abgeschlossen
+- fehlende Löschberechtigung lässt das Original sichtbar und stuft die Veröffentlichung nicht zurück
+- nach Wiederherstellung der Berechtigung werden aktuelle und ältere festhängende Quellen kontrolliert bereinigt
+- keine offenen Claims, Leases oder Delivery-Attempts nach abgeschlossenem Smoke-Test
+
+## Inkrement 6 – QuadWords-Bildparser
+
+**Status:** als nächstes geplant
+
+**Ziel:** vier QuadWords-Grids robust geometrisch und farbbasiert normalisieren.
 
 Umfang:
 
-- Original löschen, nachdem Bot-Message-ID persistiert ist
-- Neustart-/Retry-Fälle
-- Delete-Event des Bots ignorieren
-- Korrektur durch erneute Einreichung
-- klare Fehlerzustände
+- freigegebene Originalbild-Fixtures
+- Attachment-Bytes hinter einem schmalen Port laden; keine JDA-Typen im Parser
+- reine Java-Bildverarbeitung mit `ImageIO` und `BufferedImage`
+- Erkennung der vier Boards
+- kanonische Reihenfolge `Oben links`, `Oben rechts`, `Unten links`, `Unten rechts`
+- robuste Farbklassifikation
+- Normalisierung in eine transportneutrale Grid-Darstellung
+- Konfidenz-, Struktur- und Plausibilitätsvalidierung
+- Parser-Versionierung
+- kontrollierte Größen-, Format- und Ressourcenlimits
+- Rohbildaufbewahrung für höchstens 48 Stunden vorbereiten beziehungsweise implementieren, soweit für den Parser erforderlich
+- keine kanonische Veröffentlichung oder Löschung in diesem Inkrement
+- unsicherer Parse lässt die Originalnachricht unangetastet
+- Fixture-Tests vollständig ohne echte Discord-Verbindung
 
-Abnahmekriterium:
+Abnahmekriterien:
 
-- Publish- oder Persistenzfehler können niemals zum Verlust der Originalnachricht führen
+- alle freigegebenen Originalfixtures werden exakt korrekt normalisiert
+- beschädigte, unbekannte, zu große oder nicht ausreichend sichere Bilder brechen kontrolliert ab
+- keine JDA-Typen im fachlichen Parser
+- keine Veröffentlichung und keine Quelllöschung
+- Standardbuild grün
+- bei Persistenzänderungen zusätzlich lokales Datenbankintegrationsprofil mit Docker und CI grün
 
-## Inkrement 6 – Tagesstatus, vollständige Serien und Erinnerungen
+## Inkrement 7 – Kanonische QuadWords-Konsolidierung und sichere Ersetzung
 
-**Ziel:** Version-1-Kernnutzen vollständig herstellen.
+**Ziel:** QuadWords-Text und Bild in genau eine kanonische, korrigierbare Bot-Nachricht überführen und die Quelle erst danach sicher löschen.
+
+Umfang:
+
+- kanonische Ausgabe aller vier Grids
+- Spieler, Datum, Ergebnis, Versuche und Dauer
+- Aktivitäts- und QuadWords-Lösungsserie
+- kontextabhängige Komplett- und Perfektserie
+- persistierte Bot-Message-ID
+- Korrekturen bearbeiten dieselbe kanonische Nachricht
+- Publication-Key, Recovery, Supersession und Duplikatbereinigung analog zu GridWords
+- Originalnachricht mit Bildanhang erst nach persistierter kanonischer Veröffentlichung löschen
+- sichere Lösch-, Retry-, Neustart- und Crashpfade analog zu Inkrement 5
+- unsicher oder fehlerhaft geparste Bilder niemals löschen
+- Rohbild nach der festgelegten Aufbewahrungsfrist entfernen
+
+Abnahmekriterien:
+
+- pro Spieler und QuadWords-Spieltag höchstens eine kanonische Bot-Nachricht
+- gültige Quelle erst nach sicherer Konsolidierung löschen
+- Parse-, Publish- oder Persistenzfehler können das Originalbild niemals verlieren lassen
+
+## Inkrement 8 – Tagesstatus, vollständige Serien und Erinnerungen
+
+**Ziel:** täglichen Kernnutzen nach sicherer Konsolidierung beider Spiele vollständig herstellen.
 
 Umfang:
 
@@ -178,23 +201,21 @@ Umfang:
 - gemeinsame Komplettserie
 - gemeinsame Perfektserie
 - ausdrücklich keine gemeinsame Aktivitätsserie
-- eine Tagesstatusnachricht pro Spieltag mit eindeutig benannten Serien
-- erste Erinnerung 18:00 Uhr
-- zweite Erinnerung 23:00 Uhr
+- eine Tagesstatusnachricht pro Spieltag
+- Erinnerungen um 18:00 und 23:00 Uhr
 - nur fehlende Einreichungen erwähnen
 - persistierte Reminder-Auslieferung
 - Nachholen nach Neustart
 - `Europe/Berlin` und feste `Clock` in Tests
-- aktueller Tag und Vortag als Nachtragsfenster
-- separate Behandlung des noch unvollständigen aktuellen Tags je Serienbedingung
+- heute und gestern als Nachtragsfenster
 
 Abnahmekriterium:
 
-- keine doppelten Erinnerungen, korrekte Erwähnungen und korrekte Berechnung aller sieben Serien über Lücken, Teilaktivität, nicht gelöste Spiele, unvollständige heutige Tage und Vortagsnachträge hinweg
+- keine doppelten Erinnerungen und korrekte Berechnung aller sieben Serien über Lücken, Teilaktivität, nicht gelöste Spiele und Vortagsnachträge
 
-## Inkrement 7 – Version 1 härten und veröffentlichen
+## Inkrement 9 – Kernversion härten und veröffentlichen
 
-**Ziel:** Version 1 produktionsreif machen.
+**Ziel:** den bis dahin vollständigen Bot produktionsreif machen.
 
 Umfang:
 
@@ -202,46 +223,15 @@ Umfang:
 - Fehlertexte und Logs
 - Betriebsdokumentation
 - Backup-/Restore-Hinweise
-- reproduzierbarer Deploymentweg; Containerimage ist optional, nicht lokale Voraussetzung
+- reproduzierbarer Deploymentweg
 - Hostingentscheidung
-- Migration in endgültigen Channel
+- Migration in den endgültigen Channel
 
 Nicht enthalten:
 
-- QuadWords-Bildparser
-- Berichte
+- Wochen- und Monatsberichte
 - Statistik-Commands
 - Kommentare
-
-## Inkrement 8 – QuadWords-Bildparser
-
-**Ziel:** Vier Grids robust geometrisch und farbbasiert normalisieren.
-
-Umfang:
-
-- Originalbild-Fixtures
-- reine Java-Bildverarbeitung mit `ImageIO`/`BufferedImage`
-- Board-Gruppierung
-- Überschriften `Oben links`, `Oben rechts`, `Unten links`, `Unten rechts`
-- Konfidenz-/Strukturvalidierung
-- Parser-Versionierung
-- Rohbildaufbewahrung 48 Stunden
-- keine Löschung bei unsicherem Parse
-
-Abnahmekriterium:
-
-- alle freigegebenen Originalfixtures exakt korrekt; beschädigte oder unbekannte Bilder brechen kontrolliert ab
-
-## Inkrement 9 – Sichere QuadWords-Ersetzung
-
-Analog zur GridWords-Ersetzung:
-
-- kanonische Unicode-Ausgabe
-- Aktivitätsserie und QuadWords-Lösungsserie ausgeben
-- bei Tagesabschluss gegebenenfalls Komplett- und Perfektserie ergänzen
-- Bot-Message-ID persistieren
-- erst danach Original und Bildnachricht löschen
-- Retry-/Neustartpfade
 
 ## Inkrement 10 – Wochen- und Monatsberichte
 
@@ -250,13 +240,11 @@ Analog zur GridWords-Ersetzung:
 Umfang:
 
 - Wochenbericht Montag 08:00 Uhr
-- Monatsbericht Monatserster 08:15 Uhr
+- Monatsbericht am Monatsersten 08:15 Uhr
 - persistierte Delivery-Idempotenz
-- pro Spieler Aktivitäts-, Komplett- und perfekte Tage
-- aktuelle und längste persönliche Aktivitäts-, Komplett-, GridWords-Lösungs-, QuadWords-Lösungs- und Perfektserie
-- gemeinsam komplette und gemeinsam perfekte Tage
-- aktuelle und längste gemeinsame Komplett- und Perfektserie
-- bisher vorgesehene spielbezogene Versuchs-, Lösungs- und Zeitkennzahlen
+- persönliche Aktivitäts-, Komplett-, Lösungs- und Perfektmetriken
+- gemeinsame Komplett- und Perfektmetriken
+- aktuelle und längste Serien
 - keine Gewinnerlogik
 
 ## Inkrement 11 – Statistik- und Konfigurations-Commands
@@ -266,7 +254,7 @@ Umfang:
 Umfang:
 
 - Statistik-Slash-Commands
-- eindeutige Auswahl der Serienarten `activity`, `complete`, `gridwords-solved`, `quadwords-solved`, `perfect`, `shared-complete`, `shared-perfect`
+- eindeutige Auswahl der sieben Serienarten
 - Zeiteinstellungen per Slash-Command
 - Autorisierung nur für konfigurierte Admins
 - persistente oder klar definierte Konfigurationsquelle
@@ -285,12 +273,14 @@ Umfang:
 - keine generative KI
 - vollständig testbare Auswahl- und Auslöselogik
 
-## Was nicht parallelisiert werden sollte
+## Bewusste Reihenfolge
 
-Folgende Abhängigkeiten sind bewusst sequenziell:
+Nicht parallelisieren:
 
 - Persistenzzustände vor automatischer Löschung
-- GridWords-Ersetzung vor QuadWords-Ersetzung
+- sichere GridWords-Ersetzung vor sicherer QuadWords-Ersetzung
+- QuadWords-Bildparser vor kanonischer QuadWords-Konsolidierung
+- sichere Konsolidierung beider Spiele vor Tagesstatus und Erinnerungen
 - robuste Serienlogik vor Berichten und Kommentaren
 - stabiler Scheduler vor dynamischer Slash-Command-Konfiguration
 
@@ -299,10 +289,10 @@ Parser-Fixtures und Dokumentation können parallel gesammelt werden.
 ## Definition of Done pro Inkrement
 
 - Issue-Abnahmekriterien erfüllt
-- lokaler `mvn clean verify` ohne Docker erfolgreich
-- GitHub Actions grün
-- Datenbankintegrationsprofil in CI erfolgreich, sofern Persistenz betroffen
+- lokaler Standardbuild erfolgreich
+- bei Persistenzumfang lokales Datenbankintegrationsprofil mit Docker erfolgreich
+- GitHub Actions vollständig grün
 - keine Secrets
 - relevante Dokumentation aktualisiert
-- notwendige manuelle Discord- oder Persistenzprüfung dokumentiert
+- notwendige manuelle Discord- oder Persistenzprüfung durchgeführt beziehungsweise klar dokumentiert
 - PR reviewbar und ohne unangeforderten Versionsumfang
