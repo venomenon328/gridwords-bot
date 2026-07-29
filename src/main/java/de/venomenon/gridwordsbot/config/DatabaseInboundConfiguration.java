@@ -40,24 +40,14 @@ class DatabaseInboundConfiguration {
             GridwordsBotProperties properties,
             PlayerStore playerStore,
             SubmissionStore submissionStore,
-            ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider,
-            ObjectProvider<GridWordsSourceDeletionService> deletionProvider) {
+            ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider) {
         List<Long> configuredPlayerIds = List.of(
                 properties.players().first().userId(), properties.players().second().userId());
         return new ProcessSharedResultService(
                 new GridWordsShareParser(), new QuadWordsShareParser(), clock, properties.schedule().timeZone(), playerStore,
                 submissionStore, configuredPlayerIds, sourceMessageId -> {
                     CanonicalGridWordsPublicationService canonical = canonicalProvider.getIfAvailable();
-                    if (canonical == null || !canonical.publish(sourceMessageId)) {
-                        return canonical == null;
-                    }
-                    GridWordsSourceDeletionService deletion = deletionProvider.getIfAvailable();
-                    if (deletion == null) {
-                        return false;
-                    }
-                    boolean completed = deletion.deleteAfterCanonicalPublication(sourceMessageId);
-                    deletion.resumeOpenDeletions();
-                    return completed;
+                    return canonical != null && canonical.publish(sourceMessageId);
                 });
     }
     @Bean
@@ -89,10 +79,14 @@ class DatabaseInboundConfiguration {
     @ConditionalOnBean(CanonicalMessageGateway.class)
     CanonicalGridWordsPublicationService canonicalGridWordsPublicationService(
             GameResultStore results, PlayerStore players, SubmissionStore submissions, CanonicalMessageGateway discord,
-            Clock clock, GridwordsBotProperties properties, PublicationRetryScheduler retryScheduler) {
+            Clock clock, GridwordsBotProperties properties, PublicationRetryScheduler retryScheduler,
+            ObjectProvider<GridWordsSourceDeletionService> deletionProvider) {
         return new CanonicalGridWordsPublicationService(results, players, submissions, discord, clock,
                 properties.schedule().timeZone(), List.of(properties.players().first().userId(), properties.players().second().userId()),
-                retryScheduler);
+                retryScheduler, sourceMessageId -> {
+                    GridWordsSourceDeletionService deletion = deletionProvider.getIfAvailable();
+                    if (deletion != null) deletion.deleteAfterCanonicalPublication(sourceMessageId);
+                });
     }
 
     @Bean

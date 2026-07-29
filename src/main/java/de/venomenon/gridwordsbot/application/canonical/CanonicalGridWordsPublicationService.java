@@ -19,6 +19,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.function.LongConsumer;
 
 /** Coordinates one resumable canonical GridWords publication without a Discord call in a transaction. */
 public final class CanonicalGridWordsPublicationService {
@@ -35,6 +36,7 @@ public final class CanonicalGridWordsPublicationService {
     private final List<Long> configuredPlayerIds;
     private final StreakCalculator streakCalculator;
     private final PublicationRetryScheduler retryScheduler;
+    private final LongConsumer postPublication;
     private final Set<Long> scheduledRetries = ConcurrentHashMap.newKeySet();
     private final ConcurrentMap<Long, RefreshSchedule> scheduledRefreshes = new ConcurrentHashMap<>();
 
@@ -66,6 +68,20 @@ public final class CanonicalGridWordsPublicationService {
             ZoneId zoneId,
             List<Long> configuredPlayerIds,
             PublicationRetryScheduler retryScheduler) {
+        this(results, players, submissions, discord, clock, zoneId, configuredPlayerIds, retryScheduler,
+                sourceMessageId -> { });
+    }
+
+    public CanonicalGridWordsPublicationService(
+            GameResultStore results,
+            PlayerStore players,
+            SubmissionStore submissions,
+            CanonicalMessageGateway discord,
+            Clock clock,
+            ZoneId zoneId,
+            List<Long> configuredPlayerIds,
+            PublicationRetryScheduler retryScheduler,
+            LongConsumer postPublication) {
         this.results = Objects.requireNonNull(results);
         this.players = Objects.requireNonNull(players);
         this.submissions = Objects.requireNonNull(submissions);
@@ -80,23 +96,30 @@ public final class CanonicalGridWordsPublicationService {
         }
         this.streakCalculator = new StreakCalculator();
         this.retryScheduler = Objects.requireNonNull(retryScheduler);
+        this.postPublication = Objects.requireNonNull(postPublication);
     }
-
     /** @return true only after the canonical ID and the submission state were persisted together. */
     public boolean publish(long sourceMessageId) {
-        return publishOutcome(sourceMessageId) == PublicationOutcome.PUBLISHED;
+        return publishAndHandOff(sourceMessageId) == PublicationOutcome.PUBLISHED;
     }
 
     /** Replays open publications and persisted refresh work after startup. */
     public void resumeOpenPublications() {
         for (SubmissionStore.StoredSubmission submission : submissions.findGridWordsAwaitingCanonicalPublication()) {
-            publishOutcome(submission.sourceMessageId());
+            publishAndHandOff(submission.sourceMessageId());
         }
         for (SubmissionStore.CanonicalRefreshCandidate refresh : submissions.findCanonicalRefreshCandidates()) {
             resumeCurrentRefresh(refresh.submission().gameResultId().orElseThrow());
         }
     }
 
+private PublicationOutcome publishAndHandOff(long sourceMessageId) {
+        PublicationOutcome outcome = publishOutcome(sourceMessageId);
+        if (outcome == PublicationOutcome.PUBLISHED) {
+            postPublication.accept(sourceMessageId);
+        }
+        return outcome;
+    }
     private PublicationOutcome publishOutcome(long sourceMessageId) {
         long resultId = 0;
         UUID claimToken = null;
@@ -188,7 +211,7 @@ public final class CanonicalGridWordsPublicationService {
     private void retryPublication(long sourceMessageId) {
         PublicationOutcome outcome;
         try {
-            outcome = publishOutcome(sourceMessageId);
+            outcome = publishAndHandOff(sourceMessageId);
         } finally {
             scheduledRetries.remove(sourceMessageId);
         }
@@ -293,7 +316,7 @@ public final class CanonicalGridWordsPublicationService {
             if (current.state() != SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED
                     && current.state() != SubmissionStore.SubmissionState.ORIGINAL_MESSAGE_DELETED
                     && current.state() != SubmissionStore.SubmissionState.COMPLETED) {
-                return switch (publishOutcome(current.sourceMessageId())) {
+                return switch (publishAndHandOff(current.sourceMessageId())) {
                     case PUBLISHED, RETRY_SCHEDULED, SUPERSEDED -> RefreshOutcome.RETRY_SCHEDULED;
                 };
             }

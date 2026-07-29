@@ -100,6 +100,59 @@ class CanonicalGridWordsPublicationServiceTest {
     }
 
     @Test
+    void handsOffSuccessfulScheduledPublicationRetryToTheExactSourceDeletionWithoutAnotherEvent() {
+        GridWordsSourceDeletionService deletion = mock(GridWordsSourceDeletionService.class);
+        CanonicalGridWordsPublicationService retryingService = new CanonicalGridWordsPublicationService(
+                results, players, submissions, discord, Clock.fixed(NOW, ZoneOffset.UTC), ZoneId.of("Europe/Berlin"),
+                List.of(TOBIAS, GEORGIA), retryScheduler, deletion::deleteAfterCanonicalPublication);
+        SubmissionStore.StoredSubmission pending = stored(SubmissionStore.SubmissionState.RESULT_STORED);
+        when(submissions.findBySourceMessageId(SOURCE)).thenReturn(Optional.of(pending));
+        when(results.findById(RESULT)).thenReturn(Optional.of(result));
+        GameResultStore.PublicationClaim claim = claim("00000000-0000-0000-0000-000000000024");
+        when(results.claimCanonicalPublication(eq(RESULT), any())).thenReturn(Optional.empty(), Optional.of(claim));
+        when(discord.findByPublicationKey(anyLong(), any())).thenReturn(OptionalLong.empty());
+        when(discord.create(anyLong(), any())).thenReturn(99L);
+        when(submissions.completeCanonicalPublication(SOURCE, RESULT, 99L, claim.token())).thenReturn(true);
+        when(deletion.deleteAfterCanonicalPublication(SOURCE)).thenReturn(true);
+        ArgumentCaptor<Runnable> retry = ArgumentCaptor.forClass(Runnable.class);
+
+        assertThat(retryingService.publish(SOURCE)).isFalse();
+        verify(retryScheduler).schedule(eq(NOW.plusSeconds(61)), retry.capture());
+        retry.getValue().run();
+
+        verify(discord, times(1)).create(eq(12L), any());
+        verify(submissions).completeCanonicalPublication(SOURCE, RESULT, 99L, claim.token());
+        verify(deletion).deleteAfterCanonicalPublication(SOURCE);
+        verify(submissions, never()).markRetryableFailure(SOURCE, "canonical publication failed");
+    }
+
+    @Test
+    void deleteFailureAfterSuccessfulScheduledPublicationDoesNotDowngradeCanonicalPublication() {
+        GridWordsSourceDeletionService deletion = mock(GridWordsSourceDeletionService.class);
+        CanonicalGridWordsPublicationService retryingService = new CanonicalGridWordsPublicationService(
+                results, players, submissions, discord, Clock.fixed(NOW, ZoneOffset.UTC), ZoneId.of("Europe/Berlin"),
+                List.of(TOBIAS, GEORGIA), retryScheduler, deletion::deleteAfterCanonicalPublication);
+        SubmissionStore.StoredSubmission pending = stored(SubmissionStore.SubmissionState.RESULT_STORED);
+        when(submissions.findBySourceMessageId(SOURCE)).thenReturn(Optional.of(pending));
+        when(results.findById(RESULT)).thenReturn(Optional.of(result));
+        GameResultStore.PublicationClaim claim = claim("00000000-0000-0000-0000-000000000025");
+        when(results.claimCanonicalPublication(eq(RESULT), any())).thenReturn(Optional.empty(), Optional.of(claim));
+        when(discord.findByPublicationKey(anyLong(), any())).thenReturn(OptionalLong.empty());
+        when(discord.create(anyLong(), any())).thenReturn(99L);
+        when(submissions.completeCanonicalPublication(SOURCE, RESULT, 99L, claim.token())).thenReturn(true);
+        when(deletion.deleteAfterCanonicalPublication(SOURCE)).thenReturn(false);
+        ArgumentCaptor<Runnable> retry = ArgumentCaptor.forClass(Runnable.class);
+
+        assertThat(retryingService.publish(SOURCE)).isFalse();
+        verify(retryScheduler).schedule(eq(NOW.plusSeconds(61)), retry.capture());
+        retry.getValue().run();
+
+        verify(submissions).completeCanonicalPublication(SOURCE, RESULT, 99L, claim.token());
+        verify(submissions, never()).markRetryableFailure(SOURCE, "canonical publication failed");
+        verify(retryScheduler, times(1)).schedule(any(), any());
+        verify(deletion).deleteAfterCanonicalPublication(SOURCE);
+    }
+    @Test
     void publishesFirstGridWordsExactlyOnceAndPersistsStateWithTheClaimToken() {
         stored(SubmissionStore.SubmissionState.RESULT_STORED);
         when(results.findById(RESULT)).thenReturn(Optional.of(result));
