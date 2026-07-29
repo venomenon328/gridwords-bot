@@ -151,6 +151,30 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
 
     @Override
     @Transactional
+    public StoredSubmission reject(RejectedSubmission request) {
+        StoredSubmission existing = lockRequired(request.sourceMessageId());
+        if (existing.state() == SubmissionState.PARSE_REJECTED) {
+            if (existing.parserErrorCode().filter(request.errorCode()::equals).isPresent()) {
+                return existing;
+            }
+            throw new SubmissionConflictException("source message ID is already rejected with a different error code");
+        }
+        if (existing.state() != SubmissionState.RECEIVED && existing.state() != SubmissionState.VALIDATED) {
+            throw new SubmissionConflictException("submission state does not allow rejection: " + existing.state());
+        }
+        int changed = jdbc.update("""
+                UPDATE submission SET processing_state = 'PARSE_REJECTED', parser_error_code = ?,
+                    technical_error_message = NULL, updated_at = ?, version = version + 1
+                WHERE source_message_id = ? AND processing_state IN ('RECEIVED', 'VALIDATED')
+                """, request.errorCode(), databaseTime(clock.instant()), request.sourceMessageId());
+        if (changed != 1) {
+            throw new SubmissionConflictException("submission state changed during rejection");
+        }
+        return findRequired(request.sourceMessageId());
+    }
+
+    @Override
+    @Transactional
     public boolean transition(long sourceMessageId, SubmissionState expectedState, SubmissionState targetState) {
         return jdbc.update("""
                 UPDATE submission SET processing_state = ?, updated_at = ?, version = version + 1
@@ -232,6 +256,8 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
             rs.getLong("author_player_id"), rs.getString("raw_message_content"),
             SubmissionState.valueOf(rs.getString("processing_state")),
             Optional.ofNullable(rs.getObject("game_result_id", Long.class)), attachments(rs.getLong("source_message_id")),
+            Optional.ofNullable(rs.getString("parser_error_code")),
+            Optional.ofNullable(rs.getString("technical_error_message")),
             instant(rs, "received_at"), instant(rs, "updated_at"));
 
     private List<AttachmentSnapshot> attachments(long sourceMessageId) {
