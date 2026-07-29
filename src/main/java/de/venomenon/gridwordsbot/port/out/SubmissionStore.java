@@ -37,17 +37,28 @@ public interface SubmissionStore {
         throw new UnsupportedOperationException("canonical publication preparation is not available");
     }
 
-    /** Returns the current source according to the persisted correction order for one result. */
-    default Optional<StoredSubmission> findCurrentCanonicalPublicationCandidate(long gameResultId) {
+    /** Returns the current source and persisted refresh generation for one mutable result. */
+    default Optional<CanonicalRefreshCandidate> findCurrentCanonicalPublicationCandidate(long gameResultId) {
         throw new UnsupportedOperationException("current canonical publication lookup is not available");
     }
 
+    /** Lists refresh work that survived process termination and must be reconciled after startup. */
+    default List<CanonicalRefreshCandidate> findCanonicalRefreshCandidates() {
+        throw new UnsupportedOperationException("canonical refresh recovery is not available");
+    }
+
+    /** Durably records that a late Discord side effect requires the current canonical message to be reconciled. */
+    default void requestCanonicalRefresh(long gameResultId) {
+        throw new UnsupportedOperationException("canonical refresh request is not available");
+    }
+
     /** Persists a token-owned refresh of an already published current canonical message. */
-    default boolean completeCanonicalRefresh(
+    default CanonicalRefreshCompletion completeCanonicalRefresh(
             long sourceMessageId,
             long gameResultId,
             long canonicalMessageId,
-            UUID claimToken) {
+            UUID claimToken,
+            long refreshGeneration) {
         throw new UnsupportedOperationException("canonical refresh is not available");
     }
 
@@ -132,6 +143,19 @@ public interface SubmissionStore {
         }
     }
 
+    /** A current source paired with the generation that made a canonical refresh necessary. */
+    record CanonicalRefreshCandidate(StoredSubmission submission, long refreshGeneration) {
+        public CanonicalRefreshCandidate {
+            Objects.requireNonNull(submission, "submission");
+            if (refreshGeneration < 0) {
+                throw new IllegalArgumentException("refreshGeneration must not be negative");
+            }
+        }
+    }
+
+    /** A refresh completion can succeed while a newer late side effect already requires another pass. */
+    record CanonicalRefreshCompletion(boolean refreshStillRequired) {
+    }
     record StoredSubmission(
             long sourceMessageId,
             long guildId,

@@ -486,7 +486,7 @@ class CanonicalGridWordsPublicationServiceTest {
             return Optional.empty();
         });
         when(submissions.findCurrentCanonicalPublicationCandidate(RESULT)).thenAnswer(
-                invocation -> Optional.of(newerState.get()));
+                invocation -> Optional.of(new SubmissionStore.CanonicalRefreshCandidate(newerState.get(), 1)));
         when(submissions.prepareCanonicalPublication(anyLong(), anyLong()))
                 .thenReturn(SubmissionStore.CanonicalPublicationPreparation.PUBLISHABLE);
         when(results.findById(RESULT)).thenAnswer(invocation -> Optional.of(currentResult.get()));
@@ -523,7 +523,8 @@ class CanonicalGridWordsPublicationServiceTest {
             return true;
         });
         when(submissions.completeCanonicalRefresh(correctionSource, RESULT, 88L,
-                UUID.fromString("00000000-0000-0000-0000-000000000018"))).thenReturn(true);
+                UUID.fromString("00000000-0000-0000-0000-000000000018"), 1))
+                .thenReturn(new SubmissionStore.CanonicalRefreshCompletion(false));
 
         try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
             Future<Boolean> olderPublish = executor.submit(() -> service.publish(SOURCE));
@@ -552,9 +553,149 @@ class CanonicalGridWordsPublicationServiceTest {
         assertThat(requestedLeaseEnds).containsExactly(NOW.plusSeconds(60), NOW.plusSeconds(121), NOW.plusSeconds(121));
         verify(discord, times(3)).edit(eq(12L), eq(88L), any());
         verify(submissions).completeCanonicalRefresh(
-                correctionSource, RESULT, 88L, UUID.fromString("00000000-0000-0000-0000-000000000018"));
+                correctionSource, RESULT, 88L, UUID.fromString("00000000-0000-0000-0000-000000000018"), 1);
         verify(recoveredReactionGateway, never()).addAcceptedReaction(12L, SOURCE);
         verifyNoInteractions(retryScheduler);
+    }
+    @Test
+    void rerunsARefreshWhenAnotherStaleEditArrivesDuringTheCurrentRefresh() throws Exception {
+        long correctionSource = 11L;
+        SubmissionStore.StoredSubmission older = storedSubmission(
+                SOURCE, SubmissionStore.SubmissionState.RESULT_STORED, SubmissionStore.PublicationContext.none());
+        SubmissionStore.StoredSubmission current = storedSubmission(
+                correctionSource,
+                SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED,
+                SubmissionStore.PublicationContext.none());
+        SubmissionStore.CanonicalRefreshCandidate refresh = new SubmissionStore.CanonicalRefreshCandidate(current, 1);
+        AtomicReference<GameResultStore.StoredGameResult> currentResult = new AtomicReference<>(
+                gridResult(RESULT, TOBIAS, OptionalLong.of(88L), 2));
+        AtomicReference<CanonicalResultMessage> visibleEmbed = new AtomicReference<>();
+        AtomicReference<Instant> currentTime = new AtomicReference<>(NOW);
+        Clock controlledClock = new Clock() {
+            @Override
+            public ZoneId getZone() {
+                return ZoneOffset.UTC;
+            }
+
+            @Override
+            public Clock withZone(ZoneId zone) {
+                return this;
+            }
+
+            @Override
+            public Instant instant() {
+                return currentTime.get();
+            }
+        };
+        CountDownLatch firstRefreshEditStarted = new CountDownLatch(1);
+        CountDownLatch allowFirstRefreshToComplete = new CountDownLatch(1);
+        AtomicInteger currentEdits = new AtomicInteger();
+        List<ScheduledAction> scheduled = new ArrayList<>();
+        service = new CanonicalGridWordsPublicationService(
+                results,
+                players,
+                submissions,
+                discord,
+                controlledClock,
+                ZoneId.of("Europe/Berlin"),
+                List.of(TOBIAS, GEORGIA),
+                (at, action) -> scheduled.add(new ScheduledAction(at, action)),
+                recoveredReactionGateway);
+        when(submissions.findBySourceMessageId(SOURCE)).thenReturn(Optional.of(older));
+        when(submissions.findCurrentCanonicalPublicationCandidate(RESULT)).thenReturn(Optional.of(refresh));
+        when(submissions.prepareCanonicalPublication(SOURCE, RESULT))
+                .thenReturn(SubmissionStore.CanonicalPublicationPreparation.PUBLISHABLE);
+        when(results.findById(RESULT)).thenAnswer(invocation -> Optional.of(currentResult.get()));
+        when(results.findAll()).thenAnswer(invocation -> List.of(currentResult.get()));
+        AtomicInteger claims = new AtomicInteger();
+        when(results.claimCanonicalPublication(eq(RESULT), any())).thenAnswer(invocation -> Optional.of(
+                new GameResultStore.PublicationClaim(UUID.fromString(switch (claims.incrementAndGet()) {
+                    case 1 -> "00000000-0000-0000-0000-000000000020";
+                    case 2 -> "00000000-0000-0000-0000-000000000021";
+                    case 3 -> "00000000-0000-0000-0000-000000000022";
+                    case 4 -> "00000000-0000-0000-0000-000000000023";
+                    default -> throw new AssertionError("unexpected additional claim");
+                }), invocation.getArgument(1))));
+        doAnswer(invocation -> {
+            CanonicalResultMessage message = invocation.getArgument(2);
+            int attempts = ((ShareOutcome.Solved) message.outcome()).attemptsUsed();
+            visibleEmbed.set(message);
+            if (attempts == 2 && currentEdits.getAndIncrement() == 0) {
+                firstRefreshEditStarted.countDown();
+                if (!allowFirstRefreshToComplete.await(5, TimeUnit.SECONDS)) {
+                    throw new AssertionError("first refresh was not released");
+                }
+            }
+            return null;
+        }).when(discord).edit(eq(12L), eq(88L), any());
+        when(submissions.completeCanonicalPublication(eq(SOURCE), eq(RESULT), eq(88L), any()))
+                .thenThrow(new SubmissionConflictException("stale publisher completion was fenced"));
+        when(submissions.completeCanonicalRefresh(correctionSource, RESULT, 88L,
+                UUID.fromString("00000000-0000-0000-0000-000000000021"), 1))
+                .thenReturn(new SubmissionStore.CanonicalRefreshCompletion(false));
+        when(submissions.completeCanonicalRefresh(correctionSource, RESULT, 88L,
+                UUID.fromString("00000000-0000-0000-0000-000000000023"), 1))
+                .thenReturn(new SubmissionStore.CanonicalRefreshCompletion(false));
+
+        currentResult.set(gridResult(RESULT, TOBIAS, OptionalLong.of(88L), 4));
+        assertThat(service.publish(SOURCE)).isFalse();
+        currentResult.set(gridResult(RESULT, TOBIAS, OptionalLong.of(88L), 2));
+        ScheduledAction firstRefresh = scheduled.stream()
+                .filter(action -> action.at().equals(NOW.plusSeconds(1)))
+                .findFirst()
+                .orElseThrow();
+
+        currentTime.set(NOW.plusSeconds(1));
+        try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
+            Future<?> runningRefresh = executor.submit(firstRefresh.action());
+            assertThat(firstRefreshEditStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+            currentResult.set(gridResult(RESULT, TOBIAS, OptionalLong.of(88L), 4));
+            assertThat(service.publish(SOURCE)).isFalse();
+            assertThat(((ShareOutcome.Solved) visibleEmbed.get().outcome()).attemptsUsed()).isEqualTo(4);
+            currentResult.set(gridResult(RESULT, TOBIAS, OptionalLong.of(88L), 2));
+
+            allowFirstRefreshToComplete.countDown();
+            runningRefresh.get(5, TimeUnit.SECONDS);
+        }
+
+        ScheduledAction rerun = scheduled.stream()
+                .filter(action -> action.at().equals(NOW.plusSeconds(2)))
+                .findFirst()
+                .orElseThrow();
+        rerun.action().run();
+
+        assertThat(((ShareOutcome.Solved) visibleEmbed.get().outcome()).attemptsUsed()).isEqualTo(2);
+        verify(submissions, times(2)).requestCanonicalRefresh(RESULT);
+        verify(discord, times(4)).edit(eq(12L), eq(88L), any());
+        verify(submissions).completeCanonicalRefresh(correctionSource, RESULT, 88L,
+                UUID.fromString("00000000-0000-0000-0000-000000000023"), 1);
+        verify(recoveredReactionGateway, never()).addAcceptedReaction(anyLong(), anyLong());
+    }
+    @Test
+    void startupReconcilesAPersistedCanonicalRefreshWithoutAcknowledgingASupersededSource() {
+        SubmissionStore.StoredSubmission current = storedSubmission(
+                SOURCE,
+                SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED,
+                SubmissionStore.PublicationContext.none());
+        SubmissionStore.CanonicalRefreshCandidate refresh =
+                new SubmissionStore.CanonicalRefreshCandidate(current, 7);
+        result = gridResult(RESULT, TOBIAS, OptionalLong.of(88L), 2);
+        when(results.findAll()).thenReturn(List.of(result));
+        when(submissions.findGridWordsAwaitingCanonicalPublication()).thenReturn(List.of());
+        when(submissions.findCanonicalRefreshCandidates()).thenReturn(List.of(refresh));
+        when(submissions.findCurrentCanonicalPublicationCandidate(RESULT)).thenReturn(Optional.of(refresh));
+        when(results.findById(RESULT)).thenReturn(Optional.of(result));
+        GameResultStore.PublicationClaim claim = claim("00000000-0000-0000-0000-000000000019");
+        when(results.claimCanonicalPublication(eq(RESULT), any())).thenReturn(Optional.of(claim));
+        when(submissions.completeCanonicalRefresh(SOURCE, RESULT, 88L, claim.token(), 7))
+                .thenReturn(new SubmissionStore.CanonicalRefreshCompletion(false));
+
+        service.resumeOpenPublications();
+
+        verify(discord).edit(eq(12L), eq(88L), any());
+        verify(submissions).completeCanonicalRefresh(SOURCE, RESULT, 88L, claim.token(), 7);
+        verify(recoveredReactionGateway, never()).addAcceptedReaction(anyLong(), anyLong());
     }
     @Test
     void startupRecoverySkipsASubmissionSupersededAfterTheRecoveryScan() {

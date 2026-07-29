@@ -302,27 +302,62 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         return CanonicalPublicationPreparation.PUBLISHABLE;
     }
     @Override
-    public Optional<StoredSubmission> findCurrentCanonicalPublicationCandidate(long gameResultId) {
+    public Optional<CanonicalRefreshCandidate> findCurrentCanonicalPublicationCandidate(long gameResultId) {
         return jdbc.query("""
-                SELECT * FROM submission
-                WHERE game_result_id = ?
-                  AND processing_state IN ('RESULT_STORED', 'FAILED_RETRYABLE', 'CANONICAL_MESSAGE_PUBLISHED')
-                ORDER BY received_at DESC, source_message_id DESC
+                SELECT s.*, r.canonical_refresh_generation
+                FROM submission s
+                JOIN game_result r ON r.id = s.game_result_id
+                WHERE s.game_result_id = ?
+                  AND s.processing_state IN ('RESULT_STORED', 'FAILED_RETRYABLE', 'CANONICAL_MESSAGE_PUBLISHED')
+                ORDER BY s.received_at DESC, s.source_message_id DESC
                 LIMIT 1
-                """, SUBMISSION, gameResultId).stream().findFirst();
+                """, this::refreshCandidate, gameResultId).stream().findFirst();
+    }
+
+    @Override
+    public List<CanonicalRefreshCandidate> findCanonicalRefreshCandidates() {
+        return jdbc.query("""
+                SELECT s.*, r.canonical_refresh_generation
+                FROM game_result r
+                JOIN LATERAL (
+                    SELECT *
+                    FROM submission
+                    WHERE game_result_id = r.id
+                      AND processing_state IN ('RESULT_STORED', 'FAILED_RETRYABLE', 'CANONICAL_MESSAGE_PUBLISHED')
+                    ORDER BY received_at DESC, source_message_id DESC
+                    LIMIT 1
+                ) s ON TRUE
+                WHERE r.game_type = 'GRIDWORDS'
+                  AND r.canonical_refresh_required = TRUE
+                ORDER BY r.id
+                """, this::refreshCandidate);
+    }
+
+    @Override
+    public void requestCanonicalRefresh(long resultId) {
+        int changed = jdbc.update("""
+                UPDATE game_result
+                SET canonical_refresh_required = TRUE, canonical_refresh_generation = canonical_refresh_generation + 1,
+                    updated_at = ?, version = version + 1
+                WHERE id = ?
+                """, databaseTime(clock.instant()), resultId);
+        if (changed != 1) {
+            throw new IllegalStateException("game result not found: " + resultId);
+        }
     }
 
     /**
-     * Fences a compensating refresh after a stale Discord side effect. The source must still be the newest
-     * linked submission and the token must still own the result lease when the refreshed canonical ID is saved.
+     * Fences a compensating refresh after a stale Discord side effect. A newer refresh generation remains pending
+     * even when this token-owned edit successfully persists its canonical message ID.
      */
     @Override
     @Transactional
-    public boolean completeCanonicalRefresh(
+    public CanonicalRefreshCompletion completeCanonicalRefresh(
             long sourceMessageId,
             long resultId,
             long canonicalMessageId,
-            UUID claimToken) {
+            UUID claimToken,
+            long refreshGeneration) {
         StoredSubmission submission = lockRequired(sourceMessageId);
         if (submission.gameResultId().filter(id -> id == resultId).isEmpty()
                 || submission.state() != SubmissionState.CANONICAL_MESSAGE_PUBLISHED) {
@@ -332,16 +367,23 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         if (hasNewerLinkedSubmission(submission, resultId)) {
             throw new SubmissionConflictException("a newer submission superseded the refresh source");
         }
-        int changed = jdbc.update("""
+        Boolean refreshStillRequired = jdbc.query("""
                 UPDATE game_result
-                SET canonical_message_id = ?, canonical_publish_lease_until = NULL,
-                    canonical_publish_claim_token = NULL, updated_at = ?, version = version + 1
+                SET canonical_message_id = ?,
+                    canonical_refresh_required = CASE
+                        WHEN canonical_refresh_generation = ? THEN FALSE
+                        ELSE TRUE
+                    END,
+                    canonical_publish_lease_until = NULL, canonical_publish_claim_token = NULL,
+                    updated_at = ?, version = version + 1
                 WHERE id = ? AND canonical_publish_claim_token = ?
-                """, canonicalMessageId, databaseTime(clock.instant()), resultId, claimToken);
-        if (changed != 1) {
+                RETURNING canonical_refresh_required
+                """, rs -> rs.next() ? rs.getBoolean(1) : null,
+                canonicalMessageId, refreshGeneration, databaseTime(clock.instant()), resultId, claimToken);
+        if (refreshStillRequired == null) {
             throw new SubmissionConflictException("canonical refresh claim was lost");
         }
-        return true;
+        return new CanonicalRefreshCompletion(refreshStillRequired);
     }
     @Override
     public Optional<PublicationClaim> claimCanonicalPublication(long resultId, Instant leaseUntil) {
@@ -417,6 +459,10 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                 WHERE r.game_type = 'GRIDWORDS'
                   AND s.processing_state IN ('RESULT_STORED', 'FAILED_RETRYABLE')
                 """, SUBMISSION);
+    }
+    private CanonicalRefreshCandidate refreshCandidate(ResultSet resultSet, int rowNumber) throws SQLException {
+        return new CanonicalRefreshCandidate(SUBMISSION.mapRow(resultSet, rowNumber),
+                resultSet.getLong("canonical_refresh_generation"));
     }
     private void lockResult(long gameResultId) {
         boolean found = !jdbc.queryForList("SELECT id FROM game_result WHERE id = ? FOR UPDATE", Long.class, gameResultId)

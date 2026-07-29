@@ -18,6 +18,7 @@ import java.util.OptionalInt;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.RejectedExecutionException;
 
 /** Coordinates one resumable canonical GridWords publication without a Discord call in a transaction. */
@@ -37,7 +38,7 @@ public final class CanonicalGridWordsPublicationService {
     private final PublicationRetryScheduler retryScheduler;
     private final SourceMessageReactionGateway acceptedReactionGateway;
     private final Set<Long> scheduledRetries = ConcurrentHashMap.newKeySet();
-    private final Set<Long> scheduledRefreshes = ConcurrentHashMap.newKeySet();
+    private final ConcurrentMap<Long, RefreshSchedule> scheduledRefreshes = new ConcurrentHashMap<>();
 
     public CanonicalGridWordsPublicationService(
             GameResultStore results,
@@ -91,12 +92,15 @@ public final class CanonicalGridWordsPublicationService {
         return publishOutcome(sourceMessageId) == PublicationOutcome.PUBLISHED;
     }
 
-    /** Replays open publications after startup; superseded sources neither publish nor receive an acceptance reaction. */
+    /** Replays open publications and persisted refresh work after startup. */
     public void resumeOpenPublications() {
         for (SubmissionStore.StoredSubmission submission : submissions.findGridWordsAwaitingCanonicalPublication()) {
             if (publishOutcome(submission.sourceMessageId()) == PublicationOutcome.PUBLISHED) {
                 acknowledgeDeferredPublication(submission);
             }
+        }
+        for (SubmissionStore.CanonicalRefreshCandidate refresh : submissions.findCanonicalRefreshCandidates()) {
+            resumeCurrentRefresh(refresh.submission().gameResultId().orElseThrow());
         }
     }
 
@@ -163,7 +167,7 @@ public final class CanonicalGridWordsPublicationService {
                         }
                     } finally {
                         if (discordSideEffectCompleted) {
-                            scheduleCurrentRefresh(resultId, REFRESH_DELAY_SECONDS);
+                            requestCurrentRefresh(resultId, REFRESH_DELAY_SECONDS);
                         }
                     }
                 }
@@ -186,8 +190,12 @@ public final class CanonicalGridWordsPublicationService {
     }
 
     private void retryPublication(long sourceMessageId) {
-        PublicationOutcome outcome = publishOutcome(sourceMessageId);
-        scheduledRetries.remove(sourceMessageId);
+        PublicationOutcome outcome;
+        try {
+            outcome = publishOutcome(sourceMessageId);
+        } finally {
+            scheduledRetries.remove(sourceMessageId);
+        }
         if (outcome == PublicationOutcome.RETRY_SCHEDULED) {
             scheduleRetry(sourceMessageId);
             return;
@@ -197,39 +205,102 @@ public final class CanonicalGridWordsPublicationService {
         }
     }
 
-    /** Restores the visible canonical embed after a stale publisher completed its Discord call too late. */
-    private void scheduleCurrentRefresh(long resultId, long delaySeconds) {
-        if (!scheduledRefreshes.add(resultId)) {
-            return;
-        }
-        try {
-            retryScheduler.schedule(clock.instant().plusSeconds(delaySeconds), () -> retryCurrentRefresh(resultId));
-        } catch (RejectedExecutionException ignored) {
-            // A later startup publication/retry remains able to restore the canonical message.
-            scheduledRefreshes.remove(resultId);
+    /** Persists and schedules the reconciliation needed after a late stale Discord side effect. */
+    private void requestCurrentRefresh(long resultId, long delaySeconds) {
+        submissions.requestCanonicalRefresh(resultId);
+        scheduleCurrentRefresh(resultId, delaySeconds);
+    }
+
+    private void resumeCurrentRefresh(long resultId) {
+        RefreshSchedule schedule = startRefresh(resultId);
+        if (schedule != null) {
+            retryCurrentRefresh(resultId, schedule);
         }
     }
 
-    private void retryCurrentRefresh(long resultId) {
-        RefreshOutcome outcome = refreshCurrentPublication(resultId);
-        scheduledRefreshes.remove(resultId);
-        if (outcome == RefreshOutcome.RETRY_SCHEDULED) {
-            scheduleCurrentRefresh(resultId, LEASE_SECONDS + 1);
+    /** Coalesces wake-ups without dropping a request that arrives while a refresh is running. */
+    private void scheduleCurrentRefresh(long resultId, long delaySeconds) {
+        RefreshSchedule schedule = startRefresh(resultId);
+        if (schedule != null) {
+            scheduleRefresh(resultId, schedule, delaySeconds);
+        }
+    }
+
+    private RefreshSchedule startRefresh(long resultId) {
+        RefreshSchedule[] newlyScheduled = new RefreshSchedule[1];
+        scheduledRefreshes.compute(resultId, (ignored, current) -> {
+            RefreshSchedule schedule = current == null ? new RefreshSchedule() : current;
+            synchronized (schedule) {
+                schedule.rerunRequested = true;
+                if (!schedule.scheduledOrRunning) {
+                    schedule.scheduledOrRunning = true;
+                    newlyScheduled[0] = schedule;
+                }
+            }
+            return schedule;
+        });
+        return newlyScheduled[0];
+    }
+
+    private void scheduleRefresh(long resultId, RefreshSchedule schedule, long delaySeconds) {
+        try {
+            retryScheduler.schedule(clock.instant().plusSeconds(delaySeconds), () -> retryCurrentRefresh(resultId, schedule));
+        } catch (RejectedExecutionException ignored) {
+            // The durable refresh request remains available to a later startup reconciliation.
+            scheduledRefreshes.remove(resultId, schedule);
+        }
+    }
+
+    private void retryCurrentRefresh(long resultId, RefreshSchedule schedule) {
+        RefreshOutcome outcome = RefreshOutcome.RETRY_SCHEDULED;
+        synchronized (schedule) {
+            schedule.rerunRequested = false;
+        }
+        try {
+            outcome = refreshCurrentPublication(resultId);
+        } finally {
+            RefreshOutcome completedOutcome = outcome;
+            RefreshSchedule[] followUp = new RefreshSchedule[1];
+            scheduledRefreshes.compute(resultId, (ignored, current) -> {
+                if (current != schedule) {
+                    return current;
+                }
+                synchronized (schedule) {
+                    boolean needsAnotherPass = schedule.rerunRequested
+                            || completedOutcome == RefreshOutcome.RETRY_SCHEDULED;
+                    if (!needsAnotherPass) {
+                        schedule.scheduledOrRunning = false;
+                        return null;
+                    }
+                    schedule.rerunRequested = false;
+                    schedule.scheduledOrRunning = true;
+                    followUp[0] = schedule;
+                    return schedule;
+                }
+            });
+            if (followUp[0] != null) {
+                long delay = completedOutcome == RefreshOutcome.RETRY_SCHEDULED
+                        ? LEASE_SECONDS + 1
+                        : REFRESH_DELAY_SECONDS;
+                scheduleRefresh(resultId, followUp[0], delay);
+            }
         }
     }
 
     private RefreshOutcome refreshCurrentPublication(long resultId) {
         UUID claimToken = null;
         try {
-            SubmissionStore.StoredSubmission current = submissions.findCurrentCanonicalPublicationCandidate(resultId)
+            SubmissionStore.CanonicalRefreshCandidate candidate = submissions
+                    .findCurrentCanonicalPublicationCandidate(resultId)
                     .orElse(null);
-            if (current == null) {
+            if (candidate == null) {
                 return RefreshOutcome.COMPLETED;
             }
+            SubmissionStore.StoredSubmission current = candidate.submission();
             if (current.state() != SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED) {
-                return publishOutcome(current.sourceMessageId()) == PublicationOutcome.SUPERSEDED
-                        ? RefreshOutcome.RETRY_SCHEDULED
-                        : RefreshOutcome.COMPLETED;
+                return switch (publishOutcome(current.sourceMessageId())) {
+                    case PUBLISHED, RETRY_SCHEDULED, SUPERSEDED -> RefreshOutcome.RETRY_SCHEDULED;
+                };
             }
 
             GameResultStore.StoredGameResult result = results.findById(resultId).orElseThrow();
@@ -247,18 +318,20 @@ public final class CanonicalGridWordsPublicationService {
                     current,
                     result,
                     canonicalMessage(result, current.authorPlayerId(), current.publicationContext()));
-            if (!submissions.completeCanonicalRefresh(current.sourceMessageId(), resultId, canonicalMessageId, claimToken)) {
-                throw new IllegalStateException("canonical refresh completion was not accepted");
-            }
-            return RefreshOutcome.COMPLETED;
+            SubmissionStore.CanonicalRefreshCompletion completion = submissions.completeCanonicalRefresh(
+                    current.sourceMessageId(), resultId, canonicalMessageId, claimToken, candidate.refreshGeneration());
+            return completion.refreshStillRequired() ? RefreshOutcome.RETRY_SCHEDULED : RefreshOutcome.COMPLETED;
         } catch (RuntimeException exception) {
             if (claimToken != null) {
-                results.releaseCanonicalPublicationClaim(resultId, claimToken);
+                try {
+                    results.releaseCanonicalPublicationClaim(resultId, claimToken);
+                } catch (RuntimeException ignored) {
+                    // The lease expires and the durable refresh request is retried by the scheduler or startup.
+                }
             }
             return RefreshOutcome.RETRY_SCHEDULED;
         }
     }
-
     private void acknowledgeDeferredPublication(SubmissionStore.StoredSubmission submission) {
         acceptedReactionGateway.addAcceptedReaction(submission.channelId(), submission.sourceMessageId());
     }
@@ -322,5 +395,9 @@ public final class CanonicalGridWordsPublicationService {
     private enum RefreshOutcome {
         COMPLETED,
         RETRY_SCHEDULED
+    }
+    private static final class RefreshSchedule {
+        private boolean scheduledOrRunning;
+        private boolean rerunRequested;
     }
 }

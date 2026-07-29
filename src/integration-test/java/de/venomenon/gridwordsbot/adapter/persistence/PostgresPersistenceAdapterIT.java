@@ -497,18 +497,58 @@ class PostgresPersistenceAdapterIT {
         assertEquals(Boolean.TRUE, transactions.execute(status -> adapter.completeCanonicalPublication(
                 newerSource, resultId, 5681L, newerClaim.token())));
 
-        SubmissionStore.StoredSubmission current = adapter.findCurrentCanonicalPublicationCandidate(resultId).orElseThrow();
-        assertEquals(newerSource, current.sourceMessageId());
+        SubmissionStore.CanonicalRefreshCandidate current = adapter.findCurrentCanonicalPublicationCandidate(resultId).orElseThrow();
+        assertEquals(newerSource, current.submission().sourceMessageId());
         assertEquals(SubmissionStore.SubmissionState.SUPERSEDED,
                 adapter.findBySourceMessageId(olderSource).orElseThrow().state());
         assertThrows(SubmissionConflictException.class, () -> transactions.execute(status ->
-                adapter.completeCanonicalRefresh(olderSource, resultId, 9999L, staleClaim.token())));
+                adapter.completeCanonicalRefresh(olderSource, resultId, 9999L, staleClaim.token(), 0)));
 
         GameResultStore.PublicationClaim refreshClaim = adapter.claimCanonicalPublication(resultId, now.plusSeconds(60))
                 .orElseThrow();
-        assertEquals(Boolean.TRUE, transactions.execute(status -> adapter.completeCanonicalRefresh(
-                newerSource, resultId, 5681L, refreshClaim.token())));
+        assertEquals(new SubmissionStore.CanonicalRefreshCompletion(false), transactions.execute(status ->
+                adapter.completeCanonicalRefresh(newerSource, resultId, 5681L, refreshClaim.token(), 0)));
         assertEquals(5681L, adapter.findById(resultId).orElseThrow().canonicalMessageId().orElseThrow());
+    }
+    @Test
+    void persistsRefreshReconciliationAcrossRestartAndRetainsANewerGeneration() {
+        long playerId = 154L;
+        long sourceMessageId = 958L;
+        adapter.upsert(new PlayerStore.PlayerUpsert(playerId, "Durable refresh", true, false));
+        registerSubmission(sourceMessageId, playerId, now);
+        long resultId = store(sourceMessageId, resultFor(playerId, 2, "published refresh"), List.of())
+                .gameResultId()
+                .orElseThrow();
+        GameResultStore.PublicationClaim publicationClaim = adapter.claimCanonicalPublication(resultId, now.plusSeconds(60))
+                .orElseThrow();
+        assertEquals(Boolean.TRUE, transactions.execute(status -> adapter.completeCanonicalPublication(
+                sourceMessageId, resultId, 5682L, publicationClaim.token())));
+
+        adapter.requestCanonicalRefresh(resultId);
+        SubmissionStore.CanonicalRefreshCandidate firstRefresh = adapter.findCanonicalRefreshCandidates().stream()
+                .filter(candidate -> candidate.submission().sourceMessageId() == sourceMessageId)
+                .findFirst()
+                .orElseThrow();
+        assertEquals(1, firstRefresh.refreshGeneration());
+
+        GameResultStore.PublicationClaim firstClaim = adapter.claimCanonicalPublication(resultId, now.plusSeconds(60))
+                .orElseThrow();
+        adapter.requestCanonicalRefresh(resultId);
+        assertEquals(new SubmissionStore.CanonicalRefreshCompletion(true), transactions.execute(status ->
+                adapter.completeCanonicalRefresh(sourceMessageId, resultId, 5682L, firstClaim.token(),
+                        firstRefresh.refreshGeneration())));
+
+        SubmissionStore.CanonicalRefreshCandidate secondRefresh = adapter.findCanonicalRefreshCandidates().stream()
+                .filter(candidate -> candidate.submission().sourceMessageId() == sourceMessageId)
+                .findFirst()
+                .orElseThrow();
+        assertEquals(2, secondRefresh.refreshGeneration());
+        GameResultStore.PublicationClaim secondClaim = adapter.claimCanonicalPublication(resultId, now.plusSeconds(60))
+                .orElseThrow();
+        assertEquals(new SubmissionStore.CanonicalRefreshCompletion(false), transactions.execute(status ->
+                adapter.completeCanonicalRefresh(sourceMessageId, resultId, 5682L, secondClaim.token(),
+                        secondRefresh.refreshGeneration())));
+        assertTrue(adapter.findCanonicalRefreshCandidates().isEmpty());
     }
     @Test
     void reconstructsRetryableGridWordsSubmissionsForStartupRecovery() {
@@ -586,6 +626,15 @@ class PostgresPersistenceAdapterIT {
             assertEquals(1, stored.stream().filter(submission ->
                     submission.publicationContext().sharedPerfectEstablished()).count());
         }
+    }
+    @Test
+    void appliesTheCanonicalRefreshReconciliationMigrationToAnEmptyDatabase() {
+        assertEquals(2, jdbc.queryForObject("""
+                SELECT count(*)
+                FROM information_schema.columns
+                WHERE table_name = 'game_result'
+                  AND column_name IN ('canonical_refresh_required', 'canonical_refresh_generation')
+                """, Integer.class));
     }
     @Test
     void appliesTheSupersessionStateMigrationToAnEmptyDatabase() {
