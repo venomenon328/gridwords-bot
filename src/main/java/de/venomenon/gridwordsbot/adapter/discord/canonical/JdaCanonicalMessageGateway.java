@@ -7,6 +7,7 @@ import java.util.OptionalLong;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.MessageHistory;
+import net.dv8tion.jda.api.entities.MessageEmbed;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.exceptions.ErrorResponseException;
 import net.dv8tion.jda.api.requests.ErrorResponse;
@@ -33,10 +34,9 @@ public final class JdaCanonicalMessageGateway implements CanonicalMessageGateway
     @Override
     public void edit(long channelId, long messageId, CanonicalResultMessage message) {
         try {
-            channel(channelId)
-                    .retrieveMessageById(messageId)
-                    .complete()
-                    .editMessageEmbeds(renderer.render(message))
+            Message original = channel(channelId).retrieveMessageById(messageId).complete();
+            MessageEmbed existingEmbed = original.getEmbeds().stream().findFirst().orElse(null);
+            original.editMessageEmbeds(renderer.renderForEdit(message, existingEmbed))
                     .setAllowedMentions(List.of())
                     .complete();
         } catch (ErrorResponseException exception) {
