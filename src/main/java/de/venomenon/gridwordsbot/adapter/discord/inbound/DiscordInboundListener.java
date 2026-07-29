@@ -83,7 +83,7 @@ public final class DiscordInboundListener extends ListenerAdapter {
         String displayName = member == null ? author.getName() : member.getEffectiveName();
         List<AttachmentMetadata> attachments = message.getAttachments().stream()
                 .map(attachment -> new AttachmentMetadata(
-                        attachment.getFileName(), attachment.getContentType(), attachment.getSize()))
+                        attachment.getFileName(), attachment.getContentType(), attachment.getSize(), attachment.getUrl()))
                 .toList();
         return new InboundSharedMessage(
                 event.getGuild().getIdLong(), event.getChannel().getIdLong(), message.getIdLong(), author.getIdLong(),
