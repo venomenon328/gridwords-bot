@@ -23,7 +23,7 @@ final class CanonicalEmbedRenderer {
         return new EmbedBuilder()
                 .setTitle(title)
                 .setDescription(message.playerDisplayName() + " · " + outcome + " · " + duration
-                        + "\n\n" + message.board().canonicalText()
+                        + "\n\n" + boardText(message)
                         + "\n\n" + series(message))
                 .setFooter(DiscordPublicationKey.encode(message.publicationKey()))
                 .build();
@@ -71,6 +71,19 @@ final class CanonicalEmbedRenderer {
             return "gelöst in " + solved.attemptsUsed() + "/" + solved.maxAttempts();
         }
         return "nicht gelöst · X/" + message.outcome().maxAttempts();
+    }
+
+
+    private static String gameTitle(CanonicalResultMessage message) {
+        return message.gameType() == de.venomenon.gridwordsbot.domain.model.GameType.GRIDWORDS
+                ? "\uD83D\uDFE9 GridWords" : "\uD83D\uDFE6 QuadWords";
+    }
+
+    private static String boardText(CanonicalResultMessage message) {
+        if (message.gameType() == de.venomenon.gridwordsbot.domain.model.GameType.GRIDWORDS) return message.board().canonicalText();
+        var boards = message.quadWordsBoards().orElseThrow();
+        return "Oben links\n" + boards.topLeft().canonicalText() + "\n\nOben rechts\n" + boards.topRight().canonicalText()
+                + "\n\nUnten links\n" + boards.bottomLeft().canonicalText() + "\n\nUnten rechts\n" + boards.bottomRight().canonicalText();
     }
 
     private static String series(CanonicalResultMessage message) {

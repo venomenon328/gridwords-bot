@@ -110,6 +110,7 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
         }
         if (parsed.gameType() == GameType.QUADWORDS) {
             if (submission.state() == SubmissionStore.SubmissionState.RESULT_STORED) {
+                canonicalPublisher.test(message.messageId());
                 return new ProcessingResult.Accepted(GameType.QUADWORDS);
             }
             QuadWordsCompletion completion = completeQuadWords(message, parsed);
@@ -137,7 +138,7 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
         if (stored.state() == SubmissionStore.SubmissionState.SUPERSEDED) {
             return new ProcessingResult.Ignored();
         }
-        if (parsed.gameType() == GameType.GRIDWORDS && !canonicalPublisher.test(message.messageId())) {
+        if (!canonicalPublisher.test(message.messageId())) {
             return new ProcessingResult.Ignored();
         }
         return new ProcessingResult.Accepted(parsed.gameType());

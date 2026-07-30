@@ -105,9 +105,10 @@ public final class CanonicalGridWordsPublicationService {
 
     /** Replays open publications and persisted refresh work after startup. */
     public void resumeOpenPublications() {
-        for (SubmissionStore.StoredSubmission submission : submissions.findGridWordsAwaitingCanonicalPublication()) {
+        for (SubmissionStore.StoredSubmission submission : submissions.findGridWordsAwaitingCanonicalPublication())
             publishAndHandOff(submission.sourceMessageId());
-        }
+        for (SubmissionStore.StoredSubmission submission : submissions.findAwaitingCanonicalPublication(GameType.QUADWORDS))
+            publishAndHandOff(submission.sourceMessageId());
         for (SubmissionStore.CanonicalRefreshCandidate refresh : submissions.findCanonicalRefreshCandidates()) {
             resumeCurrentRefresh(refresh.submission().gameResultId().orElseThrow());
         }
@@ -138,9 +139,7 @@ private PublicationOutcome publishAndHandOff(long sourceMessageId) {
 
             resultId = submission.gameResultId().orElseThrow();
             GameResultStore.StoredGameResult result = results.findById(resultId).orElseThrow();
-            if (result.parsedResult().gameType() != GameType.GRIDWORDS) {
-                return PublicationOutcome.PUBLISHED;
-            }
+            if (!isPublishable(result)) return PublicationOutcome.PUBLISHED;
 
             SubmissionStore.CanonicalPublicationPreparation preparation =
                     submissions.prepareCanonicalPublication(sourceMessageId, resultId);
@@ -322,9 +321,7 @@ private PublicationOutcome publishAndHandOff(long sourceMessageId) {
             }
 
             GameResultStore.StoredGameResult result = results.findById(resultId).orElseThrow();
-            if (result.parsedResult().gameType() != GameType.GRIDWORDS) {
-                return RefreshOutcome.COMPLETED;
-            }
+            if (!isPublishable(result)) return RefreshOutcome.COMPLETED;
             GameResultStore.PublicationClaim claim = results.claimCanonicalPublication(
                     resultId,
                     clock.instant().plusSeconds(LEASE_SECONDS)).orElse(null);
@@ -409,17 +406,22 @@ private PublicationOutcome publishAndHandOff(long sourceMessageId) {
 
         return new CanonicalResultMessage(
                 players.findByDiscordUserId(playerId).orElseThrow().displayName(),
-                GameType.GRIDWORDS,
+                result.parsedResult().gameType(),
                 date,
                 result.parsedResult().outcome(),
                 result.parsedResult().duration(),
-                result.parsedResult().board().orElseThrow(),
+                result.parsedResult().board().orElse(null),
                 streaks,
                 contextual(streaks.personalComplete(), publicationContext.personalCompleteEstablished()),
                 contextual(streaks.personalPerfect(), publicationContext.personalPerfectEstablished()),
                 contextual(streaks.sharedComplete(), publicationContext.sharedCompleteEstablished()),
                 contextual(streaks.sharedPerfect(), publicationContext.sharedPerfectEstablished()),
-                "gridwords-result-" + result.id());
+                result.parsedResult().quadWordsBoards(),
+                result.parsedResult().gameType().name().toLowerCase(java.util.Locale.ROOT) + "-result-" + result.id());
+    }
+
+    private static boolean isPublishable(GameResultStore.StoredGameResult result) {
+        return result.parsedResult().gameType() == GameType.GRIDWORDS || result.parsedResult().quadWordsBoards().isPresent();
     }
 
     private static OptionalInt contextual(int streak, boolean establishedByThisSubmission) {

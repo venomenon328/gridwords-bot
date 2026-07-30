@@ -371,8 +371,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                     ORDER BY received_at DESC, source_message_id DESC
                     LIMIT 1
                 ) s ON TRUE
-                WHERE r.game_type = 'GRIDWORDS'
-                  AND r.canonical_refresh_required = TRUE
+                WHERE r.canonical_refresh_required = TRUE
                 ORDER BY r.id
                 """, this::refreshCandidate);
     }
@@ -527,14 +526,16 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
     }
 
     @Override
-    public List<StoredSubmission> findGridWordsAwaitingCanonicalPublication() {
+    public List<StoredSubmission> findAwaitingCanonicalPublication(GameType gameType) {
         return jdbc.query("""
-                SELECT s.*
-                FROM submission s
-                JOIN game_result r ON r.id = s.game_result_id
-                WHERE r.game_type = 'GRIDWORDS'
-                  AND s.processing_state IN ('RESULT_STORED', 'FAILED_RETRYABLE')
-                """, SUBMISSION);
+                SELECT s.* FROM submission s JOIN game_result r ON r.id = s.game_result_id
+                WHERE r.game_type = ? AND s.processing_state IN ('RESULT_STORED', 'FAILED_RETRYABLE')
+                """, SUBMISSION, gameType.name());
+    }
+
+    @Override
+    public List<StoredSubmission> findGridWordsAwaitingCanonicalPublication() {
+        return findAwaitingCanonicalPublication(GameType.GRIDWORDS);
     }
 
     @Override
@@ -616,12 +617,12 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
     }
 
     @Override
-    public List<StoredSubmission> findGridWordsAwaitingOriginalSourceDeletion() {
+    public List<StoredSubmission> findAwaitingOriginalSourceDeletion(GameType gameType) {
         return jdbc.query("""
                 SELECT s.*
                 FROM submission s
                 JOIN game_result r ON r.id = s.game_result_id
-                WHERE r.game_type = 'GRIDWORDS'
+                WHERE r.game_type = ?
                   AND (
                     s.processing_state = 'ORIGINAL_MESSAGE_DELETED'
                     OR (
@@ -646,7 +647,12 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                     )
                   )
                 ORDER BY s.source_message_id
-                """, SUBMISSION);
+                """, SUBMISSION, gameType.name());
+    }
+
+    @Override
+    public List<StoredSubmission> findGridWordsAwaitingOriginalSourceDeletion() {
+        return findAwaitingOriginalSourceDeletion(GameType.GRIDWORDS);
     }
 
     private boolean isEligibleForOriginalSourceDeletion(StoredSubmission submission, long resultId) {
@@ -654,7 +660,6 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                 SELECT r.id
                 FROM game_result r
                 WHERE r.id = ?
-                  AND r.game_type = 'GRIDWORDS'
                   AND r.canonical_message_id IS NOT NULL
                   AND r.canonical_message_id <> ?
                 """, Long.class, resultId, submission.sourceMessageId()).size() == 1

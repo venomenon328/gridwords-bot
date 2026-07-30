@@ -99,10 +99,7 @@ public final class DiscordInboundListener extends ListenerAdapter {
     private void process(InboundSharedMessage inbound, Message message) {
         try {
             ProcessingResult result = useCase.process(inbound);
-            if (result instanceof ProcessingResult.Accepted accepted
-                    && accepted.gameType() == GameType.QUADWORDS) {
-                reactions.addReaction(message, ACCEPTED);
-            } else if (result instanceof ProcessingResult.Rejected) {
+            if (result instanceof ProcessingResult.Rejected) {
                 reactions.addReaction(message, REJECTED);
             }
         } catch (RuntimeException exception) {
