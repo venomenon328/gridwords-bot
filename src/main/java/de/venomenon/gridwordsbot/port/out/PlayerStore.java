@@ -12,6 +12,8 @@ public interface PlayerStore extends ReminderCandidateStore {
     StoredPlayer upsert(PlayerUpsert request);
     Optional<StoredPlayer> findByDiscordUserId(long discordUserId);
     default List<StoredPlayer> findActivePlayers() { throw new UnsupportedOperationException("active-player lookup is not available"); }
+    /** Includes inactive profiles; callers apply participation periods for the requested business day. */
+    default List<StoredPlayer> findAllPlayers() { throw new UnsupportedOperationException("player lookup is not available"); }
     default List<ParticipationPeriod> findParticipationPeriods() { throw new UnsupportedOperationException("participation periods are not available"); }
     default Optional<ParticipationPeriod> findParticipationPeriod(long discordUserId, LocalDate date) {
         Objects.requireNonNull(date, "date");
