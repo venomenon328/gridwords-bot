@@ -94,10 +94,6 @@ public final class JdaAttachmentContentLoader implements AttachmentContentLoader
         }
     }
 
-    private byte[] unused() {
-        return new byte[0];
-    }
-
     private AttachmentTooLargeException tooLarge() {
         return new AttachmentTooLargeException("attachment exceeds the configured byte limit");
     }
