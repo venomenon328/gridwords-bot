@@ -98,7 +98,9 @@ public class QuadWordsImageParser {
         int split = indexAfterLargestGap(detectedRows);
         List<Span> topRows = detectedRows.subList(0, split);
         List<Span> bottomRows = detectedRows.subList(split, detectedRows.size());
-        if (topRows.isEmpty() || bottomRows.isEmpty() || topRows.size() > rows || bottomRows.size() > rows) {
+        if (topRows.isEmpty() || bottomRows.isEmpty()
+                || topRows.size() > rows || bottomRows.size() > rows
+                || Math.max(topRows.size(), bottomRows.size()) != rows) {
             throw new ImageParseException(ParseErrorCode.INVALID_IMAGE_ROW_COUNT);
         }
         validateRegularSpans(topRows, ParseErrorCode.INVALID_IMAGE_GEOMETRY);
