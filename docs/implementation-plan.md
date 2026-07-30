@@ -52,7 +52,7 @@ Quelllöschung erst nach persistierter kanonischer Veröffentlichung, Lease-/Tok
 
 ## Inkrement 6 – QuadWords-Bildparser
 
-**Status:** abgeschlossen, PR #14; lokale Standard- und PostgreSQL-Tests sowie vollständiger Discord-/PostgreSQL-Smoke-Test am 30. Juli 2026 erfolgreich.
+**Status:** abgeschlossen, PR #14 gemergt; lokale Standard- und PostgreSQL-Tests sowie vollständiger Discord-/PostgreSQL-Smoke-Test am 30. Juli 2026 erfolgreich.
 
 **Ziel:** QuadWords-Ergebnisbilder ohne OCR sicher in vier normalisierte Raster überführen und persistent speichern.
 
@@ -101,7 +101,7 @@ Abnahme:
 
 ## Inkrement 7 – Kanonische QuadWords-Konsolidierung und sichere Ersetzung
 
-**Status:** automatisiert vollständig umgesetzt in Draft-PR #16; ausschließlich Tobias’ realer Discord-/PostgreSQL-Smoke-Test ist offen.
+**Status:** abgeschlossen, PR #16 gemergt; lokale Vollbuilds und vollständiger realer Discord-/PostgreSQL-Smoke-Test am 30. Juli 2026 erfolgreich.
 
 **Ziel:** QuadWords-Text und vier normalisierte Boards in genau eine korrigierbare Bot-Nachricht überführen und die Quelle danach sicher löschen.
 
@@ -116,13 +116,36 @@ Umgesetzter Umfang:
 - explizit nicht publizierbare boardlose `quadwords-share-v1`-Ergebnisse: kein Discord-Aufruf, Delete-Handoff, Erfolgssignal oder Refresh-Hot-Loop
 - PublicationContext auch dann genau einmal, wenn QuadWords als zweite Einreichung persönliche und gemeinsame Komplett-/Perfektzustände etabliert
 - kein QuadWords-`✅` nach erfolgreicher Konsolidierung
+- permanente Löschfehler ohne Scheduler- oder Hot-Loop sowie kontrollierte Wiederaufnahme bei Neustart oder nach einer späteren bestätigten Veröffentlichung desselben Ergebnisses
 - parametrisierte gemeinsame Sicherheitsfälle statt einer kopierten GridWords-Zustandsmaschine
 
-Validierung:
+Abnahme:
 
-- `mvn --batch-mode --no-transfer-progress clean verify`: 194 Tests grün
-- `mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify`: 194 Standardtests plus 53 PostgreSQL-Integrationstests grün
-- keine echte Discord-Verbindung, kein Token und keine `.env` in automatisierten Tests
+- `mvn --batch-mode --no-transfer-progress clean verify`: 196 Tests grün
+- `mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify`: 196 Standardtests plus 56 PostgreSQL-Integrationstests grün
+- GitHub Actions vollständig grün
+- echte GridWords- und QuadWords-Erstveröffentlichung sowie Korrektur geprüft
+- alle vier QuadWords-Boards visuell geprüft
+- sichere Löschung, fachliche Ablehnung, Neustart und Duplikatschutz geprüft
+- permanenter Löschfehler ohne Hot-Loop und kontrollierte Recovery nach Berechtigungswiederherstellung geprüft
+
+## Zwischeninkrement 7.1 – Kompaktes 2×2-Layout der QuadWords-Grids
+
+**Status:** vorbereitet als Issue #17; Umsetzung vor Inkrement 8.
+
+**Ziel:** die vier bereits korrekt publizierten QuadWords-Grids näher an der ursprünglichen Spielanordnung und kompakter darstellen.
+
+Geplanter Umfang:
+
+- `topLeft` und `topRight` nebeneinander
+- `bottomLeft` und `bottomRight` darunter nebeneinander
+- keine sichtbaren Positionslabels
+- sichtbare Einzelhöhe endet bei der ersten vollständig grünen Lösungszeile; ungelöste Boards behalten alle Zeilen
+- Paarhöhe entspricht dem längeren Board des jeweiligen horizontalen Paares
+- keine sichtbaren Leerzellen unter einem früher gelösten Teilboard
+- Titel, Ergebnis, Dauer, Serien, Publication-Key und Korrektur-Edit bleiben unverändert
+- GridWords sowie Publish-, Delete-, Claim-, Recovery- und Persistenzlogik bleiben unverändert
+- Renderer-Tests plus kurzer visueller Discord-Smoke-Test
 
 ## Inkrement 8 – Tagesstatus, vollständige Serien und Erinnerungen
 
@@ -174,6 +197,7 @@ Validierung:
 - GridWords-Ersetzung vor QuadWords-Ersetzung
 - QuadWords-Bildparser vor QuadWords-Konsolidierung
 - sichere Konsolidierung beider Spiele vor Tagesstatus und Erinnerungen
+- kompaktes QuadWords-Layout als isoliertes Renderer-Polish vor Tagesstatus
 - robuste Serienlogik vor Berichten und Kommentaren
 
 ## Definition of Done
