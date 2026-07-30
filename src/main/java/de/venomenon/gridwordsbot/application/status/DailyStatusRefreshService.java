@@ -36,9 +36,14 @@ public final class DailyStatusRefreshService {
         this.channelId = channelId;
     }
 
-    /** Event-driven refresh. A valid result or effective activation may create the status. */
+    /** A valid result may create the status for its game date. */
     public void refresh(LocalDate date) {
         deliver(date, true, false);
+    }
+
+    /** Recalculates an already-created status without creating one. */
+    public void refreshExisting(LocalDate date) {
+        deliver(date, false, true);
     }
 
     /** Startup/scheduler reconciliation optionally creates a missing status and verifies delivered presence. */
