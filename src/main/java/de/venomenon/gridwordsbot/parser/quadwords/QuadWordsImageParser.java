@@ -98,7 +98,7 @@ public class QuadWordsImageParser {
         int split = indexAfterLargestGap(detectedRows);
         List<Span> topRows = detectedRows.subList(0, split);
         List<Span> bottomRows = detectedRows.subList(split, detectedRows.size());
-        if (topRows.size() != rows || bottomRows.size() != rows) {
+        if (topRows.isEmpty() || bottomRows.isEmpty() || topRows.size() > rows || bottomRows.size() > rows) {
             throw new ImageParseException(ParseErrorCode.INVALID_IMAGE_ROW_COUNT);
         }
         validateRegularSpans(topRows, ParseErrorCode.INVALID_IMAGE_GEOMETRY);
@@ -163,12 +163,16 @@ public class QuadWordsImageParser {
     private QuadWordsBoard readBoard(BufferedImage image, GridGeometry geometry, int boardColumn, int boardRow, int rows)
             throws ImageParseException {
         List<String> normalized = new ArrayList<>();
+        List<Span> boardRows = geometry.rowsByBoardRow().get(boardRow);
         for (int row = 0; row < rows; row++) {
             StringBuilder line = new StringBuilder();
             for (int column = 0; column < COLUMNS_PER_BOARD; column++) {
                 Span x = geometry.columns().get(boardColumn * COLUMNS_PER_BOARD + column);
-                List<Span> boardRows = geometry.rowsByBoardRow().get(boardRow);
-                line.append(classify(image, x, boardRows.get(row)).symbol());
+                // A board pair can finish before the overall attempt count. Such clearly absent trailing rows are
+                // represented canonically as blank cells; extra detected active rows remain invalid above.
+                line.append(row < boardRows.size()
+                        ? classify(image, x, boardRows.get(row)).symbol()
+                        : CellColour.BLANK.symbol());
             }
             normalized.add(line.toString());
         }
