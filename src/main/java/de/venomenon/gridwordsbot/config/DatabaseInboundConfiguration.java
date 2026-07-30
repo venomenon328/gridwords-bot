@@ -9,6 +9,7 @@ import de.venomenon.gridwordsbot.application.canonical.GridWordsSourceDeletionSe
 import de.venomenon.gridwordsbot.port.out.GameResultStore;
 import de.venomenon.gridwordsbot.port.out.CanonicalMessageGateway;
 import de.venomenon.gridwordsbot.port.out.PublicationRetryScheduler;
+import de.venomenon.gridwordsbot.port.out.SourceDeletionRecoveryStore;
 import de.venomenon.gridwordsbot.port.out.SourceMessageDeletionGateway;
 import de.venomenon.gridwordsbot.application.submission.ConfiguredPlayer;
 import de.venomenon.gridwordsbot.application.submission.ConfiguredPlayerSynchronizer;
@@ -57,11 +58,13 @@ class DatabaseInboundConfiguration {
                     return canonical != null && canonical.publish(sourceMessageId);
                 });
     }
+
     @Bean
     @ConditionalOnBean(JDA.class)
     AttachmentContentLoader attachmentContentLoader(JDA jda) {
         return new JdaAttachmentContentLoader(jda);
     }
+
     @Bean
     @ConditionalOnBean(JDA.class)
     CanonicalMessageGateway canonicalMessageGateway(JDA jda) {
@@ -109,8 +112,10 @@ class DatabaseInboundConfiguration {
             SubmissionStore submissions,
             SourceMessageDeletionGateway deletionGateway,
             Clock clock,
-            PublicationRetryScheduler retryScheduler) {
-        return new GridWordsSourceDeletionService(submissions, deletionGateway, clock, retryScheduler);
+            PublicationRetryScheduler retryScheduler,
+            SourceDeletionRecoveryStore recoveryStore) {
+        return new GridWordsSourceDeletionService(
+                submissions, deletionGateway, clock, retryScheduler, recoveryStore);
     }
 
     @Bean
