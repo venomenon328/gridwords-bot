@@ -15,9 +15,7 @@ final class CanonicalEmbedRenderer {
 
     private static final String SOLVED_QUADWORDS_ROW = "🟩🟩🟩🟩🟩";
     private static final String PAIR_GAP = "  ";
-    // Discord renders five square emoji slightly wider than ten code-block spaces.
-    // Twelve spaces keep an unpaired right-board row aligned with the rows above it.
-    private static final String EMPTY_BOARD_ROW = "            ";
+    private static final String EMPTY_BOARD_ROW = "⬜⬜⬜⬜⬜";
 
     private static final String PERSONAL_COMPLETE = "✅ Komplett: ";
     private static final String PERSONAL_PERFECT = "💎 Perfekt: ";
@@ -107,7 +105,7 @@ final class CanonicalEmbedRenderer {
         List<String> lines = new ArrayList<>(pairHeight);
         for (int row = 0; row < pairHeight; row++) {
             String left = row < leftRows.size() ? leftRows.get(row) : EMPTY_BOARD_ROW;
-            String right = row < rightRows.size() ? rightRows.get(row) : "";
+            String right = row < rightRows.size() ? rightRows.get(row) : EMPTY_BOARD_ROW;
             lines.add(left + PAIR_GAP + right);
         }
         return String.join("\n", lines);
