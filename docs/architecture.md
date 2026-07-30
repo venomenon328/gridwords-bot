@@ -274,6 +274,14 @@ QuadWords verwendet diesen Veröffentlichungs- und Löschablauf erst in Inkremen
 - Ein Discord- oder Downloadfehler rollt kein bereits gespeichertes anderes Ergebnis zurück.
 - Scheduler und In-Memory-Wake-ups sind niemals alleinige Quelle der Wahrheit; Recovery basiert auf PostgreSQL.
 
+## 12.1 Tagesstatus- und Reminder-Delivery
+
+Die Tagesstatusprojektion ist ein transportneutraler Application-Use-Case. Sie liest Ergebnisse und historisch wirksame Teilnahmezeiträume über Ports. Der projizierte Spieltag ist zugleich der Serien-Stichtag; die vorläufige Semantik ist nur für den aktuellen Tag der injizierten `Clock` in der konfigurierten Zeitzone zulässig.
+
+Status und Reminder verwenden persistente Delivery-Zustände mit fachlichen Unique Constraints, tokengebundenen Claims, Leases und kurzen Zustandsübergängen. Discord-I/O liegt außerhalb von Datenbanktransaktionen. Ein Inhaltsfingerabdruck verhindert unnötige Status-Edits. Stabile Discord-Footer-Schlüssel reconciliieren unklare externe Ausgänge und ermöglichen eine deterministische Duplikatbereinigung.
+
+Der Scheduler ist lediglich ein wiederholter Trigger. Startup und Minutentakt rufen dieselben idempotenten Status- und Reminder-Use-Cases auf. Kandidaten werden unmittelbar vor jedem Reminder-Versuch neu gelesen; No-op, Supersession, Ablauf, retryfähige und permanente Fehler sind persistente terminale beziehungsweise kontrolliert wiederaufnehmbare Zustände. Details regelt ADR 0012.
+
 ## 13. Tests
 
 ### Standardbuild
@@ -286,6 +294,7 @@ Ohne Netzwerk, Token, Datenbank und Container:
 - synthetische Layout- und Fehlerfixtures,
 - Application-Retry, Replay und Korrektur,
 - JDA-Adapter mit gemockter Grenze,
+- Tagesstatusprojektion, Scheduler, DST, Reminder und Discord-Limits,
 - ArchUnit-Regeln.
 
 ### PostgreSQL-Integration
@@ -298,7 +307,8 @@ Mit echtem PostgreSQL:
 - Replay und Korrektur,
 - persistierter Pre-Result-Retry,
 - Migration und In-place-Upgrade eines `quadwords-share-v1`-Datensatzes,
-- Start des vollständigen Spring-Kontexts.
+- Start des vollständigen Spring-Kontexts,
+- Tagesstatus-/Reminder-Migration, Constraints, Claims, Leases, Backoff, Recovery und Konkurrenz.
 
 ### Manuelle Abnahme
 
@@ -314,3 +324,4 @@ Der schnelle Standardbuild bleibt infrastrukturunabhängig. Für Persistenz- und
 - ADR 0006 bis 0009: kanonische Veröffentlichung, Recovery und Quelllöschung
 - ADR 0010: Docker-verfügbare lokale Entwicklung
 - ADR 0011: transportneutrale QuadWords-Bildanalyse
+- ADR 0012: persistente Tagesstatus- und Reminder-Auslieferung

@@ -194,34 +194,36 @@ Abnahme:
 
 ## Inkrement 8 – Tagesstatus, vollständige Serien und Erinnerungen
 
-**Status:** vorbereitet als Issue #21 auf `feature/daily-status-reminders` und Draft-PR #22.
+**Status:** vollständig implementiert und automatisiert abgenommen in Draft-PR #22; ausschließlich Tobias' realer Discord-/PostgreSQL-Smoke-Test ist offen.
 
-**Ziel:** den täglichen Kernnutzen auf Basis dynamischer Teilnehmer vollständig herstellen.
+**Ergebnis:** Der tägliche Kernnutzen basiert vollständig auf der historisch wirksamen dynamischen Teilnehmermenge.
 
-Geplanter Umfang:
+Umgesetzt:
 
 - genau eine persistente Tagesstatusnachricht pro Guild, Channel und Spieltag
 - Status-Create beim ersten Ergebnis oder spätestens beim ersten fälligen Reminder
-- Edit derselben Message-ID nach Ergebnissen, Korrekturen und relevanten Teilnahmeänderungen
-- kontrollierte Neuerzeugung nach extern gelöschter Statusnachricht
-- alle fünf persönlichen Serien für jeden am Spieltag aktiven Spieler
-- gemeinsame Komplett- und Perfektserie über die tagesbezogene aktive Teilnehmermenge
-- keine gemeinsame Aktivitätsserie
-- heutige vorläufige Seriensemantik und Finalisierung des Vortags nach Tageswechsel
-- Vortagsnachträge mit vollständiger Neuberechnung
-- Erinnerungen um 18:00 und 23:00 Uhr
-- nur aktive Reminder-Opt-ins mit fehlenden Einreichungen erwähnen
-- ID-basierte User-Mentions mit strikt begrenzten Allowed Mentions
-- je Spieler die konkret fehlenden Spiele nennen
-- persistierter No-op bei fehlenden Kandidaten
-- Startup-Catch-up ohne zwei unmittelbar aufeinanderfolgende überfällige Reminder
-- kein Reminder-Nachversand für vergangene Tage
-- persistierte Delivery-Idempotenz, Claims/Leases, Retry und Recovery
-- DST-sicheres Scheduling mit injizierter `Clock` und konfigurierter `ZoneId`
-- Startup-Reconciliation für heute und gestern
-- vollständige Discord-Limit-, Konkurrenz-, PostgreSQL- und Ergebnisregression
+- Edit derselben Message-ID nach Ergebnissen, Korrekturen und heute wirksamen Aktivierungen
+- kontrollierte Neuerzeugung und Duplikatbereinigung nach externer Löschung oder unklarem Discord-Ausgang
+- alle fünf persönlichen Serien sowie gemeinsame Komplett- und Perfektserie
+- vorläufige Semantik ausschließlich für heute; historische Tage einschließlich gestern werden endgültig berechnet
+- vollständige Rekonstruktion nach zulässigen Vortagsnachträgen
+- Reminder um 18:00 und 23:00 Uhr nur für aktive Opt-ins mit konkret fehlenden Einreichungen
+- `X/6` und `X/9` gelten als eingereicht
+- strikt begrenzte ID-basierte User-Mentions
+- persistierter No-op, erneute Kandidatenbewertung, Supersession und Ablauf vergangener Stufen
+- Startup-Reconciliation für heute und gestern sowie DST-sichere Zeitberechnung
+- tokengebundene Claims/Leases, Fingerprints, Retry-Backoff, permanente Zustände und Crash-Recovery
+- keine Discord-I/O innerhalb von Datenbanktransaktionen
 
-Verbindlich: `docs/requirements/daily-status-reminders.md`, `docs/increments/08-daily-status-reminders.md` und Issue #21.
+Automatisierte Abnahme:
+
+- alle 24 Kriterien aus Issue #21 nachweislich abgedeckt
+- 246 Standardtests lokal grün
+- 73 PostgreSQL-Integrationstests lokal grün
+- vollständige Spring-, JDA-, Liquibase-, Konkurrenz-, Recovery- und Ergebnisregression
+- keine echte Discord-Verbindung und kein Token in automatisierten Tests
+
+Verbindlich: `docs/requirements/daily-status-reminders.md`, `docs/increments/08-daily-status-reminders.md`, ADR 0012 und Issue #21.
 
 ## Inkrement 9 – Kernversion härten und veröffentlichen
 

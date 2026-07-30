@@ -18,7 +18,7 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 Die Inkremente 0 bis 7 sowie die Zwischeninkremente 7.1 und 7.2 sind abgeschlossen. Das dynamische Spielermodell, historisch stabile Teilnahmezeiträume sowie Teilnahme- und Reminder-Commands wurden automatisiert und am 30. Juli 2026 in einem realen Discord-/PostgreSQL-Smoke-Test mit mindestens drei Nutzern abgenommen.
 
-Inkrement 8 ist als Issue #21 auf `feature/daily-status-reminders` und Draft-PR #22 vorbereitet. Es ergänzt eine persistente Tagesstatusnachricht, alle persönlichen und gemeinsamen Serien, DST-sicheres Scheduling sowie Erinnerungen um 18:00 und 23:00 Uhr. Die eigentliche Implementierung ist noch nicht Bestandteil dieses vorbereitenden Stands.
+Inkrement 8 ist in Draft-PR #22 vollständig implementiert und automatisiert abgenommen. Es umfasst persistente Tagesstatusnachrichten, alle persönlichen und gemeinsamen Serien, historische Finalisierung, DST-sicheres Scheduling sowie idempotente Reminder um 18:00 und 23:00 Uhr. Ausschließlich Tobias' realer Discord-/PostgreSQL-Smoke-Test ist noch offen; der PR bleibt bis dahin Draft und ungemergt.
 
 Der Projektstand umfasst:
 
@@ -28,6 +28,10 @@ Der Projektstand umfasst:
 - historisch stabile, nicht überlappende Teilnahmezeiträume
 - Self-Service- und Admin-Slash-Commands für Teilnahme und Reminder-Opt-in
 - transportneutrale Reminder-Kandidaten mit konkret fehlenden Spielen
+- persistente Tagesstatusnachrichten mit allen fünf persönlichen und beiden gemeinsamen Serien
+- endgültige historische Serienprojektion und ausschließlich heute vorläufige Semantik
+- idempotente Reminder-Delivery mit No-op, Supersession, Ablauf, Backoff und Recovery
+- stabile Discord-Delivery-Schlüssel, Status-Fingerprints und kontrollierter Ersatz extern gelöschter Nachrichten
 - idempotente Spieler-, Ergebnis- und Submission-Persistenz
 - kanonische GridWords- und QuadWords-Embeds mit sicherer Quelllöschung nach persistierter Veröffentlichung
 - kompaktes QuadWords-2×2-Raster und Monospace-Codeblöcke für beide Spiele
@@ -180,7 +184,7 @@ Relevante Tabellen sind insbesondere `player`, `player_participation_period`, `s
 - manuelle Smoke-Tests: echte Discord-Verbindung und Compose-PostgreSQL
 - H2 ersetzt keine PostgreSQL-Integrationstests
 
-Abgenommener Stand von Zwischeninkrement 7.2: 207 Standardtests und 63 PostgreSQL-Integrationstests sind lokal und in GitHub Actions grün. Der reale Drei-Nutzer-Discord-/PostgreSQL-Smoke-Test war ebenfalls erfolgreich. Abgedeckt sind unter anderem dynamische Profil-/Admin-Synchronisierung, Command-Adapter, Startup nach Liquibase, Migration und Backfill, konkurrierte Erstregistrierung, atomarer Rollback und gemeinsame Serien bei wechselnden Teilnehmern. Weder automatisierte Tests noch der Build verwenden einen Discord-Token.
+Automatisierter Stand von Inkrement 8: 246 Standardtests und 73 PostgreSQL-Integrationstests sind lokal grün. Abgedeckt sind alle 24 automatisierbaren Kriterien aus Issue #21, insbesondere historische Finalisierung, Vortagsnachträge, Status-Create/Edit/Recreate, JDA-Mention-Sicherheit, beide Reminderstufen, Startup/DST, Konkurrenz, Retry/Permanentfehler, Liquibase und vollständige Ergebnisregression. Weder automatisierte Tests noch der Build verwenden einen Discord-Token. Ausschließlich Tobias' realer Discord-/PostgreSQL-Smoke-Test für Inkrement 8 bleibt offen.
 
 ## Geheimnisse
 
