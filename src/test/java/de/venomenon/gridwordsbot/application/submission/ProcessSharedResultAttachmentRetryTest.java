@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -173,6 +174,35 @@ class ProcessSharedResultAttachmentRetryTest {
         assertThat(submission.get().state()).isEqualTo(SubmissionStore.SubmissionState.FAILED_RETRYABLE);
         assertThat(submission.get().parserErrorCode()).isEmpty();
         assertThat(submission.get().gameResultId()).isEmpty();
+    }
+
+    @Test
+    void doesNotDowngradeAResultStoredByAConcurrentWorkerAfterDownloadFailure() {
+        PlayerStore playerStore = mock(PlayerStore.class);
+        SubmissionStore submissionStore = mock(SubmissionStore.class);
+        when(playerStore.findByDiscordUserId(PLAYER_ID)).thenReturn(Optional.of(
+                new PlayerStore.StoredPlayer(PLAYER_ID, "Tobias", true, true, NOW, NOW)));
+        when(submissionStore.register(any())).thenReturn(stored(
+                SubmissionStore.SubmissionState.RECEIVED,
+                Optional.empty(),
+                Optional.empty(),
+                List.of(new SubmissionStore.AttachmentSnapshot(0, "quadwords.png", Optional.of("image/png"), 100L))));
+        when(submissionStore.transition(any(Long.class), any(), any())).thenReturn(false);
+
+        ProcessSharedResultService service = new ProcessSharedResultService(
+                new GridWordsShareParser(),
+                new QuadWordsShareParser(),
+                attachment -> { throw new AttachmentContentLoader.RetryableAttachmentException("temporary", null); },
+                new QuadWordsImageParser(),
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                ZoneId.of("Europe/Berlin"),
+                playerStore,
+                submissionStore,
+                List.of(),
+                ignored -> true);
+
+        assertThat(service.process(message())).isEqualTo(new ProcessingResult.Ignored());
+        verify(submissionStore, never()).markRetryableFailure(SOURCE_ID, "attachment download failed");
     }
 
     private static InboundSharedMessage message() {
