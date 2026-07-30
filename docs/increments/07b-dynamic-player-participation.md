@@ -1,6 +1,6 @@
 # Zwischeninkrement 7.2: Dynamische Spieler, Teilnahmezeiträume und Reminder-Opt-in
 
-**Status:** umgesetzt; Draft-PR #20 bleibt offen für den manuellen Smoke-Test  
+**Status:** abgeschlossen; automatisierte und reale Discord-/PostgreSQL-Abnahme am 30. Juli 2026 erfolgreich  
 **Issue:** #19  
 **Branch:** `feature/dynamic-player-participation`
 
@@ -82,4 +82,14 @@ Auf dem finalen CI-Head erfolgreich:
 
 Zusätzlich abgesichert sind insbesondere Command-Adapter und Startup-Reihenfolge, Spring-/PostgreSQL-Startup nach Liquibase, Migration und Backfill, Constraints, Profil-/Admin-Synchronisierung, atomarer Rollback unbekannter Spieler, konkurrierte Erst-Submissions sowie gemeinsame Serien bei Beitritt, Austritt und weniger als zwei Teilnehmern.
 
-Offen bleibt ausschließlich Tobias' realer Discord-/PostgreSQL-Smoke-Test mit mindestens drei Nutzern.
+## Reale Abnahme
+
+Der Discord-/PostgreSQL-Smoke-Test mit mindestens drei Nutzern wurde am 30. Juli 2026 erfolgreich abgeschlossen. Geprüft wurden insbesondere:
+
+- automatische Registrierung erst nach gültigem Share,
+- serverbezogene Namenssynchronisierung,
+- Self-Service- und Admin-Commands einschließlich Berechtigungsgrenze,
+- Reminder-Opt-in ohne unbeabsichtigte Aktivierung,
+- Aktivierung, prospektive Deaktivierung und Wiedereintritt,
+- gemeinsame Serien mit drei und wechselnden Teilnehmern,
+- unveränderte kanonische Veröffentlichung, Korrektur und sichere Quelllöschung.
