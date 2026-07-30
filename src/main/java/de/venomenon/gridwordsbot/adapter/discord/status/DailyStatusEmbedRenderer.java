@@ -22,10 +22,9 @@ final class DailyStatusEmbedRenderer {
     private static final int MAX_TOTAL = 6_000;
 
     List<MessageEmbed> render(long channelId, DailyStatus status) {
-        String title = "Wortspiele · " + status.gameDate().format(DATE);
-        String key = statusKey(channelId, status);
+        String title = statusTitle(status);
         List<MessageEmbed> embeds = new ArrayList<>();
-        EmbedBuilder current = new EmbedBuilder().setTitle(title).setFooter(key);
+        EmbedBuilder current = new EmbedBuilder().setTitle(title);
         int fields = 0;
         for (DailyStatus.PlayerLine player : status.players()) {
             if (fields == MAX_FIELDS) {
@@ -33,7 +32,7 @@ final class DailyStatusEmbedRenderer {
                 if (embeds.size() == MAX_EMBEDS) {
                     throw permanent("daily status needs more than ten embeds");
                 }
-                current = new EmbedBuilder().setTitle(title + " · Fortsetzung").setFooter(key);
+                current = new EmbedBuilder().setTitle(title + " · Fortsetzung");
                 fields = 0;
             }
             String value = playerValue(player);
@@ -49,7 +48,7 @@ final class DailyStatusEmbedRenderer {
             if (embeds.size() == MAX_EMBEDS) {
                 throw permanent("daily status needs more than ten embeds");
             }
-            current = new EmbedBuilder().setTitle(title + " · Gemeinsam").setFooter(key);
+            current = new EmbedBuilder().setTitle(title + " · Gemeinsam");
         }
         current.addField("Gemeinsame Serien", shared, false);
         embeds.add(current.build());
@@ -60,8 +59,8 @@ final class DailyStatusEmbedRenderer {
         return List.copyOf(embeds);
     }
 
-    static String statusKey(long channelId, DailyStatus status) {
-        return "gridwords-daily-status:" + channelId + ":" + status.gameDate();
+    static String statusTitle(DailyStatus status) {
+        return "Wortspiele · " + status.gameDate().format(DATE);
     }
 
     private static String playerValue(DailyStatus.PlayerLine player) {
