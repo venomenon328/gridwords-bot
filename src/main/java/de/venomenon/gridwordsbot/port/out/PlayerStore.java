@@ -37,7 +37,9 @@ public interface PlayerStore extends ReminderCandidateStore {
     }
     record StoredPlayer(long discordUserId, String displayName, boolean active, boolean administrator, boolean reminderOptIn, Instant createdAt, Instant updatedAt) {
         public StoredPlayer(long discordUserId, String displayName, boolean active, boolean administrator, Instant createdAt, Instant updatedAt) {
-            this(discordUserId, displayName, active, administrator, false, createdAt, updatedAt);`r`n        }`r`n        public StoredPlayer {
+            this(discordUserId, displayName, active, administrator, false, createdAt, updatedAt);
+        }
+        public StoredPlayer {
             if (discordUserId <= 0) throw new IllegalArgumentException("discordUserId must be positive");
             Objects.requireNonNull(displayName, "displayName");
             Objects.requireNonNull(createdAt, "createdAt");
