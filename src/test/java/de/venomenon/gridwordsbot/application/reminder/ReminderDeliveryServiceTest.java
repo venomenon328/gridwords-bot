@@ -22,16 +22,18 @@ class ReminderDeliveryServiceTest {
     private static final LocalDate DATE = LocalDate.of(2026, 7, 30);
 
     @Test
-    void sendsExactlyCandidateUsersAndMissingGames() {
+    void sendsAllMissingPlayersButAllowsMentionsOnlyForOptIns() {
         RecordingStore store = new RecordingStore();
         List<ReminderCandidateStore.ReminderCandidate> selected = List.of(
-                new ReminderCandidateStore.ReminderCandidate(42, "Name", List.of(GameType.GRIDWORDS)),
-                new ReminderCandidateStore.ReminderCandidate(43, "Other", List.of(GameType.GRIDWORDS, GameType.QUADWORDS)));
+                new ReminderCandidateStore.ReminderCandidate(
+                        42, "Name", List.of(GameType.GRIDWORDS), true),
+                new ReminderCandidateStore.ReminderCandidate(
+                        43, "Other", List.of(GameType.GRIDWORDS, GameType.QUADWORDS), false));
         RecordingGateway gateway = new RecordingGateway();
 
         service(store, date -> selected, gateway).deliver(DATE, 1, LocalTime.of(18, 0));
 
-        assertThat(gateway.allowed).containsExactlyInAnyOrder(42L, 43L);
+        assertThat(gateway.allowed).containsExactly(42L);
         assertThat(gateway.candidates).isEqualTo(selected);
         assertThat(gateway.date).isEqualTo(DATE);
         assertThat(gateway.stage).isOne();
@@ -49,12 +51,29 @@ class ReminderDeliveryServiceTest {
     }
 
     @Test
+    void sendsPlainSummaryEvenWhenEveryMissingPlayerOptedOut() {
+        RecordingStore store = new RecordingStore();
+        RecordingGateway gateway = new RecordingGateway();
+        ReminderCandidateStore candidates = date -> List.of(
+                new ReminderCandidateStore.ReminderCandidate(
+                        42, "Name", List.of(GameType.QUADWORDS), false));
+
+        service(store, candidates, gateway).deliver(DATE, 1, LocalTime.of(18, 0));
+
+        assertThat(gateway.calls).isOne();
+        assertThat(gateway.allowed).isEmpty();
+        assertThat(store.completed).isEqualTo(DailyStatusStore.ReminderState.SENT);
+    }
+
+    @Test
     void secondAttemptReloadsCandidates() {
         RecordingStore store = new RecordingStore();
         int[] reads = {0};
         ReminderCandidateStore candidates = date -> ++reads[0] == 1
-                ? List.of(new ReminderCandidateStore.ReminderCandidate(42, "Name", List.of(GameType.GRIDWORDS)))
-                : List.of(new ReminderCandidateStore.ReminderCandidate(43, "Other", List.of(GameType.QUADWORDS)));
+                ? List.of(new ReminderCandidateStore.ReminderCandidate(
+                        42, "Name", List.of(GameType.GRIDWORDS), true))
+                : List.of(new ReminderCandidateStore.ReminderCandidate(
+                        43, "Other", List.of(GameType.QUADWORDS), false));
         RecordingGateway gateway = new RecordingGateway();
         ReminderDeliveryService service = service(store, candidates, gateway);
 
@@ -62,7 +81,10 @@ class ReminderDeliveryServiceTest {
         service.deliver(DATE, 2, LocalTime.of(23, 0));
 
         assertThat(reads[0]).isEqualTo(2);
-        assertThat(gateway.allowed).containsExactly(43L);
+        assertThat(gateway.allowed).isEmpty();
+        assertThat(gateway.candidates).singleElement()
+                .extracting(ReminderCandidateStore.ReminderCandidate::discordUserId)
+                .isEqualTo(43L);
     }
 
     @Test
@@ -89,7 +111,8 @@ class ReminderDeliveryServiceTest {
     }
 
     private static ReminderCandidateStore candidate() {
-        return date -> List.of(new ReminderCandidateStore.ReminderCandidate(42, "Name", List.of(GameType.GRIDWORDS)));
+        return date -> List.of(new ReminderCandidateStore.ReminderCandidate(
+                42, "Name", List.of(GameType.GRIDWORDS), true));
     }
 
     private static ReminderDeliveryService service(RecordingStore store, ReminderCandidateStore candidates,
