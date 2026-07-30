@@ -5,9 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import de.venomenon.gridwordsbot.application.canonical.CanonicalResultMessage;
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.model.NormalizedBoard;
+import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
 import de.venomenon.gridwordsbot.domain.model.QuadWordsBoard;
 import de.venomenon.gridwordsbot.domain.model.QuadWordsBoards;
-import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
 import de.venomenon.gridwordsbot.domain.streak.StreakSummary;
 import java.time.Duration;
 import java.time.LocalDate;
@@ -128,8 +128,8 @@ class CanonicalEmbedRendererTest {
         assertThat(bottomPair).hasSize(6);
         assertThat(topPair[0]).isEqualTo(topLeft + "  " + topRight);
         assertThat(bottomPair[0]).isEqualTo(bottomLeft + "  " + bottomRight);
-        assertThat(topPair[7]).isEqualTo(" ".repeat(14) + topRight);
-        assertThat(bottomPair[4]).isEqualTo(" ".repeat(14) + bottomRight);
+        assertThat(topPair[7]).isEqualTo("⬜⬜⬜⬜⬜  " + topRight);
+        assertThat(bottomPair[4]).isEqualTo("⬜⬜⬜⬜⬜  " + bottomRight);
     }
 
     @Test
@@ -146,6 +146,7 @@ class CanonicalEmbedRendererTest {
         for (String line : topPair) {
             assertThat(line).startsWith(unsolved);
         }
+        assertThat(topPair[8]).isEqualTo(unsolved + "  ⬜⬜⬜⬜⬜");
     }
 
     @Test
@@ -187,20 +188,10 @@ class CanonicalEmbedRendererTest {
     }
 
     private static CanonicalResultMessage quadWordsMessage(QuadWordsBoards boards) {
-        return new CanonicalResultMessage(
-                "Tobias",
-                GameType.QUADWORDS,
-                LocalDate.of(2026, 7, 29),
-                new ShareOutcome.Solved(9, 9),
-                Duration.ofSeconds(587),
-                null,
-                new StreakSummary(12, 8, 7, 4, 3, 5, 2),
-                OptionalInt.of(8),
-                OptionalInt.of(3),
-                OptionalInt.of(5),
-                OptionalInt.of(2),
-                Optional.of(boards),
-                "quadwords-result-4");
+        return new CanonicalResultMessage("Tobias", GameType.QUADWORDS,
+                LocalDate.of(2026, 7, 29), new ShareOutcome.Solved(9, 9), Duration.ofSeconds(587), null,
+                new StreakSummary(12, 8, 7, 4, 3, 5, 2), OptionalInt.of(8), OptionalInt.of(3),
+                OptionalInt.of(5), OptionalInt.of(2), Optional.of(boards), "quadwords-result-4");
     }
 
     private static QuadWordsBoard solvedBoard(String activeRow, int height) {
