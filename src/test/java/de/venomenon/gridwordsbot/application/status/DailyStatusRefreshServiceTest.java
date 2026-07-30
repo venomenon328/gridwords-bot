@@ -24,11 +24,22 @@ class DailyStatusRefreshServiceTest {
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-07-30T18:00:00Z"), ZoneId.of("UTC"));
 
     @Test
-    void doesNotCreateBeforeFirstResultWhenReconciliationIsNotDue() {
+    void updateOnlyRefreshDoesNotCreateBeforeFirstResult() {
         RecordingStore store = new RecordingStore();
         DailyStatus status = status(false);
-        service(store, status, (channel, id, value, changed) -> 99L).reconcile(DATE, false);
+        service(store, status, (channel, id, value, changed) -> 99L).refreshExisting(DATE);
         assertThat(store.claims).isZero();
+    }
+
+    @Test
+    void updateOnlyRefreshUpdatesExistingStatusWithoutResult() {
+        RecordingStore store = new RecordingStore();
+        store.statusExists = true;
+
+        service(store, status(false), (channel, id, value, changed) -> 99L).refreshExisting(DATE);
+
+        assertThat(store.claims).isOne();
+        assertThat(store.completedMessage).contains(99L);
     }
 
     @Test
@@ -97,6 +108,7 @@ class DailyStatusRefreshServiceTest {
 
     private static final class RecordingStore implements DailyStatusStore {
         int claims;
+        boolean statusExists;
         Optional<String> previousFingerprint = Optional.empty();
         Optional<Long> completedMessage = Optional.empty();
         String completedFingerprint;
@@ -115,7 +127,7 @@ class DailyStatusRefreshServiceTest {
         @Override public void failStatus(StatusDelivery claim, String safeError, boolean permanent) {
             failedError = safeError; failedPermanent = permanent;
         }
-        @Override public boolean statusExists(long guildId, long channelId, LocalDate date) { return false; }
+        @Override public boolean statusExists(long guildId, long channelId, LocalDate date) { return statusExists; }
         @Override public Optional<ReminderDelivery> claimReminder(long a, long b, LocalDate c, int d, LocalTime e, Instant f) { return Optional.empty(); }
         @Override public void completeReminder(ReminderDelivery a, ReminderState b, Optional<Long> c) { }
         @Override public void failReminder(ReminderDelivery a, String b, boolean c) { }
