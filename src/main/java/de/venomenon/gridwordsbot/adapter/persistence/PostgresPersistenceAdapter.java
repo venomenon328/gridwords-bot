@@ -30,6 +30,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /** PostgreSQL-specific, conflict-safe implementation of the persistence ports. */
 @Repository
@@ -53,7 +54,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
     @Override
     public StoredPlayer upsert(PlayerUpsert request) {
         Instant now = clock.instant();
-        return jdbc.queryForObject("""
+        StoredPlayer stored = jdbc.queryForObject("""
                 INSERT INTO player (discord_user_id, display_name, active, administrator, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT (discord_user_id) DO UPDATE SET display_name = EXCLUDED.display_name,
@@ -61,10 +62,15 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                 RETURNING *
                 """, PLAYER, request.discordUserId(), request.displayName(), request.active(), request.administrator(),
                 databaseTime(now), databaseTime(now));
+        if (!participationEnabled()) return stored;
+        ParticipationChange change = new ParticipationChange(
+                new ProfileUpdate(request.discordUserId(), request.displayName(), request.administrator()),
+                LocalDate.now(clock.withZone(businessZone)));
+        return request.active() ? activate(change) : deactivate(change);
     }
-
     @Override
     public Optional<StoredPlayer> findByDiscordUserId(long discordUserId) {
+        if (participationEnabled()) synchronizeActiveStatuses();
         return jdbc.query("SELECT * FROM player WHERE discord_user_id = ?", PLAYER, discordUserId).stream().findFirst();
     }
 
@@ -152,10 +158,10 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
             throw new SubmissionConflictException("submission state does not allow result storage: " + existing.state());
         }
 
-        activate(request.playerRegistration());
-        jdbc.execute("LOCK TABLE player_participation_period IN SHARE ROW EXCLUSIVE MODE");
+        if (participationEnabled()) activate(request.playerRegistration());
+        lockParticipationTableForPublicationContext();
         List<StoredGameResult> before = findAll();
-        List<ParticipationPeriod> periods = findParticipationPeriods();
+        List<ParticipationPeriod> periods = participationEnabled() ? findParticipationPeriods() : List.of();
         Optional<StoredGameResult> existingResult = findResultForUpdate(request.result());
         if (existingResult.isPresent()) {
             return storeAgainstExistingResult(request, existingResult.get(), before, periods);
@@ -256,7 +262,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
 
     @Override
     public List<StoredPlayer> findActivePlayers() {
-        synchronizeActiveStatuses();
+        if (participationEnabled()) synchronizeActiveStatuses();
         return jdbc.query("SELECT * FROM player WHERE active = true ORDER BY discord_user_id", PLAYER);
     }
 
@@ -292,6 +298,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
     public StoredPlayer deactivate(ParticipationChange request) {
         ensureProfile(request.profile());
         lockPlayer(request.profile().discordUserId());
+        jdbc.update("DELETE FROM player_participation_period WHERE player_id = ? AND active_from = ? AND inactive_from IS NULL", request.profile().discordUserId(), request.effectiveDate());
         jdbc.update("UPDATE player_participation_period SET inactive_from = ?, updated_at = ? WHERE player_id = ? AND inactive_from IS NULL AND active_from < ?", request.effectiveDate(), databaseTime(clock.instant()), request.profile().discordUserId(), request.effectiveDate());
         synchronizeActiveStatus(request.profile().discordUserId());
         return findPlayer(request.profile().discordUserId());
@@ -332,6 +339,13 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                 """, profile.discordUserId(), profile.displayName(), profile.administrator(), databaseTime(now), databaseTime(now));
     }
 
+    protected boolean participationEnabled() { return true; }
+
+    private void lockParticipationTableForPublicationContext() {
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            jdbc.execute("LOCK TABLE player_participation_period IN SHARE ROW EXCLUSIVE MODE");
+        }
+    }
     private void lockPlayer(long discordUserId) {
         jdbc.queryForObject("SELECT discord_user_id FROM player WHERE discord_user_id = ? FOR UPDATE", Long.class, discordUserId);
     }
@@ -346,7 +360,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
 
     private void synchronizeActiveStatuses() {
         LocalDate today = LocalDate.now(clock.withZone(businessZone));
-        jdbc.update(""" 
+        jdbc.update("""
                 UPDATE player p SET active = EXISTS (SELECT 1 FROM player_participation_period pp WHERE pp.player_id = p.discord_user_id AND pp.active_from <= ? AND (pp.inactive_from IS NULL OR ? < pp.inactive_from)), updated_at = ?
                 WHERE p.active IS DISTINCT FROM EXISTS (SELECT 1 FROM player_participation_period pp WHERE pp.player_id = p.discord_user_id AND pp.active_from <= ? AND (pp.inactive_from IS NULL OR ? < pp.inactive_from))
                 """, today, today, databaseTime(clock.instant()), today, today);
@@ -876,20 +890,6 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
             throw new SubmissionConflictException("submission changed during supersession");
         }
     }
-    private void lockConfiguredPlayers(List<Long> configuredPlayerIds) {
-        List<Long> orderedPlayerIds = configuredPlayerIds.stream().sorted().toList();
-        List<Long> lockedPlayerIds = jdbc.queryForList("""
-                SELECT discord_user_id
-                FROM player
-                WHERE discord_user_id IN (?, ?)
-                ORDER BY discord_user_id
-                FOR UPDATE
-                """, Long.class, orderedPlayerIds.get(0), orderedPlayerIds.get(1));
-        if (lockedPlayerIds.size() != 2) {
-            throw new IllegalStateException("configured players are not persisted");
-        }
-    }
-
     private static PublicationContext publicationContext(List<StoredGameResult> before, List<StoredGameResult> after,
             long playerId, LocalDate gameDate, List<ParticipationPeriod> periods) {
         boolean personalCompleteBefore = complete(before, playerId, gameDate);

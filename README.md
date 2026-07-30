@@ -17,7 +17,7 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 Die Inkremente 0 bis 7 sowie Zwischeninkrement 7.1 sind abgeschlossen. Das kompakte 2×2-Layout der QuadWords-Grids, der konsistente GridWords-Codeblock und die Wiederherstellung historisch etablierter Kontextzeilen wurden mit PR #18 gemergt und visuell in Discord abgenommen.
 
-Vor Inkrement 8 folgt Zwischeninkrement 7.2 aus Issue #19: Die feste Zwei-Spieler-Konfiguration wird durch dynamische Spielerprofile, datierte Teilnahmezeiträume, Self-Service-/Admin-Commands und ein globales Reminder-Opt-in ersetzt. Der aktuelle Produktivcode bleibt bis zur Umsetzung dieses Branches noch auf die zwei konfigurierten Spieler begrenzt.
+Zwischeninkrement 7.2 aus Issue #19 ist auf dem Draft-PR-Branch umgesetzt: Gueltige Shares registrieren dynamische Spieler erst nach vollstaendiger Validierung. Teilnahmezeitraeume steuern gemeinsame Serien historisch, und die Slash-Commands verwalten Teilnahme sowie Reminder-Opt-in. Tagesstatus, Scheduler und tatsaechlicher Reminder-Versand folgen erst in Inkrement 8.
 
 Der Projektstand umfasst:
 
@@ -175,7 +175,7 @@ Relevante Tabellen sind insbesondere `player`, `submission`, `game_result` und `
 - manuelle Smoke-Tests: echte Discord-Verbindung und Compose-PostgreSQL
 - H2 ersetzt keine PostgreSQL-Integrationstests
 
-Abgenommener Stand von PR #18: 199 Standardtests und 57 PostgreSQL-Integrationstests sowie erfolgreiche visuelle Discord-Smoke-Tests, jeweils ohne offengebliebene Blocker.
+Stand von Draft-PR #20: 197 Standardtests und 56 PostgreSQL-Integrationstests sind lokal gruen. Offen bleibt ausschliesslich Tobias realer Drei-Nutzer-Discord-/PostgreSQL-Smoke-Test; weder automatisierte Tests noch der Build verwenden einen Discord-Token.
 
 ## Geheimnisse
 

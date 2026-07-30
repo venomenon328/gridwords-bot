@@ -38,24 +38,33 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
     private final PlayerStore playerStore;
     private final SubmissionStore submissionStore;
     private final LongPredicate canonicalPublisher;
+    private final LongPredicate administrator;
 
     public ProcessSharedResultService(GridWordsShareParser gridWordsParser, QuadWordsShareParser quadWordsParser,
             Clock clock, ZoneId timeZone, PlayerStore playerStore, SubmissionStore submissionStore) {
         this(gridWordsParser, quadWordsParser, unavailableLoader(), new QuadWordsImageParser(), clock, timeZone,
-                playerStore, submissionStore, ignored -> true);
+                playerStore, submissionStore, ignored -> true, ignored -> false);
     }
 
     public ProcessSharedResultService(GridWordsShareParser gridWordsParser, QuadWordsShareParser quadWordsParser,
             Clock clock, ZoneId timeZone, PlayerStore playerStore, SubmissionStore submissionStore,
             LongPredicate canonicalPublisher) {
         this(gridWordsParser, quadWordsParser, unavailableLoader(), new QuadWordsImageParser(), clock, timeZone,
-                playerStore, submissionStore, canonicalPublisher);
+                playerStore, submissionStore, canonicalPublisher, ignored -> false);
     }
 
     public ProcessSharedResultService(GridWordsShareParser gridWordsParser, QuadWordsShareParser quadWordsParser,
             AttachmentContentLoader attachmentContentLoader, QuadWordsImageParser quadWordsImageParser,
             Clock clock, ZoneId timeZone, PlayerStore playerStore, SubmissionStore submissionStore,
             LongPredicate canonicalPublisher) {
+        this(gridWordsParser, quadWordsParser, attachmentContentLoader, quadWordsImageParser, clock, timeZone,
+                playerStore, submissionStore, canonicalPublisher, ignored -> false);
+    }
+
+    public ProcessSharedResultService(GridWordsShareParser gridWordsParser, QuadWordsShareParser quadWordsParser,
+            AttachmentContentLoader attachmentContentLoader, QuadWordsImageParser quadWordsImageParser,
+            Clock clock, ZoneId timeZone, PlayerStore playerStore, SubmissionStore submissionStore,
+            LongPredicate canonicalPublisher, LongPredicate administrator) {
         this.gridWordsParser = Objects.requireNonNull(gridWordsParser);
         this.quadWordsParser = Objects.requireNonNull(quadWordsParser);
         this.attachmentContentLoader = Objects.requireNonNull(attachmentContentLoader);
@@ -65,6 +74,7 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
         this.playerStore = Objects.requireNonNull(playerStore);
         this.submissionStore = Objects.requireNonNull(submissionStore);
         this.canonicalPublisher = Objects.requireNonNull(canonicalPublisher);
+        this.administrator = Objects.requireNonNull(administrator);
     }
     @Override
     public ProcessingResult process(InboundSharedMessage message) {
@@ -118,7 +128,7 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
                 message.authorId(), parsed, message.content(), parserVersion(parsed));
         SubmissionStore.StoredSubmission stored = submissionStore.storeResult(
                 new SubmissionStore.ResultStorage(message.messageId(), result, new PlayerStore.ParticipationChange(
-                        new PlayerStore.ProfileUpdate(message.authorId(), message.authorDisplayName(), false), parsed.gameDate())));
+                        new PlayerStore.ProfileUpdate(message.authorId(), message.authorDisplayName(), administrator.test(message.authorId())), parsed.gameDate())));
         if (stored.state() == SubmissionStore.SubmissionState.SUPERSEDED) {
             return new ProcessingResult.Ignored();
         }

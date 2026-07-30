@@ -5,8 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import de.venomenon.gridwordsbot.application.submission.ConfiguredPlayer;
-import de.venomenon.gridwordsbot.application.submission.ConfiguredPlayerSynchronizer;
 import de.venomenon.gridwordsbot.application.submission.ProcessSharedResultService;
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.model.NormalizedBoard;
@@ -114,6 +112,38 @@ class PostgresPersistenceAdapterIT {
         assertEquals(SubmissionStore.SubmissionState.RECEIVED, adapter.findBySourceMessageId(902L).orElseThrow().state());
         assertTrue(adapter.find(102L, GameType.GRIDWORDS, LocalDate.of(2026, 7, 29)).isEmpty());
     }
+    @Test
+    void keepsProspectiveLeaveActiveTodayAndSynchronizesItAfterMidnight() {
+        jdbc.update("DELETE FROM player_participation_period");
+        long playerId = 189L;
+        PlayerStore.ProfileUpdate profile = new PlayerStore.ProfileUpdate(playerId, "Leaving", false);
+        adapter.activate(new PlayerStore.ParticipationChange(profile, LocalDate.of(2026, 7, 29)));
+        assertTrue(adapter.deactivate(new PlayerStore.ParticipationChange(profile, LocalDate.of(2026, 7, 30))).active());
+
+        PostgresPersistenceAdapter tomorrow = new PostgresPersistenceAdapter(jdbc,
+                Clock.fixed(Instant.parse("2026-07-30T10:00:00Z"), ZoneOffset.UTC));
+        assertFalse(tomorrow.findByDiscordUserId(playerId).orElseThrow().active());
+        assertEquals(LocalDate.of(2026, 7, 30), tomorrow.findParticipationPeriods().getFirst().inactiveFrom());
+    }
+    @Test
+    void returnsOnlyActiveOptedInPlayersWithTheirMissingGames() {
+        jdbc.update("DELETE FROM player_participation_period");
+        long missingQuad = 190L;
+        long complete = 191L;
+        adapter.upsert(new PlayerStore.PlayerUpsert(missingQuad, "Missing Quad", true, false));
+        adapter.upsert(new PlayerStore.PlayerUpsert(complete, "Complete", true, false));
+        adapter.setReminderOptIn(new PlayerStore.ProfileUpdate(missingQuad, "Missing Quad", false), true);
+        adapter.setReminderOptIn(new PlayerStore.ProfileUpdate(complete, "Complete", false), true);
+        registerSubmission(1900L, missingQuad);
+        store(1900L, resultFor(missingQuad, 3, "grid"), List.of());
+        registerSubmission(1901L, complete);
+        store(1901L, resultFor(complete, 3, "grid"), List.of());
+        registerSubmission(1902L, complete);
+        store(1902L, quadResultFor(complete, true, "quad"), List.of());
+
+        assertEquals(List.of(GameType.QUADWORDS), adapter.findReminderCandidates(LocalDate.of(2026, 7, 29)).getFirst().missingGames());
+        assertEquals(missingQuad, adapter.findReminderCandidates(LocalDate.of(2026, 7, 29)).getFirst().discordUserId());
+    }
     private void registerSubmission(long sourceMessageId, long playerId) {
         registerSubmission(sourceMessageId, playerId, now);
     }
@@ -123,12 +153,15 @@ class PostgresPersistenceAdapterIT {
                 sourceMessageId, 200L, 300L, playerId, "share " + sourceMessageId, List.of(), receivedAt));
     }
 
+    private SubmissionStore.StoredSubmission store(long sourceMessageId, GameResultStore.GameResultUpsert result) {
+        return store(sourceMessageId, result, List.of());
+    }
     private SubmissionStore.StoredSubmission store(
             long sourceMessageId,
             GameResultStore.GameResultUpsert result,
-            List<Long> configuredPlayerIds) {
+            List<Long> ignoredLegacyArgument) {
         return transactions.execute(status -> adapter.storeResult(
-                new SubmissionStore.ResultStorage(sourceMessageId, result, configuredPlayerIds)));
+                new SubmissionStore.ResultStorage(sourceMessageId, result)));
     }
 
     private GameResultStore.GameResultUpsert quadResult(long playerId, int attempts, String text, String parserVersion) {
@@ -319,45 +352,9 @@ class PostgresPersistenceAdapterIT {
     }
 
     @Test
-    void synchronizesConfiguredPlayersIdempotentlyWithAdministratorFlags() {
-        ConfiguredPlayerSynchronizer synchronizer = new ConfiguredPlayerSynchronizer(List.of(
-                new ConfiguredPlayer(109L, "Tobias", true),
-                new ConfiguredPlayer(110L, "Georgia", false)), adapter);
-
-        synchronizer.synchronize();
-        synchronizer.synchronize();
-
-        assertTrue(adapter.findByDiscordUserId(109L).orElseThrow().administrator());
-        assertFalse(adapter.findByDiscordUserId(110L).orElseThrow().administrator());
-        assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM player WHERE discord_user_id = 109", Integer.class));
-        assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM player WHERE discord_user_id = 110", Integer.class));
-    }
-
-    @Test
-    void persistsAndRoundTripsFinalRejectionsWithoutCreatingAResult() {
-        adapter.upsert(new PlayerStore.PlayerUpsert(111L, "Rejected", true, false));
-        SubmissionStore.SubmissionRegistration registration = new SubmissionStore.SubmissionRegistration(
-                909L, 200L, 300L, 111L, "invalid share", List.of(), now);
-        adapter.register(registration);
-
-        SubmissionStore.StoredSubmission rejected = transactions.execute(status -> adapter.reject(
-                new SubmissionStore.RejectedSubmission(909L, "OUTSIDE_ALLOWED_DATE_WINDOW")));
-        SubmissionStore.StoredSubmission replay = transactions.execute(status -> adapter.reject(
-                new SubmissionStore.RejectedSubmission(909L, "OUTSIDE_ALLOWED_DATE_WINDOW")));
-
-        assertEquals(SubmissionStore.SubmissionState.PARSE_REJECTED, rejected.state());
-        assertEquals(Optional.of("OUTSIDE_ALLOWED_DATE_WINDOW"), rejected.parserErrorCode());
-        assertEquals(rejected, replay);
-        assertTrue(adapter.find(111L, GameType.GRIDWORDS, LocalDate.of(2026, 7, 29)).isEmpty());
-        assertThrows(SubmissionConflictException.class, () -> transactions.execute(status -> adapter.reject(
-                new SubmissionStore.RejectedSubmission(909L, "MISSING_BOARD"))));
-    }
-
-    @Test
     void storesACompleteValidApplicationFlowAtomically() {
-        new ConfiguredPlayerSynchronizer(List.of(
-                new ConfiguredPlayer(112L, "Application", true),
-                new ConfiguredPlayer(113L, "Second", false)), adapter).synchronize();
+        adapter.upsert(new PlayerStore.PlayerUpsert(112L, "Application", true, true));
+        adapter.upsert(new PlayerStore.PlayerUpsert(113L, "Second", true, false));
         ProcessSharedResultService service = new ProcessSharedResultService(
                 new GridWordsShareParser(), new QuadWordsShareParser(), Clock.fixed(now, ZoneOffset.UTC),
                 ZoneId.of("Europe/Berlin"), adapter, adapter);
@@ -643,21 +640,21 @@ class PostgresPersistenceAdapterIT {
 
     @Test
     void persistsPublicationContextForTheActualGridWordsTransitionAndNotForACorrection() {
+        jdbc.update("DELETE FROM player_participation_period");
         long tobias = 130L;
         long georgia = 131L;
-        List<Long> configuredPlayerIds = List.of(tobias, georgia);
-        adapter.upsert(new PlayerStore.PlayerUpsert(tobias, "Context Tobias", true, false));
+                adapter.upsert(new PlayerStore.PlayerUpsert(tobias, "Context Tobias", true, false));
         adapter.upsert(new PlayerStore.PlayerUpsert(georgia, "Context Georgia", true, false));
 
         registerSubmission(930L, tobias);
-        store(930L, quadResultFor(tobias, true, "tobias quad"), configuredPlayerIds);
+        store(930L, quadResultFor(tobias, true, "tobias quad"));
         registerSubmission(931L, georgia);
-        store(931L, resultFor(georgia, 3, "georgia grid"), configuredPlayerIds);
+        store(931L, resultFor(georgia, 3, "georgia grid"));
         registerSubmission(932L, georgia);
-        store(932L, quadResultFor(georgia, true, "georgia quad"), configuredPlayerIds);
+        store(932L, quadResultFor(georgia, true, "georgia quad"));
         registerSubmission(933L, tobias);
 
-        SubmissionStore.StoredSubmission trigger = store(933L, resultFor(tobias, 3, "tobias grid"), configuredPlayerIds);
+        SubmissionStore.StoredSubmission trigger = store(933L, resultFor(tobias, 3, "tobias grid"));
 
         assertTrue(trigger.publicationContext().personalCompleteEstablished());
         assertTrue(trigger.publicationContext().personalPerfectEstablished());
@@ -666,7 +663,7 @@ class PostgresPersistenceAdapterIT {
 
         registerSubmission(934L, tobias);
         SubmissionStore.StoredSubmission correction = store(
-                934L, resultFor(tobias, 2, "tobias correction"), configuredPlayerIds);
+                934L, resultFor(tobias, 2, "tobias correction"));
 
         assertFalse(correction.publicationContext().personalCompleteEstablished());
         assertFalse(correction.publicationContext().personalPerfectEstablished());
@@ -676,25 +673,25 @@ class PostgresPersistenceAdapterIT {
 
     @Test
     void publishesImageBackedQuadWordsToCompletedAndKeepsTransitionContextOnlyOnTheFirstSubmission() {
+        jdbc.update("DELETE FROM player_participation_period");
         long tobias = 180L;
         long georgia = 181L;
         long source = 980L;
         long correctionSource = 981L;
         long canonicalMessageId = 9800L;
-        List<Long> configuredPlayerIds = List.of(tobias, georgia);
-        adapter.upsert(new PlayerStore.PlayerUpsert(tobias, "Quad context Tobias", true, false));
+                adapter.upsert(new PlayerStore.PlayerUpsert(tobias, "Quad context Tobias", true, false));
         adapter.upsert(new PlayerStore.PlayerUpsert(georgia, "Quad context Georgia", true, false));
 
         registerSubmission(982L, tobias);
-        store(982L, resultFor(tobias, 3, "tobias grid"), configuredPlayerIds);
+        store(982L, resultFor(tobias, 3, "tobias grid"));
         registerSubmission(983L, georgia);
-        store(983L, resultFor(georgia, 3, "georgia grid"), configuredPlayerIds);
+        store(983L, resultFor(georgia, 3, "georgia grid"));
         registerSubmission(984L, georgia);
-        store(984L, quadResult(georgia, 4, "georgia quad", "quadwords-image-v2"), configuredPlayerIds);
+        store(984L, quadResult(georgia, 4, "georgia quad", "quadwords-image-v2"));
 
         registerSubmission(source, tobias);
         SubmissionStore.StoredSubmission first = store(
-                source, quadResult(tobias, 4, "tobias quad", "quadwords-image-v2"), configuredPlayerIds);
+                source, quadResult(tobias, 4, "tobias quad", "quadwords-image-v2"));
         long resultId = first.gameResultId().orElseThrow();
         assertTrue(first.publicationContext().personalCompleteEstablished());
         assertTrue(first.publicationContext().personalPerfectEstablished());
@@ -716,7 +713,7 @@ class PostgresPersistenceAdapterIT {
 
         registerSubmission(correctionSource, tobias, now.plusSeconds(1));
         SubmissionStore.StoredSubmission correction = store(correctionSource,
-                quadResult(tobias, 3, "tobias quad correction", "quadwords-image-v2"), configuredPlayerIds);
+                quadResult(tobias, 3, "tobias quad correction", "quadwords-image-v2"));
         assertEquals(resultId, correction.gameResultId().orElseThrow());
         assertFalse(correction.publicationContext().personalCompleteEstablished());
         assertFalse(correction.publicationContext().personalPerfectEstablished());
@@ -802,23 +799,23 @@ class PostgresPersistenceAdapterIT {
 
     @Test
     void serializesConcurrentPublicationContextTransitionsForBothPlayers() throws Exception {
+        jdbc.update("DELETE FROM player_participation_period");
         long tobias = 140L;
         long georgia = 141L;
-        List<Long> configuredPlayerIds = List.of(tobias, georgia);
-        adapter.upsert(new PlayerStore.PlayerUpsert(tobias, "Concurrent Tobias", true, false));
+                adapter.upsert(new PlayerStore.PlayerUpsert(tobias, "Concurrent Tobias", true, false));
         adapter.upsert(new PlayerStore.PlayerUpsert(georgia, "Concurrent Georgia", true, false));
         registerSubmission(940L, tobias);
-        store(940L, quadResultFor(tobias, true, "tobias quad"), configuredPlayerIds);
+        store(940L, quadResultFor(tobias, true, "tobias quad"));
         registerSubmission(941L, georgia);
-        store(941L, quadResultFor(georgia, true, "georgia quad"), configuredPlayerIds);
+        store(941L, quadResultFor(georgia, true, "georgia quad"));
         registerSubmission(942L, tobias);
         registerSubmission(943L, georgia);
 
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
             Future<SubmissionStore.StoredSubmission> tobiasGrid = executor.submit(
-                    () -> store(942L, resultFor(tobias, 3, "tobias grid"), configuredPlayerIds));
+                    () -> store(942L, resultFor(tobias, 3, "tobias grid")));
             Future<SubmissionStore.StoredSubmission> georgiaGrid = executor.submit(
-                    () -> store(943L, resultFor(georgia, 3, "georgia grid"), configuredPlayerIds));
+                    () -> store(943L, resultFor(georgia, 3, "georgia grid")));
             List<SubmissionStore.StoredSubmission> stored = List.of(tobiasGrid.get(), georgiaGrid.get());
 
             assertEquals(2, stored.stream().filter(submission ->

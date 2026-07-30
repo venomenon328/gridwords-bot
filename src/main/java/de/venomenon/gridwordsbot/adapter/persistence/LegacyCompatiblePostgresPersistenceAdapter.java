@@ -50,6 +50,25 @@ public class LegacyCompatiblePostgresPersistenceAdapter extends PostgresPersiste
     }
 
     @Override
+    public StoredPlayer upsert(de.venomenon.gridwordsbot.port.out.PlayerStore.PlayerUpsert request) {
+        Instant now = clock.instant();
+        return jdbc.queryForObject("""
+                INSERT INTO player (discord_user_id, display_name, active, administrator, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT (discord_user_id) DO UPDATE SET display_name = EXCLUDED.display_name,
+                    active = EXCLUDED.active, administrator = EXCLUDED.administrator, updated_at = EXCLUDED.updated_at
+                RETURNING *
+                """, (rs, row) -> new StoredPlayer(rs.getLong("discord_user_id"), rs.getString("display_name"),
+                        rs.getBoolean("active"), rs.getBoolean("administrator"), false,
+                        rs.getObject("created_at", OffsetDateTime.class).toInstant(),
+                        rs.getObject("updated_at", OffsetDateTime.class).toInstant()), request.discordUserId(), request.displayName(),
+                request.active(), request.administrator(), OffsetDateTime.ofInstant(now, ZoneOffset.UTC),
+                OffsetDateTime.ofInstant(now, ZoneOffset.UTC));
+    }
+
+    @Override
+    protected boolean participationEnabled() { return false; }
+    @Override
     public Optional<StoredGameResult> find(long playerId, GameType gameType, java.time.LocalDate gameDate) {
         return jdbc.query(
                 "SELECT * FROM game_result WHERE player_id = ? AND game_type = ? AND game_date = ?",

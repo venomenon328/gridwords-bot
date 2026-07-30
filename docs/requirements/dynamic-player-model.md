@@ -225,6 +225,8 @@ PostgreSQL-Constraints und Adapterlogik müssen konkurrierende Erstregistrierung
 - bestehende inaktive Spieler erhalten keinen offenen Zeitraum,
 - bestehende Ergebnisse, Adminflags und IDs bleiben erhalten.
 
+submission.author_player_id bleibt fuer erkannte, aber ungueltige Shares bewusst nullable: Vor einer vollstaendigen Fachvalidierung wird kein Spielerprofil angelegt. Ein gueltiges Ergebnis speichert Profil, Teilnahmezeitraum und Spielergebnis zusammen im Persistenzschritt.
+
 ## 9. Konfiguration
 
 Nach Umsetzung entfallen:

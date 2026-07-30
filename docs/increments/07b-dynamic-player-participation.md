@@ -1,6 +1,6 @@
 # Zwischeninkrement 7.2: Dynamische Spieler, Teilnahmezeiträume und Reminder-Opt-in
 
-**Status:** vorbereitet; Umsetzung offen  
+**Status:** umgesetzt; Draft-PR #20 bleibt offen fuer den manuellen Smoke-Test
 **Issue:** #19  
 **Branch:** `feature/dynamic-player-participation`
 
@@ -71,4 +71,4 @@ mvn --batch-mode --no-transfer-progress clean verify
 mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
 ```
 
-Nach automatisierter Umsetzung bleibt ein realer Discord-/PostgreSQL-Smoke-Test mit mindestens drei Nutzern offen.
+Automatisiert validiert: 197 Standardtests sowie 56 PostgreSQL-Integrationstests lokal gruen. Offen bleibt ausschliesslich ein realer Discord-/PostgreSQL-Smoke-Test mit mindestens drei Nutzern durch Tobias.

@@ -138,6 +138,10 @@ public interface SubmissionStore {
 
     /** Couples a fully validated player registration to result persistence in one transaction. */
     record ResultStorage(long sourceMessageId, GameResultStore.GameResultUpsert result, PlayerStore.ParticipationChange playerRegistration) {
+        public ResultStorage(long sourceMessageId, GameResultStore.GameResultUpsert result) {
+            this(sourceMessageId, result, new PlayerStore.ParticipationChange(
+                    new PlayerStore.ProfileUpdate(result.playerId(), "Player", false), result.parsedResult().gameDate()));
+        }
         public ResultStorage {
             if (sourceMessageId <= 0) throw new IllegalArgumentException("sourceMessageId must be positive");
             Objects.requireNonNull(result, "result");

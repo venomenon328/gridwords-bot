@@ -165,9 +165,7 @@ class QuadWordsPersistenceCompatibilityIT {
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 ZoneId.of("Europe/Berlin"),
                 adapter,
-                adapter,
-                List.of(),
-                ignored -> true);
+                adapter, ignored -> true);
     }
 
     private static InboundSharedMessage message(
