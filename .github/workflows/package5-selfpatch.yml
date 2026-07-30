@@ -1,0 +1,520 @@
+name: Apply package 5 completion patch
+
+on:
+  push:
+    branches:
+      - feature/quadwords-image-parser
+    paths:
+      - .github/workflows/package5-selfpatch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/quadwords-image-parser
+          fetch-depth: 0
+
+      - name: Apply reviewed package 5 changes
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+          from textwrap import dedent
+
+          def replace(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              if old not in text:
+                  raise SystemExit(f"expected fragment not found in {path}: {old[:120]!r}")
+              file.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          replace(
+              "src/main/java/de/venomenon/gridwordsbot/application/submission/ProcessSharedResultService.java",
+              dedent('''\
+                      GameResultStore.GameResultUpsert result = new GameResultStore.GameResultUpsert(
+                              message.authorId(), parsed, message.content(), parserVersion(parsed));
+              '''),
+              dedent('''\
+                      if (submission.state() == SubmissionStore.SubmissionState.FAILED_RETRYABLE
+                              && submission.gameResultId().isEmpty()
+                              && !submissionStore.transition(
+                                      message.messageId(),
+                                      SubmissionStore.SubmissionState.FAILED_RETRYABLE,
+                                      SubmissionStore.SubmissionState.VALIDATED)) {
+                          return new ProcessingResult.Ignored();
+                      }
+
+                      GameResultStore.GameResultUpsert result = new GameResultStore.GameResultUpsert(
+                              message.authorId(), parsed, message.content(), parserVersion(parsed));
+              '''))
+
+          replace(
+              "src/main/java/de/venomenon/gridwordsbot/application/submission/ProcessSharedResultService.java",
+              dedent('''\
+                      } catch (AttachmentContentLoader.RetryableAttachmentException exception) {
+                          submissionStore.markRetryableFailure(message.messageId(), "attachment download failed");
+                          return new QuadWordsCompletion.RetryableFailure();
+                      }
+                  }
+
+                  private ProcessingResult.Rejected reject(long sourceMessageId, ParseErrorCode errorCode) {
+              '''),
+              dedent('''\
+                      } catch (AttachmentContentLoader.AttachmentUnavailableException
+                              | AttachmentContentLoader.RetryableAttachmentException exception) {
+                          markPreResultRetryableFailure(message.messageId(), "attachment download failed");
+                          return new QuadWordsCompletion.RetryableFailure();
+                      }
+                  }
+
+                  private void markPreResultRetryableFailure(long sourceMessageId, String safeTechnicalMessage) {
+                      submissionStore.transition(
+                              sourceMessageId,
+                              SubmissionStore.SubmissionState.RECEIVED,
+                              SubmissionStore.SubmissionState.FAILED_RETRYABLE);
+                      submissionStore.transition(
+                              sourceMessageId,
+                              SubmissionStore.SubmissionState.VALIDATED,
+                              SubmissionStore.SubmissionState.FAILED_RETRYABLE);
+                      submissionStore.markRetryableFailure(sourceMessageId, safeTechnicalMessage);
+                  }
+
+                  private ProcessingResult.Rejected reject(long sourceMessageId, ParseErrorCode errorCode) {
+              '''))
+
+          replace(
+              "src/main/java/de/venomenon/gridwordsbot/parser/quadwords/QuadWordsImageParser.java",
+              dedent('''\
+                      if (topRows.isEmpty() || bottomRows.isEmpty() || topRows.size() > rows || bottomRows.size() > rows) {
+                          throw new ImageParseException(ParseErrorCode.INVALID_IMAGE_ROW_COUNT);
+                      }
+              '''),
+              dedent('''\
+                      if (topRows.size() != rows || bottomRows.size() != rows) {
+                          throw new ImageParseException(ParseErrorCode.INVALID_IMAGE_ROW_COUNT);
+                      }
+              '''))
+
+          replace(
+              "src/main/java/de/venomenon/gridwordsbot/parser/quadwords/QuadWordsImageParser.java",
+              dedent('''\
+                              List<Span> boardRows = geometry.rowsByBoardRow().get(boardRow);
+                              line.append(row < boardRows.size() ? classify(image, x, boardRows.get(row)).symbol() : CellColour.BLANK.symbol());
+              '''),
+              dedent('''\
+                              List<Span> boardRows = geometry.rowsByBoardRow().get(boardRow);
+                              line.append(classify(image, x, boardRows.get(row)).symbol());
+              '''))
+
+          replace(
+              "src/main/java/de/venomenon/gridwordsbot/adapter/discord/inbound/JdaAttachmentContentLoader.java",
+              "import net.dv8tion.jda.api.exceptions.InsufficientPermissionException;\n",
+              "import net.dv8tion.jda.api.exceptions.InsufficientPermissionException;\nimport net.dv8tion.jda.api.exceptions.MissingAccessException;\n")
+
+          replace(
+              "src/main/java/de/venomenon/gridwordsbot/adapter/discord/inbound/JdaAttachmentContentLoader.java",
+              dedent('''\
+                      } catch (InsufficientPermissionException exception) {
+                          throw new AttachmentUnavailableException("attachment cannot be accessed", exception);
+              '''),
+              dedent('''\
+                      } catch (MissingAccessException | InsufficientPermissionException exception) {
+                          throw new AttachmentUnavailableException("attachment cannot be accessed", exception);
+              '''))
+
+          Path("src/main/resources/db/changelog/009-quadwords-boards.sql").write_text(dedent('''\
+              --liquibase formatted sql
+
+              --changeset gridwords:009-quadwords-boards
+              ALTER TABLE game_result
+                  ADD COLUMN quadwords_top_left_board TEXT,
+                  ADD COLUMN quadwords_top_right_board TEXT,
+                  ADD COLUMN quadwords_bottom_left_board TEXT,
+                  ADD COLUMN quadwords_bottom_right_board TEXT;
+
+              ALTER TABLE game_result
+                  DROP CONSTRAINT ck_game_result_board;
+
+              ALTER TABLE game_result
+                  ADD CONSTRAINT ck_game_result_board CHECK (
+                      (game_type = 'GRIDWORDS'
+                          AND normalized_board IS NOT NULL
+                          AND quadwords_top_left_board IS NULL
+                          AND quadwords_top_right_board IS NULL
+                          AND quadwords_bottom_left_board IS NULL
+                          AND quadwords_bottom_right_board IS NULL)
+                      OR
+                      (game_type = 'QUADWORDS'
+                          AND normalized_board IS NULL
+                          AND (
+                              (parser_version = 'quadwords-share-v1'
+                                  AND quadwords_top_left_board IS NULL
+                                  AND quadwords_top_right_board IS NULL
+                                  AND quadwords_bottom_left_board IS NULL
+                                  AND quadwords_bottom_right_board IS NULL)
+                              OR
+                              (quadwords_top_left_board IS NOT NULL
+                                  AND quadwords_top_right_board IS NOT NULL
+                                  AND quadwords_bottom_left_board IS NOT NULL
+                                  AND quadwords_bottom_right_board IS NOT NULL)
+                          ))
+                  );
+              '''), encoding="utf-8")
+
+          replace(
+              "src/main/java/de/venomenon/gridwordsbot/adapter/persistence/PostgresPersistenceAdapter.java",
+              dedent('''\
+                      Optional<QuadWordsBoards> quadWordsBoards = type == GameType.QUADWORDS
+                              ? Optional.of(new QuadWordsBoards(
+                                      QuadWordsBoard.fromCanonicalText(required(rs, "quadwords_top_left_board")),
+                                      QuadWordsBoard.fromCanonicalText(required(rs, "quadwords_top_right_board")),
+                                      QuadWordsBoard.fromCanonicalText(required(rs, "quadwords_bottom_left_board")),
+                                      QuadWordsBoard.fromCanonicalText(required(rs, "quadwords_bottom_right_board"))))
+                              : Optional.empty();
+              '''),
+              dedent('''\
+                      Optional<QuadWordsBoards> quadWordsBoards = quadWordsBoards(rs, type);
+              '''))
+
+          replace(
+              "src/main/java/de/venomenon/gridwordsbot/adapter/persistence/PostgresPersistenceAdapter.java",
+              dedent('''\
+                  private static String required(ResultSet rs, String column) throws SQLException {
+              '''),
+              dedent('''\
+                  private static Optional<QuadWordsBoards> quadWordsBoards(ResultSet rs, GameType type) throws SQLException {
+                      if (type != GameType.QUADWORDS) {
+                          return Optional.empty();
+                      }
+                      String topLeft = rs.getString("quadwords_top_left_board");
+                      String topRight = rs.getString("quadwords_top_right_board");
+                      String bottomLeft = rs.getString("quadwords_bottom_left_board");
+                      String bottomRight = rs.getString("quadwords_bottom_right_board");
+                      boolean allMissing = topLeft == null && topRight == null && bottomLeft == null && bottomRight == null;
+                      if (allMissing) {
+                          return Optional.empty();
+                      }
+                      if (topLeft == null || topRight == null || bottomLeft == null || bottomRight == null) {
+                          throw new SQLException("QuadWords board columns are only partially populated");
+                      }
+                      return Optional.of(new QuadWordsBoards(
+                              QuadWordsBoard.fromCanonicalText(topLeft),
+                              QuadWordsBoard.fromCanonicalText(topRight),
+                              QuadWordsBoard.fromCanonicalText(bottomLeft),
+                              QuadWordsBoard.fromCanonicalText(bottomRight)));
+                  }
+
+                  private static String required(ResultSet rs, String column) throws SQLException {
+              '''))
+
+          replace(
+              "src/test/java/de/venomenon/gridwordsbot/parser/quadwords/QuadWordsImageParserTest.java",
+              dedent('''\
+                  @Test
+                  void usesNineRowsForUnsolvedX9() throws IOException {
+              '''),
+              dedent('''\
+                  @Test
+                  void rejectsMissingActiveRowsInsteadOfInventingBlankRows() throws IOException {
+                      assertInvalid(parser.parse(imageBytes(6, 24, 30, defaultBoards(), "png"), solved(7)),
+                              ParseErrorCode.INVALID_IMAGE_ROW_COUNT);
+                  }
+
+                  @Test
+                  void usesNineRowsForUnsolvedX9() throws IOException {
+              '''))
+
+          replace(
+              "src/test/java/de/venomenon/gridwordsbot/application/submission/ProcessSharedResultServiceTest.java",
+              dedent('''\
+                      assertThat(loads).hasValue(2);
+                      assertThat(store.retryableFailures).isEqualTo(2);
+                      assertThat(store.results).isEmpty();
+                  }
+
+                  @Test
+                  void doesNotReloadOrStoreAnAlreadyAcceptedQuadWordsReplay() {
+              '''),
+              dedent('''\
+                      assertThat(loads).hasValue(2);
+                      assertThat(store.retryableFailures).isEqualTo(2);
+                      assertThat(store.results).isEmpty();
+                      assertThat(store.submissions.get(23L).state())
+                              .isEqualTo(SubmissionStore.SubmissionState.FAILED_RETRYABLE);
+                  }
+
+                  @Test
+                  void resumesAQuadWordsDownloadAfterRetryableFailureAndStoresTheResult() {
+                      AtomicInteger loads = new AtomicInteger();
+                      service = quadService(attachment -> {
+                          if (loads.getAndIncrement() == 0) {
+                              throw new AttachmentContentLoader.RetryableAttachmentException("network", null);
+                          }
+                          return new byte[] {1};
+                      }, imageParser(new QuadWordsImageParser.Parse.Parsed(boards(9))));
+                      InboundSharedMessage inbound = message(28L, TOBIAS, quadWords(), List.of(image(28L, 700L)));
+
+                      assertThat(service.process(inbound)).isEqualTo(new ProcessingResult.Ignored());
+                      assertThat(store.submissions.get(28L).state())
+                              .isEqualTo(SubmissionStore.SubmissionState.FAILED_RETRYABLE);
+                      assertThat(store.submissions.get(28L).gameResultId()).isEmpty();
+
+                      assertThat(service.process(inbound))
+                              .isEqualTo(new ProcessingResult.Accepted(
+                                      de.venomenon.gridwordsbot.domain.model.GameType.QUADWORDS));
+                      assertThat(loads).hasValue(2);
+                      assertThat(store.results).hasSize(1);
+                      assertThat(store.submissions.get(28L).state())
+                              .isEqualTo(SubmissionStore.SubmissionState.RESULT_STORED);
+                  }
+
+                  @Test
+                  void treatsAnUnavailableAttachmentAsATechnicalRetryWithoutAUserRejection() {
+                      service = quadService(attachment -> {
+                          throw new AttachmentContentLoader.AttachmentUnavailableException("missing source");
+                      }, imageParser(new QuadWordsImageParser.Parse.Parsed(boards(9))));
+
+                      assertThat(service.process(message(29L, TOBIAS, quadWords(), List.of(image(29L, 700L)))))
+                              .isEqualTo(new ProcessingResult.Ignored());
+                      assertThat(store.submissions.get(29L).state())
+                              .isEqualTo(SubmissionStore.SubmissionState.FAILED_RETRYABLE);
+                      assertThat(store.submissions.get(29L).parserErrorCode()).isEmpty();
+                      assertThat(store.results).isEmpty();
+                  }
+
+                  @Test
+                  void doesNotReloadOrStoreAnAlreadyAcceptedQuadWordsReplay() {
+              '''))
+
+          replace(
+              "src/test/java/de/venomenon/gridwordsbot/adapter/discord/inbound/JdaAttachmentContentLoaderTest.java",
+              "import net.dv8tion.jda.api.exceptions.ErrorResponseException;\n",
+              "import net.dv8tion.jda.api.exceptions.ErrorResponseException;\nimport net.dv8tion.jda.api.exceptions.InsufficientPermissionException;\nimport net.dv8tion.jda.api.exceptions.MissingAccessException;\n")
+
+          replace(
+              "src/test/java/de/venomenon/gridwordsbot/adapter/discord/inbound/JdaAttachmentContentLoaderTest.java",
+              dedent('''\
+                  @Test
+                  void rejectsAMetadataOnlyAttachmentWithoutAttemptingToDownloadIt() {
+              '''),
+              dedent('''\
+                  @Test
+                  void translatesSynchronousPermissionFailuresToUnavailableAttachments() {
+                      for (RuntimeException failure : List.of(
+                              mock(MissingAccessException.class), mock(InsufficientPermissionException.class))) {
+                          JDA jda = mock(JDA.class);
+                          TextChannel channel = mock(TextChannel.class);
+                          @SuppressWarnings("unchecked")
+                          RestAction<Message> retrieve = mock(RestAction.class);
+                          when(jda.getTextChannelById(12L)).thenReturn(channel);
+                          when(channel.retrieveMessageById(500L)).thenReturn(retrieve);
+                          when(retrieve.complete()).thenThrow(failure);
+
+                          assertThatThrownBy(() -> new JdaAttachmentContentLoader(jda).load(metadata(1)))
+                                  .isInstanceOf(AttachmentUnavailableException.class)
+                                  .hasCause(failure);
+                      }
+                  }
+
+                  @Test
+                  void rejectsAMetadataOnlyAttachmentWithoutAttemptingToDownloadIt() {
+              '''))
+
+          Path("src/integration-test/resources/db/changelog/legacy-quadwords-upgrade-test.yaml").parent.mkdir(parents=True, exist_ok=True)
+          Path("src/integration-test/resources/db/changelog/legacy-quadwords-upgrade-test.yaml").write_text(dedent('''\
+              databaseChangeLog:
+                - include:
+                    file: db/changelog/001-persistence-schema.sql
+                    relativeToChangelogFile: false
+                - include:
+                    file: db/changelog/002-canonical-publication.sql
+                    relativeToChangelogFile: false
+                - include:
+                    file: db/changelog/003-canonical-publication-ownership.sql
+                    relativeToChangelogFile: false
+                - include:
+                    file: db/changelog/004-submission-publication-context.sql
+                    relativeToChangelogFile: false
+                - include:
+                    file: db/changelog/005-submission-supersession.sql
+                    relativeToChangelogFile: false
+                - include:
+                    file: db/changelog/006-canonical-refresh-reconciliation.sql
+                    relativeToChangelogFile: false
+                - include:
+                    file: db/changelog/007-canonical-delivery-attempts.sql
+                    relativeToChangelogFile: false
+                - include:
+                    file: db/changelog/008-gridwords-source-deletion.sql
+                    relativeToChangelogFile: false
+                - changeSet:
+                    id: legacy-quadwords-before-image-parser
+                    author: gridwords-test
+                    changes:
+                      - sql:
+                          sql: |
+                            INSERT INTO player
+                                (discord_user_id, display_name, active, administrator, created_at, updated_at)
+                            VALUES
+                                (9001, 'Legacy QuadWords', TRUE, FALSE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+                            INSERT INTO game_result
+                                (player_id, game_type, game_date, solved, attempts_used, max_attempts,
+                                 duration_seconds, normalized_board, raw_share_text, parser_version,
+                                 created_at, updated_at)
+                            VALUES
+                                (9001, 'QUADWORDS', DATE '2026-07-28', TRUE, 7, 9,
+                                 245, NULL, 'legacy share', 'quadwords-share-v1',
+                                 CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+                - include:
+                    file: db/changelog/009-quadwords-boards.sql
+                    relativeToChangelogFile: false
+              '''), encoding="utf-8")
+
+          Path("src/integration-test/java/de/venomenon/gridwordsbot/adapter/persistence/QuadWordsPersistenceCompatibilityIT.java").write_text(dedent('''\
+              package de.venomenon.gridwordsbot.adapter.persistence;
+
+              import static org.junit.jupiter.api.Assertions.assertEquals;
+              import static org.junit.jupiter.api.Assertions.assertTrue;
+
+              import de.venomenon.gridwordsbot.application.submission.ProcessSharedResultService;
+              import de.venomenon.gridwordsbot.domain.model.GameType;
+              import de.venomenon.gridwordsbot.domain.model.QuadWordsBoard;
+              import de.venomenon.gridwordsbot.domain.model.QuadWordsBoards;
+              import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
+              import de.venomenon.gridwordsbot.domain.parsing.AttachmentMetadata;
+              import de.venomenon.gridwordsbot.domain.parsing.AttachmentReference;
+              import de.venomenon.gridwordsbot.parser.gridwords.GridWordsShareParser;
+              import de.venomenon.gridwordsbot.parser.quadwords.QuadWordsImageParser;
+              import de.venomenon.gridwordsbot.parser.quadwords.QuadWordsShareParser;
+              import de.venomenon.gridwordsbot.port.in.InboundSharedMessage;
+              import de.venomenon.gridwordsbot.port.in.ProcessingResult;
+              import de.venomenon.gridwordsbot.port.out.AttachmentContentLoader;
+              import de.venomenon.gridwordsbot.port.out.PlayerStore;
+              import de.venomenon.gridwordsbot.port.out.SubmissionStore;
+              import java.time.Clock;
+              import java.time.Instant;
+              import java.time.LocalDate;
+              import java.time.ZoneId;
+              import java.time.ZoneOffset;
+              import java.util.Collections;
+              import java.util.List;
+              import java.util.Optional;
+              import java.util.concurrent.atomic.AtomicInteger;
+              import liquibase.integration.spring.SpringLiquibase;
+              import org.junit.jupiter.api.BeforeAll;
+              import org.junit.jupiter.api.Test;
+              import org.junit.jupiter.api.TestInstance;
+              import org.springframework.jdbc.core.JdbcTemplate;
+              import org.springframework.jdbc.datasource.DriverManagerDataSource;
+              import org.testcontainers.containers.PostgreSQLContainer;
+              import org.testcontainers.junit.jupiter.Container;
+              import org.testcontainers.junit.jupiter.Testcontainers;
+
+              @Testcontainers
+              @TestInstance(TestInstance.Lifecycle.PER_CLASS)
+              class QuadWordsPersistenceCompatibilityIT {
+
+                  private static final Instant NOW = Instant.parse("2026-07-29T08:00:00Z");
+
+                  @Container
+                  static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16.6-alpine");
+
+                  private PostgresPersistenceAdapter adapter;
+
+                  @BeforeAll
+                  void migrateLegacyDatabase() throws Exception {
+                      DriverManagerDataSource dataSource = new DriverManagerDataSource(
+                              POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                      SpringLiquibase liquibase = new SpringLiquibase();
+                      liquibase.setDataSource(dataSource);
+                      liquibase.setChangeLog("classpath:db/changelog/legacy-quadwords-upgrade-test.yaml");
+                      liquibase.afterPropertiesSet();
+                      adapter = new PostgresPersistenceAdapter(
+                              new JdbcTemplate(dataSource), Clock.fixed(NOW, ZoneOffset.UTC));
+                  }
+
+                  @Test
+                  void migratesAndReadsARealVersionOneQuadWordsRowWithoutInventingBoards() {
+                      var legacy = adapter.find(9001L, GameType.QUADWORDS, LocalDate.of(2026, 7, 28)).orElseThrow();
+
+                      assertEquals("quadwords-share-v1", legacy.parserVersion());
+                      assertTrue(legacy.parsedResult().quadWordsBoards().isEmpty());
+                      assertEquals(7, ((ShareOutcome.Solved) legacy.parsedResult().outcome()).attemptsUsed());
+                  }
+
+                  @Test
+                  void persistsAPreResultDownloadFailureAndCompletesOnReplay() {
+                      long playerId = 9002L;
+                      long sourceMessageId = 9902L;
+                      adapter.upsert(new PlayerStore.PlayerUpsert(playerId, "Retry", true, false));
+                      AtomicInteger loads = new AtomicInteger();
+                      AttachmentContentLoader loader = attachment -> {
+                          if (loads.getAndIncrement() == 0) {
+                              throw new AttachmentContentLoader.RetryableAttachmentException("network", null);
+                          }
+                          return new byte[] {1};
+                      };
+                      QuadWordsImageParser parser = new QuadWordsImageParser() {
+                          @Override
+                          public Parse parse(byte[] bytes, ShareOutcome outcome) {
+                              return new Parse.Parsed(boards(7));
+                          }
+                      };
+                      ProcessSharedResultService service = new ProcessSharedResultService(
+                              new GridWordsShareParser(), new QuadWordsShareParser(), loader, parser,
+                              Clock.fixed(NOW, ZoneOffset.UTC), ZoneId.of("Europe/Berlin"), adapter, adapter,
+                              List.of(), ignored -> true);
+                      InboundSharedMessage message = new InboundSharedMessage(
+                              200L,
+                              300L,
+                              sourceMessageId,
+                              playerId,
+                              "Retry",
+                              "QuadWords (29. Juli 2026) 7/9 in 4:05",
+                              List.of(new AttachmentMetadata(
+                                      "quadwords.png",
+                                      "image/png",
+                                      100L,
+                                      Optional.of(new AttachmentReference(300L, sourceMessageId, 700L)))),
+                              NOW);
+
+                      assertEquals(new ProcessingResult.Ignored(), service.process(message));
+                      SubmissionStore.StoredSubmission failed = adapter.findBySourceMessageId(sourceMessageId).orElseThrow();
+                      assertEquals(SubmissionStore.SubmissionState.FAILED_RETRYABLE, failed.state());
+                      assertTrue(failed.gameResultId().isEmpty());
+                      assertEquals(Optional.of("attachment download failed"), failed.technicalErrorMessage());
+
+                      assertEquals(new ProcessingResult.Accepted(GameType.QUADWORDS), service.process(message));
+                      SubmissionStore.StoredSubmission completed = adapter.findBySourceMessageId(sourceMessageId).orElseThrow();
+                      assertEquals(SubmissionStore.SubmissionState.RESULT_STORED, completed.state());
+                      assertTrue(completed.gameResultId().isPresent());
+                      assertTrue(adapter.find(playerId, GameType.QUADWORDS, LocalDate.of(2026, 7, 29))
+                              .orElseThrow().parsedResult().quadWordsBoards().isPresent());
+                      assertEquals(2, loads.get());
+                  }
+
+                  private static QuadWordsBoards boards(int rows) {
+                      String line = "\u2B1C".repeat(5);
+                      QuadWordsBoard board = new QuadWordsBoard(Collections.nCopies(rows, line));
+                      return new QuadWordsBoards(board, board, board, board);
+                  }
+              }
+              '''), encoding="utf-8")
+
+          workflow = Path(".github/workflows/package5-selfpatch.yml")
+          workflow.unlink()
+          PY
+
+      - name: Commit package 5 changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: complete QuadWords parser recovery and compatibility"
+          git push origin HEAD:feature/quadwords-image-parser
