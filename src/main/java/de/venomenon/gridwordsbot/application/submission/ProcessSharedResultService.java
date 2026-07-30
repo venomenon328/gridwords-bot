@@ -120,6 +120,14 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
                 return new ProcessingResult.Ignored();
             }
             parsed = ((QuadWordsCompletion.Parsed) completion).parsed();
+            if (submission.state() == SubmissionStore.SubmissionState.FAILED_RETRYABLE
+                    && submission.gameResultId().isEmpty()
+                    && !submissionStore.transition(
+                            message.messageId(),
+                            SubmissionStore.SubmissionState.FAILED_RETRYABLE,
+                            SubmissionStore.SubmissionState.VALIDATED)) {
+                return new ProcessingResult.Ignored();
+            }
         }
 
         GameResultStore.GameResultUpsert result = new GameResultStore.GameResultUpsert(
@@ -156,10 +164,23 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
                     java.util.Optional.of(((QuadWordsImageParser.Parse.Parsed) imageParse).boards())));
         } catch (AttachmentContentLoader.AttachmentTooLargeException exception) {
             return new QuadWordsCompletion.Rejected(reject(message.messageId(), ParseErrorCode.IMAGE_TOO_LARGE));
-        } catch (AttachmentContentLoader.RetryableAttachmentException exception) {
-            submissionStore.markRetryableFailure(message.messageId(), "attachment download failed");
+        } catch (AttachmentContentLoader.AttachmentUnavailableException
+                | AttachmentContentLoader.RetryableAttachmentException exception) {
+            markPreResultRetryableFailure(message.messageId(), "attachment download failed");
             return new QuadWordsCompletion.RetryableFailure();
         }
+    }
+
+    private void markPreResultRetryableFailure(long sourceMessageId, String safeTechnicalMessage) {
+        submissionStore.transition(
+                sourceMessageId,
+                SubmissionStore.SubmissionState.RECEIVED,
+                SubmissionStore.SubmissionState.FAILED_RETRYABLE);
+        submissionStore.transition(
+                sourceMessageId,
+                SubmissionStore.SubmissionState.VALIDATED,
+                SubmissionStore.SubmissionState.FAILED_RETRYABLE);
+        submissionStore.markRetryableFailure(sourceMessageId, safeTechnicalMessage);
     }
 
     private ProcessingResult.Rejected reject(long sourceMessageId, ParseErrorCode errorCode) {
