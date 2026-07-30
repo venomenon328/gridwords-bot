@@ -33,7 +33,7 @@ public final class DailyStatusProjector {
         List<StreakCalculator.PlayerResult> streakResults = all.stream()
                 .map(result -> new StreakCalculator.PlayerResult(result.playerId(), result.parsedResult())).toList();
         List<DailyStatus.PlayerLine> lines = periods.stream().filter(period -> period.contains(date))
-                .map(ParticipationPeriod::playerId).distinct().map(id -> line(id, date, today, all, periods, profiles, streakResults))
+                .map(ParticipationPeriod::playerId).distinct().map(id -> line(id, date, date, all, periods, profiles, streakResults))
                 .sorted(Comparator.comparing((DailyStatus.PlayerLine line) -> line.displayName().toLowerCase(Locale.ROOT))
                         .thenComparingLong(DailyStatus.PlayerLine::discordUserId)).toList();
         int sharedComplete = lines.isEmpty() ? 0 : lines.getFirst().streaks().sharedComplete();

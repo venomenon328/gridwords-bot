@@ -8,10 +8,12 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import org.springframework.context.annotation.Profile;
+import org.springframework.stereotype.Component;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.scheduling.annotation.Scheduled;
 
 /** Reconciliation is intentionally a frequent trigger over idempotent use cases, never a host-time-zone cron. */
+@Component
 @Profile("database")
 @ConditionalOnBean(DailyStatusRefreshService.class)
 final class DailyStatusReminderScheduler {
@@ -31,7 +33,7 @@ final class DailyStatusReminderScheduler {
         LocalDate today = now.toLocalDate();
         deliveries.expireOpenRemindersBefore(properties.discord().guildId(), properties.discord().channelId(), today);
         status.refresh(today.minusDays(1));
-        status.refresh(today);
+        if (!now.toLocalTime().isBefore(properties.schedule().firstReminder())) status.refresh(today);
         if (!now.toLocalTime().isBefore(properties.schedule().secondReminder())) {
             reminders.deliver(today, 2, properties.schedule().secondReminder());
         } else if (!now.toLocalTime().isBefore(properties.schedule().firstReminder())) {

@@ -39,11 +39,16 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 @Configuration(proxyBeanMethods = false)
 @Profile("database")
 class DatabaseInboundConfiguration {
-    @Bean ProcessSharedResultUseCase processSharedResultUseCase(Clock clock, GridwordsBotProperties properties, PlayerStore players, SubmissionStore submissions, ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider, ObjectProvider<AttachmentContentLoader> loaderProvider) {
+    @Bean ProcessSharedResultUseCase processSharedResultUseCase(Clock clock, GridwordsBotProperties properties, PlayerStore players, SubmissionStore submissions, ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider, ObjectProvider<AttachmentContentLoader> loaderProvider, ObjectProvider<de.venomenon.gridwordsbot.application.status.DailyStatusRefreshService> statusProvider, GameResultStore results) {
         AttachmentContentLoader loader = loaderProvider.getIfAvailable(() -> attachment -> { throw new AttachmentContentLoader.RetryableAttachmentException("attachment loader is unavailable", null); });
         return new ProcessSharedResultService(new GridWordsShareParser(), new QuadWordsShareParser(), loader, new QuadWordsImageParser(), clock, properties.schedule().timeZone(), players, submissions, sourceMessageId -> {
             CanonicalGridWordsPublicationService canonical = canonicalProvider.getIfAvailable();
-            return canonical != null && canonical.publish(sourceMessageId);
+            boolean published = canonical != null && canonical.publish(sourceMessageId);
+            if (published) {
+                de.venomenon.gridwordsbot.application.status.DailyStatusRefreshService status = statusProvider.getIfAvailable();
+                if (status != null) submissions.findBySourceMessageId(sourceMessageId).flatMap(submission -> submission.gameResultId()).flatMap(results::findById).ifPresent(result -> status.refresh(result.parsedResult().gameDate()));
+            }
+            return published;
         }, properties.discord().adminUserIds()::contains);
     }
     @Bean PlayerParticipationUseCase playerParticipationUseCase(Clock clock, GridwordsBotProperties properties, PlayerStore players) {

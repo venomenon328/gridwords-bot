@@ -267,6 +267,11 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
     }
 
     @Override
+    public List<StoredPlayer> findAllPlayers() {
+        return jdbc.query("SELECT * FROM player ORDER BY discord_user_id", PLAYER);
+    }
+
+    @Override
     public List<ParticipationPeriod> findParticipationPeriods() {
         return jdbc.query("SELECT player_id, active_from, inactive_from FROM player_participation_period ORDER BY player_id, active_from",
                 (rs, row) -> new ParticipationPeriod(rs.getLong("player_id"), rs.getObject("active_from", LocalDate.class), rs.getObject("inactive_from", LocalDate.class)));
