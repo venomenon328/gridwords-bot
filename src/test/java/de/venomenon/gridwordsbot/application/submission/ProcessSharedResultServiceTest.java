@@ -65,15 +65,15 @@ class ProcessSharedResultServiceTest {
     }
 
     @Test
-    void passesTheConfiguredPlayerPairToResultStorage() {
+    void registersTheSharingPlayerForParticipationWithAValidShare() {
         service = new ProcessSharedResultService(
                 new GridWordsShareParser(), new QuadWordsShareParser(), Clock.fixed(RECEIVED_AT, ZoneOffset.UTC),
-                ZoneId.of("Europe/Berlin"), store, store, List.of(TOBIAS, GEORGIA), ignored -> true);
+                ZoneId.of("Europe/Berlin"), store, store, ignored -> true);
 
         assertThat(service.process(message(18L, TOBIAS, gridWords(29, 3))))
                 .isEqualTo(new ProcessingResult.Accepted());
 
-        assertThat(store.lastResultStorage.configuredPlayerIds()).containsExactly(TOBIAS, GEORGIA);
+        assertThat(store.lastResultStorage.playerRegistration().profile().discordUserId()).isEqualTo(TOBIAS);
     }
 
     @Test
@@ -202,8 +202,7 @@ class ProcessSharedResultServiceTest {
         service = new ProcessSharedResultService(
                 new GridWordsShareParser(), new QuadWordsShareParser(), loader,
                 imageParser(new QuadWordsImageParser.Parse.Parsed(boards(9))),
-                Clock.fixed(RECEIVED_AT, ZoneOffset.UTC), ZoneId.of("Europe/Berlin"), store, store,
-                List.of(), ignored -> false);
+                Clock.fixed(RECEIVED_AT, ZoneOffset.UTC), ZoneId.of("Europe/Berlin"), store, store, ignored -> false);
 
         assertThat(service.process(inbound)).isEqualTo(new ProcessingResult.Ignored());
         verifyNoInteractions(loader);
@@ -365,7 +364,7 @@ class ProcessSharedResultServiceTest {
 
     private ProcessSharedResultService quadService(AttachmentContentLoader loader, QuadWordsImageParser parser) {
         return new ProcessSharedResultService(new GridWordsShareParser(), new QuadWordsShareParser(), loader, parser,
-                Clock.fixed(RECEIVED_AT, ZoneOffset.UTC), ZoneId.of("Europe/Berlin"), store, store, List.of(), ignored -> true);
+                Clock.fixed(RECEIVED_AT, ZoneOffset.UTC), ZoneId.of("Europe/Berlin"), store, store, ignored -> true);
     }
 
     private QuadWordsImageParser imageParser(QuadWordsImageParser.Parse parse) {
@@ -408,16 +407,17 @@ class ProcessSharedResultServiceTest {
     }
 
     private String gridWords(int day, int attempts) {
-        return "GridWords (" + day + ". Juli 2026) " + attempts + "/6 in 1:25 🔥2\n"
-                + String.join("\n", List.of("⬜⬜⬜⬜⬜", "🟨🟨🟨🟨🟨", "🟩🟩🟩🟩🟩", "⬜⬜⬜⬜⬜")
-                .subList(0, attempts));
+        return "GridWords (" + day + ". Juli 2026) " + attempts + "/6 in 1:25 \uD83D\uDD252\n"
+                + String.join("\n", List.of("\u2B1C".repeat(5), "\uD83D\uDFE8".repeat(5),
+                        "\uD83D\uDFE9".repeat(5), "\u2B1C".repeat(5)).subList(0, attempts));
     }
 
     private String gridWordsUnsolved(int day) {
         return "GridWords (" + day + ". Juli 2026) X/6 in 6:42\n"
-                + String.join("\n", List.of("⬜⬜⬜⬜⬜", "🟨🟨🟨🟨🟨", "🟩🟩🟩🟩🟩", "⬜⬜⬜⬜⬜", "🟨🟨🟨🟨🟨", "🟩🟩🟩🟩🟩"));
+                + String.join("\n", List.of("\u2B1C".repeat(5), "\uD83D\uDFE8".repeat(5),
+                        "\uD83D\uDFE9".repeat(5), "\u2B1C".repeat(5), "\uD83D\uDFE8".repeat(5),
+                        "\uD83D\uDFE9".repeat(5)));
     }
-
     private static class InMemoryStore implements PlayerStore, SubmissionStore {
         private final Map<Long, StoredPlayer> players = new HashMap<>();
         private final Map<Long, StoredSubmission> submissions = new HashMap<>();

@@ -19,10 +19,6 @@ class GridwordsBotPropertiesTest {
                     "gridwords.discord.guild-id=255064124902473729",
                     "gridwords.discord.channel-id=1531398793713549494",
                     "gridwords.discord.admin-user-ids=255063936410451978,451773931351834634",
-                    "gridwords.players.first.user-id=255063936410451978",
-                    "gridwords.players.first.display-name=Tobias",
-                    "gridwords.players.second.user-id=451773931351834634",
-                    "gridwords.players.second.display-name=Georgia",
                     "gridwords.schedule.first-reminder=18:00",
                     "gridwords.schedule.second-reminder=23:00",
                     "gridwords.schedule.weekly-report=08:00",
@@ -37,8 +33,6 @@ class GridwordsBotPropertiesTest {
 
             assertThat(properties.discord().guildId()).isEqualTo(255064124902473729L);
             assertThat(properties.discord().channelId()).isEqualTo(1531398793713549494L);
-            assertThat(properties.players().first().displayName()).isEqualTo("Tobias");
-            assertThat(properties.players().second().displayName()).isEqualTo("Georgia");
             assertThat(properties.schedule().firstReminder()).isEqualTo(LocalTime.of(18, 0));
             assertThat(properties.schedule().secondReminder()).isEqualTo(LocalTime.of(23, 0));
             assertThat(properties.schedule().timeZone()).isEqualTo(ZoneId.of("Europe/Berlin"));

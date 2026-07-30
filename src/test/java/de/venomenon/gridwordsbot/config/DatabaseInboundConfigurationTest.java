@@ -45,11 +45,7 @@ class DatabaseInboundConfigurationTest {
 
     private static GridwordsBotProperties properties() {
         return new GridwordsBotProperties(
-                new GridwordsBotProperties.Discord(false, "unused", 11L, 12L, List.of()),
-                new GridwordsBotProperties.Players(
-                        new GridwordsBotProperties.Player(1L, "Tobias"),
-                        new GridwordsBotProperties.Player(2L, "Georgia")),
-                new GridwordsBotProperties.Schedule(
+                new GridwordsBotProperties.Discord(false, "unused", 11L, 12L, List.of()), new GridwordsBotProperties.Schedule(
                         LocalTime.of(8, 0),
                         LocalTime.of(18, 0),
                         LocalTime.of(8, 0),
