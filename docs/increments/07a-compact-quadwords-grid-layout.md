@@ -55,4 +55,4 @@ Automatisierte Abnahme am 30. Juli 2026:
 - JDA-Test für die Wiederherstellung historisch etablierter Komplett-/Perfektzeilen bei Neuerzeugung
 - PostgreSQL-Test für die Aggregation des historischen PublicationContext über mehrere Submissions desselben Ergebnisses
 
-Offen bleibt ausschließlich Tobias' kurzer visueller Discord-Smoke-Test: Beide QuadWords-Spalten müssen ohne Versatz stehen, GridWords muss im Codeblock bleiben, Kontextzeilen müssen bei der erneuten Korrektur beziehungsweise Neuerzeugung erscheinen und die sichere Quelllöschung muss unverändert funktionieren.
+Offen bleibt ausschließlich Tobias' kurzer visueller Discord-Smoke-Test: Beide QuadWords-Spalten müssen durch die weißen Auffüllzeilen ohne Versatz stehen, GridWords muss im Codeblock bleiben, die für den Tag ursprünglich etablierte Komplett-/Perfektinformation muss im dafür zuständigen Embed bei Korrektur beziehungsweise Neuerzeugung wieder erscheinen und die sichere Quelllöschung muss unverändert funktionieren.
