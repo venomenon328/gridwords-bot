@@ -8,6 +8,7 @@ import de.venomenon.gridwordsbot.adapter.discord.inbound.JdaAttachmentContentLoa
 import de.venomenon.gridwordsbot.application.canonical.CanonicalGridWordsPublicationService;
 import de.venomenon.gridwordsbot.application.canonical.GridWordsSourceDeletionService;
 import de.venomenon.gridwordsbot.application.player.PlayerParticipationService;
+import de.venomenon.gridwordsbot.application.status.DailyStatusRefreshService;
 import de.venomenon.gridwordsbot.application.submission.ProcessSharedResultService;
 import de.venomenon.gridwordsbot.parser.gridwords.GridWordsShareParser;
 import de.venomenon.gridwordsbot.parser.quadwords.QuadWordsImageParser;
@@ -43,7 +44,7 @@ class DatabaseInboundConfiguration {
             PlayerStore players, SubmissionStore submissions,
             ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider,
             ObjectProvider<AttachmentContentLoader> loaderProvider,
-            ObjectProvider<de.venomenon.gridwordsbot.application.status.DailyStatusRefreshService> statusProvider) {
+            ObjectProvider<DailyStatusRefreshService> statusProvider) {
         AttachmentContentLoader loader = loaderProvider.getIfAvailable(() -> attachment -> {
             throw new AttachmentContentLoader.RetryableAttachmentException("attachment loader is unavailable", null);
         });
@@ -53,19 +54,16 @@ class DatabaseInboundConfiguration {
                     CanonicalGridWordsPublicationService canonical = canonicalProvider.getIfAvailable();
                     return canonical != null && canonical.publish(sourceMessageId);
                 }, properties.discord().adminUserIds()::contains, gameDate -> {
-                    de.venomenon.gridwordsbot.application.status.DailyStatusRefreshService status =
-                            statusProvider.getIfAvailable();
+                    DailyStatusRefreshService status = statusProvider.getIfAvailable();
                     if (status != null) status.refresh(gameDate);
                 });
     }
     @Bean PlayerParticipationUseCase playerParticipationUseCase(Clock clock, GridwordsBotProperties properties,
-            PlayerStore players,
-            ObjectProvider<de.venomenon.gridwordsbot.application.status.DailyStatusRefreshService> statusProvider) {
+            PlayerStore players, ObjectProvider<DailyStatusRefreshService> statusProvider) {
         return new PlayerParticipationService(players, clock, properties.schedule().timeZone(),
                 Set.copyOf(properties.discord().adminUserIds()), gameDate -> {
-                    de.venomenon.gridwordsbot.application.status.DailyStatusRefreshService status =
-                            statusProvider.getIfAvailable();
-                    if (status != null) status.refresh(gameDate);
+                    DailyStatusRefreshService status = statusProvider.getIfAvailable();
+                    if (status != null) status.refreshExisting(gameDate);
                 });
     }
     @Bean ZoneId businessZone(GridwordsBotProperties properties) { return properties.schedule().timeZone(); }
