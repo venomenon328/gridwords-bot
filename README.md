@@ -7,6 +7,7 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 - [`docs/anforderungsspezifikation.md`](docs/anforderungsspezifikation.md) – verbindliche fachliche Grundanforderungen
 - [`docs/requirements/series-model.md`](docs/requirements/series-model.md) – verbindliche Seriensemantik
 - [`docs/requirements/dynamic-player-model.md`](docs/requirements/dynamic-player-model.md) – dynamische Spieler, Teilnahmezeiträume und Reminder-Opt-in
+- [`docs/requirements/daily-status-reminders.md`](docs/requirements/daily-status-reminders.md) – Tagesstatus, Scheduler und persistente Reminder-Auslieferung
 - [`docs/architecture.md`](docs/architecture.md) – Architektur und Modulgrenzen
 - [`docs/implementation-plan.md`](docs/implementation-plan.md) – Inkremente und Reihenfolge
 - [`docs/development-guide.md`](docs/development-guide.md) – lokaler Build, Docker und Tests
@@ -17,7 +18,7 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 Die Inkremente 0 bis 7 sowie die Zwischeninkremente 7.1 und 7.2 sind abgeschlossen. Das dynamische Spielermodell, historisch stabile Teilnahmezeiträume sowie Teilnahme- und Reminder-Commands wurden automatisiert und am 30. Juli 2026 in einem realen Discord-/PostgreSQL-Smoke-Test mit mindestens drei Nutzern abgenommen.
 
-Als Nächstes folgt Inkrement 8 mit Tagesstatus, vollständigen Serien und zeitgesteuerten Erinnerungen. Der eigentliche Scheduler und Reminder-Versand sind bewusst noch nicht Bestandteil des aktuellen Stands.
+Inkrement 8 ist als Issue #21 auf `feature/daily-status-reminders` und Draft-PR #22 vorbereitet. Es ergänzt eine persistente Tagesstatusnachricht, alle persönlichen und gemeinsamen Serien, DST-sicheres Scheduling sowie Erinnerungen um 18:00 und 23:00 Uhr. Die eigentliche Implementierung ist noch nicht Bestandteil dieses vorbereitenden Stands.
 
 Der Projektstand umfasst:
 
