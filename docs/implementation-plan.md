@@ -157,7 +157,7 @@ Abnahme:
 
 ## Zwischeninkrement 7.2 – Dynamische Spieler, Teilnahmezeiträume und Reminder-Opt-in
 
-**Status:** vollständig automatisiert umgesetzt auf Draft-PR #20; offen bleibt nur Tobias' manueller Drei-Nutzer-Smoke-Test.
+**Status:** abgeschlossen; automatisierte und reale Discord-/PostgreSQL-Abnahme am 30. Juli 2026 erfolgreich.
 
 **Ziel:** die feste Zwei-Spieler-Konfiguration durch dynamische Spielerprofile und historisch stabile Teilnahmezeiträume ersetzen sowie die Reminder-Präferenzen für Inkrement 8 vorbereiten.
 
@@ -184,12 +184,13 @@ Umgesetzt:
 
 Verbindlich: `docs/requirements/dynamic-player-model.md` und `docs/increments/07b-dynamic-player-participation.md`.
 
-Automatisierte Abnahme:
+Abnahme:
 
-- 207 Standardtests grün
-- 63 PostgreSQL-Integrationstests grün
-- GitHub Actions auf dem finalen Code-Head vollständig grün
+- 207 Standardtests lokal und in GitHub Actions grün
+- 63 PostgreSQL-Integrationstests lokal und in GitHub Actions grün
 - keine automatisierte Discord-Verbindung oder Token-Verwendung
+- realer Discord-/PostgreSQL-Smoke-Test mit mindestens drei Nutzern erfolgreich
+- automatische Registrierung, Namenssynchronisierung, Commands, Reminder-Opt-in, wechselnde Teilnehmer und sichere Ergebnisersetzung geprüft
 
 ## Inkrement 8 – Tagesstatus, vollständige Serien und Erinnerungen
 
