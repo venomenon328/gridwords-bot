@@ -139,7 +139,7 @@ public class LegacyCompatiblePostgresPersistenceAdapter extends PostgresPersiste
         String bottomLeft = optionalColumn(rs, "quadwords_bottom_left_board");
         String bottomRight = optionalColumn(rs, "quadwords_bottom_right_board");
         Optional<NormalizedBoard> gridBoard = type == GameType.GRIDWORDS && boardText != null
-                ? Optional.of(NormalizedBoard.fromCanonicalText(boardText)) : Optional.empty();
+                ? Optional.of(new NormalizedBoard(List.of(boardText.split("\\n", -1)))) : Optional.empty();
         Optional<QuadWordsBoards> quadBoards = type == GameType.QUADWORDS
                 && topLeft != null && topRight != null && bottomLeft != null && bottomRight != null
                 ? Optional.of(new QuadWordsBoards(
