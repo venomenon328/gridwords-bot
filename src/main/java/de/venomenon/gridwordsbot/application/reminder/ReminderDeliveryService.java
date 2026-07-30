@@ -44,7 +44,9 @@ public final class ReminderDeliveryService {
                 store.completeReminder(claim, DailyStatusStore.ReminderState.NO_CANDIDATES, java.util.Optional.empty());
                 return;
             }
-            Set<Long> allowed = selected.stream().map(ReminderCandidateStore.ReminderCandidate::discordUserId)
+            Set<Long> allowed = selected.stream()
+                    .filter(ReminderCandidateStore.ReminderCandidate::reminderOptIn)
+                    .map(ReminderCandidateStore.ReminderCandidate::discordUserId)
                     .collect(Collectors.toUnmodifiableSet());
             long messageId = messages.send(channelId, date, stage, selected, allowed);
             store.completeReminder(claim, DailyStatusStore.ReminderState.SENT, java.util.Optional.of(messageId));
