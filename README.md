@@ -35,6 +35,7 @@ Der Projektstand umfasst:
 - spieltypbezogene Publication-Keys sowie gemeinsame Claims, Delivery-Fence, Retry, Recovery, Supersession und Duplikatbereinigung
 - PublicationContext für persönliche und gemeinsame Komplett-/Perfektübergänge, auch wenn QuadWords die zweite Einreichung ist
 - sichere Lesbarkeit bereits gespeicherter QuadWords-Ergebnisse aus `quadwords-share-v1`, ohne Publish, Delete-Handoff oder Refresh-Schleife bei fehlenden Boards
+- permanente Löschfehler ohne Scheduler- oder Hot-Loop sowie kontrollierte Wiederaufnahme bei Neustart oder nach einer späteren bestätigten Veröffentlichung desselben Ergebnisses
 
 Ein sicher geparstes und gespeichertes QuadWords-Ergebnis wird ohne zusätzliche `✅`-Reaktion als genau eine kanonische Bot-Nachricht veröffentlicht; erst nach persistierter Veröffentlichung wird die menschliche Quelle gelöscht. Eine stabile fachliche Bildablehnung bleibt mit `⚠️` sichtbar. Technische Downloadfehler sowie boardlose Legacy-Ergebnisse erhalten weder ein Erfolgssignal noch einen Discord-Publish-/Delete-Aufruf.
 
@@ -170,7 +171,7 @@ Relevante Tabellen sind insbesondere `player`, `submission`, `game_result` und `
 - manuelle Smoke-Tests: echte Discord-Verbindung und Compose-PostgreSQL
 - H2 ersetzt keine PostgreSQL-Integrationstests
 
-Aktueller automatisierter Stand für Draft-PR #16: 194 Standardtests und 53 PostgreSQL-Integrationstests, jeweils ohne echte Discord-Verbindung oder Token.
+Aktueller automatisierter Stand für Draft-PR #16: 196 Standardtests und 56 PostgreSQL-Integrationstests, jeweils ohne echte Discord-Verbindung oder Token.
 
 ## Geheimnisse
 
