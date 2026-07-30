@@ -35,14 +35,14 @@ INSERT INTO daily_status_message (guild_id, channel_id, game_date, delivery_stat
 UPDATE daily_status_message SET delivery_state = 'CLAIMED', claim_token = ?, claim_until = ?, updated_at = ?
                 WHERE guild_id = ? AND channel_id = ? AND game_date = ?
                   AND (delivery_state IN ('PENDING','RETRYABLE','PERMANENT') OR claim_until IS NULL OR claim_until < ?)
-                RETURNING discord_message_id
+                RETURNING bot_message_id
 """, (rs, row) -> new StatusDelivery(guildId, channelId, date, token,
-                optionalLong(rs, "discord_message_id")), token, utc(leaseUntil), utc(now), guildId, channelId, date, utc(now)).stream().findFirst();
+                optionalLong(rs, "bot_message_id")), token, utc(leaseUntil), utc(now), guildId, channelId, date, utc(now)).stream().findFirst();
     }
     @Override @Transactional
     public void completeStatus(StatusDelivery claim, long messageId, String fingerprint) {
         updateExactlyOne("""
-UPDATE daily_status_message SET discord_message_id = ?, content_fingerprint = ?, delivery_state = 'DELIVERED',
+UPDATE daily_status_message SET bot_message_id = ?, content_fingerprint = ?, delivery_state = 'DELIVERED',
                 claim_token = NULL, claim_until = NULL, last_error = NULL, updated_at = ? WHERE guild_id = ? AND channel_id = ? AND game_date = ? AND claim_token = ?
 """,
                 messageId, fingerprint, utc(clock.instant()), claim.guildId(), claim.channelId(), claim.gameDate(), claim.claimToken());
@@ -74,7 +74,7 @@ UPDATE reminder_delivery SET delivery_state = 'CLAIMED', claim_token = ?, claim_
     @Override @Transactional
     public void completeReminder(ReminderDelivery claim, ReminderState state, Optional<Long> messageId) {
         updateExactlyOne("""
-UPDATE reminder_delivery SET delivery_state = ?, discord_message_id = ?, claim_token = NULL, claim_until = NULL,
+UPDATE reminder_delivery SET delivery_state = ?, bot_message_id = ?, claim_token = NULL, claim_until = NULL,
                 last_error = NULL, updated_at = ? WHERE guild_id = ? AND channel_id = ? AND game_date = ? AND reminder_stage = ? AND claim_token = ?
 """,
                 state.name(), messageId.orElse(null), utc(clock.instant()), claim.guildId(), claim.channelId(), claim.gameDate(), claim.stage(), claim.claimToken());

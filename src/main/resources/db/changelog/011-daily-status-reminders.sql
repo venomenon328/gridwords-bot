@@ -1,20 +1,11 @@
 --liquibase formatted sql
 
 --changeset gridwords:011-daily-status-reminders
-CREATE TABLE daily_status_message (
-    guild_id BIGINT NOT NULL,
-    channel_id BIGINT NOT NULL,
-    game_date DATE NOT NULL,
-    discord_message_id BIGINT,
-    delivery_state VARCHAR(20) NOT NULL,
-    claim_token UUID,
-    claim_until TIMESTAMPTZ,
-    content_fingerprint VARCHAR(128),
-    last_error VARCHAR(512),
-    created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL,
-    CONSTRAINT pk_daily_status_message PRIMARY KEY (guild_id, channel_id, game_date)
-);
+ALTER TABLE daily_status_message ADD COLUMN delivery_state VARCHAR(20) NOT NULL DEFAULT 'PENDING';
+ALTER TABLE daily_status_message ADD COLUMN claim_token UUID;
+ALTER TABLE daily_status_message ADD COLUMN claim_until TIMESTAMPTZ;
+ALTER TABLE daily_status_message ADD COLUMN content_fingerprint VARCHAR(128);
+ALTER TABLE daily_status_message ADD COLUMN last_error VARCHAR(512);
 
 CREATE TABLE reminder_delivery (
     guild_id BIGINT NOT NULL,
