@@ -34,6 +34,7 @@ Ein sicher geparstes und persistiertes QuadWords-Ergebnis wird in genau einer ka
 - Wegfall der `✅`-Reaktion für erfolgreich konsolidierte QuadWords-Quellen
 - PublicationContext auch bei QuadWords als zweiter Einreichung; Korrekturen etablieren Zustände nicht erneut und erhalten bestehende Kontextzeilen beim Edit
 - expliziter `NOT_PUBLISHABLE`-Ausgang für boardlose Legacy-Ergebnisse ohne Discord-Aufruf, Delete-Handoff, Erfolgssignal oder Refresh-Hot-Loop
+- permanente Löschfehler ohne Scheduler- oder Hot-Loop; kontrollierte Reaktivierung genau bei Neustart oder nach einer späteren bestätigten Veröffentlichung desselben Ergebnisses
 - parametrisierte gemeinsame Sicherheitsfälle für Erstpublish, Edit, Retry-Handoff, Delivery-Fence und Superseded-Reconciliation
 - QuadWords-spezifische Startup-, Legacy-, Delete-Recovery- und Permanentfehlerfälle
 - vollständige GridWords-Regression
@@ -47,9 +48,9 @@ mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
 
 Ergebnisse vom 30. Juli 2026:
 
-- Standardbuild: 194 Tests, 0 Fehler, 0 Fehlschläge, 0 übersprungen
-- Datenbankprofil: 194 Standardtests und 53 PostgreSQL-Integrationstests, jeweils 0 Fehler, 0 Fehlschläge, 0 übersprungen
-- PostgreSQL-Vollpfad: bildgestütztes QuadWords bis `COMPLETED`, Korrektur derselben kanonischen Message-ID, einmaliger PublicationContext, Legacy-Schutz und permanenter Delete-Fehler ohne Recovery-Hot-Loop
+- Standardbuild: 196 Tests, 0 Fehler, 0 Fehlschläge, 0 übersprungen
+- Datenbankprofil: 196 Standardtests und 56 PostgreSQL-Integrationstests, jeweils 0 Fehler, 0 Fehlschläge, 0 übersprungen
+- PostgreSQL-Vollpfad: bildgestütztes QuadWords bis `COMPLETED`, Korrektur derselben kanonischen Message-ID, einmaliger PublicationContext, Legacy-Schutz, permanenter Delete-Fehler ohne Hot-Loop und kontrollierte Recovery für beide Spieltypen
 
 Automatisierte Tests verwenden keinen echten Discord-Token, keine `.env` und öffnen keine echte Discord-Verbindung. Docker Desktop wird ausschließlich für PostgreSQL-Testcontainers verwendet.
 
