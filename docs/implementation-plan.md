@@ -52,7 +52,7 @@ Quelllöschung erst nach persistierter kanonischer Veröffentlichung, Lease-/Tok
 
 ## Inkrement 6 – QuadWords-Bildparser
 
-**Status:** automatisiert umgesetzt in Issue #13 / Draft-PR #14; lokale Maven-Abnahme und echter Discord-/PostgreSQL-Smoke-Test durch Tobias stehen noch aus.
+**Status:** abgeschlossen, PR #14; lokale Standard- und PostgreSQL-Tests sowie vollständiger Discord-/PostgreSQL-Smoke-Test am 30. Juli 2026 erfolgreich.
 
 **Ziel:** QuadWords-Ergebnisbilder ohne OCR sicher in vier normalisierte Raster überführen und persistent speichern.
 
@@ -61,6 +61,7 @@ Umgesetzt:
 - transportneutrale Attachment-Referenz aus Channel-, Message- und Attachment-ID
 - schmaler `AttachmentContentLoader`-Port und JDA-Adapter
 - Download erst nach erfolgreicher Kopfzeilenprüfung und eindeutiger Bildauswahl
+- Download der originalen signierten Discord-CDN-Datei statt der möglicherweise transformierten Medienproxy-Variante
 - Download und Decode außerhalb des JDA-Event-Threads
 - reine Java-Bildverarbeitung mit `ImageIO` und `BufferedImage`
 - Unterstützung von PNG und JPEG
@@ -89,14 +90,14 @@ Discord-Verhalten:
 - GridWords bleibt unverändert
 - keine kanonische QuadWords-Nachricht und keine QuadWords-Quelllöschung
 
-Abnahme vor Merge:
+Abnahme:
 
-- lokaler Standardbuild grün
-- lokales PostgreSQL-Profil mit Docker grün
+- lokaler Standardbuild: 181 Tests grün
+- lokales PostgreSQL-Profil: 51 Integrationstests zusätzlich grün
 - beide CI-Jobs grün
 - reales gelöstes und reales `X/9` visuell und in PostgreSQL geprüft
-- Korrektur und Neustart ohne Duplikate
-- GridWords-Regressionsprüfung
+- fachliche Fehlerfälle, Korrektur und Neustart erfolgreich geprüft
+- GridWords-Regressionsprüfung erfolgreich
 
 ## Inkrement 7 – Kanonische QuadWords-Konsolidierung und sichere Ersetzung
 
