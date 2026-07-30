@@ -18,12 +18,12 @@ final class CanonicalEmbedRenderer {
     MessageEmbed render(CanonicalResultMessage message) {
         String outcome = outcome(message);
         String duration = String.format("%d:%02d", message.duration().toMinutes(), message.duration().toSecondsPart());
-        String title = "\uD83D\uDFE9 GridWords · "
+        String title = gameTitle(message) + " \u00B7 "
                 + message.gameDate().format(DateTimeFormatter.ofPattern("d. MMMM uuuu", Locale.GERMAN));
         return new EmbedBuilder()
                 .setTitle(title)
                 .setDescription(message.playerDisplayName() + " · " + outcome + " · " + duration
-                        + "\n\n" + message.board().canonicalText()
+                        + "\n\n" + boardText(message)
                         + "\n\n" + series(message))
                 .setFooter(DiscordPublicationKey.encode(message.publicationKey()))
                 .build();
@@ -73,11 +73,27 @@ final class CanonicalEmbedRenderer {
         return "nicht gelöst · X/" + message.outcome().maxAttempts();
     }
 
+
+    private static String gameTitle(CanonicalResultMessage message) {
+        return message.gameType() == de.venomenon.gridwordsbot.domain.model.GameType.GRIDWORDS
+                ? "\uD83D\uDFE9 GridWords" : "\uD83D\uDFE6 QuadWords";
+    }
+
+    private static String boardText(CanonicalResultMessage message) {
+        if (message.gameType() == de.venomenon.gridwordsbot.domain.model.GameType.GRIDWORDS) return message.board().canonicalText();
+        var boards = message.quadWordsBoards().orElseThrow();
+        return "Oben links\n" + boards.topLeft().canonicalText() + "\n\nOben rechts\n" + boards.topRight().canonicalText()
+                + "\n\nUnten links\n" + boards.bottomLeft().canonicalText() + "\n\nUnten rechts\n" + boards.bottomRight().canonicalText();
+    }
+
     private static String series(CanonicalResultMessage message) {
         StringBuilder series = new StringBuilder()
                 .append("\uD83D\uDD25 Aktivität: ").append(days(message.streaks().personalActivity()))
-                .append("\n\uD83D\uDFE9 GridWords gelöst: ")
-                .append(daysOrNone(message.streaks().personalGridWordsSolved()));
+                .append("\n\uD83D\uDFE9 ")
+                .append(message.gameType() == de.venomenon.gridwordsbot.domain.model.GameType.GRIDWORDS ? "GridWords" : "QuadWords")
+                .append(" gel\u00F6st: ")
+                .append(daysOrNone(message.gameType() == de.venomenon.gridwordsbot.domain.model.GameType.GRIDWORDS
+                        ? message.streaks().personalGridWordsSolved() : message.streaks().personalQuadWordsSolved()));
         appendOptional(series, PERSONAL_COMPLETE, message.personalComplete());
         appendOptional(series, PERSONAL_PERFECT, message.personalPerfect());
         appendOptional(series, SHARED_COMPLETE, message.sharedComplete());

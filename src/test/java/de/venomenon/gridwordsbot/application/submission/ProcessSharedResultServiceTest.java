@@ -191,6 +191,26 @@ class ProcessSharedResultServiceTest {
     }
 
     @Test
+    void doesNotSignalSuccessForStoredQuadWordsThatAreNotPublishable() {
+        InboundSharedMessage inbound = message(28L, TOBIAS, quadWords(), List.of(image(28L, 700L)));
+        service = quadService(attachment -> new byte[] {1},
+                imageParser(new QuadWordsImageParser.Parse.Parsed(boards(9))));
+        assertThat(service.process(inbound)).isEqualTo(
+                new ProcessingResult.Accepted(de.venomenon.gridwordsbot.domain.model.GameType.QUADWORDS));
+
+        AttachmentContentLoader loader = mock(AttachmentContentLoader.class);
+        service = new ProcessSharedResultService(
+                new GridWordsShareParser(), new QuadWordsShareParser(), loader,
+                imageParser(new QuadWordsImageParser.Parse.Parsed(boards(9))),
+                Clock.fixed(RECEIVED_AT, ZoneOffset.UTC), ZoneId.of("Europe/Berlin"), store, store,
+                List.of(), ignored -> false);
+
+        assertThat(service.process(inbound)).isEqualTo(new ProcessingResult.Ignored());
+        verifyNoInteractions(loader);
+        assertThat(store.results).hasSize(1);
+    }
+
+    @Test
     void leavesGridWordsIndependentFromTheAttachmentPipeline() {
         AttachmentContentLoader loader = mock(AttachmentContentLoader.class);
         service = quadService(loader, imageParser(new QuadWordsImageParser.Parse.Parsed(boards(9))));

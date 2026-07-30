@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.port.out.PublicationRetryScheduler;
 import de.venomenon.gridwordsbot.port.out.SourceMessageDeletionGateway;
 import de.venomenon.gridwordsbot.port.out.SubmissionStore;
@@ -23,6 +24,8 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 
@@ -245,8 +248,9 @@ class GridWordsSourceDeletionServiceTest {
         verifyNoInteractions(discord);
     }
 
-    @Test
-    void confirmedCorrectionReconcilesItsSourceAndOlderEligibleSourcesOfTheSameResult() {
+    @ParameterizedTest
+    @EnumSource(GameType.class)
+    void confirmedCorrectionReconcilesItsSourceAndOlderEligibleSourcesOfTheSameResult(GameType gameType) {
         long olderSource = 9L;
         long unrelatedSource = 11L;
         long resultId = 20L;
@@ -260,8 +264,13 @@ class GridWordsSourceDeletionServiceTest {
 
         when(submissions.findBySourceMessageId(SOURCE)).thenReturn(Optional.of(current), Optional.of(current));
         when(submissions.findBySourceMessageId(olderSource)).thenReturn(Optional.of(older));
-        when(submissions.findGridWordsAwaitingOriginalSourceDeletion())
-                .thenReturn(List.of(current, older, unrelated));
+        if (gameType == GameType.GRIDWORDS) {
+            when(submissions.findGridWordsAwaitingOriginalSourceDeletion())
+                    .thenReturn(List.of(current, older, unrelated));
+        } else {
+            when(submissions.findAwaitingOriginalSourceDeletion(GameType.QUADWORDS))
+                    .thenReturn(List.of(current, older, unrelated));
+        }
         when(submissions.claimOriginalSourceDeletion(eq(SOURCE), any()))
                 .thenReturn(Optional.of(new SubmissionStore.SourceDeletionClaim(TOKEN, NOW.plusSeconds(60))));
         when(submissions.claimOriginalSourceDeletion(eq(olderSource), any()))
@@ -284,6 +293,21 @@ class GridWordsSourceDeletionServiceTest {
         verify(submissions, times(1)).claimOriginalSourceDeletion(eq(SOURCE), any());
         verify(submissions, times(1)).claimOriginalSourceDeletion(eq(olderSource), any());
         verify(submissions, never()).claimOriginalSourceDeletion(eq(unrelatedSource), any());
+    }
+
+
+    @Test
+    void startupRecoveryCompletesPersistedQuadWordsDeleteWithoutAnotherDiscordCall() {
+        SubmissionStore.StoredSubmission deleted = stored(
+                SOURCE, 20L, SubmissionStore.SubmissionState.ORIGINAL_MESSAGE_DELETED);
+        when(submissions.findAwaitingOriginalSourceDeletion(GameType.QUADWORDS)).thenReturn(List.of(deleted));
+        when(submissions.findBySourceMessageId(SOURCE)).thenReturn(Optional.of(deleted));
+        when(submissions.completeOriginalSourceDeletion(SOURCE)).thenReturn(true);
+
+        service.resumeOpenDeletions();
+
+        verify(submissions).completeOriginalSourceDeletion(SOURCE);
+        verifyNoInteractions(discord, scheduler);
     }
 
     private void published() {

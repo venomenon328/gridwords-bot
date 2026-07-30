@@ -1,15 +1,18 @@
 package de.venomenon.gridwordsbot.application.canonical;
 
+import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.port.out.PublicationRetryScheduler;
+import de.venomenon.gridwordsbot.port.out.SourceDeletionRecoveryStore;
 import de.venomenon.gridwordsbot.port.out.SourceMessageDeletionGateway;
 import de.venomenon.gridwordsbot.port.out.SubmissionStore;
 import java.time.Clock;
 import java.util.Objects;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
 
-/** Completes the persisted second phase of a GridWords replacement outside database transactions. */
+/** Completes the persisted second phase of a canonical replacement outside database transactions. */
 public final class GridWordsSourceDeletionService {
 
     private static final long LEASE_SECONDS = 60;
@@ -18,6 +21,7 @@ public final class GridWordsSourceDeletionService {
     private final SourceMessageDeletionGateway deletionGateway;
     private final Clock clock;
     private final PublicationRetryScheduler retryScheduler;
+    private final SourceDeletionRecoveryStore recoveryStore;
     private final Set<Long> scheduledRetries = ConcurrentHashMap.newKeySet();
 
     public GridWordsSourceDeletionService(
@@ -25,10 +29,20 @@ public final class GridWordsSourceDeletionService {
             SourceMessageDeletionGateway deletionGateway,
             Clock clock,
             PublicationRetryScheduler retryScheduler) {
+        this(submissions, deletionGateway, clock, retryScheduler, ignored -> 0);
+    }
+
+    public GridWordsSourceDeletionService(
+            SubmissionStore submissions,
+            SourceMessageDeletionGateway deletionGateway,
+            Clock clock,
+            PublicationRetryScheduler retryScheduler,
+            SourceDeletionRecoveryStore recoveryStore) {
         this.submissions = Objects.requireNonNull(submissions);
         this.deletionGateway = Objects.requireNonNull(deletionGateway);
         this.clock = Objects.requireNonNull(clock);
         this.retryScheduler = Objects.requireNonNull(retryScheduler);
+        this.recoveryStore = Objects.requireNonNull(recoveryStore);
     }
 
     /** Returns true only once the source deletion has been durably completed. */
@@ -100,8 +114,9 @@ public final class GridWordsSourceDeletionService {
         }
         long resultId = current.gameResultId().orElseThrow();
 
+        recoveryStore.reactivatePermanentFailures(OptionalLong.of(resultId));
         deleteAfterCanonicalPublication(sourceMessageId);
-        for (SubmissionStore.StoredSubmission candidate : submissions.findGridWordsAwaitingOriginalSourceDeletion()) {
+        for (SubmissionStore.StoredSubmission candidate : findAllAwaitingOriginalSourceDeletion()) {
             if (candidate.sourceMessageId() != sourceMessageId
                     && candidate.gameResultId().filter(candidateResultId -> candidateResultId == resultId).isPresent()) {
                 deleteAfterCanonicalPublication(candidate.sourceMessageId());
@@ -111,9 +126,20 @@ public final class GridWordsSourceDeletionService {
 
     /** Startup recovery reads durable work; it never relies on a scheduler wake-up as its source of truth. */
     public void resumeOpenDeletions() {
-        for (SubmissionStore.StoredSubmission submission : submissions.findGridWordsAwaitingOriginalSourceDeletion()) {
+        recoveryStore.reactivatePermanentFailures(OptionalLong.empty());
+        for (SubmissionStore.StoredSubmission submission : findAllAwaitingOriginalSourceDeletion()) {
             deleteAfterCanonicalPublication(submission.sourceMessageId());
         }
+    }
+
+    private java.util.List<SubmissionStore.StoredSubmission> findAllAwaitingOriginalSourceDeletion() {
+        java.util.List<SubmissionStore.StoredSubmission> all = new java.util.ArrayList<>(
+                submissions.findGridWordsAwaitingOriginalSourceDeletion());
+        try {
+            all.addAll(submissions.findAwaitingOriginalSourceDeletion(GameType.QUADWORDS));
+        } catch (UnsupportedOperationException ignored) {
+        }
+        return all;
     }
 
     private boolean confirmDeleted(long sourceMessageId, java.util.UUID claimToken) {

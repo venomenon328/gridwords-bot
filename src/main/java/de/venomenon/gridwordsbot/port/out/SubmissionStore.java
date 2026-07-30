@@ -1,5 +1,6 @@
 package de.venomenon.gridwordsbot.port.out;
 
+import de.venomenon.gridwordsbot.domain.model.GameType;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
@@ -69,9 +70,12 @@ public interface SubmissionStore {
         throw new UnsupportedOperationException("canonical refresh is not available");
     }
 
-    default List<StoredSubmission> findGridWordsAwaitingCanonicalPublication() {
-        throw new UnsupportedOperationException("publication recovery is not available");
+    default List<StoredSubmission> findGridWordsAwaitingCanonicalPublication() { throw new UnsupportedOperationException("publication recovery is not available"); }
+    default List<StoredSubmission> findAwaitingCanonicalPublication(GameType gameType) {
+        return gameType == GameType.GRIDWORDS ? findGridWordsAwaitingCanonicalPublication()
+                : throwUnsupportedPublicationRecovery();
     }
+    private List<StoredSubmission> throwUnsupportedPublicationRecovery() { throw new UnsupportedOperationException("publication recovery is not available"); }
 
     /** Acquires a short, token-owned claim for one source-message delete REST call. */
     default Optional<SourceDeletionClaim> claimOriginalSourceDeletion(long sourceMessageId, Instant leaseUntil) {
@@ -95,9 +99,12 @@ public interface SubmissionStore {
     }
 
     /** Lists only persisted GridWords source-delete work that has not reached the terminal completed state. */
-    default List<StoredSubmission> findGridWordsAwaitingOriginalSourceDeletion() {
-        throw new UnsupportedOperationException("source deletion recovery is not available");
+    default List<StoredSubmission> findGridWordsAwaitingOriginalSourceDeletion() { throw new UnsupportedOperationException("source deletion recovery is not available"); }
+    default List<StoredSubmission> findAwaitingOriginalSourceDeletion(GameType gameType) {
+        return gameType == GameType.GRIDWORDS ? findGridWordsAwaitingOriginalSourceDeletion()
+                : throwUnsupportedDeletionRecovery();
     }
+    private List<StoredSubmission> throwUnsupportedDeletionRecovery() { throw new UnsupportedOperationException("source deletion recovery is not available"); }
 
     record SubmissionRegistration(
             long sourceMessageId,

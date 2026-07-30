@@ -66,7 +66,7 @@ class DiscordInboundListenerTest {
         assertThat(inbound.getValue().channelId()).isEqualTo(CHANNEL);
         assertThat(inbound.getValue().messageId()).isEqualTo(500L);
         assertThat(inbound.getValue().authorId()).isEqualTo(TOBIAS);
-        verify(reactions).addReaction(message, "✅");
+        verifyNoInteractions(reactions);
     }
 
     @Test

@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.function.LongConsumer;
 
-/** Coordinates one resumable canonical GridWords publication without a Discord call in a transaction. */
+/** Coordinates one resumable canonical game-result publication without a Discord call in a transaction. */
 public final class CanonicalGridWordsPublicationService {
 
     private static final long LEASE_SECONDS = 60;
@@ -105,9 +105,10 @@ public final class CanonicalGridWordsPublicationService {
 
     /** Replays open publications and persisted refresh work after startup. */
     public void resumeOpenPublications() {
-        for (SubmissionStore.StoredSubmission submission : submissions.findGridWordsAwaitingCanonicalPublication()) {
+        for (SubmissionStore.StoredSubmission submission : submissions.findGridWordsAwaitingCanonicalPublication())
             publishAndHandOff(submission.sourceMessageId());
-        }
+        for (SubmissionStore.StoredSubmission submission : submissions.findAwaitingCanonicalPublication(GameType.QUADWORDS))
+            publishAndHandOff(submission.sourceMessageId());
         for (SubmissionStore.CanonicalRefreshCandidate refresh : submissions.findCanonicalRefreshCandidates()) {
             resumeCurrentRefresh(refresh.submission().gameResultId().orElseThrow());
         }
@@ -127,18 +128,18 @@ private PublicationOutcome publishAndHandOff(long sourceMessageId) {
         try {
             SubmissionStore.StoredSubmission submission = submissions.findBySourceMessageId(sourceMessageId)
                     .orElseThrow();
-            if (submission.state() == SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED
-                    || submission.state() == SubmissionStore.SubmissionState.ORIGINAL_MESSAGE_DELETED
-                    || submission.state() == SubmissionStore.SubmissionState.COMPLETED) {
-                return PublicationOutcome.PUBLISHED;
-            }
             if (submission.state() == SubmissionStore.SubmissionState.SUPERSEDED) {
                 return PublicationOutcome.SUPERSEDED;
             }
 
             resultId = submission.gameResultId().orElseThrow();
             GameResultStore.StoredGameResult result = results.findById(resultId).orElseThrow();
-            if (result.parsedResult().gameType() != GameType.GRIDWORDS) {
+            if (!isPublishable(result)) {
+                return PublicationOutcome.NOT_PUBLISHABLE;
+            }
+            if (submission.state() == SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED
+                    || submission.state() == SubmissionStore.SubmissionState.ORIGINAL_MESSAGE_DELETED
+                    || submission.state() == SubmissionStore.SubmissionState.COMPLETED) {
                 return PublicationOutcome.PUBLISHED;
             }
 
@@ -317,14 +318,13 @@ private PublicationOutcome publishAndHandOff(long sourceMessageId) {
                     && current.state() != SubmissionStore.SubmissionState.ORIGINAL_MESSAGE_DELETED
                     && current.state() != SubmissionStore.SubmissionState.COMPLETED) {
                 return switch (publishAndHandOff(current.sourceMessageId())) {
+                    case NOT_PUBLISHABLE -> RefreshOutcome.COMPLETED;
                     case PUBLISHED, RETRY_SCHEDULED, SUPERSEDED -> RefreshOutcome.RETRY_SCHEDULED;
                 };
             }
 
             GameResultStore.StoredGameResult result = results.findById(resultId).orElseThrow();
-            if (result.parsedResult().gameType() != GameType.GRIDWORDS) {
-                return RefreshOutcome.COMPLETED;
-            }
+            if (!isPublishable(result)) return RefreshOutcome.COMPLETED;
             GameResultStore.PublicationClaim claim = results.claimCanonicalPublication(
                     resultId,
                     clock.instant().plusSeconds(LEASE_SECONDS)).orElse(null);
@@ -409,17 +409,22 @@ private PublicationOutcome publishAndHandOff(long sourceMessageId) {
 
         return new CanonicalResultMessage(
                 players.findByDiscordUserId(playerId).orElseThrow().displayName(),
-                GameType.GRIDWORDS,
+                result.parsedResult().gameType(),
                 date,
                 result.parsedResult().outcome(),
                 result.parsedResult().duration(),
-                result.parsedResult().board().orElseThrow(),
+                result.parsedResult().board().orElse(null),
                 streaks,
                 contextual(streaks.personalComplete(), publicationContext.personalCompleteEstablished()),
                 contextual(streaks.personalPerfect(), publicationContext.personalPerfectEstablished()),
                 contextual(streaks.sharedComplete(), publicationContext.sharedCompleteEstablished()),
                 contextual(streaks.sharedPerfect(), publicationContext.sharedPerfectEstablished()),
-                "gridwords-result-" + result.id());
+                result.parsedResult().quadWordsBoards(),
+                result.parsedResult().gameType().name().toLowerCase(java.util.Locale.ROOT) + "-result-" + result.id());
+    }
+
+    private static boolean isPublishable(GameResultStore.StoredGameResult result) {
+        return result.parsedResult().gameType() == GameType.GRIDWORDS || result.parsedResult().quadWordsBoards().isPresent();
     }
 
     private static OptionalInt contextual(int streak, boolean establishedByThisSubmission) {
@@ -429,7 +434,8 @@ private PublicationOutcome publishAndHandOff(long sourceMessageId) {
     private enum PublicationOutcome {
         PUBLISHED,
         RETRY_SCHEDULED,
-        SUPERSEDED
+        SUPERSEDED,
+        NOT_PUBLISHABLE
     }
 
     private enum RefreshOutcome {

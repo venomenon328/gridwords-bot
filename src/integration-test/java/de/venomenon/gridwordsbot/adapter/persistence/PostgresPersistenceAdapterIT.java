@@ -675,6 +675,132 @@ class PostgresPersistenceAdapterIT {
     }
 
     @Test
+    void publishesImageBackedQuadWordsToCompletedAndKeepsTransitionContextOnlyOnTheFirstSubmission() {
+        long tobias = 180L;
+        long georgia = 181L;
+        long source = 980L;
+        long correctionSource = 981L;
+        long canonicalMessageId = 9800L;
+        List<Long> configuredPlayerIds = List.of(tobias, georgia);
+        adapter.upsert(new PlayerStore.PlayerUpsert(tobias, "Quad context Tobias", true, false));
+        adapter.upsert(new PlayerStore.PlayerUpsert(georgia, "Quad context Georgia", true, false));
+
+        registerSubmission(982L, tobias);
+        store(982L, resultFor(tobias, 3, "tobias grid"), configuredPlayerIds);
+        registerSubmission(983L, georgia);
+        store(983L, resultFor(georgia, 3, "georgia grid"), configuredPlayerIds);
+        registerSubmission(984L, georgia);
+        store(984L, quadResult(georgia, 4, "georgia quad", "quadwords-image-v2"), configuredPlayerIds);
+
+        registerSubmission(source, tobias);
+        SubmissionStore.StoredSubmission first = store(
+                source, quadResult(tobias, 4, "tobias quad", "quadwords-image-v2"), configuredPlayerIds);
+        long resultId = first.gameResultId().orElseThrow();
+        assertTrue(first.publicationContext().personalCompleteEstablished());
+        assertTrue(first.publicationContext().personalPerfectEstablished());
+        assertTrue(first.publicationContext().sharedCompleteEstablished());
+        assertTrue(first.publicationContext().sharedPerfectEstablished());
+
+        GameResultStore.PublicationClaim firstClaim = adapter.claimCanonicalPublication(resultId, now.plusSeconds(60))
+                .orElseThrow();
+        transactions.execute(status -> adapter.beginCanonicalDelivery(source, resultId, firstClaim.token()));
+        assertEquals(Boolean.TRUE, transactions.execute(status -> adapter.completeCanonicalPublication(
+                source, resultId, canonicalMessageId, firstClaim.token())));
+        SubmissionStore.SourceDeletionClaim firstDelete = transactions.execute(status ->
+                adapter.claimOriginalSourceDeletion(source, now.plusSeconds(60)).orElseThrow());
+        assertEquals(Boolean.TRUE, transactions.execute(status ->
+                adapter.recordOriginalSourceDeleted(source, firstDelete.token())));
+        assertEquals(Boolean.TRUE, transactions.execute(status -> adapter.completeOriginalSourceDeletion(source)));
+        assertEquals(SubmissionStore.SubmissionState.COMPLETED,
+                adapter.findBySourceMessageId(source).orElseThrow().state());
+
+        registerSubmission(correctionSource, tobias, now.plusSeconds(1));
+        SubmissionStore.StoredSubmission correction = store(correctionSource,
+                quadResult(tobias, 3, "tobias quad correction", "quadwords-image-v2"), configuredPlayerIds);
+        assertEquals(resultId, correction.gameResultId().orElseThrow());
+        assertFalse(correction.publicationContext().personalCompleteEstablished());
+        assertFalse(correction.publicationContext().personalPerfectEstablished());
+        assertFalse(correction.publicationContext().sharedCompleteEstablished());
+        assertFalse(correction.publicationContext().sharedPerfectEstablished());
+        assertEquals(SubmissionStore.CanonicalPublicationPreparation.PUBLISHABLE,
+                transactions.execute(status -> adapter.prepareCanonicalPublication(correctionSource, resultId)));
+
+        GameResultStore.PublicationClaim correctionClaim = adapter.claimCanonicalPublication(resultId, now.plusSeconds(60))
+                .orElseThrow();
+        transactions.execute(status -> adapter.beginCanonicalDelivery(correctionSource, resultId, correctionClaim.token()));
+        assertEquals(Boolean.TRUE, transactions.execute(status -> adapter.completeCanonicalPublication(
+                correctionSource, resultId, canonicalMessageId, correctionClaim.token())));
+        assertEquals(canonicalMessageId, adapter.findById(resultId).orElseThrow().canonicalMessageId().orElseThrow());
+        SubmissionStore.SourceDeletionClaim correctionDelete = transactions.execute(status ->
+                adapter.claimOriginalSourceDeletion(correctionSource, now.plusSeconds(60)).orElseThrow());
+        assertEquals(Boolean.TRUE, transactions.execute(status ->
+                adapter.recordOriginalSourceDeleted(correctionSource, correctionDelete.token())));
+        assertEquals(Boolean.TRUE, transactions.execute(status -> adapter.completeOriginalSourceDeletion(correctionSource)));
+        assertEquals(SubmissionStore.SubmissionState.COMPLETED,
+                adapter.findBySourceMessageId(correctionSource).orElseThrow().state());
+    }
+
+    @Test
+    void excludesBoardlessLegacyQuadWordsAndPermanentDeleteFailuresFromEveryRecoverySelector() {
+        long legacyPlayer = 182L;
+        long legacySource = 985L;
+        adapter.upsert(new PlayerStore.PlayerUpsert(legacyPlayer, "Legacy quad", true, false));
+        registerSubmission(legacySource, legacyPlayer);
+        long legacyResultId = jdbc.queryForObject("""
+                INSERT INTO game_result (
+                    player_id, game_type, game_date, solved, attempts_used, max_attempts,
+                    duration_seconds, gridgames_streak, normalized_board, raw_share_text,
+                    parser_version, canonical_message_id, created_at, updated_at)
+                VALUES (?, 'QUADWORDS', ?, TRUE, 4, 9, 42, NULL, NULL, ?,
+                    'quadwords-share-v1', 9850, ?, ?)
+                RETURNING id
+                """, Long.class, legacyPlayer, LocalDate.of(2026, 7, 29), "legacy quad",
+                now.atOffset(ZoneOffset.UTC), now.atOffset(ZoneOffset.UTC));
+        jdbc.update("""
+                UPDATE submission
+                SET game_result_id = ?, processing_state = 'RESULT_STORED', updated_at = ?
+                WHERE source_message_id = ?
+                """, legacyResultId, now.atOffset(ZoneOffset.UTC), legacySource);
+
+        assertFalse(adapter.findAwaitingCanonicalPublication(GameType.QUADWORDS).stream()
+                .anyMatch(submission -> submission.sourceMessageId() == legacySource));
+        adapter.requestCanonicalRefresh(legacyResultId);
+        assertFalse(adapter.findCanonicalRefreshCandidates().stream()
+                .anyMatch(candidate -> candidate.submission().sourceMessageId() == legacySource));
+        jdbc.update("UPDATE submission SET processing_state = 'CANONICAL_MESSAGE_PUBLISHED' WHERE source_message_id = ?",
+                legacySource);
+        assertFalse(adapter.findAwaitingOriginalSourceDeletion(GameType.QUADWORDS).stream()
+                .anyMatch(submission -> submission.sourceMessageId() == legacySource));
+        assertTrue(transactions.execute(status ->
+                adapter.claimOriginalSourceDeletion(legacySource, now.plusSeconds(60))).isEmpty());
+
+        long permanentPlayer = 183L;
+        long permanentSource = 986L;
+        adapter.upsert(new PlayerStore.PlayerUpsert(permanentPlayer, "Permanent quad", true, false));
+        registerSubmission(permanentSource, permanentPlayer);
+        long permanentResultId = store(permanentSource,
+                quadResult(permanentPlayer, 4, "permanent quad", "quadwords-image-v2"), List.of())
+                .gameResultId().orElseThrow();
+        GameResultStore.PublicationClaim publication = adapter.claimCanonicalPublication(
+                permanentResultId, now.plusSeconds(60)).orElseThrow();
+        transactions.execute(status -> adapter.beginCanonicalDelivery(
+                permanentSource, permanentResultId, publication.token()));
+        transactions.execute(status -> adapter.completeCanonicalPublication(
+                permanentSource, permanentResultId, 9860L, publication.token()));
+        SubmissionStore.SourceDeletionClaim deletion = transactions.execute(status ->
+                adapter.claimOriginalSourceDeletion(permanentSource, now.plusSeconds(60)).orElseThrow());
+        assertEquals(Boolean.TRUE, transactions.execute(status -> adapter.recordOriginalSourceDeletionFailure(
+                permanentSource, deletion.token(), SubmissionStore.OriginalDeletionFailure.PERMANENT,
+                "source message deletion was denied permanently")));
+
+        PostgresPersistenceAdapter restarted = new PostgresPersistenceAdapter(jdbc, Clock.fixed(now, ZoneOffset.UTC));
+        assertFalse(restarted.findAwaitingOriginalSourceDeletion(GameType.QUADWORDS).stream()
+                .anyMatch(submission -> submission.sourceMessageId() == permanentSource));
+        assertTrue(transactions.execute(status ->
+                restarted.claimOriginalSourceDeletion(permanentSource, now.plusSeconds(60))).isEmpty());
+    }
+
+    @Test
     void serializesConcurrentPublicationContextTransitionsForBothPlayers() throws Exception {
         long tobias = 140L;
         long georgia = 141L;
