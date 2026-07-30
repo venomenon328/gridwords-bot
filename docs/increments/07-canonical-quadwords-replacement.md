@@ -2,7 +2,7 @@
 
 **Status:** vorbereitet  
 **Issue:** #15  
-**Draft-PR:** wird nach diesem Initialcommit angelegt  
+**Draft-PR:** #16  
 **Branch:** `feature/canonical-quadwords-replacement`
 
 ## Ziel
