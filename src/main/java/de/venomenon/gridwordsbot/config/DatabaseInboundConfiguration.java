@@ -8,6 +8,7 @@ import de.venomenon.gridwordsbot.application.canonical.CanonicalGridWordsPublica
 import de.venomenon.gridwordsbot.application.canonical.GridWordsSourceDeletionService;
 import de.venomenon.gridwordsbot.port.out.GameResultStore;
 import de.venomenon.gridwordsbot.port.out.CanonicalMessageGateway;
+import de.venomenon.gridwordsbot.port.out.CanonicalPublicationContextStore;
 import de.venomenon.gridwordsbot.port.out.PublicationRetryScheduler;
 import de.venomenon.gridwordsbot.port.out.SourceDeletionRecoveryStore;
 import de.venomenon.gridwordsbot.port.out.SourceMessageDeletionGateway;
@@ -67,8 +68,11 @@ class DatabaseInboundConfiguration {
 
     @Bean
     @ConditionalOnBean(JDA.class)
-    CanonicalMessageGateway canonicalMessageGateway(JDA jda) {
-        return new JdaCanonicalMessageGateway(jda);
+    CanonicalMessageGateway canonicalMessageGateway(
+            JDA jda,
+            ObjectProvider<CanonicalPublicationContextStore> contextStoreProvider) {
+        return new JdaCanonicalMessageGateway(
+                jda, contextStoreProvider.getIfAvailable(CanonicalPublicationContextStore::none));
     }
 
     @Bean
