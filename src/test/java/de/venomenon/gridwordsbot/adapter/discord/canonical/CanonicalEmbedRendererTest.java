@@ -128,8 +128,8 @@ class CanonicalEmbedRendererTest {
         assertThat(bottomPair).hasSize(6);
         assertThat(topPair[0]).isEqualTo(topLeft + "  " + topRight);
         assertThat(bottomPair[0]).isEqualTo(bottomLeft + "  " + bottomRight);
-        assertThat(topPair[7]).isEqualTo("⬜⬜⬜⬜⬜  " + topRight);
-        assertThat(bottomPair[4]).isEqualTo("⬜⬜⬜⬜⬜  " + bottomRight);
+        assertThat(topPair[7]).isEqualTo("⬛⬛⬛⬛⬛  " + topRight);
+        assertThat(bottomPair[4]).isEqualTo("⬛⬛⬛⬛⬛  " + bottomRight);
     }
 
     @Test
@@ -146,7 +146,7 @@ class CanonicalEmbedRendererTest {
         for (String line : topPair) {
             assertThat(line).startsWith(unsolved);
         }
-        assertThat(topPair[8]).isEqualTo(unsolved + "  ⬜⬜⬜⬜⬜");
+        assertThat(topPair[8]).isEqualTo(unsolved + "  ⬛⬛⬛⬛⬛");
     }
 
     @Test
