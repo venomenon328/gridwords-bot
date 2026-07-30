@@ -24,7 +24,7 @@ class DailyStatusEmbedRendererTest {
     private final DailyStatusEmbedRenderer renderer = new DailyStatusEmbedRenderer();
 
     @Test
-    void rendersCorrectUtf8AllStatusesAndAllSevenStreaks() {
+    void rendersCorrectUtf8AllStatusesAndAllSevenStreaksWithoutVisibleTechnicalKey() {
         DailyStatus status = new DailyStatus(DATE, List.of(
                 line(1, "Tobias", Optional.of(result(GameType.GRIDWORDS, true)), Optional.empty()),
                 line(2, "Georgia", Optional.of(result(GameType.GRIDWORDS, false)),
@@ -38,9 +38,8 @@ class DailyStatusEmbedRendererTest {
         assertThat(rendered).contains("Wortspiele · 30. Juli 2026", "🔥 Aktivität", "✅ 1/9", "❌ X/6",
                 "⬜ noch nicht eingereicht", "Komplett", "GridWords gelöst", "QuadWords gelöst", "Perfekt",
                 "Gemeinsam komplett: 6", "Gemeinsam perfekt: 5");
-        assertThat(rendered).doesNotContain("Â", "Ã", "â");
-        assertThat(embeds.getFirst().getFooter().getText())
-                .isEqualTo("gridwords-daily-status:12:2026-07-30");
+        assertThat(rendered).doesNotContain("Â", "Ã", "â", "gridwords-daily-status:");
+        assertThat(embeds).allSatisfy(embed -> assertThat(embed.getFooter()).isNull());
     }
 
     @Test
