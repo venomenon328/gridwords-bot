@@ -39,20 +39,34 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 @Configuration(proxyBeanMethods = false)
 @Profile("database")
 class DatabaseInboundConfiguration {
-    @Bean ProcessSharedResultUseCase processSharedResultUseCase(Clock clock, GridwordsBotProperties properties, PlayerStore players, SubmissionStore submissions, ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider, ObjectProvider<AttachmentContentLoader> loaderProvider, ObjectProvider<de.venomenon.gridwordsbot.application.status.DailyStatusRefreshService> statusProvider, GameResultStore results) {
-        AttachmentContentLoader loader = loaderProvider.getIfAvailable(() -> attachment -> { throw new AttachmentContentLoader.RetryableAttachmentException("attachment loader is unavailable", null); });
-        return new ProcessSharedResultService(new GridWordsShareParser(), new QuadWordsShareParser(), loader, new QuadWordsImageParser(), clock, properties.schedule().timeZone(), players, submissions, sourceMessageId -> {
-            CanonicalGridWordsPublicationService canonical = canonicalProvider.getIfAvailable();
-            boolean published = canonical != null && canonical.publish(sourceMessageId);
-            if (published) {
-                de.venomenon.gridwordsbot.application.status.DailyStatusRefreshService status = statusProvider.getIfAvailable();
-                if (status != null) submissions.findBySourceMessageId(sourceMessageId).flatMap(submission -> submission.gameResultId()).flatMap(results::findById).ifPresent(result -> status.refresh(result.parsedResult().gameDate()));
-            }
-            return published;
-        }, properties.discord().adminUserIds()::contains);
+    @Bean ProcessSharedResultUseCase processSharedResultUseCase(Clock clock, GridwordsBotProperties properties,
+            PlayerStore players, SubmissionStore submissions,
+            ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider,
+            ObjectProvider<AttachmentContentLoader> loaderProvider,
+            ObjectProvider<de.venomenon.gridwordsbot.application.status.DailyStatusRefreshService> statusProvider) {
+        AttachmentContentLoader loader = loaderProvider.getIfAvailable(() -> attachment -> {
+            throw new AttachmentContentLoader.RetryableAttachmentException("attachment loader is unavailable", null);
+        });
+        return new ProcessSharedResultService(new GridWordsShareParser(), new QuadWordsShareParser(), loader,
+                new QuadWordsImageParser(), clock, properties.schedule().timeZone(), players, submissions,
+                sourceMessageId -> {
+                    CanonicalGridWordsPublicationService canonical = canonicalProvider.getIfAvailable();
+                    return canonical != null && canonical.publish(sourceMessageId);
+                }, properties.discord().adminUserIds()::contains, gameDate -> {
+                    de.venomenon.gridwordsbot.application.status.DailyStatusRefreshService status =
+                            statusProvider.getIfAvailable();
+                    if (status != null) status.refresh(gameDate);
+                });
     }
-    @Bean PlayerParticipationUseCase playerParticipationUseCase(Clock clock, GridwordsBotProperties properties, PlayerStore players) {
-        return new PlayerParticipationService(players, clock, properties.schedule().timeZone(), Set.copyOf(properties.discord().adminUserIds()));
+    @Bean PlayerParticipationUseCase playerParticipationUseCase(Clock clock, GridwordsBotProperties properties,
+            PlayerStore players,
+            ObjectProvider<de.venomenon.gridwordsbot.application.status.DailyStatusRefreshService> statusProvider) {
+        return new PlayerParticipationService(players, clock, properties.schedule().timeZone(),
+                Set.copyOf(properties.discord().adminUserIds()), gameDate -> {
+                    de.venomenon.gridwordsbot.application.status.DailyStatusRefreshService status =
+                            statusProvider.getIfAvailable();
+                    if (status != null) status.refresh(gameDate);
+                });
     }
     @Bean ZoneId businessZone(GridwordsBotProperties properties) { return properties.schedule().timeZone(); }
     @Bean @ConditionalOnBean(JDA.class) DiscordParticipationCommandListener discordParticipationCommandListener(GridwordsBotProperties properties, PlayerParticipationUseCase commands) {

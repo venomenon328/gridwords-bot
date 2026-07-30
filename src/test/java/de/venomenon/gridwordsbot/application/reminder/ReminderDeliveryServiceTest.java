@@ -1,10 +1,10 @@
 package de.venomenon.gridwordsbot.application.reminder;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.port.out.DailyStatusStore;
+import de.venomenon.gridwordsbot.port.out.DiscordDeliveryException;
 import de.venomenon.gridwordsbot.port.out.ReminderCandidateStore;
 import de.venomenon.gridwordsbot.port.out.ReminderMessageGateway;
 import java.time.Clock;
@@ -19,29 +19,118 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class ReminderDeliveryServiceTest {
-    @Test void sendsExactlyTheCandidateUsersAndPersistsSentDelivery() {
+    private static final LocalDate DATE = LocalDate.of(2026, 7, 30);
+
+    @Test
+    void sendsExactlyCandidateUsersAndMissingGames() {
         RecordingStore store = new RecordingStore();
-        ReminderCandidateStore candidates = date -> List.of(new ReminderCandidateStore.ReminderCandidate(42, "Name", List.of(GameType.GRIDWORDS)));
+        List<ReminderCandidateStore.ReminderCandidate> selected = List.of(
+                new ReminderCandidateStore.ReminderCandidate(42, "Name", List.of(GameType.GRIDWORDS)),
+                new ReminderCandidateStore.ReminderCandidate(43, "Other", List.of(GameType.GRIDWORDS, GameType.QUADWORDS)));
         RecordingGateway gateway = new RecordingGateway();
-        service(store, candidates, gateway).deliver(LocalDate.of(2026, 7, 30), 1, LocalTime.of(18, 0));
-        assertEquals(Set.of(42L), gateway.allowed);
-        assertEquals(DailyStatusStore.ReminderState.SENT, store.completed);
-        assertEquals(Optional.of(99L), store.messageId);
+
+        service(store, date -> selected, gateway).deliver(DATE, 1, LocalTime.of(18, 0));
+
+        assertThat(gateway.allowed).containsExactlyInAnyOrder(42L, 43L);
+        assertThat(gateway.candidates).isEqualTo(selected);
+        assertThat(gateway.date).isEqualTo(DATE);
+        assertThat(gateway.stage).isOne();
+        assertThat(store.completed).isEqualTo(DailyStatusStore.ReminderState.SENT);
+        assertThat(store.messageId).contains(99L);
     }
-    @Test void persistsNoCandidatesWithoutDiscordCall() {
-        RecordingStore store = new RecordingStore(); RecordingGateway gateway = new RecordingGateway();
-        service(store, date -> List.of(), gateway).deliver(LocalDate.of(2026, 7, 30), 1, LocalTime.of(18, 0));
-        assertEquals(DailyStatusStore.ReminderState.NO_CANDIDATES, store.completed);
-        assertTrue(gateway.allowed.isEmpty());
+
+    @Test
+    void persistsNoCandidatesWithoutDiscordCall() {
+        RecordingStore store = new RecordingStore();
+        RecordingGateway gateway = new RecordingGateway();
+        service(store, date -> List.of(), gateway).deliver(DATE, 1, LocalTime.of(18, 0));
+        assertThat(store.completed).isEqualTo(DailyStatusStore.ReminderState.NO_CANDIDATES);
+        assertThat(gateway.calls).isZero();
     }
-    private static ReminderDeliveryService service(RecordingStore store, ReminderCandidateStore candidates, ReminderMessageGateway gateway) {
-        return new ReminderDeliveryService(store, candidates, gateway, Clock.fixed(Instant.EPOCH, ZoneOffset.UTC), 1, 2);
+
+    @Test
+    void secondAttemptReloadsCandidates() {
+        RecordingStore store = new RecordingStore();
+        int[] reads = {0};
+        ReminderCandidateStore candidates = date -> ++reads[0] == 1
+                ? List.of(new ReminderCandidateStore.ReminderCandidate(42, "Name", List.of(GameType.GRIDWORDS)))
+                : List.of(new ReminderCandidateStore.ReminderCandidate(43, "Other", List.of(GameType.QUADWORDS)));
+        RecordingGateway gateway = new RecordingGateway();
+        ReminderDeliveryService service = service(store, candidates, gateway);
+
+        service.deliver(DATE, 1, LocalTime.of(18, 0));
+        service.deliver(DATE, 2, LocalTime.of(23, 0));
+
+        assertThat(reads[0]).isEqualTo(2);
+        assertThat(gateway.allowed).containsExactly(43L);
     }
+
+    @Test
+    void permanentFailureIsClassifiedWithoutThrowing() {
+        RecordingStore store = new RecordingStore();
+        ReminderMessageGateway gateway = (channel, date, stage, candidates, allowed) -> {
+            throw DiscordDeliveryException.permanent("missing permission", null);
+        };
+        service(store, candidate(), gateway).deliver(DATE, 1, LocalTime.of(18, 0));
+        assertThat(store.failedPermanent).isTrue();
+        assertThat(store.failedError).isEqualTo("missing permission");
+    }
+
+    @Test
+    void lostClaimPreventsAnyCandidateOrDiscordWork() {
+        RecordingStore store = new RecordingStore();
+        store.claimAvailable = false;
+        RecordingGateway gateway = new RecordingGateway();
+        int[] reads = {0};
+        service(store, date -> { reads[0]++; return List.of(); }, gateway)
+                .deliver(DATE, 1, LocalTime.of(18, 0));
+        assertThat(reads[0]).isZero();
+        assertThat(gateway.calls).isZero();
+    }
+
+    private static ReminderCandidateStore candidate() {
+        return date -> List.of(new ReminderCandidateStore.ReminderCandidate(42, "Name", List.of(GameType.GRIDWORDS)));
+    }
+
+    private static ReminderDeliveryService service(RecordingStore store, ReminderCandidateStore candidates,
+            ReminderMessageGateway gateway) {
+        return new ReminderDeliveryService(store, candidates, gateway,
+                Clock.fixed(Instant.EPOCH, ZoneOffset.UTC), 1, 2);
+    }
+
     private static final class RecordingStore implements DailyStatusStore {
-        DailyStatusStore.ReminderState completed; Optional<Long> messageId;
-        public Optional<StatusDelivery> claimStatus(long a,long b,LocalDate c,Instant d){return Optional.empty();} public void completeStatus(StatusDelivery a,long b,String c){} public void failStatus(StatusDelivery a,String b,boolean c){}
-        public Optional<ReminderDelivery> claimReminder(long a,long b,LocalDate c,int d,LocalTime e,Instant f){return Optional.of(new ReminderDelivery(a,b,c,d,e,UUID.randomUUID()));}
-        public void completeReminder(ReminderDelivery claim,ReminderState state,Optional<Long> id){completed=state;messageId=id;} public void failReminder(ReminderDelivery a,String b,boolean c){} public void expireOpenRemindersBefore(long a,long b,LocalDate c){}
+        boolean claimAvailable = true;
+        ReminderState completed;
+        Optional<Long> messageId = Optional.empty();
+        String failedError;
+        boolean failedPermanent;
+
+        @Override public Optional<StatusDelivery> claimStatus(long a, long b, LocalDate c, String d, boolean e, Instant f) { return Optional.empty(); }
+        @Override public void completeStatus(StatusDelivery a, long b, String c) { }
+        @Override public void failStatus(StatusDelivery a, String b, boolean c) { }
+        @Override public boolean statusExists(long a, long b, LocalDate c) { return false; }
+        @Override public Optional<ReminderDelivery> claimReminder(long a, long b, LocalDate c, int d, LocalTime e, Instant f) {
+            return claimAvailable ? Optional.of(new ReminderDelivery(a, b, c, d, e, UUID.randomUUID())) : Optional.empty();
+        }
+        @Override public void completeReminder(ReminderDelivery claim, ReminderState state, Optional<Long> id) {
+            completed = state; messageId = id;
+        }
+        @Override public void failReminder(ReminderDelivery claim, String error, boolean permanent) {
+            failedError = error; failedPermanent = permanent;
+        }
+        @Override public void supersedeReminder(long a, long b, LocalDate c, int d, LocalTime e) { }
+        @Override public void expireOpenRemindersBefore(long a, long b, LocalDate c) { }
     }
-    private static final class RecordingGateway implements ReminderMessageGateway { Set<Long> allowed=Set.of(); public long send(long channel,List<ReminderCandidateStore.ReminderCandidate> candidates,Set<Long> ids){allowed=ids;return 99;} }
+
+    private static final class RecordingGateway implements ReminderMessageGateway {
+        int calls;
+        LocalDate date;
+        int stage;
+        List<ReminderCandidateStore.ReminderCandidate> candidates = List.of();
+        Set<Long> allowed = Set.of();
+        @Override public long send(long channel, LocalDate date, int stage,
+                List<ReminderCandidateStore.ReminderCandidate> candidates, Set<Long> ids) {
+            calls++; this.date = date; this.stage = stage; this.candidates = candidates; allowed = ids; return 99;
+        }
+    }
 }

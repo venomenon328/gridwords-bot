@@ -65,6 +65,31 @@ class ProcessSharedResultServiceTest {
     }
 
     @Test
+    void storedResultRefreshesItsBusinessDateEvenWhenCanonicalPublishIsUnavailable() {
+        AtomicReference<LocalDate> refreshed = new AtomicReference<>();
+        service = new ProcessSharedResultService(new GridWordsShareParser(), new QuadWordsShareParser(),
+                attachment -> { throw new AssertionError("no attachment expected"); }, new QuadWordsImageParser(),
+                Clock.fixed(RECEIVED_AT, ZoneOffset.UTC), ZoneId.of("Europe/Berlin"), store, store,
+                ignored -> false, ignored -> false, refreshed::set);
+
+        assertThat(service.process(message(29L, TOBIAS, gridWords(29, 3))))
+                .isEqualTo(new ProcessingResult.Ignored());
+        assertThat(refreshed).hasValue(LocalDate.of(2026, 7, 29));
+        assertThat(store.results).hasSize(1);
+    }
+
+    @Test
+    void statusRefreshFailureDoesNotRollBackStoredResult() {
+        service = new ProcessSharedResultService(new GridWordsShareParser(), new QuadWordsShareParser(),
+                attachment -> { throw new AssertionError("no attachment expected"); }, new QuadWordsImageParser(),
+                Clock.fixed(RECEIVED_AT, ZoneOffset.UTC), ZoneId.of("Europe/Berlin"), store, store,
+                ignored -> true, ignored -> false, ignored -> { throw new IllegalStateException("status unavailable"); });
+
+        assertThat(service.process(message(30L, TOBIAS, gridWords(29, 3))))
+                .isEqualTo(new ProcessingResult.Accepted());
+        assertThat(store.results).hasSize(1);
+    }
+    @Test
     void registersTheSharingPlayerForParticipationWithAValidShare() {
         service = new ProcessSharedResultService(
                 new GridWordsShareParser(), new QuadWordsShareParser(), Clock.fixed(RECEIVED_AT, ZoneOffset.UTC),

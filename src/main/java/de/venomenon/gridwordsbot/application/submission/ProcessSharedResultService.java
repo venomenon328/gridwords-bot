@@ -21,10 +21,14 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.function.LongPredicate;
+import java.util.function.Consumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.Objects;
 
 /** Parses and persists an already filtered shared message without framework-specific types. */
 public final class ProcessSharedResultService implements ProcessSharedResultUseCase {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ProcessSharedResultService.class);
     static final String GRIDWORDS_PARSER_VERSION = "gridwords-share-v1";
     static final String QUADWORDS_PARSER_VERSION = QuadWordsImageParser.VERSION;
     static final String OUTSIDE_ALLOWED_DATE_WINDOW = "OUTSIDE_ALLOWED_DATE_WINDOW";
@@ -39,6 +43,7 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
     private final SubmissionStore submissionStore;
     private final LongPredicate canonicalPublisher;
     private final LongPredicate administrator;
+    private final Consumer<LocalDate> statusRefresh;
 
     public ProcessSharedResultService(GridWordsShareParser gridWordsParser, QuadWordsShareParser quadWordsParser,
             Clock clock, ZoneId timeZone, PlayerStore playerStore, SubmissionStore submissionStore) {
@@ -65,6 +70,14 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
             AttachmentContentLoader attachmentContentLoader, QuadWordsImageParser quadWordsImageParser,
             Clock clock, ZoneId timeZone, PlayerStore playerStore, SubmissionStore submissionStore,
             LongPredicate canonicalPublisher, LongPredicate administrator) {
+        this(gridWordsParser, quadWordsParser, attachmentContentLoader, quadWordsImageParser, clock, timeZone,
+                playerStore, submissionStore, canonicalPublisher, administrator, ignored -> { });
+    }
+
+    public ProcessSharedResultService(GridWordsShareParser gridWordsParser, QuadWordsShareParser quadWordsParser,
+            AttachmentContentLoader attachmentContentLoader, QuadWordsImageParser quadWordsImageParser,
+            Clock clock, ZoneId timeZone, PlayerStore playerStore, SubmissionStore submissionStore,
+            LongPredicate canonicalPublisher, LongPredicate administrator, Consumer<LocalDate> statusRefresh) {
         this.gridWordsParser = Objects.requireNonNull(gridWordsParser);
         this.quadWordsParser = Objects.requireNonNull(quadWordsParser);
         this.attachmentContentLoader = Objects.requireNonNull(attachmentContentLoader);
@@ -75,6 +88,7 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
         this.submissionStore = Objects.requireNonNull(submissionStore);
         this.canonicalPublisher = Objects.requireNonNull(canonicalPublisher);
         this.administrator = Objects.requireNonNull(administrator);
+        this.statusRefresh = Objects.requireNonNull(statusRefresh);
     }
     @Override
     public ProcessingResult process(InboundSharedMessage message) {
@@ -132,6 +146,7 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
         if (stored.state() == SubmissionStore.SubmissionState.SUPERSEDED) {
             return new ProcessingResult.Ignored();
         }
+        refreshStatusSafely(parsed.gameDate());
         if (!canonicalPublisher.test(message.messageId())) {
             return new ProcessingResult.Ignored();
         }
@@ -218,6 +233,13 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
                 || submission.state() == SubmissionStore.SubmissionState.COMPLETED;
     }
 
+    private void refreshStatusSafely(LocalDate date) {
+        try {
+            statusRefresh.accept(date);
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Daily status refresh after result storage failed for game date {}", date, exception);
+        }
+    }
     private static String parserVersion(ParsedGameResult parsed) {
         return parsed.gameType() == GameType.GRIDWORDS ? GRIDWORDS_PARSER_VERSION : QUADWORDS_PARSER_VERSION;
     }

@@ -5,5 +5,5 @@ import java.util.Optional;
 
 /** Discord boundary intentionally free of JDA types. */
 public interface DailyStatusMessageGateway {
-    long publishOrEdit(long channelId, Optional<Long> existingMessageId, DailyStatus status);
+    long publishOrEdit(long channelId, Optional<Long> existingMessageId, DailyStatus status, boolean contentChanged);
 }

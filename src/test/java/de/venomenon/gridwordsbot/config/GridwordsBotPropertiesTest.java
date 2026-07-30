@@ -1,6 +1,7 @@
 package de.venomenon.gridwordsbot.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.LocalTime;
 import java.time.ZoneId;
@@ -40,6 +41,28 @@ class GridwordsBotPropertiesTest {
         });
     }
 
+    @Test
+    void rejectsEqualReminderTimes() {
+        assertThatThrownBy(() -> schedule(LocalTime.of(18, 0), LocalTime.of(18, 0)))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void rejectsReversedReminderTimes() {
+        assertThatThrownBy(() -> schedule(LocalTime.of(23, 0), LocalTime.of(18, 0)))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void rejectsMissingReminderTimes() {
+        assertThatThrownBy(() -> schedule(null, LocalTime.of(23, 0)))
+                .isInstanceOf(NullPointerException.class);
+    }
+
+    private static GridwordsBotProperties.Schedule schedule(LocalTime first, LocalTime second) {
+        return new GridwordsBotProperties.Schedule(first, second, LocalTime.of(8, 0), LocalTime.of(8, 15),
+                ZoneId.of("Europe/Berlin"));
+    }
     @Configuration(proxyBeanMethods = false)
     @EnableConfigurationProperties(GridwordsBotProperties.class)
     static class TestConfiguration {

@@ -1,54 +1,160 @@
 package de.venomenon.gridwordsbot.adapter.discord.status;
 
-import de.venomenon.gridwordsbot.domain.model.ParsedGameResult;
-import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
-import de.venomenon.gridwordsbot.domain.status.DailyStatus;
 import de.venomenon.gridwordsbot.port.out.DailyStatusMessageGateway;
+import de.venomenon.gridwordsbot.port.out.DiscordDeliveryException;
 import de.venomenon.gridwordsbot.port.out.ReminderCandidateStore;
 import de.venomenon.gridwordsbot.port.out.ReminderMessageGateway;
-import java.time.format.DateTimeFormatter;
+import de.venomenon.gridwordsbot.domain.status.DailyStatus;
+import java.time.LocalDate;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
+import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Message;
+import net.dv8tion.jda.api.entities.MessageEmbed;
+import net.dv8tion.jda.api.entities.MessageHistory;
+import net.dv8tion.jda.api.entities.SelfUser;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.exceptions.ErrorResponseException;
 import net.dv8tion.jda.api.requests.ErrorResponse;
 
-/** JDA-only edge adapter. Statuses never permit mentions; reminders permit only their selected user IDs. */
+/** JDA-only edge adapter with stable delivery keys for crash reconciliation. */
 public final class JdaDailyStatusMessageGateway implements DailyStatusMessageGateway, ReminderMessageGateway {
+    private static final int PAGE_SIZE = 100;
     private final JDA jda;
-    public JdaDailyStatusMessageGateway(JDA jda) { this.jda = jda; }
-    @Override public long publishOrEdit(long channelId, Optional<Long> existing, DailyStatus status) {
-        String content = renderStatus(status);
-        if (content.length() > 2_000) throw new IllegalStateException("daily status exceeds Discord message limit");
-        TextChannel channel = channel(channelId);
-        if (existing.isPresent()) try {
-            Message message = channel.retrieveMessageById(existing.get()).complete();
-            message.editMessage(content).setAllowedMentions(List.of()).complete();
-            return existing.get();
-        } catch (ErrorResponseException error) {
-            if (error.getErrorResponse() != ErrorResponse.UNKNOWN_MESSAGE) throw error;
+    private final DailyStatusEmbedRenderer renderer = new DailyStatusEmbedRenderer();
+
+    public JdaDailyStatusMessageGateway(JDA jda) {
+        this.jda = jda;
+    }
+
+    @Override
+    public long publishOrEdit(long channelId, Optional<Long> existing, DailyStatus status, boolean contentChanged) {
+        try {
+            TextChannel channel = channel(channelId);
+            List<MessageEmbed> embeds = renderer.render(channelId, status);
+            String key = DailyStatusEmbedRenderer.statusKey(channelId, status);
+            Optional<Message> target = existing.flatMap(id -> retrieve(channel, id));
+            if (target.isEmpty()) {
+                target = findByKey(channel, key);
+            }
+            if (target.isPresent()) {
+                if (contentChanged || existing.isEmpty() || existing.get() != target.get().getIdLong()) {
+                    target.get().editMessageEmbeds(embeds).setAllowedMentions(Collections.emptyList()).complete();
+                }
+                return target.get().getIdLong();
+            }
+            return channel.sendMessageEmbeds(embeds).setAllowedMentions(Collections.emptyList()).complete().getIdLong();
+        } catch (DiscordDeliveryException exception) {
+            throw exception;
+        } catch (ErrorResponseException exception) {
+            throw classified("daily status Discord request failed", exception);
+        } catch (RuntimeException exception) {
+            throw DiscordDeliveryException.retryable("daily status Discord request failed", exception);
         }
-        return channel.sendMessage(content).setAllowedMentions(List.of()).complete().getIdLong();
     }
-    @Override public long send(long channelId, List<ReminderCandidateStore.ReminderCandidate> candidates, Set<Long> allowed) {
-        if (!allowed.equals(candidates.stream().map(ReminderCandidateStore.ReminderCandidate::discordUserId).collect(java.util.stream.Collectors.toSet())))
+
+    @Override
+    public long send(long channelId, LocalDate gameDate, int stage,
+            List<ReminderCandidateStore.ReminderCandidate> candidates, Set<Long> allowed) {
+        Set<Long> selected = candidates.stream().map(ReminderCandidateStore.ReminderCandidate::discordUserId)
+                .collect(Collectors.toUnmodifiableSet());
+        if (!allowed.equals(selected)) {
             throw new IllegalArgumentException("allowed users must exactly match reminder candidates");
+        }
         String content = candidates.stream().map(candidate -> "<@" + candidate.discordUserId() + ">: "
-                + candidate.missingGames().stream().map(game -> game == de.venomenon.gridwordsbot.domain.model.GameType.GRIDWORDS ? "GridWords" : "QuadWords").collect(java.util.stream.Collectors.joining(", "))).collect(java.util.stream.Collectors.joining("\n"));
-        if (content.length() > 2_000) throw new IllegalStateException("reminder exceeds Discord message limit");
-        return channel(channelId).sendMessage(content).setAllowedMentions(List.of(Message.MentionType.USER)).mentionUsers(allowed.stream().map(String::valueOf).toList()).complete().getIdLong();
+                + candidate.missingGames().stream().map(game -> switch (game) {
+                    case GRIDWORDS -> "GridWords";
+                    case QUADWORDS -> "QuadWords";
+                }).collect(Collectors.joining(", "))).collect(Collectors.joining("\n"));
+        if (content.length() > Message.MAX_CONTENT_LENGTH) {
+            throw DiscordDeliveryException.permanent("reminder exceeds Discord message limit", null);
+        }
+        String key = reminderKey(channelId, gameDate, stage);
+        MessageEmbed marker = new EmbedBuilder()
+                .setDescription("Erinnerung · " + gameDate + " · Stufe " + stage)
+                .setFooter(key)
+                .build();
+        try {
+            TextChannel channel = channel(channelId);
+            Optional<Message> existing = findByKey(channel, key);
+            if (existing.isPresent()) {
+                return existing.get().getIdLong();
+            }
+            return channel.sendMessage(content).addEmbeds(marker)
+                    .setAllowedMentions(List.of(Message.MentionType.USER))
+                    .mentionUsers(allowed.stream().map(String::valueOf).toList())
+                    .complete().getIdLong();
+        } catch (DiscordDeliveryException exception) {
+            throw exception;
+        } catch (ErrorResponseException exception) {
+            throw classified("reminder Discord request failed", exception);
+        } catch (RuntimeException exception) {
+            throw DiscordDeliveryException.retryable("reminder Discord request failed", exception);
+        }
     }
-    private static String renderStatus(DailyStatus status) {
-        StringBuilder output = new StringBuilder("Wortspiele Â· ").append(status.gameDate().format(DateTimeFormatter.ofPattern("d. MMMM uuuu", java.util.Locale.GERMAN)));
-        for (DailyStatus.PlayerLine player : status.players()) output.append("\n\n").append(player.displayName()).append("\nGridWords: ").append(result(player.gridWords())).append(" Â· QuadWords: ").append(result(player.quadWords()))
-                .append("\nðŸ”¥ AktivitÃ¤t: ").append(player.streaks().personalActivity()).append(" Â· Komplett: ").append(player.streaks().personalComplete())
-                .append(" Â· GridWords gelÃ¶st: ").append(player.streaks().personalGridWordsSolved()).append(" Â· QuadWords gelÃ¶st: ").append(player.streaks().personalQuadWordsSolved()).append(" Â· Perfekt: ").append(player.streaks().personalPerfect());
-        return output.append("\n\nGemeinsam Â· Komplett: ").append(status.sharedComplete()).append(" Â· Perfekt: ").append(status.sharedPerfect()).toString();
+
+    static String reminderKey(long channelId, LocalDate date, int stage) {
+        return "gridwords-reminder:" + channelId + ":" + date + ":" + stage;
     }
-    private static String result(Optional<ParsedGameResult> result) { if (result.isEmpty()) return "â¬œ"; ParsedGameResult value = result.get(); return (value.outcome() instanceof ShareOutcome.Solved ? "âœ… " : "âŒ ") + outcome(value.outcome()) + " Â· " + value.duration().toMinutesPart() + ":" + String.format("%02d", value.duration().toSecondsPart()); }
-    private static String outcome(ShareOutcome outcome) { return outcome instanceof ShareOutcome.Solved solved ? solved.attemptsUsed() + "/" + solved.maxAttempts() : "X/" + outcome.maxAttempts(); }
-    private TextChannel channel(long id) { TextChannel channel = jda.getTextChannelById(id); if (channel == null) throw new IllegalStateException("configured text channel is unavailable"); return channel; }
+
+    private Optional<Message> retrieve(TextChannel channel, long messageId) {
+        try {
+            return Optional.of(channel.retrieveMessageById(messageId).complete());
+        } catch (ErrorResponseException exception) {
+            if (exception.getErrorResponse() == ErrorResponse.UNKNOWN_MESSAGE) {
+                return Optional.empty();
+            }
+            throw exception;
+        }
+    }
+
+    private Optional<Message> findByKey(TextChannel channel, String key) {
+        SelfUser self = jda.getSelfUser();
+        MessageHistory history = channel.getHistory();
+        java.util.ArrayList<Message> matches = new java.util.ArrayList<>();
+        while (true) {
+            List<Message> page = history.retrievePast(PAGE_SIZE).complete();
+            page.stream()
+                    .filter(message -> self.equals(message.getAuthor()))
+                    .filter(message -> message.getEmbeds().stream()
+                            .map(MessageEmbed::getFooter)
+                            .filter(java.util.Objects::nonNull)
+                            .map(MessageEmbed.Footer::getText)
+                            .anyMatch(key::equals))
+                    .forEach(matches::add);
+            if (page.size() < PAGE_SIZE) {
+                break;
+            }
+        }
+        Optional<Message> canonical = matches.stream().min(java.util.Comparator.comparingLong(Message::getIdLong));
+        if (canonical.isPresent()) {
+            for (Message duplicate : matches) {
+                if (duplicate.getIdLong() != canonical.get().getIdLong()) {
+                    duplicate.delete().complete();
+                }
+            }
+        }
+        return canonical;
+    }
+    private TextChannel channel(long id) {
+        TextChannel channel = jda.getTextChannelById(id);
+        if (channel == null) {
+            throw DiscordDeliveryException.permanent("configured text channel is unavailable", null);
+        }
+        return channel;
+    }
+
+    private static DiscordDeliveryException classified(String message, ErrorResponseException exception) {
+        ErrorResponse response = exception.getErrorResponse();
+        boolean permanent = response == ErrorResponse.MISSING_ACCESS
+                || response == ErrorResponse.MISSING_PERMISSIONS
+                || response == ErrorResponse.UNKNOWN_CHANNEL;
+        return permanent
+                ? DiscordDeliveryException.permanent(message, exception)
+                : DiscordDeliveryException.retryable(message, exception);
+    }
 }

@@ -26,6 +26,9 @@ public final class DailyStatusProjector {
     }
 
     public DailyStatus project(LocalDate date, LocalDate today) {
+        if (date.isAfter(today)) {
+            throw new IllegalArgumentException("status date must not be in the future");
+        }
         List<GameResultStore.StoredGameResult> all = results.findAll();
         List<ParticipationPeriod> periods = players.findParticipationPeriods();
         Map<Long, PlayerStore.StoredPlayer> profiles = players.findAllPlayers().stream()
@@ -33,7 +36,8 @@ public final class DailyStatusProjector {
         List<StreakCalculator.PlayerResult> streakResults = all.stream()
                 .map(result -> new StreakCalculator.PlayerResult(result.playerId(), result.parsedResult())).toList();
         List<DailyStatus.PlayerLine> lines = periods.stream().filter(period -> period.contains(date))
-                .map(ParticipationPeriod::playerId).distinct().map(id -> line(id, date, date, all, periods, profiles, streakResults))
+                .map(ParticipationPeriod::playerId).distinct()
+                .map(id -> line(id, date, date.equals(today), all, periods, profiles, streakResults))
                 .sorted(Comparator.comparing((DailyStatus.PlayerLine line) -> line.displayName().toLowerCase(Locale.ROOT))
                         .thenComparingLong(DailyStatus.PlayerLine::discordUserId)).toList();
         int sharedComplete = lines.isEmpty() ? 0 : lines.getFirst().streaks().sharedComplete();
@@ -41,12 +45,13 @@ public final class DailyStatusProjector {
         return new DailyStatus(date, lines, sharedComplete, sharedPerfect);
     }
 
-    private DailyStatus.PlayerLine line(long id, LocalDate date, LocalDate today,
+    private DailyStatus.PlayerLine line(long id, LocalDate date, boolean provisionalCurrentDay,
             List<GameResultStore.StoredGameResult> all, List<ParticipationPeriod> periods,
             Map<Long, PlayerStore.StoredPlayer> profiles, List<StreakCalculator.PlayerResult> streakResults) {
         PlayerStore.StoredPlayer profile = profiles.get(id);
         if (profile == null) throw new IllegalStateException("participation period without profile: " + id);
-        StreakSummary summary = calculator.calculateWithParticipation(streakResults, periods, id, today);
+        StreakSummary summary = calculator.calculateWithParticipation(
+                streakResults, periods, id, date, provisionalCurrentDay);
         return new DailyStatus.PlayerLine(id, profile.displayName(),
                 all.stream().filter(r -> r.playerId() == id && r.parsedResult().gameType() == GameType.GRIDWORDS
                         && r.parsedResult().gameDate().equals(date)).findFirst().map(GameResultStore.StoredGameResult::parsedResult),

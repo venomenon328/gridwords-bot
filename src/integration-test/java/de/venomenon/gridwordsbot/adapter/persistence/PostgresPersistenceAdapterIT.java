@@ -130,19 +130,28 @@ class PostgresPersistenceAdapterIT {
         jdbc.update("DELETE FROM player_participation_period");
         long missingQuad = 190L;
         long complete = 191L;
+        long unsolvedComplete = 192L;
         adapter.upsert(new PlayerStore.PlayerUpsert(missingQuad, "Missing Quad", true, false));
         adapter.upsert(new PlayerStore.PlayerUpsert(complete, "Complete", true, false));
+        adapter.upsert(new PlayerStore.PlayerUpsert(unsolvedComplete, "Unsolved Complete", true, false));
         adapter.setReminderOptIn(new PlayerStore.ProfileUpdate(missingQuad, "Missing Quad", false), true);
         adapter.setReminderOptIn(new PlayerStore.ProfileUpdate(complete, "Complete", false), true);
+        adapter.setReminderOptIn(new PlayerStore.ProfileUpdate(unsolvedComplete, "Unsolved Complete", false), true);
         registerSubmission(1900L, missingQuad);
         store(1900L, resultFor(missingQuad, 3, "grid"), List.of());
         registerSubmission(1901L, complete);
         store(1901L, resultFor(complete, 3, "grid"), List.of());
         registerSubmission(1902L, complete);
         store(1902L, quadResultFor(complete, true, "quad"), List.of());
+        registerSubmission(1903L, unsolvedComplete);
+        store(1903L, unsolvedGridResultFor(unsolvedComplete, "grid X/6"), List.of());
+        registerSubmission(1904L, unsolvedComplete);
+        store(1904L, quadResultFor(unsolvedComplete, false, "quad X/9"), List.of());
 
         assertEquals(List.of(GameType.QUADWORDS), adapter.findReminderCandidates(LocalDate.of(2026, 7, 29)).getFirst().missingGames());
-        assertEquals(missingQuad, adapter.findReminderCandidates(LocalDate.of(2026, 7, 29)).getFirst().discordUserId());
+        var candidates = adapter.findReminderCandidates(LocalDate.of(2026, 7, 29));
+        assertEquals(1, candidates.size());
+        assertEquals(missingQuad, candidates.getFirst().discordUserId());
     }
     private void registerSubmission(long sourceMessageId, long playerId) {
         registerSubmission(sourceMessageId, playerId, now);
@@ -193,6 +202,12 @@ class PostgresPersistenceAdapterIT {
         return resultFor(100L, attempts, text);
     }
 
+    private GameResultStore.GameResultUpsert unsolvedGridResultFor(long playerId, String text) {
+        ParsedGameResult parsed = new ParsedGameResult(GameType.GRIDWORDS, LocalDate.of(2026, 7, 29),
+                new ShareOutcome.Unsolved(6), Duration.ofSeconds(42), OptionalInt.empty(),
+                Optional.of(board(6)));
+        return new GameResultStore.GameResultUpsert(playerId, parsed, text, "v1");
+    }
     private GameResultStore.GameResultUpsert resultFor(long playerId, int attempts, String text) {
         NormalizedBoard board = board(attempts);
         ParsedGameResult parsed = new ParsedGameResult(GameType.GRIDWORDS, LocalDate.of(2026, 7, 29), new ShareOutcome.Solved(attempts, 6), Duration.ofSeconds(42), OptionalInt.empty(), Optional.of(board));
