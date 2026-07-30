@@ -18,6 +18,7 @@ import java.io.InputStream;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.BiFunction;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
@@ -32,26 +33,37 @@ import org.junit.jupiter.api.Test;
 class JdaAttachmentContentLoaderTest {
 
     private static final AttachmentReference REFERENCE = new AttachmentReference(12L, 500L, 700L);
+    private static final String ORIGINAL_URL = "https://cdn.discordapp.com/attachments/12/500/result.png?signed=true";
+    private static final String FILE_NAME = "result.png";
 
     @Test
-    void loadsOnlyTheAttachmentSelectedByTheOpaqueReference() {
+    void loadsOnlyTheSelectedAttachmentFromItsOriginalCdnUrl() {
         JDA jda = mock(JDA.class);
         TextChannel channel = mock(TextChannel.class);
         Message message = mock(Message.class);
-        Message.Attachment selected = attachment(700L, 3, new byte[] {1, 2, 3});
-        Message.Attachment other = attachment(701L, 3, new byte[] {4, 5, 6});
+        Message.Attachment selected = attachment(700L, 3, ORIGINAL_URL, FILE_NAME);
+        Message.Attachment other = attachment(701L, 3,
+                "https://cdn.discordapp.com/attachments/12/500/other.png?signed=true", "other.png");
+        NamedAttachmentProxy selectedProxy = proxy(new byte[] {1, 2, 3});
+        @SuppressWarnings("unchecked")
+        BiFunction<String, String, NamedAttachmentProxy> proxyFactory = mock(BiFunction.class);
         @SuppressWarnings("unchecked")
         RestAction<Message> retrieve = mock(RestAction.class);
         when(jda.getTextChannelById(12L)).thenReturn(channel);
         when(channel.retrieveMessageById(500L)).thenReturn(retrieve);
         when(retrieve.complete()).thenReturn(message);
         when(message.getAttachments()).thenReturn(List.of(other, selected));
+        when(proxyFactory.apply(ORIGINAL_URL, FILE_NAME)).thenReturn(selectedProxy);
 
-        byte[] content = new JdaAttachmentContentLoader(jda, 10).load(metadata(3));
+        byte[] content = new JdaAttachmentContentLoader(jda, 10, proxyFactory).load(metadata(3));
 
         assertThat(content).containsExactly(1, 2, 3);
         verify(channel).retrieveMessageById(500L);
-        verify(selected).getProxy();
+        verify(proxyFactory).apply(ORIGINAL_URL, FILE_NAME);
+        verify(selected).getUrl();
+        verify(selected).getFileName();
+        verify(selected, never()).getProxy();
+        verify(other, never()).getUrl();
         verify(other, never()).getProxy();
     }
 
@@ -70,15 +82,19 @@ class JdaAttachmentContentLoaderTest {
         JDA jda = mock(JDA.class);
         TextChannel channel = mock(TextChannel.class);
         Message message = mock(Message.class);
-        Message.Attachment selected = attachment(700L, 2, new byte[] {1, 2, 3, 4});
+        Message.Attachment selected = attachment(700L, 2, ORIGINAL_URL, FILE_NAME);
+        NamedAttachmentProxy selectedProxy = proxy(new byte[] {1, 2, 3, 4});
+        @SuppressWarnings("unchecked")
+        BiFunction<String, String, NamedAttachmentProxy> proxyFactory = mock(BiFunction.class);
         @SuppressWarnings("unchecked")
         RestAction<Message> retrieve = mock(RestAction.class);
         when(jda.getTextChannelById(12L)).thenReturn(channel);
         when(channel.retrieveMessageById(500L)).thenReturn(retrieve);
         when(retrieve.complete()).thenReturn(message);
         when(message.getAttachments()).thenReturn(List.of(selected));
+        when(proxyFactory.apply(ORIGINAL_URL, FILE_NAME)).thenReturn(selectedProxy);
 
-        assertThatThrownBy(() -> new JdaAttachmentContentLoader(jda, 3).load(metadata(2)))
+        assertThatThrownBy(() -> new JdaAttachmentContentLoader(jda, 3, proxyFactory).load(metadata(2)))
                 .isInstanceOf(AttachmentTooLargeException.class);
     }
 
@@ -121,8 +137,10 @@ class JdaAttachmentContentLoaderTest {
         JDA jda = mock(JDA.class);
         TextChannel channel = mock(TextChannel.class);
         Message message = mock(Message.class);
-        Message.Attachment selected = mock(Message.Attachment.class);
+        Message.Attachment selected = attachment(700L, 1, ORIGINAL_URL, FILE_NAME);
         NamedAttachmentProxy proxy = mock(NamedAttachmentProxy.class);
+        @SuppressWarnings("unchecked")
+        BiFunction<String, String, NamedAttachmentProxy> proxyFactory = mock(BiFunction.class);
         @SuppressWarnings("unchecked")
         RestAction<Message> retrieve = mock(RestAction.class);
         ErrorResponseException failure = mock(ErrorResponseException.class);
@@ -133,13 +151,11 @@ class JdaAttachmentContentLoaderTest {
         when(channel.retrieveMessageById(500L)).thenReturn(retrieve);
         when(retrieve.complete()).thenReturn(message);
         when(message.getAttachments()).thenReturn(List.of(selected));
-        when(selected.getIdLong()).thenReturn(700L);
-        when(selected.getSize()).thenReturn(1);
-        when(selected.getProxy()).thenReturn(proxy);
+        when(proxyFactory.apply(ORIGINAL_URL, FILE_NAME)).thenReturn(proxy);
         when(proxy.download()).thenReturn(download);
         when(failure.getErrorResponse()).thenReturn(ErrorResponse.UNKNOWN_MESSAGE);
 
-        assertThatThrownBy(() -> new JdaAttachmentContentLoader(jda).load(metadata(1)))
+        assertThatThrownBy(() -> new JdaAttachmentContentLoader(jda, 10, proxyFactory).load(metadata(1)))
                 .isInstanceOf(AttachmentUnavailableException.class)
                 .hasCause(failure);
     }
@@ -177,13 +193,18 @@ class JdaAttachmentContentLoaderTest {
         return new AttachmentMetadata("result.png", "image/png", size, Optional.of(REFERENCE));
     }
 
-    private static Message.Attachment attachment(long id, int size, byte[] bytes) {
+    private static Message.Attachment attachment(long id, int size, String url, String fileName) {
         Message.Attachment attachment = mock(Message.Attachment.class);
-        NamedAttachmentProxy proxy = mock(NamedAttachmentProxy.class);
         when(attachment.getIdLong()).thenReturn(id);
         when(attachment.getSize()).thenReturn(size);
-        when(attachment.getProxy()).thenReturn(proxy);
-        when(proxy.download()).thenReturn(CompletableFuture.completedFuture(new ByteArrayInputStream(bytes)));
+        when(attachment.getUrl()).thenReturn(url);
+        when(attachment.getFileName()).thenReturn(fileName);
         return attachment;
+    }
+
+    private static NamedAttachmentProxy proxy(byte[] bytes) {
+        NamedAttachmentProxy proxy = mock(NamedAttachmentProxy.class);
+        when(proxy.download()).thenReturn(CompletableFuture.completedFuture(new ByteArrayInputStream(bytes)));
+        return proxy;
     }
 }
