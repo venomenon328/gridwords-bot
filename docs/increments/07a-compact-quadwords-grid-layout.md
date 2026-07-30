@@ -1,6 +1,6 @@
 # Zwischeninkrement 7.1: Kompaktes 2×2-Layout der QuadWords-Grids
 
-**Status:** vorbereitet
+**Status:** umgesetzt; visueller Discord-Smoke-Test offen
 
 **Issue:** #17
 
@@ -41,4 +41,6 @@ mvn --batch-mode --no-transfer-progress clean verify
 mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
 ```
 
-Danach folgt ein kurzer visueller Discord-Smoke-Test mit unterschiedlich hohen gelösten Teilboards und einer Korrektur derselben kanonischen Nachricht.
+Automatisierte Renderer-Tests decken die Paarhöhen 7/9 und 4/6, die unsichtbare Ausrichtung nach einer Lösungszeile, ein ungelöstes neunzeiliges Board, die semantische 2×2-Reihenfolge, fehlende Positionslabels, Korrekturkontext, Publication-Key, unveränderte GridWords-Ausgabe und Discord-Embed-Grenzen ab.
+
+Offen bleibt ausschließlich Tobias' kurzer visueller Discord-Smoke-Test mit unterschiedlich hohen gelösten Teilboards und einer Korrektur derselben kanonischen Nachricht.
