@@ -36,7 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Repository
 @Primary
 @Profile("database")
-public final class LegacyCompatiblePostgresPersistenceAdapter extends PostgresPersistenceAdapter {
+public class LegacyCompatiblePostgresPersistenceAdapter extends PostgresPersistenceAdapter {
 
     private static final String LEGACY_QUADWORDS_PARSER_VERSION = "quadwords-share-v1";
 
