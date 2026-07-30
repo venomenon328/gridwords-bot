@@ -15,9 +15,9 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 ## Aktueller Stand
 
-Die Inkremente 0 bis 7 sowie Zwischeninkrement 7.1 sind abgeschlossen. Das kompakte 2×2-Layout der QuadWords-Grids, der konsistente GridWords-Codeblock und die Wiederherstellung historisch etablierter Kontextzeilen wurden mit PR #18 gemergt und visuell in Discord abgenommen.
+Die Inkremente 0 bis 7 sowie die Zwischeninkremente 7.1 und 7.2 sind abgeschlossen. Das dynamische Spielermodell, historisch stabile Teilnahmezeiträume sowie Teilnahme- und Reminder-Commands wurden automatisiert und am 30. Juli 2026 in einem realen Discord-/PostgreSQL-Smoke-Test mit mindestens drei Nutzern abgenommen.
 
-Zwischeninkrement 7.2 aus Issue #19 ist auf Draft-PR #20 vollständig automatisiert umgesetzt: Gültige Shares registrieren dynamische Spieler erst nach vollständiger Validierung. Teilnahmezeiträume steuern gemeinsame Serien historisch, und Slash-Commands verwalten Teilnahme sowie Reminder-Opt-in. Tagesstatus, Scheduler und tatsächlicher Reminder-Versand folgen erst in Inkrement 8. Offen bleibt der reale Discord-/PostgreSQL-Smoke-Test mit mindestens drei Nutzern.
+Als Nächstes folgt Inkrement 8 mit Tagesstatus, vollständigen Serien und zeitgesteuerten Erinnerungen. Der eigentliche Scheduler und Reminder-Versand sind bewusst noch nicht Bestandteil des aktuellen Stands.
 
 Der Projektstand umfasst:
 
@@ -179,7 +179,7 @@ Relevante Tabellen sind insbesondere `player`, `player_participation_period`, `s
 - manuelle Smoke-Tests: echte Discord-Verbindung und Compose-PostgreSQL
 - H2 ersetzt keine PostgreSQL-Integrationstests
 
-Stand von Draft-PR #20: 207 Standardtests und 63 PostgreSQL-Integrationstests sind in GitHub Actions grün. Abgedeckt sind unter anderem dynamische Profil-/Admin-Synchronisierung, Command-Adapter, Startup nach Liquibase, Migration und Backfill, konkurrierte Erstregistrierung, atomarer Rollback und gemeinsame Serien bei wechselnden Teilnehmern. Offen bleibt ausschließlich Tobias' realer Drei-Nutzer-Discord-/PostgreSQL-Smoke-Test; weder automatisierte Tests noch der Build verwenden einen Discord-Token.
+Abgenommener Stand von Zwischeninkrement 7.2: 207 Standardtests und 63 PostgreSQL-Integrationstests sind lokal und in GitHub Actions grün. Der reale Drei-Nutzer-Discord-/PostgreSQL-Smoke-Test war ebenfalls erfolgreich. Abgedeckt sind unter anderem dynamische Profil-/Admin-Synchronisierung, Command-Adapter, Startup nach Liquibase, Migration und Backfill, konkurrierte Erstregistrierung, atomarer Rollback und gemeinsame Serien bei wechselnden Teilnehmern. Weder automatisierte Tests noch der Build verwenden einen Discord-Token.
 
 ## Geheimnisse
 
