@@ -1,6 +1,6 @@
 # Implementierungsplan
 
-Dieser Plan zerlegt die Anforderungsspezifikation in kleine, reviewbare Inkremente. Für Serien gilt `docs/requirements/series-model.md`; für dynamische Spieler und Reminder-Teilnahme `docs/requirements/dynamic-player-model.md`; für lokale Infrastruktur und Datenbanktests `docs/adr/0010-docker-available-local-development.md`.
+Dieser Plan zerlegt die Anforderungsspezifikation in kleine, reviewbare Inkremente. Für Serien gilt `docs/requirements/series-model.md`; für dynamische Spieler und Reminder-Teilnahme `docs/requirements/dynamic-player-model.md`; für Tagesstatus und Reminder-Auslieferung `docs/requirements/daily-status-reminders.md`; für lokale Infrastruktur und Datenbanktests `docs/adr/0010-docker-available-local-development.md`.
 
 ## Leitprinzipien
 
@@ -194,18 +194,34 @@ Abnahme:
 
 ## Inkrement 8 – Tagesstatus, vollständige Serien und Erinnerungen
 
-**Ziel:** täglichen Kernnutzen auf Basis dynamischer Teilnehmer vollständig herstellen.
+**Status:** vorbereitet als Issue #21 auf `feature/daily-status-reminders` und Draft-PR #22.
 
-- alle fünf persönlichen Serien für jeden Spieler
-- gemeinsame Komplett- und Perfektserie über die pro Spieltag aktive Teilnehmermenge
+**Ziel:** den täglichen Kernnutzen auf Basis dynamischer Teilnehmer vollständig herstellen.
+
+Geplanter Umfang:
+
+- genau eine persistente Tagesstatusnachricht pro Guild, Channel und Spieltag
+- Status-Create beim ersten Ergebnis oder spätestens beim ersten fälligen Reminder
+- Edit derselben Message-ID nach Ergebnissen, Korrekturen und relevanten Teilnahmeänderungen
+- kontrollierte Neuerzeugung nach extern gelöschter Statusnachricht
+- alle fünf persönlichen Serien für jeden am Spieltag aktiven Spieler
+- gemeinsame Komplett- und Perfektserie über die tagesbezogene aktive Teilnehmermenge
 - keine gemeinsame Aktivitätsserie
-- eine Tagesstatusnachricht je Spieltag
+- heutige vorläufige Seriensemantik und Finalisierung des Vortags nach Tageswechsel
+- Vortagsnachträge mit vollständiger Neuberechnung
 - Erinnerungen um 18:00 und 23:00 Uhr
 - nur aktive Reminder-Opt-ins mit fehlenden Einreichungen erwähnen
 - ID-basierte User-Mentions mit strikt begrenzten Allowed Mentions
 - je Spieler die konkret fehlenden Spiele nennen
-- persistierte Delivery-Idempotenz und Neustart-Nachholung
-- `Europe/Berlin`, feste `Clock`, heute und gestern als Nachtragsfenster
+- persistierter No-op bei fehlenden Kandidaten
+- Startup-Catch-up ohne zwei unmittelbar aufeinanderfolgende überfällige Reminder
+- kein Reminder-Nachversand für vergangene Tage
+- persistierte Delivery-Idempotenz, Claims/Leases, Retry und Recovery
+- DST-sicheres Scheduling mit injizierter `Clock` und konfigurierter `ZoneId`
+- Startup-Reconciliation für heute und gestern
+- vollständige Discord-Limit-, Konkurrenz-, PostgreSQL- und Ergebnisregression
+
+Verbindlich: `docs/requirements/daily-status-reminders.md`, `docs/increments/08-daily-status-reminders.md` und Issue #21.
 
 ## Inkrement 9 – Kernversion härten und veröffentlichen
 
