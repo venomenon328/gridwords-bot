@@ -1,6 +1,6 @@
 # Implementierungsplan
 
-Dieser Plan zerlegt die Anforderungsspezifikation in kleine, reviewbare Inkremente. Für Serien gilt `docs/requirements/series-model.md`; für lokale Infrastruktur und Datenbanktests `docs/adr/0010-docker-available-local-development.md`.
+Dieser Plan zerlegt die Anforderungsspezifikation in kleine, reviewbare Inkremente. Für Serien gilt `docs/requirements/series-model.md`; für dynamische Spieler und Reminder-Teilnahme `docs/requirements/dynamic-player-model.md`; für lokale Infrastruktur und Datenbanktests `docs/adr/0010-docker-available-local-development.md`.
 
 ## Leitprinzipien
 
@@ -11,6 +11,7 @@ Dieser Plan zerlegt die Anforderungsspezifikation in kleine, reviewbare Inkremen
 - Persistenzänderungen werden lokal mit `database-integration` und zusätzlich in GitHub Actions geprüft.
 - Originalnachrichten werden erst nach vollständig getesteter kanonischer Veröffentlichung gelöscht.
 - QuadWords-Bildparser und sichere QuadWords-Konsolidierung werden vor Tagesstatus und Erinnerungen umgesetzt.
+- Dynamische Spieler, historische Teilnahmezeiträume und Reminder-Opt-in werden vor dem Reminder-Scheduler umgesetzt.
 
 ## Inkremente 0 bis 5
 
@@ -131,32 +132,66 @@ Abnahme:
 
 ## Zwischeninkrement 7.1 – Kompaktes 2×2-Layout der QuadWords-Grids
 
-**Status:** vorbereitet als Issue #17; Umsetzung vor Inkrement 8.
+**Status:** abgeschlossen, Issue #17 und PR #18 gemergt; visueller Discord-Smoke-Test am 30. Juli 2026 erfolgreich.
 
 **Ziel:** die vier bereits korrekt publizierten QuadWords-Grids näher an der ursprünglichen Spielanordnung und kompakter darstellen.
 
-Geplanter Umfang:
+Umgesetzt:
 
 - `topLeft` und `topRight` nebeneinander
 - `bottomLeft` und `bottomRight` darunter nebeneinander
 - keine sichtbaren Positionslabels
 - sichtbare Einzelhöhe endet bei der ersten vollständig grünen Lösungszeile; ungelöste Boards behalten alle Zeilen
 - Paarhöhe entspricht dem längeren Board des jeweiligen horizontalen Paares
-- keine sichtbaren Leerzellen unter einem früher gelösten Teilboard
-- Titel, Ergebnis, Dauer, Serien, Publication-Key und Korrektur-Edit bleiben unverändert
-- GridWords sowie Publish-, Delete-, Claim-, Recovery- und Persistenzlogik bleiben unverändert
-- Renderer-Tests plus kurzer visueller Discord-Smoke-Test
+- dunkle geometrisch stabile Platzhalterzellen für die Ausrichtung kürzerer Boards
+- Monospace-Codeblock für GridWords und QuadWords
+- Wiederherstellung historisch etablierter Komplett-/Perfektzeilen bei kanonischer Neuerzeugung
+- Titel, Ergebnis, Dauer, Serien, Publication-Key und Korrektur-Edit unverändert
+- Parser-, Persistenz- und Publish-/Delete-Zustandsmaschine unverändert
+
+Abnahme:
+
+- 199 Standardtests grün
+- 57 PostgreSQL-Integrationstests grün
+- echte Discord-Ausrichtung, GridWords-Codeblock, Kontextzeilen und sichere Löschung erfolgreich geprüft
+
+## Zwischeninkrement 7.2 – Dynamische Spieler, Teilnahmezeiträume und Reminder-Opt-in
+
+**Status:** vorbereitet als Issue #19; Umsetzung vollständig vor Inkrement 8.
+
+**Ziel:** die feste Zwei-Spieler-Konfiguration durch dynamische Spielerprofile und historisch stabile Teilnahmezeiträume ersetzen sowie die Reminder-Präferenzen für Inkrement 8 vorbereiten.
+
+Geplanter Umfang:
+
+- jeder menschliche Nutzer im Zielchannel kann durch ein vollständig gültiges Share Spieler werden
+- ungültige Shares und normale Texte erzeugen kein Spielerprofil
+- serverbezogener Discord-Anzeigename wird bei Share und Command synchronisiert
+- `player.active` als aktueller Zustand und datierte, nicht überlappende Teilnahmezeiträume
+- automatische Aktivierung ab fachlichem Share-Spieltag
+- `/participation join|leave|status` als Self-Service
+- `/player activate|deactivate|status` für konfigurierte Administratoren
+- `/reminders on|off|status` unabhängig vom Teilnahmezustand
+- gemeinsamer Komplett-/Perfekttag über alle am jeweiligen Tag aktiven Spieler, mindestens zwei Teilnehmer
+- historische Serien bleiben bei späterem Beitritt oder Austritt unverändert
+- transportneutraler Reminder-Kandidaten-Port mit fehlenden Spieltypen und Discord-User-ID
+- Entfernung der festen `PLAYER_1_*`-/`PLAYER_2_*`-Konfiguration
+- Liquibase-Migration und Backfill für bestehende Spieler
+- vollständige GridWords-/QuadWords-Publish-, Edit-, Delete-, Recovery- und Parser-Regression
+
+Verbindlich: `docs/requirements/dynamic-player-model.md` und `docs/increments/07b-dynamic-player-participation.md`.
 
 ## Inkrement 8 – Tagesstatus, vollständige Serien und Erinnerungen
 
-**Ziel:** täglichen Kernnutzen vollständig herstellen.
+**Ziel:** täglichen Kernnutzen auf Basis dynamischer Teilnehmer vollständig herstellen.
 
-- alle fünf persönlichen Serien
-- gemeinsame Komplett- und Perfektserie
+- alle fünf persönlichen Serien für jeden Spieler
+- gemeinsame Komplett- und Perfektserie über die pro Spieltag aktive Teilnehmermenge
 - keine gemeinsame Aktivitätsserie
 - eine Tagesstatusnachricht je Spieltag
 - Erinnerungen um 18:00 und 23:00 Uhr
-- nur fehlende Einreichungen erwähnen
+- nur aktive Reminder-Opt-ins mit fehlenden Einreichungen erwähnen
+- ID-basierte User-Mentions mit strikt begrenzten Allowed Mentions
+- je Spieler die konkret fehlenden Spiele nennen
 - persistierte Delivery-Idempotenz und Neustart-Nachholung
 - `Europe/Berlin`, feste `Clock`, heute und gestern als Nachtragsfenster
 
@@ -197,7 +232,8 @@ Geplanter Umfang:
 - GridWords-Ersetzung vor QuadWords-Ersetzung
 - QuadWords-Bildparser vor QuadWords-Konsolidierung
 - sichere Konsolidierung beider Spiele vor Tagesstatus und Erinnerungen
-- kompaktes QuadWords-Layout als isoliertes Renderer-Polish vor Tagesstatus
+- kompaktes QuadWords-Layout als isoliertes Renderer-Polish vor dynamischen Spielern
+- dynamische Teilnahmezeiträume und Reminder-Opt-in vor Tagesstatus und Scheduler
 - robuste Serienlogik vor Berichten und Kommentaren
 
 ## Definition of Done
