@@ -1,12 +1,12 @@
 # Inkrement 7: Kanonische QuadWords-Konsolidierung und sichere Ersetzung
 
-**Status:** automatisiert umgesetzt; ausschließlich Tobias’ manueller Discord-/PostgreSQL-Smoke-Test ist offen
+**Status:** abgeschlossen; PR #16 gemergt und vollständig abgenommen
 
 **Issue:** #15
 
-**Draft-PR:** #16
+**PR:** #16
 
-**Branch:** `feature/canonical-quadwords-replacement`
+**Merge-Commit:** `6aa3713701f64b9e6bb372b673fd3d37bc7f0eef`
 
 ## Ziel
 
@@ -14,9 +14,9 @@ Ein sicher geparstes und persistiertes QuadWords-Ergebnis wird in genau einer ka
 
 ## Ausgangslage
 
-- Inkremente 0 bis 6 sind abgeschlossen.
-- QuadWords besitzt vier normalisierte und persistierte Boards sowie Parser-Version `quadwords-image-v2`.
-- GridWords besitzt bereits den vollständigen sicheren Publish-/Edit-/Delete-Ablauf mit Claims, Delivery-Fence, Recovery, Supersession und Duplikatbereinigung.
+- Inkremente 0 bis 6 waren abgeschlossen.
+- QuadWords besaß vier normalisierte und persistierte Boards sowie Parser-Version `quadwords-image-v2`.
+- GridWords besaß bereits den vollständigen sicheren Publish-/Edit-/Delete-Ablauf mit Claims, Delivery-Fence, Recovery, Supersession und Duplikatbereinigung.
 - Vor diesem Inkrement blieben gültige QuadWords-Quellen sichtbar und erhielten `✅`.
 
 ## Umgesetzter Umfang
@@ -50,20 +50,28 @@ Ergebnisse vom 30. Juli 2026:
 
 - Standardbuild: 196 Tests, 0 Fehler, 0 Fehlschläge, 0 übersprungen
 - Datenbankprofil: 196 Standardtests und 56 PostgreSQL-Integrationstests, jeweils 0 Fehler, 0 Fehlschläge, 0 übersprungen
+- beide GitHub-Actions-Jobs grün
 - PostgreSQL-Vollpfad: bildgestütztes QuadWords bis `COMPLETED`, Korrektur derselben kanonischen Message-ID, einmaliger PublicationContext, Legacy-Schutz, permanenter Delete-Fehler ohne Hot-Loop und kontrollierte Recovery für beide Spieltypen
 
 Automatisierte Tests verwenden keinen echten Discord-Token, keine `.env` und öffnen keine echte Discord-Verbindung. Docker Desktop wird ausschließlich für PostgreSQL-Testcontainers verwendet.
 
-## Tobias’ manueller Smoke-Test vor Merge
+## Manueller Discord-/PostgreSQL-Smoke-Test
 
-- gelöstes QuadWords: genau ein Embed, danach sichere Quelllöschung
-- visueller Vergleich aller vier Boards
-- `X/9` innerhalb der Discord-Grenzen
+Am 30. Juli 2026 erfolgreich geprüft:
+
+- gelöstes QuadWords erzeugt genau ein Embed und löscht danach sicher die Quelle
+- alle vier Boards wurden visuell mit dem realen Ergebnisbild verglichen
+- `X/9` liegt innerhalb der Discord-Grenzen
 - Korrektur editiert dieselbe Bot-Nachricht
-- Neustart und Retry ohne Duplikate
+- Neustart und Retry erzeugen keine Duplikate
 - fachlich ungültiges Bild bleibt mit `⚠️` sichtbar
-- fehlende Löschberechtigung und kontrollierte Recovery
-- unveränderter GridWords-Ablauf
+- fehlende Löschberechtigung führt ohne Hot-Loop zu `PERMANENT`
+- nach Wiederherstellung der Berechtigung erfolgt kontrollierte Recovery bis `COMPLETED`
+- GridWords-Ablauf bleibt unverändert
+
+## Nachfolge
+
+Das rein visuelle Zwischeninkrement 7.1 aus Issue #17 ordnet die vier QuadWords-Grids kompakt als 2×2-Raster an. Parser, Persistenz, Publication und sichere Löschung bleiben dabei unverändert.
 
 ## Nicht-Ziele
 
