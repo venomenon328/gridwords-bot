@@ -18,7 +18,7 @@ final class CanonicalEmbedRenderer {
     MessageEmbed render(CanonicalResultMessage message) {
         String outcome = outcome(message);
         String duration = String.format("%d:%02d", message.duration().toMinutes(), message.duration().toSecondsPart());
-        String title = "\uD83D\uDFE9 GridWords · "
+        String title = gameTitle(message) + " ?? "
                 + message.gameDate().format(DateTimeFormatter.ofPattern("d. MMMM uuuu", Locale.GERMAN));
         return new EmbedBuilder()
                 .setTitle(title)
