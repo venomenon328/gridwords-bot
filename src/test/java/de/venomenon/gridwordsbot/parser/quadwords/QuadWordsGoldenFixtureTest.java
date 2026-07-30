@@ -25,7 +25,7 @@ class QuadWordsGoldenFixtureTest {
         assertThat(actual).isEqualTo(readCanonicalText(expected));
     }
 
-    /** Preserves every line's content while making Windows CRLF and Linux LF checkouts equivalent. */
+    /** Preserves every line's content while treating Windows CRLF and Linux LF checkouts equally. */
     private static String readCanonicalText(Path path) throws Exception {
         return String.join("\n", Files.readAllLines(path)).stripTrailing();
     }
