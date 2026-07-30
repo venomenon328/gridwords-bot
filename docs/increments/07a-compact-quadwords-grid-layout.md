@@ -1,6 +1,6 @@
 # Zwischeninkrement 7.1: Kompaktes 2×2-Layout der QuadWords-Grids
 
-**Status:** umgesetzt; visueller Discord-Smoke-Test offen
+**Status:** umgesetzt; abschließender visueller Discord-Smoke-Test offen
 
 **Issue:** #17
 
@@ -8,7 +8,7 @@
 
 ## Ziel
 
-Die vier bereits korrekt geparsten, gespeicherten und kanonisch veröffentlichten QuadWords-Boards werden in Discord kompakt in ihrer ursprünglichen 2×2-Anordnung dargestellt.
+Die vier bereits korrekt geparsten, gespeicherten und kanonisch veröffentlichten QuadWords-Boards werden in Discord kompakt in ihrer ursprünglichen 2×2-Anordnung dargestellt. GridWords verwendet für eine konsistente Rasterdarstellung ebenfalls einen Monospace-Codeblock.
 
 ## Verbindliches Layout
 
@@ -17,6 +17,8 @@ Die vier bereits korrekt geparsten, gespeicherten und kanonisch veröffentlichte
 - keine sichtbaren Positionslabels
 - kompakter Abstand zwischen den beiden Boards eines Paares
 - klare vertikale Trennung zwischen oberem und unterem Paar
+- fehlende linke Zeilen werden ausschließlich mit unsichtbarem, auf Discord kalibriertem Leerraum aufgefüllt, damit die verbleibenden rechten Zeilen ihre horizontale Position behalten
+- GridWords- und QuadWords-Raster stehen jeweils in einem Monospace-Codeblock
 
 ## Sichtbare Boardhöhe
 
@@ -32,7 +34,7 @@ Die vier bereits korrekt geparsten, gespeicherten und kanonisch veröffentlichte
 - PostgreSQL- und Liquibase-Schema
 - Publication-, Edit-, Delete-, Claim-, Recovery- und Supersession-Logik
 - Titel, Ergebnis, Dauer, Serien und versteckter Publication-Key
-- GridWords-Darstellung
+- fachlicher GridWords-Inhalt und dessen Publish-/Edit-/Delete-Verhalten
 
 ## Validierung
 
@@ -41,6 +43,6 @@ mvn --batch-mode --no-transfer-progress clean verify
 mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
 ```
 
-Automatisierte Renderer-Tests decken die Paarhöhen 7/9 und 4/6, die unsichtbare Ausrichtung nach einer Lösungszeile, ein ungelöstes neunzeiliges Board, die semantische 2×2-Reihenfolge, fehlende Positionslabels, Korrekturkontext, Publication-Key, unveränderte GridWords-Ausgabe und Discord-Embed-Grenzen ab.
+Automatisierte Renderer-Tests decken die Paarhöhen 7/9 und 4/6, die unsichtbare Ausrichtung nach einer Lösungszeile, ein ungelöstes neunzeiliges Board, die semantische 2×2-Reihenfolge, fehlende Positionslabels, Korrekturkontext, Publication-Key, Monospace-Blöcke für beide Spiele und Discord-Embed-Grenzen ab.
 
-Offen bleibt ausschließlich Tobias' kurzer visueller Discord-Smoke-Test mit unterschiedlich hohen gelösten Teilboards und einer Korrektur derselben kanonischen Nachricht.
+Offen bleibt ausschließlich Tobias' kurzer visueller Discord-Smoke-Test: rechte Restzeilen müssen exakt unter dem rechten Board ausgerichtet sein, das GridWords-Raster muss im Codeblock erscheinen, und eine Korrektur muss weiterhin dieselbe kanonische Nachricht editieren.
