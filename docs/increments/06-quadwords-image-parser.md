@@ -30,3 +30,7 @@ QuadWords-Ergebnisbilder werden ohne OCR geometrisch und farbbasiert in vier tra
 - kein OCR und keine KI
 
 Die vollständigen Anforderungen, Tests und Abnahmekriterien stehen in GitHub-Issue #13. Der Implementierungsplan bleibt maßgeblich; dieses Dokument dient als Branch-Einstiegspunkt für den vorbereiteten Draft-PR.
+
+## Unterstuetzte Bildformate und Grenzen
+
+Der Parser akzeptiert ausschliesslich PNG und JPEG, sofern sie von der Java-Standardbibliothek ImageIO vollstaendig decodiert werden koennen. GIF, BMP, WebP und andere Formate werden fachlich als nicht unterstuetzt abgelehnt. Vor dem Decoding gilt eine Eingabegrenze von 8 MiB; danach gelten 4.096 Pixel je Dimension und 12.000.000 Pixel insgesamt. Diese Grenzen sind im Parser zentral definiert.
