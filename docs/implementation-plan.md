@@ -157,30 +157,39 @@ Abnahme:
 
 ## Zwischeninkrement 7.2 – Dynamische Spieler, Teilnahmezeiträume und Reminder-Opt-in
 
-**Status:** umgesetzt auf Draft-PR #20; offen bleibt nur Tobias' manueller Drei-Nutzer-Smoke-Test.
+**Status:** vollständig automatisiert umgesetzt auf Draft-PR #20; offen bleibt nur Tobias' manueller Drei-Nutzer-Smoke-Test.
 
 **Ziel:** die feste Zwei-Spieler-Konfiguration durch dynamische Spielerprofile und historisch stabile Teilnahmezeiträume ersetzen sowie die Reminder-Präferenzen für Inkrement 8 vorbereiten.
 
-Geplanter Umfang:
+Umgesetzt:
 
 - jeder menschliche Nutzer im Zielchannel kann durch ein vollständig gültiges Share Spieler werden
 - ungültige Shares und normale Texte erzeugen kein Spielerprofil
-- serverbezogener Discord-Anzeigename wird bei Share und Command synchronisiert
+- serverbezogener Discord-Anzeigename und extern konfigurierter Administratorstatus werden bei Share und Commands synchronisiert
 - `player.active` als aktueller Zustand und datierte, nicht überlappende Teilnahmezeiträume
+- Spielerregistrierung, Aktivierung, Ergebnis und PublicationContext werden atomar gespeichert
+- erstmalige konkurrierte Registrierungen werden vor der Periodenmutation serialisiert
 - automatische Aktivierung ab fachlichem Share-Spieltag
 - `/participation join|leave|status` als Self-Service
 - `/player activate|deactivate|status` für konfigurierte Administratoren
 - `/reminders on|off|status` unabhängig vom Teilnahmezustand
+- ephemere Antworten und Statusausgabe mit laufendem Teilnahmezeitraum
 - gemeinsamer Komplett-/Perfekttag über alle am jeweiligen Tag aktiven Spieler, mindestens zwei Teilnehmer
 - historische Serien bleiben bei späterem Beitritt oder Austritt unverändert
 - transportneutraler Reminder-Kandidaten-Port mit fehlenden Spieltypen und Discord-User-ID
 - Entfernung der festen `PLAYER_1_*`-/`PLAYER_2_*`-Konfiguration
 - Liquibase-Migration und Backfill für bestehende Spieler
+- produktiver Spring-/PostgreSQL-Startup mit genau einem dynamischen Persistenzadapter
 - vollständige GridWords-/QuadWords-Publish-, Edit-, Delete-, Recovery- und Parser-Regression
 
 Verbindlich: `docs/requirements/dynamic-player-model.md` und `docs/increments/07b-dynamic-player-participation.md`.
 
-Automatisierte Abnahme: 197 Standardtests und 56 PostgreSQL-Integrationstests lokal gruen; keine automatisierte Discord-Verbindung oder Token-Verwendung.
+Automatisierte Abnahme:
+
+- 207 Standardtests grün
+- 63 PostgreSQL-Integrationstests grün
+- GitHub Actions auf dem finalen Code-Head vollständig grün
+- keine automatisierte Discord-Verbindung oder Token-Verwendung
 
 ## Inkrement 8 – Tagesstatus, vollständige Serien und Erinnerungen
 
