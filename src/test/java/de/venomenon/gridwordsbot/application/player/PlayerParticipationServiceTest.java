@@ -7,10 +7,12 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.venomenon.gridwordsbot.domain.model.ParticipationPeriod;
 import de.venomenon.gridwordsbot.port.in.PlayerParticipationUseCase.PlayerIdentity;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.Optional;
@@ -34,9 +36,9 @@ class PlayerParticipationServiceTest {
         service.leave(identity(PLAYER));
 
         verify(store).activate(new PlayerStore.ParticipationChange(new PlayerStore.ProfileUpdate(PLAYER, "Player", false),
-                java.time.LocalDate.of(2026, 7, 29)));
+                LocalDate.of(2026, 7, 29)));
         verify(store).deactivate(new PlayerStore.ParticipationChange(new PlayerStore.ProfileUpdate(PLAYER, "Player", false),
-                java.time.LocalDate.of(2026, 7, 30)));
+                LocalDate.of(2026, 7, 30)));
     }
 
     @Test
@@ -47,6 +49,7 @@ class PlayerParticipationServiceTest {
         assertThat(service.activate(identity(PLAYER), identity(3L)).authorized()).isFalse();
 
         verify(store, never()).activate(any());
+        verify(store, never()).synchronizeProfile(any());
     }
 
     @Test
@@ -59,11 +62,45 @@ class PlayerParticipationServiceTest {
     }
 
     @Test
-    void reportsUnknownProfilesWithoutCreatingOne() {
+    void statusSynchronizesAnUnknownProfileAndReportsItsCurrentPeriod() {
         PlayerStore store = mock(PlayerStore.class);
-        when(store.findByDiscordUserId(PLAYER)).thenReturn(Optional.empty());
+        when(store.synchronizeProfile(any())).thenReturn(player(true, true));
+        when(store.findParticipationPeriod(PLAYER, LocalDate.of(2026, 7, 29)))
+                .thenReturn(Optional.of(new ParticipationPeriod(PLAYER, LocalDate.of(2026, 7, 27), null)));
 
-        assertThat(service(store).status(identity(PLAYER)).known()).isFalse();
+        var status = service(store).status(identity(PLAYER));
+
+        assertThat(status.known()).isTrue();
+        assertThat(status.message()).isEqualTo("Teilnahme: aktiv seit 2026-07-27; Reminder: an.");
+        verify(store).synchronizeProfile(new PlayerStore.ProfileUpdate(PLAYER, "Player", false));
+    }
+
+    @Test
+    void adminStatusCreatesAndSynchronizesAnUnknownTargetWithoutActivatingIt() {
+        PlayerStore store = mock(PlayerStore.class);
+        long target = 3L;
+        when(store.synchronizeProfile(any())).thenReturn(new PlayerStore.StoredPlayer(
+                target, "Player", false, false, false, Instant.EPOCH, Instant.EPOCH));
+        PlayerParticipationService service = service(store);
+
+        var status = service.status(identity(ADMIN), identity(target));
+
+        assertThat(status.authorized()).isTrue();
+        assertThat(status.active()).isFalse();
+        assertThat(status.message()).isEqualTo("Teilnahme: inaktiv; Reminder: aus.");
+        verify(store).synchronizeProfile(new PlayerStore.ProfileUpdate(target, "Player", false));
+        verify(store, never()).activate(any());
+    }
+
+    @Test
+    void administratorIdentityIsSynchronizedFromExternalConfiguration() {
+        PlayerStore store = mock(PlayerStore.class);
+        when(store.synchronizeProfile(any())).thenReturn(new PlayerStore.StoredPlayer(
+                ADMIN, "Player", false, true, false, Instant.EPOCH, Instant.EPOCH));
+
+        service(store).status(identity(ADMIN));
+
+        verify(store).synchronizeProfile(new PlayerStore.ProfileUpdate(ADMIN, "Player", true));
     }
 
     private static PlayerParticipationService service(PlayerStore store) {
