@@ -21,8 +21,16 @@ ALTER TABLE game_result
         OR
         (game_type = 'QUADWORDS'
             AND normalized_board IS NULL
-            AND quadwords_top_left_board IS NOT NULL
-            AND quadwords_top_right_board IS NOT NULL
-            AND quadwords_bottom_left_board IS NOT NULL
-            AND quadwords_bottom_right_board IS NOT NULL)
+            AND (
+                (parser_version = 'quadwords-share-v1'
+                    AND quadwords_top_left_board IS NULL
+                    AND quadwords_top_right_board IS NULL
+                    AND quadwords_bottom_left_board IS NULL
+                    AND quadwords_bottom_right_board IS NULL)
+                OR
+                (quadwords_top_left_board IS NOT NULL
+                    AND quadwords_top_right_board IS NOT NULL
+                    AND quadwords_bottom_left_board IS NOT NULL
+                    AND quadwords_bottom_right_board IS NOT NULL)
+            ))
     );
