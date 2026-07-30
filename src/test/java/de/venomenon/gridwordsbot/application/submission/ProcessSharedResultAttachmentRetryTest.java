@@ -132,7 +132,7 @@ class ProcessSharedResultAttachmentRetryTest {
     }
 
     @Test
-    void unavailableDiscordSourceBecomesFinalTechnicalFailureWithoutAReplayLoop() {
+    void unavailableDiscordSourceRemainsTechnicalAndDoesNotBecomeAParserRejection() {
         PlayerStore playerStore = mock(PlayerStore.class);
         SubmissionStore submissionStore = mock(SubmissionStore.class);
         when(playerStore.findByDiscordUserId(PLAYER_ID)).thenReturn(Optional.of(
@@ -152,15 +152,16 @@ class ProcessSharedResultAttachmentRetryTest {
             submission.set(stored(target, Optional.empty(), Optional.empty(), submission.get().attachments()));
             return true;
         });
-        AtomicInteger loads = new AtomicInteger();
+        doAnswer(invocation -> {
+            submission.set(stored(SubmissionStore.SubmissionState.FAILED_RETRYABLE, Optional.empty(),
+                    Optional.of("attachment download failed"), submission.get().attachments()));
+            return null;
+        }).when(submissionStore).markRetryableFailure(SOURCE_ID, "attachment download failed");
 
         ProcessSharedResultService service = new ProcessSharedResultService(
                 new GridWordsShareParser(),
                 new QuadWordsShareParser(),
-                attachment -> {
-                    loads.incrementAndGet();
-                    throw new AttachmentContentLoader.AttachmentUnavailableException("gone");
-                },
+                attachment -> { throw new AttachmentContentLoader.AttachmentUnavailableException("gone"); },
                 new QuadWordsImageParser(),
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 ZoneId.of("Europe/Berlin"),
@@ -170,13 +171,9 @@ class ProcessSharedResultAttachmentRetryTest {
                 ignored -> true);
 
         assertThat(service.process(message())).isEqualTo(new ProcessingResult.Ignored());
-        assertThat(submission.get().state()).isEqualTo(SubmissionStore.SubmissionState.FAILED_FINAL);
+        assertThat(submission.get().state()).isEqualTo(SubmissionStore.SubmissionState.FAILED_RETRYABLE);
         assertThat(submission.get().parserErrorCode()).isEmpty();
         assertThat(submission.get().gameResultId()).isEmpty();
-
-        assertThat(service.process(message())).isEqualTo(new ProcessingResult.Ignored());
-        assertThat(loads).hasValue(1);
-        verify(submissionStore, never()).markRetryableFailure(SOURCE_ID, "attachment download failed");
     }
 
     @Test

@@ -97,8 +97,7 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
         if (isTerminal(submission)) {
             return new ProcessingResult.Accepted(parsed.gameType());
         }
-        if (submission.state() == SubmissionStore.SubmissionState.SUPERSEDED
-                || submission.state() == SubmissionStore.SubmissionState.FAILED_FINAL) {
+        if (submission.state() == SubmissionStore.SubmissionState.SUPERSEDED) {
             return new ProcessingResult.Ignored();
         }
         if (submission.state() == SubmissionStore.SubmissionState.PARSE_REJECTED) {
@@ -117,7 +116,7 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
             if (completion instanceof QuadWordsCompletion.Rejected rejected) {
                 return rejected.result();
             }
-            if (completion instanceof QuadWordsCompletion.TechnicalFailure) {
+            if (completion instanceof QuadWordsCompletion.RetryableFailure) {
                 return new ProcessingResult.Ignored();
             }
             parsed = ((QuadWordsCompletion.Parsed) completion).parsed();
@@ -165,26 +164,24 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
                     java.util.Optional.of(((QuadWordsImageParser.Parse.Parsed) imageParse).boards())));
         } catch (AttachmentContentLoader.AttachmentTooLargeException exception) {
             return new QuadWordsCompletion.Rejected(reject(message.messageId(), ParseErrorCode.IMAGE_TOO_LARGE));
-        } catch (AttachmentContentLoader.AttachmentUnavailableException exception) {
-            markPreResultTechnicalFailure(message.messageId(), SubmissionStore.SubmissionState.FAILED_FINAL);
-            return new QuadWordsCompletion.TechnicalFailure();
-        } catch (AttachmentContentLoader.RetryableAttachmentException exception) {
-            markPreResultTechnicalFailure(message.messageId(), SubmissionStore.SubmissionState.FAILED_RETRYABLE);
-            return new QuadWordsCompletion.TechnicalFailure();
+        } catch (AttachmentContentLoader.AttachmentUnavailableException
+                | AttachmentContentLoader.RetryableAttachmentException exception) {
+            markPreResultRetryableFailure(message.messageId(), "attachment download failed");
+            return new QuadWordsCompletion.RetryableFailure();
         }
     }
 
-    private void markPreResultTechnicalFailure(long sourceMessageId, SubmissionStore.SubmissionState targetState) {
+    private void markPreResultRetryableFailure(long sourceMessageId, String safeTechnicalMessage) {
         boolean transitioned = submissionStore.transition(
                 sourceMessageId,
                 SubmissionStore.SubmissionState.RECEIVED,
-                targetState)
+                SubmissionStore.SubmissionState.FAILED_RETRYABLE)
                 || submissionStore.transition(
                         sourceMessageId,
                         SubmissionStore.SubmissionState.VALIDATED,
-                        targetState);
-        if (transitioned && targetState == SubmissionStore.SubmissionState.FAILED_RETRYABLE) {
-            submissionStore.markRetryableFailure(sourceMessageId, "attachment download failed");
+                        SubmissionStore.SubmissionState.FAILED_RETRYABLE);
+        if (transitioned) {
+            submissionStore.markRetryableFailure(sourceMessageId, safeTechnicalMessage);
         }
     }
 
@@ -235,9 +232,9 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
     }
 
     private sealed interface QuadWordsCompletion permits QuadWordsCompletion.Parsed, QuadWordsCompletion.Rejected,
-            QuadWordsCompletion.TechnicalFailure {
+            QuadWordsCompletion.RetryableFailure {
         record Parsed(ParsedGameResult parsed) implements QuadWordsCompletion { }
         record Rejected(ProcessingResult.Rejected result) implements QuadWordsCompletion { }
-        record TechnicalFailure() implements QuadWordsCompletion { }
+        record RetryableFailure() implements QuadWordsCompletion { }
     }
 }
