@@ -15,7 +15,7 @@ final class CanonicalEmbedRenderer {
 
     private static final String SOLVED_QUADWORDS_ROW = "🟩🟩🟩🟩🟩";
     private static final String PAIR_GAP = "  ";
-    private static final String EMPTY_BOARD_ROW = "⬜⬜⬜⬜⬜";
+    private static final String EMPTY_BOARD_ROW = "⬛⬛⬛⬛⬛";
 
     private static final String PERSONAL_COMPLETE = "✅ Komplett: ";
     private static final String PERSONAL_PERFECT = "💎 Perfekt: ";
