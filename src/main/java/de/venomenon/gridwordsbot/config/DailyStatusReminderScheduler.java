@@ -12,8 +12,8 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.event.EventListener;
 import org.springframework.context.annotation.Profile;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -54,7 +54,7 @@ final class DailyStatusReminderScheduler {
         LocalTime second = properties.schedule().secondReminder();
 
         deliveries.expireOpenRemindersBefore(guildId, channelId, today);
-        status.reconcile(today.minusDays(1), false);
+        status.reconcile(today.minusDays(1), true);
         boolean firstDue = !localTime.isBefore(first);
         boolean secondDue = !localTime.isBefore(second);
         status.reconcile(today, firstDue);
