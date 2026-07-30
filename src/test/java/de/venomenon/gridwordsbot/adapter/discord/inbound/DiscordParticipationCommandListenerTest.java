@@ -26,25 +26,27 @@ class DiscordParticipationCommandListenerTest {
     @Test
     void delegatesSelfServiceWithTheServerDisplayNameAndRepliesEphemerally() {
         PlayerParticipationUseCase useCase = mock(PlayerParticipationUseCase.class);
-        SlashCommandInteractionEvent event = event("participation", "join", GUILD_ID, ACTOR_ID, "Server Actor");
+        EventFixture fixture = event("participation", "join", GUILD_ID, ACTOR_ID, "Server Actor");
         PlayerStatus status = new PlayerStatus(true, true, true, false, "Teilnahme ist ab heute aktiv.");
         when(useCase.join(new PlayerIdentity(ACTOR_ID, "Server Actor"))).thenReturn(status);
 
-        new DiscordParticipationCommandListener(properties(), useCase).onSlashCommandInteraction(event);
+        new DiscordParticipationCommandListener(properties(), useCase)
+                .onSlashCommandInteraction(fixture.event());
 
         verify(useCase).join(new PlayerIdentity(ACTOR_ID, "Server Actor"));
-        verify(event.reply(status.message())).setEphemeral(true);
-        verify(event.reply(status.message()).setEphemeral(true)).queue();
+        verify(fixture.event()).reply(status.message());
+        verify(fixture.reply()).setEphemeral(true);
+        verify(fixture.reply()).queue();
     }
 
     @Test
     void delegatesAdminStatusForTheSelectedGuildMember() {
         PlayerParticipationUseCase useCase = mock(PlayerParticipationUseCase.class);
-        SlashCommandInteractionEvent event = event("player", "status", GUILD_ID, ACTOR_ID, "Admin");
+        EventFixture fixture = event("player", "status", GUILD_ID, ACTOR_ID, "Admin");
         OptionMapping option = mock(OptionMapping.class);
         User target = mock(User.class);
         Member targetMember = mock(Member.class);
-        when(event.getOption("user")).thenReturn(option);
+        when(fixture.event().getOption("user")).thenReturn(option);
         when(option.getAsUser()).thenReturn(target);
         when(option.getAsMember()).thenReturn(targetMember);
         when(target.getIdLong()).thenReturn(TARGET_ID);
@@ -54,25 +56,28 @@ class DiscordParticipationCommandListenerTest {
         when(useCase.status(new PlayerIdentity(ACTOR_ID, "Admin"), new PlayerIdentity(TARGET_ID, "Server Target")))
                 .thenReturn(status);
 
-        new DiscordParticipationCommandListener(properties(), useCase).onSlashCommandInteraction(event);
+        new DiscordParticipationCommandListener(properties(), useCase)
+                .onSlashCommandInteraction(fixture.event());
 
         verify(useCase).status(
                 new PlayerIdentity(ACTOR_ID, "Admin"),
                 new PlayerIdentity(TARGET_ID, "Server Target"));
-        verify(event.reply(status.message())).setEphemeral(true);
+        verify(fixture.event()).reply(status.message());
+        verify(fixture.reply()).setEphemeral(true);
     }
 
     @Test
     void ignoresCommandsOutsideTheConfiguredGuild() {
         PlayerParticipationUseCase useCase = mock(PlayerParticipationUseCase.class);
-        SlashCommandInteractionEvent event = event("reminders", "on", GUILD_ID + 1, ACTOR_ID, "Actor");
+        EventFixture fixture = event("reminders", "on", GUILD_ID + 1, ACTOR_ID, "Actor");
 
-        new DiscordParticipationCommandListener(properties(), useCase).onSlashCommandInteraction(event);
+        new DiscordParticipationCommandListener(properties(), useCase)
+                .onSlashCommandInteraction(fixture.event());
 
         verifyNoInteractions(useCase);
     }
 
-    private static SlashCommandInteractionEvent event(
+    private static EventFixture event(
             String command, String subcommand, long guildId, long actorId, String effectiveName) {
         SlashCommandInteractionEvent event = mock(SlashCommandInteractionEvent.class);
         Guild guild = mock(Guild.class);
@@ -91,7 +96,7 @@ class DiscordParticipationCommandListenerTest {
         when(member.getEffectiveName()).thenReturn(effectiveName);
         when(event.reply(org.mockito.ArgumentMatchers.anyString())).thenReturn(reply);
         when(reply.setEphemeral(true)).thenReturn(reply);
-        return event;
+        return new EventFixture(event, reply);
     }
 
     private static GridwordsBotProperties properties() {
@@ -100,4 +105,6 @@ class DiscordParticipationCommandListenerTest {
                 null,
                 null);
     }
+
+    private record EventFixture(SlashCommandInteractionEvent event, ReplyCallbackAction reply) { }
 }
