@@ -59,8 +59,8 @@ class PostgresCanonicalPublicationContextStoreIT {
                     personal_perfect_established, shared_complete_established,
                     shared_perfect_established, received_at, updated_at)
                 VALUES
-                    (7101, 1, 2, 7001, 'first', 'COMPLETED', ?, TRUE, FALSE, TRUE, FALSE, ?, ?),
-                    (7102, 1, 2, 7001, 'correction', 'COMPLETED', ?, FALSE, TRUE, FALSE, TRUE, ?, ?)
+                    (7101, 1, 2, 7001, 'first', 'RESULT_STORED', ?, TRUE, FALSE, TRUE, FALSE, ?, ?),
+                    (7102, 1, 2, 7001, 'correction', 'RESULT_STORED', ?, FALSE, TRUE, FALSE, TRUE, ?, ?)
                 """, resultId, now, now, resultId, now.plusSeconds(1), now.plusSeconds(1));
 
         var context = store.findForResult(resultId);
