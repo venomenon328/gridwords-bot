@@ -14,6 +14,7 @@ import de.venomenon.gridwordsbot.port.out.AttachmentContentLoader.AttachmentTooL
 import de.venomenon.gridwordsbot.port.out.AttachmentContentLoader.AttachmentUnavailableException;
 import de.venomenon.gridwordsbot.port.out.AttachmentContentLoader.RetryableAttachmentException;
 import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -108,6 +109,34 @@ class JdaAttachmentContentLoaderTest {
         when(jda.getTextChannelById(12L)).thenReturn(channel);
         when(channel.retrieveMessageById(500L)).thenReturn(retrieve);
         when(retrieve.complete()).thenThrow(failure);
+        when(failure.getErrorResponse()).thenReturn(ErrorResponse.UNKNOWN_MESSAGE);
+
+        assertThatThrownBy(() -> new JdaAttachmentContentLoader(jda).load(metadata(1)))
+                .isInstanceOf(AttachmentUnavailableException.class)
+                .hasCause(failure);
+    }
+
+    @Test
+    void preservesDiscordFailureClassificationFromTheAsynchronousDownload() {
+        JDA jda = mock(JDA.class);
+        TextChannel channel = mock(TextChannel.class);
+        Message message = mock(Message.class);
+        Message.Attachment selected = mock(Message.Attachment.class);
+        NamedAttachmentProxy proxy = mock(NamedAttachmentProxy.class);
+        @SuppressWarnings("unchecked")
+        RestAction<Message> retrieve = mock(RestAction.class);
+        ErrorResponseException failure = mock(ErrorResponseException.class);
+        CompletableFuture<InputStream> download = new CompletableFuture<>();
+        download.completeExceptionally(failure);
+
+        when(jda.getTextChannelById(12L)).thenReturn(channel);
+        when(channel.retrieveMessageById(500L)).thenReturn(retrieve);
+        when(retrieve.complete()).thenReturn(message);
+        when(message.getAttachments()).thenReturn(List.of(selected));
+        when(selected.getIdLong()).thenReturn(700L);
+        when(selected.getSize()).thenReturn(1);
+        when(selected.getProxy()).thenReturn(proxy);
+        when(proxy.download()).thenReturn(download);
         when(failure.getErrorResponse()).thenReturn(ErrorResponse.UNKNOWN_MESSAGE);
 
         assertThatThrownBy(() -> new JdaAttachmentContentLoader(jda).load(metadata(1)))
