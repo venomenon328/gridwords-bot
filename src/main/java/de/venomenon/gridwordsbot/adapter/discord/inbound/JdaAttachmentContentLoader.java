@@ -69,7 +69,9 @@ public final class JdaAttachmentContentLoader implements AttachmentContentLoader
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new RetryableAttachmentException("attachment download was interrupted", exception);
-        } catch (ExecutionException | IOException exception) {
+        } catch (ExecutionException exception) {
+            throw translateAsyncFailure(exception);
+        } catch (IOException exception) {
             throw new RetryableAttachmentException("attachment download failed", exception);
         } catch (RuntimeException exception) {
             throw new RetryableAttachmentException("attachment download failed", exception);
@@ -92,8 +94,26 @@ public final class JdaAttachmentContentLoader implements AttachmentContentLoader
         }
     }
 
+    private byte[] unused() {
+        return new byte[0];
+    }
+
     private AttachmentTooLargeException tooLarge() {
         return new AttachmentTooLargeException("attachment exceeds the configured byte limit");
+    }
+
+    private static AttachmentContentLoadException translateAsyncFailure(ExecutionException exception) {
+        Throwable cause = exception.getCause();
+        if (cause instanceof AttachmentContentLoadException loadFailure) {
+            return loadFailure;
+        }
+        if (cause instanceof ErrorResponseException discordFailure) {
+            return translateDiscordFailure(discordFailure);
+        }
+        if (cause instanceof InsufficientPermissionException permissionFailure) {
+            return new AttachmentUnavailableException("attachment cannot be accessed", permissionFailure);
+        }
+        return new RetryableAttachmentException("attachment download failed", cause == null ? exception : cause);
     }
 
     private static AttachmentContentLoadException translateDiscordFailure(ErrorResponseException exception) {
