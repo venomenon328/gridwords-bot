@@ -24,8 +24,8 @@ import org.slf4j.LoggerFactory;
 public final class DiscordInboundListener extends ListenerAdapter {
 
     private static final Logger log = LoggerFactory.getLogger(DiscordInboundListener.class);
-    private static final String ACCEPTED = "✅";
-    private static final String REJECTED = "⚠️";
+    private static final String ACCEPTED = "\u2705";
+    private static final String REJECTED = "\u26A0\uFE0F";
 
     private final GridwordsBotProperties properties;
     private final Clock clock;
@@ -74,9 +74,7 @@ public final class DiscordInboundListener extends ListenerAdapter {
                 || event.getChannel().getIdLong() != properties.discord().channelId()) {
             return false;
         }
-        long authorId = author.getIdLong();
-        return authorId == properties.players().first().userId()
-                || authorId == properties.players().second().userId();
+        return true;
     }
 
     private InboundSharedMessage copy(MessageReceivedEvent event, Message message) {

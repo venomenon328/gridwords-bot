@@ -20,8 +20,8 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
-import java.util.Objects;
 import java.util.function.LongPredicate;
+import java.util.Objects;
 
 /** Parses and persists an already filtered shared message without framework-specific types. */
 public final class ProcessSharedResultService implements ProcessSharedResultUseCase {
@@ -37,33 +37,34 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
     private final ZoneId timeZone;
     private final PlayerStore playerStore;
     private final SubmissionStore submissionStore;
-    private final List<Long> configuredPlayerIds;
     private final LongPredicate canonicalPublisher;
+    private final LongPredicate administrator;
 
     public ProcessSharedResultService(GridWordsShareParser gridWordsParser, QuadWordsShareParser quadWordsParser,
             Clock clock, ZoneId timeZone, PlayerStore playerStore, SubmissionStore submissionStore) {
         this(gridWordsParser, quadWordsParser, unavailableLoader(), new QuadWordsImageParser(), clock, timeZone,
-                playerStore, submissionStore, List.of(), ignored -> true);
+                playerStore, submissionStore, ignored -> true, ignored -> false);
     }
 
     public ProcessSharedResultService(GridWordsShareParser gridWordsParser, QuadWordsShareParser quadWordsParser,
             Clock clock, ZoneId timeZone, PlayerStore playerStore, SubmissionStore submissionStore,
             LongPredicate canonicalPublisher) {
         this(gridWordsParser, quadWordsParser, unavailableLoader(), new QuadWordsImageParser(), clock, timeZone,
-                playerStore, submissionStore, List.of(), canonicalPublisher);
-    }
-
-    public ProcessSharedResultService(GridWordsShareParser gridWordsParser, QuadWordsShareParser quadWordsParser,
-            Clock clock, ZoneId timeZone, PlayerStore playerStore, SubmissionStore submissionStore,
-            List<Long> configuredPlayerIds, LongPredicate canonicalPublisher) {
-        this(gridWordsParser, quadWordsParser, unavailableLoader(), new QuadWordsImageParser(), clock, timeZone,
-                playerStore, submissionStore, configuredPlayerIds, canonicalPublisher);
+                playerStore, submissionStore, canonicalPublisher, ignored -> false);
     }
 
     public ProcessSharedResultService(GridWordsShareParser gridWordsParser, QuadWordsShareParser quadWordsParser,
             AttachmentContentLoader attachmentContentLoader, QuadWordsImageParser quadWordsImageParser,
             Clock clock, ZoneId timeZone, PlayerStore playerStore, SubmissionStore submissionStore,
-            List<Long> configuredPlayerIds, LongPredicate canonicalPublisher) {
+            LongPredicate canonicalPublisher) {
+        this(gridWordsParser, quadWordsParser, attachmentContentLoader, quadWordsImageParser, clock, timeZone,
+                playerStore, submissionStore, canonicalPublisher, ignored -> false);
+    }
+
+    public ProcessSharedResultService(GridWordsShareParser gridWordsParser, QuadWordsShareParser quadWordsParser,
+            AttachmentContentLoader attachmentContentLoader, QuadWordsImageParser quadWordsImageParser,
+            Clock clock, ZoneId timeZone, PlayerStore playerStore, SubmissionStore submissionStore,
+            LongPredicate canonicalPublisher, LongPredicate administrator) {
         this.gridWordsParser = Objects.requireNonNull(gridWordsParser);
         this.quadWordsParser = Objects.requireNonNull(quadWordsParser);
         this.attachmentContentLoader = Objects.requireNonNull(attachmentContentLoader);
@@ -72,20 +73,13 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
         this.timeZone = Objects.requireNonNull(timeZone);
         this.playerStore = Objects.requireNonNull(playerStore);
         this.submissionStore = Objects.requireNonNull(submissionStore);
-        this.configuredPlayerIds = List.copyOf(Objects.requireNonNull(configuredPlayerIds));
-        if (!this.configuredPlayerIds.isEmpty() && (this.configuredPlayerIds.size() != 2
-                || this.configuredPlayerIds.stream().distinct().count() != 2
-                || this.configuredPlayerIds.stream().anyMatch(playerId -> playerId <= 0))) {
-            throw new IllegalArgumentException("configuredPlayerIds must contain exactly two distinct positive IDs");
-        }
         this.canonicalPublisher = Objects.requireNonNull(canonicalPublisher);
+        this.administrator = Objects.requireNonNull(administrator);
     }
-
     @Override
     public ProcessingResult process(InboundSharedMessage message) {
         ParseResult parseResult = parse(message);
-        if (parseResult instanceof ParseResult.NotApplicable
-                || playerStore.findByDiscordUserId(message.authorId()).filter(PlayerStore.StoredPlayer::active).isEmpty()) {
+        if (parseResult instanceof ParseResult.NotApplicable) {
             return new ProcessingResult.Ignored();
         }
         SubmissionStore.StoredSubmission submission = submissionStore.register(registration(message));
@@ -130,12 +124,11 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
                             SubmissionStore.SubmissionState.VALIDATED)) {
                 return new ProcessingResult.Ignored();
             }
-        }
-
-        GameResultStore.GameResultUpsert result = new GameResultStore.GameResultUpsert(
+        }        GameResultStore.GameResultUpsert result = new GameResultStore.GameResultUpsert(
                 message.authorId(), parsed, message.content(), parserVersion(parsed));
         SubmissionStore.StoredSubmission stored = submissionStore.storeResult(
-                new SubmissionStore.ResultStorage(message.messageId(), result, configuredPlayerIds));
+                new SubmissionStore.ResultStorage(message.messageId(), result, new PlayerStore.ParticipationChange(
+                        new PlayerStore.ProfileUpdate(message.authorId(), message.authorDisplayName(), administrator.test(message.authorId())), parsed.gameDate())));
         if (stored.state() == SubmissionStore.SubmissionState.SUPERSEDED) {
             return new ProcessingResult.Ignored();
         }

@@ -6,6 +6,7 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 - [`docs/anforderungsspezifikation.md`](docs/anforderungsspezifikation.md) – verbindliche fachliche Grundanforderungen
 - [`docs/requirements/series-model.md`](docs/requirements/series-model.md) – verbindliche Seriensemantik
+- [`docs/requirements/dynamic-player-model.md`](docs/requirements/dynamic-player-model.md) – dynamische Spieler, Teilnahmezeiträume und Reminder-Opt-in
 - [`docs/architecture.md`](docs/architecture.md) – Architektur und Modulgrenzen
 - [`docs/implementation-plan.md`](docs/implementation-plan.md) – Inkremente und Reihenfolge
 - [`docs/development-guide.md`](docs/development-guide.md) – lokaler Build, Docker und Tests
@@ -14,14 +15,21 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 ## Aktueller Stand
 
-Die Inkremente 0 bis 7 sind abgeschlossen. Inkrement 7, die kanonische QuadWords-Konsolidierung und sichere Ersetzung aus Issue #15, wurde mit PR #16 gemergt und am 30. Juli 2026 durch lokale Vollbuilds sowie einen vollständigen realen Discord-/PostgreSQL-Smoke-Test abgenommen. Als Nächstes folgt das kleine Zwischeninkrement 7.1 aus Issue #17: ein kompaktes 2×2-Layout der QuadWords-Grids vor Inkrement 8.
+Die Inkremente 0 bis 7 sowie die Zwischeninkremente 7.1 und 7.2 sind abgeschlossen. Das dynamische Spielermodell, historisch stabile Teilnahmezeiträume sowie Teilnahme- und Reminder-Commands wurden automatisiert und am 30. Juli 2026 in einem realen Discord-/PostgreSQL-Smoke-Test mit mindestens drei Nutzern abgenommen.
+
+Als Nächstes folgt Inkrement 8 mit Tagesstatus, vollständigen Serien und zeitgesteuerten Erinnerungen. Der eigentliche Scheduler und Reminder-Versand sind bewusst noch nicht Bestandteil des aktuellen Stands.
 
 Der Projektstand umfasst:
 
 - Java 21, Spring Boot, Maven, JDA, PostgreSQL und Liquibase
 - deterministische GridWords- und QuadWords-Textparser
+- dynamische Spielerprofile mit serverbezogenem Anzeigenamen und extern bestimmtem Administratorstatus
+- historisch stabile, nicht überlappende Teilnahmezeiträume
+- Self-Service- und Admin-Slash-Commands für Teilnahme und Reminder-Opt-in
+- transportneutrale Reminder-Kandidaten mit konkret fehlenden Spielen
 - idempotente Spieler-, Ergebnis- und Submission-Persistenz
 - kanonische GridWords- und QuadWords-Embeds mit sicherer Quelllöschung nach persistierter Veröffentlichung
+- kompaktes QuadWords-2×2-Raster und Monospace-Codeblöcke für beide Spiele
 - Retry-, Claim-, Recovery-, Supersession- und Duplikatschutz
 - transportneutrale Referenzen auf Discord-Anhänge
 - verzögerten Download genau des ausgewählten QuadWords-Anhangs außerhalb des JDA-Event-Threads
@@ -33,7 +41,7 @@ Der Projektstand umfasst:
 - Schutz gegen ein Zurückstufen parallel bereits gespeicherter Ergebnisse
 - Korrekturen beider Spieltypen durch Edit derselben kanonischen Bot-Message-ID
 - spieltypbezogene Publication-Keys sowie gemeinsame Claims, Delivery-Fence, Retry, Recovery, Supersession und Duplikatbereinigung
-- PublicationContext für persönliche und gemeinsame Komplett-/Perfektübergänge, auch wenn QuadWords die zweite Einreichung ist
+- PublicationContext für persönliche und gemeinsame Komplett-/Perfektübergänge über die je Spieltag aktive Teilnehmermenge
 - sichere Lesbarkeit bereits gespeicherter QuadWords-Ergebnisse aus `quadwords-share-v1`, ohne Publish, Delete-Handoff oder Refresh-Schleife bei fehlenden Boards
 - permanente Löschfehler ohne Scheduler- oder Hot-Loop sowie kontrollierte Wiederaufnahme bei Neustart oder nach einer späteren bestätigten Veröffentlichung desselben Ergebnisses
 
@@ -159,7 +167,7 @@ JDBC-URL:
 jdbc:postgresql://localhost:5432/gridwords
 ```
 
-Relevante Tabellen sind insbesondere `player`, `submission`, `game_result` und `canonical_delivery_attempt`. Die vier QuadWords-Raster stehen in den Spalten `quadwords_top_left_board`, `quadwords_top_right_board`, `quadwords_bottom_left_board` und `quadwords_bottom_right_board`.
+Relevante Tabellen sind insbesondere `player`, `player_participation_period`, `submission`, `game_result` und `canonical_delivery_attempt`. Die vier QuadWords-Raster stehen in den Spalten `quadwords_top_left_board`, `quadwords_top_right_board`, `quadwords_bottom_left_board` und `quadwords_bottom_right_board`. `player.reminder_opt_in` ist unabhängig vom aktuellen Teilnahmezustand.
 
 ## Teststrategie
 
@@ -171,7 +179,7 @@ Relevante Tabellen sind insbesondere `player`, `submission`, `game_result` und `
 - manuelle Smoke-Tests: echte Discord-Verbindung und Compose-PostgreSQL
 - H2 ersetzt keine PostgreSQL-Integrationstests
 
-Abgenommener Stand von PR #16: 196 Standardtests und 56 PostgreSQL-Integrationstests sowie ein vollständiger realer Discord-/PostgreSQL-Smoke-Test, jeweils ohne offengebliebene Blocker.
+Abgenommener Stand von Zwischeninkrement 7.2: 207 Standardtests und 63 PostgreSQL-Integrationstests sind lokal und in GitHub Actions grün. Der reale Drei-Nutzer-Discord-/PostgreSQL-Smoke-Test war ebenfalls erfolgreich. Abgedeckt sind unter anderem dynamische Profil-/Admin-Synchronisierung, Command-Adapter, Startup nach Liquibase, Migration und Backfill, konkurrierte Erstregistrierung, atomarer Rollback und gemeinsame Serien bei wechselnden Teilnehmern. Weder automatisierte Tests noch der Build verwenden einen Discord-Token.
 
 ## Geheimnisse
 

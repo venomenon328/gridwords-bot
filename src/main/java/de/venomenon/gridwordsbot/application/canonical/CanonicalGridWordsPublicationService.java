@@ -33,7 +33,6 @@ public final class CanonicalGridWordsPublicationService {
     private final CanonicalMessageGateway discord;
     private final Clock clock;
     private final ZoneId zoneId;
-    private final List<Long> configuredPlayerIds;
     private final StreakCalculator streakCalculator;
     private final PublicationRetryScheduler retryScheduler;
     private final LongConsumer postPublication;
@@ -46,17 +45,8 @@ public final class CanonicalGridWordsPublicationService {
             SubmissionStore submissions,
             CanonicalMessageGateway discord,
             Clock clock,
-            ZoneId zoneId,
-            List<Long> configuredPlayerIds) {
-        this(
-                results,
-                players,
-                submissions,
-                discord,
-                clock,
-                zoneId,
-                configuredPlayerIds,
-                (at, action) -> { });
+            ZoneId zoneId) {
+        this(results, players, submissions, discord, clock, zoneId, (at, action) -> { }, sourceMessageId -> { });
     }
 
     public CanonicalGridWordsPublicationService(
@@ -66,10 +56,8 @@ public final class CanonicalGridWordsPublicationService {
             CanonicalMessageGateway discord,
             Clock clock,
             ZoneId zoneId,
-            List<Long> configuredPlayerIds,
             PublicationRetryScheduler retryScheduler) {
-        this(results, players, submissions, discord, clock, zoneId, configuredPlayerIds, retryScheduler,
-                sourceMessageId -> { });
+        this(results, players, submissions, discord, clock, zoneId, retryScheduler, sourceMessageId -> { });
     }
 
     public CanonicalGridWordsPublicationService(
@@ -79,7 +67,6 @@ public final class CanonicalGridWordsPublicationService {
             CanonicalMessageGateway discord,
             Clock clock,
             ZoneId zoneId,
-            List<Long> configuredPlayerIds,
             PublicationRetryScheduler retryScheduler,
             LongConsumer postPublication) {
         this.results = Objects.requireNonNull(results);
@@ -88,12 +75,6 @@ public final class CanonicalGridWordsPublicationService {
         this.discord = Objects.requireNonNull(discord);
         this.clock = Objects.requireNonNull(clock);
         this.zoneId = Objects.requireNonNull(zoneId);
-        this.configuredPlayerIds = List.copyOf(Objects.requireNonNull(configuredPlayerIds));
-        if (this.configuredPlayerIds.size() != 2
-                || this.configuredPlayerIds.stream().distinct().count() != 2
-                || this.configuredPlayerIds.stream().anyMatch(id -> id <= 0)) {
-            throw new IllegalArgumentException("exactly two distinct configured player IDs are required");
-        }
         this.streakCalculator = new StreakCalculator();
         this.retryScheduler = Objects.requireNonNull(retryScheduler);
         this.postPublication = Objects.requireNonNull(postPublication);
@@ -399,11 +380,11 @@ private PublicationOutcome publishAndHandOff(long sourceMessageId) {
             SubmissionStore.PublicationContext publicationContext) {
         List<GameResultStore.StoredGameResult> allResults = results.findAll();
         LocalDate date = result.parsedResult().gameDate();
-        StreakSummary streaks = streakCalculator.calculate(
+        StreakSummary streaks = streakCalculator.calculateWithParticipation(
                 allResults.stream()
                         .map(stored -> new StreakCalculator.PlayerResult(stored.playerId(), stored.parsedResult()))
                         .toList(),
-                configuredPlayerIds,
+                java.util.Optional.ofNullable(players.findParticipationPeriods()).orElse(List.of()),
                 playerId,
                 clock.instant().atZone(zoneId).toLocalDate());
 

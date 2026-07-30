@@ -41,7 +41,6 @@ class DiscordInboundListenerTest {
     void ignoresWrongGuildChannelForeignUserBotsAndWebhooks() {
         assertIgnored(event(GUILD + 1, CHANNEL, TOBIAS, false, false));
         assertIgnored(event(GUILD, CHANNEL + 1, TOBIAS, false, false));
-        assertIgnored(event(GUILD, CHANNEL, 999L, false, false));
         assertIgnored(event(GUILD, CHANNEL, TOBIAS, true, false));
         assertIgnored(event(GUILD, CHANNEL, TOBIAS, false, true));
     }
@@ -103,7 +102,7 @@ class DiscordInboundListenerTest {
         listener(executor, useCase, reactions).onMessageReceived(event);
         executor.runAll();
 
-        verify(reactions).addReaction(event.getMessage(), "⚠️");
+        verify(reactions).addReaction(event.getMessage(), "\u26A0\uFE0F");
     }
 
     @Test
@@ -155,12 +154,7 @@ class DiscordInboundListenerTest {
 
     private GridwordsBotProperties properties() {
         return new GridwordsBotProperties(
-                new GridwordsBotProperties.Discord(true, "token", GUILD, CHANNEL, List.of(TOBIAS)),
-                new GridwordsBotProperties.Players(
-                        new GridwordsBotProperties.Player(TOBIAS, "Tobias"),
-                        new GridwordsBotProperties.Player(GEORGIA, "Georgia")),
-                null,
-                null);
+                new GridwordsBotProperties.Discord(true, "token", GUILD, CHANNEL, List.of(TOBIAS)), null, null);
     }
 
     private MessageReceivedEvent event(long guildId, long channelId, long authorId, boolean bot, boolean webhook) {

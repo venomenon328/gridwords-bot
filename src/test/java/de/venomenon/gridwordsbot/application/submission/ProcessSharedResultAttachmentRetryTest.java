@@ -108,9 +108,7 @@ class ProcessSharedResultAttachmentRetryTest {
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 ZoneId.of("Europe/Berlin"),
                 playerStore,
-                submissionStore,
-                List.of(),
-                ignored -> true);
+                submissionStore, ignored -> true);
         InboundSharedMessage inbound = message();
 
         assertThat(service.process(inbound)).isEqualTo(new ProcessingResult.Ignored());
@@ -166,9 +164,7 @@ class ProcessSharedResultAttachmentRetryTest {
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 ZoneId.of("Europe/Berlin"),
                 playerStore,
-                submissionStore,
-                List.of(),
-                ignored -> true);
+                submissionStore, ignored -> true);
 
         assertThat(service.process(message())).isEqualTo(new ProcessingResult.Ignored());
         assertThat(submission.get().state()).isEqualTo(SubmissionStore.SubmissionState.FAILED_RETRYABLE);
@@ -197,9 +193,7 @@ class ProcessSharedResultAttachmentRetryTest {
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 ZoneId.of("Europe/Berlin"),
                 playerStore,
-                submissionStore,
-                List.of(),
-                ignored -> true);
+                submissionStore, ignored -> true);
 
         assertThat(service.process(message())).isEqualTo(new ProcessingResult.Ignored());
         verify(submissionStore, never()).markRetryableFailure(SOURCE_ID, "attachment download failed");
@@ -242,7 +236,7 @@ class ProcessSharedResultAttachmentRetryTest {
     }
 
     private static QuadWordsBoards boards(int rows) {
-        String line = "⬜".repeat(5);
+        String line = "\u2B1C".repeat(5);
         QuadWordsBoard board = new QuadWordsBoard(Collections.nCopies(rows, line));
         return new QuadWordsBoards(board, board, board, board);
     }

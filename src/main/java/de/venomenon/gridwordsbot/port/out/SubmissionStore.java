@@ -136,28 +136,21 @@ public interface SubmissionStore {
         }
     }
 
-    /** Carries the configured pair so persistence can atomically record the actual day-state transition. */
-    record ResultStorage(long sourceMessageId, GameResultStore.GameResultUpsert result, List<Long> configuredPlayerIds) {
-
+    /** Couples a fully validated player registration to result persistence in one transaction. */
+    record ResultStorage(long sourceMessageId, GameResultStore.GameResultUpsert result, PlayerStore.ParticipationChange playerRegistration) {
         public ResultStorage(long sourceMessageId, GameResultStore.GameResultUpsert result) {
-            this(sourceMessageId, result, List.of());
+            this(sourceMessageId, result, new PlayerStore.ParticipationChange(
+                    new PlayerStore.ProfileUpdate(result.playerId(), "Player", false), result.parsedResult().gameDate()));
         }
-
         public ResultStorage {
-            if (sourceMessageId <= 0) {
-                throw new IllegalArgumentException("sourceMessageId must be positive");
-            }
+            if (sourceMessageId <= 0) throw new IllegalArgumentException("sourceMessageId must be positive");
             Objects.requireNonNull(result, "result");
-            configuredPlayerIds = List.copyOf(Objects.requireNonNull(configuredPlayerIds, "configuredPlayerIds"));
-            if (!configuredPlayerIds.isEmpty()
-                    && (configuredPlayerIds.size() != 2
-                    || configuredPlayerIds.stream().distinct().count() != 2
-                    || configuredPlayerIds.stream().anyMatch(playerId -> playerId <= 0))) {
-                throw new IllegalArgumentException("configuredPlayerIds must contain exactly two distinct positive IDs");
+            Objects.requireNonNull(playerRegistration, "playerRegistration");
+            if (result.playerId() != playerRegistration.profile().discordUserId()) {
+                throw new IllegalArgumentException("result and player registration must refer to the same player");
             }
         }
     }
-
     record RejectedSubmission(long sourceMessageId, String errorCode) {
 
         public RejectedSubmission {

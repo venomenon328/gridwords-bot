@@ -15,6 +15,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import de.venomenon.gridwordsbot.domain.model.GameType;
+import de.venomenon.gridwordsbot.domain.model.ParticipationPeriod;
 import de.venomenon.gridwordsbot.domain.model.NormalizedBoard;
 import de.venomenon.gridwordsbot.domain.model.ParsedGameResult;
 import de.venomenon.gridwordsbot.domain.model.QuadWordsBoard;
@@ -83,7 +84,6 @@ class CanonicalGridWordsPublicationServiceTest {
                 discord,
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 ZoneId.of("Europe/Berlin"),
-                List.of(TOBIAS, GEORGIA),
                 retryScheduler);
 
         when(players.findByDiscordUserId(TOBIAS)).thenReturn(Optional.of(new PlayerStore.StoredPlayer(
@@ -94,6 +94,9 @@ class CanonicalGridWordsPublicationServiceTest {
                 Instant.EPOCH,
                 Instant.EPOCH)));
         when(results.findAll()).thenReturn(List.of(result));
+        when(players.findParticipationPeriods()).thenReturn(List.of(
+                new ParticipationPeriod(TOBIAS, LocalDate.MIN, null),
+                new ParticipationPeriod(GEORGIA, LocalDate.MIN, null)));
         when(submissions.prepareCanonicalPublication(anyLong(), anyLong()))
                 .thenReturn(SubmissionStore.CanonicalPublicationPreparation.PUBLISHABLE);
         when(submissions.beginCanonicalDelivery(anyLong(), anyLong(), any()))
@@ -111,7 +114,7 @@ class CanonicalGridWordsPublicationServiceTest {
         GridWordsSourceDeletionService deletion = mock(GridWordsSourceDeletionService.class);
         CanonicalGridWordsPublicationService retryingService = new CanonicalGridWordsPublicationService(
                 results, players, submissions, discord, Clock.fixed(NOW, ZoneOffset.UTC), ZoneId.of("Europe/Berlin"),
-                List.of(TOBIAS, GEORGIA), retryScheduler, deletion::deleteAfterCanonicalPublication);
+                retryScheduler, deletion::deleteAfterCanonicalPublication);
         SubmissionStore.StoredSubmission pending = stored(SubmissionStore.SubmissionState.RESULT_STORED);
         when(submissions.findBySourceMessageId(SOURCE)).thenReturn(Optional.of(pending));
         when(results.findById(RESULT)).thenReturn(Optional.of(result));
@@ -138,7 +141,7 @@ class CanonicalGridWordsPublicationServiceTest {
         GridWordsSourceDeletionService deletion = mock(GridWordsSourceDeletionService.class);
         CanonicalGridWordsPublicationService retryingService = new CanonicalGridWordsPublicationService(
                 results, players, submissions, discord, Clock.fixed(NOW, ZoneOffset.UTC), ZoneId.of("Europe/Berlin"),
-                List.of(TOBIAS, GEORGIA), retryScheduler, deletion::deleteAfterCanonicalPublication);
+                retryScheduler, deletion::deleteAfterCanonicalPublication);
         SubmissionStore.StoredSubmission pending = stored(SubmissionStore.SubmissionState.RESULT_STORED);
         when(submissions.findBySourceMessageId(SOURCE)).thenReturn(Optional.of(pending));
         when(results.findById(RESULT)).thenReturn(Optional.of(result));
@@ -229,6 +232,9 @@ class CanonicalGridWordsPublicationServiceTest {
     void replacesMissingCanonicalMessageUnderTheClaim() {
         result = gridResult(RESULT, TOBIAS, OptionalLong.of(88L), 3);
         when(results.findAll()).thenReturn(List.of(result));
+        when(players.findParticipationPeriods()).thenReturn(List.of(
+                new ParticipationPeriod(TOBIAS, LocalDate.MIN, null),
+                new ParticipationPeriod(GEORGIA, LocalDate.MIN, null)));
         stored(SubmissionStore.SubmissionState.RESULT_STORED);
         when(results.findById(RESULT)).thenReturn(Optional.of(result));
         GameResultStore.PublicationClaim claim = claim("00000000-0000-0000-0000-000000000002");
@@ -568,7 +574,6 @@ class CanonicalGridWordsPublicationServiceTest {
                 discord,
                 controlledClock,
                 ZoneId.of("Europe/Berlin"),
-                List.of(TOBIAS, GEORGIA),
                 (at, action) -> scheduled.add(new ScheduledAction(at, action)));
         when(submissions.findBySourceMessageId(anyLong())).thenAnswer(invocation -> {
             long sourceMessageId = invocation.getArgument(0);
@@ -692,7 +697,6 @@ class CanonicalGridWordsPublicationServiceTest {
                 discord,
                 controlledClock,
                 ZoneId.of("Europe/Berlin"),
-                List.of(TOBIAS, GEORGIA),
                 (at, action) -> scheduled.add(new ScheduledAction(at, action)));
         when(submissions.findBySourceMessageId(SOURCE)).thenReturn(Optional.of(older));
         when(submissions.findCurrentCanonicalPublicationCandidate(RESULT)).thenReturn(Optional.of(refresh));
@@ -774,6 +778,9 @@ class CanonicalGridWordsPublicationServiceTest {
                 new SubmissionStore.CanonicalRefreshCandidate(current, 7);
         result = gridResult(RESULT, TOBIAS, OptionalLong.of(88L), 2);
         when(results.findAll()).thenReturn(List.of(result));
+        when(players.findParticipationPeriods()).thenReturn(List.of(
+                new ParticipationPeriod(TOBIAS, LocalDate.MIN, null),
+                new ParticipationPeriod(GEORGIA, LocalDate.MIN, null)));
         when(submissions.findGridWordsAwaitingCanonicalPublication()).thenReturn(List.of());
         when(submissions.findCanonicalRefreshCandidates()).thenReturn(List.of(refresh));
         when(submissions.findCurrentCanonicalPublicationCandidate(RESULT)).thenReturn(Optional.of(refresh));
@@ -812,7 +819,7 @@ class CanonicalGridWordsPublicationServiceTest {
         java.util.function.LongConsumer handoff = mock(java.util.function.LongConsumer.class);
         service = new CanonicalGridWordsPublicationService(
                 results, players, submissions, discord, Clock.fixed(NOW, ZoneOffset.UTC), ZoneId.of("Europe/Berlin"),
-                List.of(TOBIAS, GEORGIA), retryScheduler, handoff);
+                retryScheduler, handoff);
 
         assertThat(service.publish(SOURCE)).isFalse();
 
