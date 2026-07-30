@@ -1,6 +1,7 @@
 package de.venomenon.gridwordsbot.config;
 
 import de.venomenon.gridwordsbot.adapter.discord.inbound.DiscordInboundListener;
+import de.venomenon.gridwordsbot.adapter.discord.inbound.JdaAttachmentContentLoader;
 import de.venomenon.gridwordsbot.adapter.discord.canonical.JdaCanonicalMessageGateway;
 import de.venomenon.gridwordsbot.adapter.discord.canonical.JdaSourceMessageDeletionGateway;
 import de.venomenon.gridwordsbot.application.canonical.CanonicalGridWordsPublicationService;
@@ -14,7 +15,9 @@ import de.venomenon.gridwordsbot.application.submission.ConfiguredPlayerSynchron
 import de.venomenon.gridwordsbot.application.submission.ProcessSharedResultService;
 import de.venomenon.gridwordsbot.parser.gridwords.GridWordsShareParser;
 import de.venomenon.gridwordsbot.parser.quadwords.QuadWordsShareParser;
+import de.venomenon.gridwordsbot.parser.quadwords.QuadWordsImageParser;
 import de.venomenon.gridwordsbot.port.in.ProcessSharedResultUseCase;
+import de.venomenon.gridwordsbot.port.out.AttachmentContentLoader;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
 import de.venomenon.gridwordsbot.port.out.SubmissionStore;
 import java.time.Clock;
@@ -40,15 +43,24 @@ class DatabaseInboundConfiguration {
             GridwordsBotProperties properties,
             PlayerStore playerStore,
             SubmissionStore submissionStore,
-            ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider) {
+            ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider,
+            ObjectProvider<AttachmentContentLoader> attachmentLoaderProvider) {
         List<Long> configuredPlayerIds = List.of(
                 properties.players().first().userId(), properties.players().second().userId());
+        AttachmentContentLoader attachmentLoader = attachmentLoaderProvider.getIfAvailable(() -> attachment -> {
+            throw new AttachmentContentLoader.RetryableAttachmentException("attachment loader is unavailable", null);
+        });
         return new ProcessSharedResultService(
-                new GridWordsShareParser(), new QuadWordsShareParser(), clock, properties.schedule().timeZone(), playerStore,
-                submissionStore, configuredPlayerIds, sourceMessageId -> {
+                new GridWordsShareParser(), new QuadWordsShareParser(), attachmentLoader, new QuadWordsImageParser(),
+                clock, properties.schedule().timeZone(), playerStore, submissionStore, configuredPlayerIds, sourceMessageId -> {
                     CanonicalGridWordsPublicationService canonical = canonicalProvider.getIfAvailable();
                     return canonical != null && canonical.publish(sourceMessageId);
                 });
+    }
+    @Bean
+    @ConditionalOnBean(JDA.class)
+    AttachmentContentLoader attachmentContentLoader(JDA jda) {
+        return new JdaAttachmentContentLoader(jda);
     }
     @Bean
     @ConditionalOnBean(JDA.class)

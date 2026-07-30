@@ -6,34 +6,56 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 - [`docs/anforderungsspezifikation.md`](docs/anforderungsspezifikation.md) – verbindliche fachliche Grundanforderungen
 - [`docs/requirements/series-model.md`](docs/requirements/series-model.md) – verbindliche Seriensemantik
-- [`docs/architecture.md`](docs/architecture.md) – Zielarchitektur und Modulgrenzen
+- [`docs/architecture.md`](docs/architecture.md) – Architektur und Modulgrenzen
 - [`docs/implementation-plan.md`](docs/implementation-plan.md) – Inkremente und Reihenfolge
-- [`docs/development-guide.md`](docs/development-guide.md) – lokaler Build, Docker, Tests und Arbeitsweise
-- [`docs/adr/`](docs/adr/) – akzeptierte Architekturentscheidungen
+- [`docs/development-guide.md`](docs/development-guide.md) – lokaler Build, Docker und Tests
+- [`docs/adr/`](docs/adr/) – Architekturentscheidungen
 - [`AGENTS.md`](AGENTS.md) – Arbeitsregeln für Codex/Terra
 
 ## Aktueller Stand
 
-Die Inkremente 0 bis 5 sind abgeschlossen. Der aktuelle Stand umfasst:
+Die Inkremente 0 bis 6 sind abgeschlossen. Inkrement 6, der QuadWords-Bildparser, wurde in PR #14 vollständig automatisiert und am 30. Juli 2026 lokal sowie mit einem echten Discord-/PostgreSQL-Smoke-Test abgenommen. Als Nächstes folgt Inkrement 7: kanonische QuadWords-Konsolidierung und sichere Ersetzung.
 
-- Java 21, Spring Boot, Maven und JDA
+Der Projektstand umfasst:
+
+- Java 21, Spring Boot, Maven, JDA, PostgreSQL und Liquibase
 - deterministische GridWords- und QuadWords-Textparser
-- PostgreSQL-Persistenz mit Liquibase
-- idempotente Spieler-, Ergebnis- und Submission-Speicherung
-- gefilterten Discord-Inbound-Ablauf für einen Server, einen Channel und zwei Spieler
-- kanonische GridWords-Embeds mit vollständigem Raster und eindeutig benannten Serien
-- Korrekturen durch Edit derselben Bot-Nachricht
-- Publication-Claims, Delivery-Fences, Lost-Message-Recovery und Duplikatbereinigung
-- sichere GridWords-Ersetzung erst nach persistierter kanonischer Message-ID
-- token- und lease-geschützte Quelllöschung mit Retry und Startup-Recovery
-- `UNKNOWN_MESSAGE` als idempotenten Lösch-Erfolg
-- getrennte Behandlung transienter und permanenter Discord-Fehler
-- gezielte Bereinigung älterer, nach einer bestätigten Korrektur löschbarer Quellen
-- keine kurzlebige `✅`-Reaktion auf GridWords-Quellen; QuadWords behält `✅`, Ablehnungen `⚠️`
+- idempotente Spieler-, Ergebnis- und Submission-Persistenz
+- kanonische GridWords-Embeds und sichere GridWords-Quelllöschung
+- Retry-, Claim-, Recovery-, Supersession- und Duplikatschutz
+- transportneutrale Referenzen auf Discord-Anhänge
+- verzögerten Download genau des ausgewählten QuadWords-Anhangs außerhalb des JDA-Event-Threads
+- Download der originalen signierten Discord-CDN-Datei statt einer möglicherweise transformierten Medienproxy-Variante
+- reinen QuadWords-Bildparser ohne OCR, ML, Netzwerk, Spring oder Datenbank
+- vier normalisierte Boards in der Reihenfolge `Oben links`, `Oben rechts`, `Unten links`, `Unten rechts`
+- Persistenz aller vier Boards und der Parser-Version `quadwords-image-v2`
+- kontrollierte Wiederaufnahme technischer Attachment-Fehler
+- Schutz gegen ein Zurückstufen parallel bereits gespeicherter Ergebnisse
+- Kompatibilität mit bereits gespeicherten QuadWords-Ergebnissen aus `quadwords-share-v1`
 
-PR #12 wurde automatisiert mit 136 Standardtests und 45 PostgreSQL-Integrationstests geprüft. Tobias hat den vollständigen Discord-/PostgreSQL-Smoke-Test am 30. Juli 2026 erfolgreich durchgeführt. Bestätigt wurden die sichere Erstveröffentlichung, Edit derselben Bot-Nachricht bei Korrekturen, die Löschfehlerbehandlung, die Bereinigung einer zuvor festhängenden supersedierten Quelle sowie der Neustart-/Recovery-Ablauf.
+Seit Inkrement 6 bleiben QuadWords-Originalnachrichten sichtbar. Ein sicher geparstes und gespeichertes Ergebnis erhält `✅`; eine stabile fachliche Bildablehnung erhält `⚠️`. Technische Downloadfehler erhalten keine irreführende Reaktion. Kanonische QuadWords-Nachrichten und deren sichere Quelllöschung folgen in Inkrement 7.
 
-Als nächstes folgt Inkrement 6: der QuadWords-Bildparser. Kanonische QuadWords-Konsolidierung und sichere QuadWords-Ersetzung folgen anschließend in Inkrement 7.
+## QuadWords-Bildparser
+
+Unterstützte Bildformate:
+
+- PNG
+- JPEG
+
+WebP und andere Formate werden stabil als nicht unterstützt abgelehnt; es wird keine zusätzliche Decoderbibliothek verwendet.
+
+Zentrale Schutzgrenzen:
+
+```text
+Maximale Attachment-/Eingabegröße: 8 MiB
+Maximale Breite:                  4096 Pixel
+Maximale Höhe:                    4096 Pixel
+Maximale Gesamtfläche:            12.000.000 Pixel
+```
+
+Der Parser erkennt eine 2×2-Anordnung mit genau fünf Spalten je Board. Er klassifiziert Zellen anhand mehrerer Flächenstichproben in `⬜`, `🟨` und `🟩`. Unsichere Geometrie, Farben, Struktur oder widersprüchliche aktive Zeilen führen zu einer kontrollierten Ablehnung. Klar fehlende nachlaufende Zeilen eines bereits früher abgeschlossenen Teilboards werden als kanonische Leerzellen normalisiert; mindestens ein Teilboard muss die in der Kopfzeile gemeldete Versuchszahl erreichen.
+
+Die freigegebenen realen PNG-Fixtures besitzen jeweils eine eingecheckte erwartete kanonische Ausgabe. Zusätzlich decken synthetische Dateien Skalierung, Ränder, beschädigte und abgeschnittene Bilder, unsichere Farben sowie Ressourcenlimits ab. JPEG wird programmatisch in einem Unit-Test erzeugt und geprüft.
 
 ## Lokale Voraussetzungen
 
@@ -44,9 +66,7 @@ Für den schnellen Standardbuild:
 - Maven 3.9 oder neuer
 - eine geeignete IDE
 
-Für lokale Persistenz-, Integrations- und Smoke-Tests steht Docker Desktop mit Docker Compose zur Verfügung und darf vorausgesetzt werden. `compose.yaml` ist die bevorzugte lokale PostgreSQL-Umgebung. Eine native PostgreSQL-Installation bleibt eine mögliche Alternative.
-
-Der Standardbuild bleibt bewusst ohne Docker, PostgreSQL, Discord-Verbindung und Token ausführbar. Das ist eine Test- und Architekturgrenze, keine Forderung nach einer insgesamt Docker-freien Entwicklung. Maßgeblich ist [`docs/adr/0010-docker-available-local-development.md`](docs/adr/0010-docker-available-local-development.md).
+Für Persistenz-, Integrations- und Smoke-Tests steht Docker Desktop mit Docker Compose zur Verfügung und darf vorausgesetzt werden. `compose.yaml` ist die bevorzugte lokale PostgreSQL-Umgebung. Der Standardbuild bleibt bewusst ohne Docker, PostgreSQL, Discord-Verbindung und Token ausführbar. Maßgeblich ist [`docs/adr/0010-docker-available-local-development.md`](docs/adr/0010-docker-available-local-development.md).
 
 ## Lokale Konfiguration
 
@@ -56,9 +76,9 @@ Einmalig:
 Copy-Item .env.example .env
 ```
 
-Der echte Discord-Token wird ausschließlich lokal in `.env` eingetragen. Er darf niemals committed, in einen Chat kopiert oder in Issue, PR, Log beziehungsweise Screenshot veröffentlicht werden.
+Der echte Discord-Token wird ausschließlich lokal in `.env` eingetragen. Er darf niemals committed oder in Chat, Issue, PR, Log beziehungsweise Screenshot veröffentlicht werden.
 
-Die Standardwerte für Compose sind:
+Compose-Standardwerte:
 
 ```properties
 POSTGRES_DB=gridwords
@@ -70,25 +90,21 @@ DATABASE_USERNAME=gridwords
 DATABASE_PASSWORD=gridwords-local
 ```
 
-## Schneller Standardbuild
+## Lokale Validierung
+
+Schneller Standardbuild:
 
 ```powershell
 mvn --batch-mode --no-transfer-progress clean verify
 ```
 
-Dieser Build umfasst Unit-, Parser-, Domain-, Application-, Architektur- und Discord-Adaptertests. Er öffnet keine echte Discord-Verbindung und startet keine Container.
-
-## PostgreSQL-Integration lokal
-
-Docker Desktop muss laufen:
+PostgreSQL-Integration mit Docker Desktop:
 
 ```powershell
 docker compose up -d postgres
 docker compose ps
 mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
 ```
-
-Bei Änderungen an Persistenz, Liquibase, Claims, Recovery oder PostgreSQL-spezifischem Verhalten wird dieses Profil grundsätzlich auch lokal ausgeführt. GitHub Actions führt es zusätzlich verpflichtend aus.
 
 PostgreSQL stoppen und Daten behalten:
 
@@ -121,11 +137,9 @@ docker compose up -d postgres
 mvn "-Dspring-boot.run.profiles=database" spring-boot:run
 ```
 
-Liquibase wendet beim Start dieselben Migrationen an wie in CI. Der Bot verarbeitet Ergebnisse nur im Profil `database`, wenn Discord und PostgreSQL verfügbar sind.
+Liquibase verwendet dieselben Migrationen wie die Integrationstests und GitHub Actions.
 
 ## Datenbankzugriff mit DBeaver
-
-Der Compose-Container veröffentlicht PostgreSQL standardmäßig auf dem Windows-Host:
 
 ```text
 Host: localhost
@@ -141,13 +155,15 @@ JDBC-URL:
 jdbc:postgresql://localhost:5432/gridwords
 ```
 
-Relevante Tabellen sind insbesondere `player`, `submission`, `game_result` und `canonical_delivery_attempt`.
+Relevante Tabellen sind insbesondere `player`, `submission`, `game_result` und `canonical_delivery_attempt`. Die vier QuadWords-Raster stehen in den Spalten `quadwords_top_left_board`, `quadwords_top_right_board`, `quadwords_bottom_left_board` und `quadwords_bottom_right_board`.
 
 ## Teststrategie
 
 - Standardtests: ohne Netzwerk, Token, Datenbank und Container
-- PostgreSQL-Integration: echtes PostgreSQL über das Maven-Profil `database-integration`
+- PostgreSQL-Integration: echtes PostgreSQL über `database-integration`
 - Discord-Adaptertests: JDA-Grenze ohne echte Verbindung
+- Bildparser-Fixtures: reale PNGs mit Golden-Ausgabe plus synthetische Fehler- und Layoutvarianten
+- JPEG-Kompatibilität: programmatisch erzeugtes Bild im Unit-Test
 - manuelle Smoke-Tests: echte Discord-Verbindung und Compose-PostgreSQL
 - H2 ersetzt keine PostgreSQL-Integrationstests
 

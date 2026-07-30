@@ -1,0 +1,47 @@
+databaseChangeLog:
+  - include:
+      file: db/changelog/001-persistence-schema.sql
+      relativeToChangelogFile: false
+  - include:
+      file: db/changelog/002-canonical-publication.sql
+      relativeToChangelogFile: false
+  - include:
+      file: db/changelog/003-canonical-publication-ownership.sql
+      relativeToChangelogFile: false
+  - include:
+      file: db/changelog/004-submission-publication-context.sql
+      relativeToChangelogFile: false
+  - include:
+      file: db/changelog/005-submission-supersession.sql
+      relativeToChangelogFile: false
+  - include:
+      file: db/changelog/006-canonical-refresh-reconciliation.sql
+      relativeToChangelogFile: false
+  - include:
+      file: db/changelog/007-canonical-delivery-attempts.sql
+      relativeToChangelogFile: false
+  - include:
+      file: db/changelog/008-gridwords-source-deletion.sql
+      relativeToChangelogFile: false
+  - changeSet:
+      id: legacy-quadwords-before-image-parser
+      author: gridwords-test
+      changes:
+        - sql:
+            sql: |
+              INSERT INTO player
+                  (discord_user_id, display_name, active, administrator, created_at, updated_at)
+              VALUES
+                  (9001, 'Legacy QuadWords', TRUE, FALSE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+              INSERT INTO game_result
+                  (player_id, game_type, game_date, solved, attempts_used, max_attempts,
+                   duration_seconds, normalized_board, raw_share_text, parser_version,
+                   created_at, updated_at)
+              VALUES
+                  (9001, 'QUADWORDS', DATE '2026-07-28', TRUE, 7, 9,
+                   245, NULL, 'legacy share', 'quadwords-share-v1',
+                   CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+  - include:
+      file: db/changelog/009-quadwords-boards.sql
+      relativeToChangelogFile: false

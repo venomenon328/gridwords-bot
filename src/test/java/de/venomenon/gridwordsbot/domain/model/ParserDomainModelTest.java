@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 import static org.assertj.core.api.Assertions.assertThat;
 
 import de.venomenon.gridwordsbot.domain.parsing.AttachmentMetadata;
+import de.venomenon.gridwordsbot.domain.parsing.AttachmentReference;
 import de.venomenon.gridwordsbot.domain.parsing.ParseErrorCode;
 import de.venomenon.gridwordsbot.domain.parsing.ParseResult;
 import java.time.Duration;
@@ -31,6 +32,8 @@ class ParserDomainModelTest {
     @Test
     void keepsTransportMetadataAndParserInputImmutableAndValid() {
         assertThatIllegalArgumentException().isThrownBy(() -> new AttachmentMetadata("image.png", "image/png", -1));
+        assertThat(new AttachmentMetadata("result.bin", "image/png", 1).reference()).isEmpty();
+        assertThatIllegalArgumentException().isThrownBy(() -> new AttachmentReference(0, 1, 1));
         assertThat(new AttachmentMetadata("result.bin", "image/png", 1).isPlausibleImage()).isTrue();
         assertThat(new AttachmentMetadata("result.PNG", "", 1).isPlausibleImage()).isTrue();
         assertThat(new AttachmentMetadata("result.jpg", "", 1).isPlausibleImage()).isTrue();

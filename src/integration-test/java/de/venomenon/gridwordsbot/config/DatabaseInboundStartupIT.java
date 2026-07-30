@@ -32,7 +32,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
                 "gridwords.players.second.display-name=Startup Georgia",
                 "gridwords.discord.admin-user-ids=701"
         })
-@ActiveProfiles("database")
+@ActiveProfiles({"database", "database-startup-test"})
 @Testcontainers
 class DatabaseInboundStartupIT {
 

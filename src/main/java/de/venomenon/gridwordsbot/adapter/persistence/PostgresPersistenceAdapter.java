@@ -3,6 +3,8 @@ package de.venomenon.gridwordsbot.adapter.persistence;
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.model.NormalizedBoard;
 import de.venomenon.gridwordsbot.domain.model.ParsedGameResult;
+import de.venomenon.gridwordsbot.domain.model.QuadWordsBoard;
+import de.venomenon.gridwordsbot.domain.model.QuadWordsBoards;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
 import de.venomenon.gridwordsbot.port.out.GameResultStore;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
@@ -789,39 +791,66 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         ParsedGameResult parsed = request.parsedResult();
         boolean solved = parsed.outcome() instanceof ShareOutcome.Solved;
         Integer attempts = solved ? ((ShareOutcome.Solved) parsed.outcome()).attemptsUsed() : null;
+        BoardColumns boards = boardColumns(parsed);
         return jdbc.query("""
                 INSERT INTO game_result (player_id, game_type, game_date, solved, attempts_used, max_attempts,
-                    duration_seconds, gridgames_streak, normalized_board, raw_share_text, parser_version,
-                    created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    duration_seconds, gridgames_streak, normalized_board, quadwords_top_left_board,
+                    quadwords_top_right_board, quadwords_bottom_left_board, quadwords_bottom_right_board,
+                    raw_share_text, parser_version, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (player_id, game_type, game_date) DO NOTHING
                 RETURNING *
                 """, RESULT, request.playerId(), parsed.gameType().name(), parsed.gameDate(), solved, attempts,
                 parsed.outcome().maxAttempts(), parsed.duration().getSeconds(),
                 parsed.gridgamesStreak().isPresent() ? parsed.gridgamesStreak().getAsInt() : null,
-                parsed.board().map(NormalizedBoard::canonicalText).orElse(null), request.rawShareText(), request.parserVersion(),
-                databaseTime(now), databaseTime(now)).stream().findFirst();
+                boards.gridWords(), boards.topLeft(), boards.topRight(), boards.bottomLeft(), boards.bottomRight(),
+                request.rawShareText(), request.parserVersion(), databaseTime(now), databaseTime(now)).stream().findFirst();
     }
+
     private StoredGameResult upsertResult(GameResultUpsert request, Instant now) {
         ParsedGameResult parsed = request.parsedResult();
         boolean solved = parsed.outcome() instanceof ShareOutcome.Solved;
         Integer attempts = solved ? ((ShareOutcome.Solved) parsed.outcome()).attemptsUsed() : null;
+        BoardColumns boards = boardColumns(parsed);
         return jdbc.queryForObject("""
                 INSERT INTO game_result (player_id, game_type, game_date, solved, attempts_used, max_attempts, duration_seconds,
-                    gridgames_streak, normalized_board, raw_share_text, parser_version, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    gridgames_streak, normalized_board, quadwords_top_left_board, quadwords_top_right_board,
+                    quadwords_bottom_left_board, quadwords_bottom_right_board, raw_share_text, parser_version,
+                    created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (player_id, game_type, game_date) DO UPDATE SET solved = EXCLUDED.solved,
                     attempts_used = EXCLUDED.attempts_used, max_attempts = EXCLUDED.max_attempts,
                     duration_seconds = EXCLUDED.duration_seconds, gridgames_streak = EXCLUDED.gridgames_streak,
-                    normalized_board = EXCLUDED.normalized_board, raw_share_text = EXCLUDED.raw_share_text,
-                    parser_version = EXCLUDED.parser_version, updated_at = EXCLUDED.updated_at, version = game_result.version + 1
+                    normalized_board = EXCLUDED.normalized_board,
+                    quadwords_top_left_board = EXCLUDED.quadwords_top_left_board,
+                    quadwords_top_right_board = EXCLUDED.quadwords_top_right_board,
+                    quadwords_bottom_left_board = EXCLUDED.quadwords_bottom_left_board,
+                    quadwords_bottom_right_board = EXCLUDED.quadwords_bottom_right_board,
+                    raw_share_text = EXCLUDED.raw_share_text, parser_version = EXCLUDED.parser_version,
+                    updated_at = EXCLUDED.updated_at, version = game_result.version + 1
                 RETURNING *
                 """, RESULT, request.playerId(), parsed.gameType().name(), parsed.gameDate(), solved, attempts,
                 parsed.outcome().maxAttempts(), parsed.duration().getSeconds(),
                 parsed.gridgamesStreak().isPresent() ? parsed.gridgamesStreak().getAsInt() : null,
-                parsed.board().map(NormalizedBoard::canonicalText).orElse(null), request.rawShareText(), request.parserVersion(),
-                databaseTime(now), databaseTime(now));
+                boards.gridWords(), boards.topLeft(), boards.topRight(), boards.bottomLeft(), boards.bottomRight(),
+                request.rawShareText(), request.parserVersion(), databaseTime(now), databaseTime(now));
     }
+
+    private static BoardColumns boardColumns(ParsedGameResult parsed) {
+        if (parsed.gameType() == GameType.GRIDWORDS) {
+            return new BoardColumns(parsed.board().orElseThrow().canonicalText(), null, null, null, null);
+        }
+        QuadWordsBoards quadWords = parsed.quadWordsBoards()
+                .orElseThrow(() -> new IllegalArgumentException("a persisted QuadWords result requires four boards"));
+        return new BoardColumns(null,
+                quadWords.topLeft().canonicalText(),
+                quadWords.topRight().canonicalText(),
+                quadWords.bottomLeft().canonicalText(),
+                quadWords.bottomRight().canonicalText());
+    }
+
+    private record BoardColumns(
+            String gridWords, String topLeft, String topRight, String bottomLeft, String bottomRight) { }
 
     private static boolean equivalent(StoredGameResult stored, GameResultUpsert request) {
         return stored.playerId() == request.playerId() && stored.parsedResult().equals(request.parsedResult())
@@ -870,9 +899,17 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                 ? new ShareOutcome.Solved(rs.getInt("attempts_used"), maximum)
                 : new ShareOutcome.Unsolved(maximum);
         String boardText = rs.getString("normalized_board");
+        Optional<QuadWordsBoards> quadWordsBoards = type == GameType.QUADWORDS
+                ? Optional.of(new QuadWordsBoards(
+                        QuadWordsBoard.fromCanonicalText(required(rs, "quadwords_top_left_board")),
+                        QuadWordsBoard.fromCanonicalText(required(rs, "quadwords_top_right_board")),
+                        QuadWordsBoard.fromCanonicalText(required(rs, "quadwords_bottom_left_board")),
+                        QuadWordsBoard.fromCanonicalText(required(rs, "quadwords_bottom_right_board"))))
+                : Optional.empty();
         ParsedGameResult parsed = new ParsedGameResult(type, rs.getObject("game_date", java.time.LocalDate.class), outcome,
                 Duration.ofSeconds(rs.getLong("duration_seconds")), optionalInt(rs, "gridgames_streak"),
-                boardText == null ? Optional.empty() : Optional.of(new NormalizedBoard(List.of(boardText.split("\\n")))));
+                boardText == null ? Optional.empty() : Optional.of(new NormalizedBoard(List.of(boardText.split("\\n")))),
+                quadWordsBoards);
         Long messageId = rs.getObject("canonical_message_id", Long.class);
         return new StoredGameResult(rs.getLong("id"), rs.getLong("player_id"), parsed, rs.getString("raw_share_text"),
                 rs.getString("parser_version"), messageId == null ? OptionalLong.empty() : OptionalLong.of(messageId),
@@ -914,6 +951,12 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
     private static Optional<Instant> optionalInstant(ResultSet rs, String column) throws SQLException {
         OffsetDateTime value = rs.getObject(column, OffsetDateTime.class);
         return value == null ? Optional.empty() : Optional.of(value.toInstant());
+    }
+
+    private static String required(ResultSet rs, String column) throws SQLException {
+        String value = rs.getString(column);
+        if (value == null) throw new SQLException("required QuadWords board is missing: " + column);
+        return value;
     }
 
     private static OptionalInt optionalInt(ResultSet rs, String column) throws SQLException {

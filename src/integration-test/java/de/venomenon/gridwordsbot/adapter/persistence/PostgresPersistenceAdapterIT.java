@@ -11,6 +11,8 @@ import de.venomenon.gridwordsbot.application.submission.ProcessSharedResultServi
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.model.NormalizedBoard;
 import de.venomenon.gridwordsbot.domain.model.ParsedGameResult;
+import de.venomenon.gridwordsbot.domain.model.QuadWordsBoard;
+import de.venomenon.gridwordsbot.domain.model.QuadWordsBoards;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
 import de.venomenon.gridwordsbot.port.out.GameResultStore;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
@@ -26,6 +28,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -128,6 +131,18 @@ class PostgresPersistenceAdapterIT {
                 new SubmissionStore.ResultStorage(sourceMessageId, result, configuredPlayerIds)));
     }
 
+    private GameResultStore.GameResultUpsert quadResult(long playerId, int attempts, String text, String parserVersion) {
+        ParsedGameResult parsed = new ParsedGameResult(
+                GameType.QUADWORDS,
+                LocalDate.of(2026, 7, 29),
+                new ShareOutcome.Solved(attempts, 9),
+                Duration.ofSeconds(42),
+                OptionalInt.empty(),
+                Optional.empty(),
+                Optional.of(quadBoards(attempts)));
+        return new GameResultStore.GameResultUpsert(playerId, parsed, text, parserVersion);
+    }
+
     private GameResultStore.GameResultUpsert quadResultFor(long playerId, boolean solved, String text) {
         ParsedGameResult parsed = new ParsedGameResult(
                 GameType.QUADWORDS,
@@ -135,7 +150,8 @@ class PostgresPersistenceAdapterIT {
                 solved ? new ShareOutcome.Solved(4, 9) : new ShareOutcome.Unsolved(9),
                 Duration.ofSeconds(42),
                 OptionalInt.empty(),
-                Optional.empty());
+                Optional.empty(),
+                Optional.of(quadBoards(solved ? 4 : 9)));
         return new GameResultStore.GameResultUpsert(playerId, parsed, text, "v1");
     }
     private GameResultStore.GameResultUpsert result(int attempts, String text) {
@@ -148,6 +164,17 @@ class PostgresPersistenceAdapterIT {
         NormalizedBoard board = board(attempts);
         ParsedGameResult parsed = new ParsedGameResult(GameType.GRIDWORDS, LocalDate.of(2026, 7, 29), new ShareOutcome.Solved(attempts, 6), Duration.ofSeconds(42), OptionalInt.empty(), Optional.of(board));
         return new GameResultStore.GameResultUpsert(playerId, parsed, text, "v1");
+    }
+
+    private QuadWordsBoards quadBoards(int rows) {
+        String blank = new String(Character.toChars(0x2B1C));
+        String yellow = new String(Character.toChars(0x1F7E8));
+        String green = new String(Character.toChars(0x1F7E9));
+        return new QuadWordsBoards(
+                new QuadWordsBoard(Collections.nCopies(rows, blank + yellow + green + blank + yellow)),
+                new QuadWordsBoard(Collections.nCopies(rows, yellow + green + blank + yellow + green)),
+                new QuadWordsBoard(Collections.nCopies(rows, green + blank + yellow + green + blank)),
+                new QuadWordsBoard(Collections.nCopies(rows, blank + green + yellow + blank + green)));
     }
 
     private NormalizedBoard board(int attempts) {
@@ -189,10 +216,60 @@ class PostgresPersistenceAdapterIT {
         GameResultStore.GameResultUpsert grid = resultFor(106L, 4, "grid");
         GameResultStore.GameResultUpsert quad = new GameResultStore.GameResultUpsert(106L,
                 new ParsedGameResult(GameType.QUADWORDS, LocalDate.of(2026, 7, 28), new ShareOutcome.Unsolved(9),
-                        Duration.ofSeconds(587), OptionalInt.of(8), Optional.empty()), "quad", "v2");
+                        Duration.ofSeconds(587), OptionalInt.of(8), Optional.empty(), Optional.of(quadBoards(9))),
+                "quad", "quadwords-image-v2");
         assertEquals(grid.parsedResult(), adapter.upsert(grid).parsedResult());
-        assertEquals(quad.parsedResult(), adapter.upsert(quad).parsedResult());
-        assertEquals("quad", adapter.find(106L, GameType.QUADWORDS, LocalDate.of(2026, 7, 28)).orElseThrow().rawShareText());
+        GameResultStore.StoredGameResult storedQuad = adapter.upsert(quad);
+        assertEquals(quad.parsedResult(), storedQuad.parsedResult());
+        assertEquals("quadwords-image-v2", storedQuad.parserVersion());
+        assertEquals(quad.parsedResult().quadWordsBoards(),
+                adapter.find(106L, GameType.QUADWORDS, LocalDate.of(2026, 7, 28))
+                        .orElseThrow().parsedResult().quadWordsBoards());
+    }
+
+    @Test
+    void keepsQuadWordsReplayIdempotentAndPersistsCorrectionsInCanonicalBoardOrder() {
+        adapter.upsert(new PlayerStore.PlayerUpsert(114L, "QuadWords", true, false));
+        registerSubmission(914L, 114L);
+
+        GameResultStore.GameResultUpsert initial = quadResult(114L, 4, "initial", "quadwords-image-v2");
+        SubmissionStore.StoredSubmission stored = transactions.execute(status -> adapter.storeResult(
+                new SubmissionStore.ResultStorage(914L, initial)));
+        long resultId = stored.gameResultId().orElseThrow();
+        Integer replayVersion = jdbc.queryForObject(
+                "SELECT version FROM submission WHERE source_message_id = 914", Integer.class);
+
+        SubmissionStore.StoredSubmission replay = transactions.execute(status -> adapter.storeResult(
+                new SubmissionStore.ResultStorage(914L, initial)));
+        assertEquals(stored, replay);
+        assertEquals(replayVersion, jdbc.queryForObject(
+                "SELECT version FROM submission WHERE source_message_id = 914", Integer.class));
+
+        registerSubmission(915L, 114L);
+        GameResultStore.GameResultUpsert correction = quadResult(114L, 5, "correction", "quadwords-image-v3");
+        SubmissionStore.StoredSubmission correctedSubmission = transactions.execute(status -> adapter.storeResult(
+                new SubmissionStore.ResultStorage(915L, correction)));
+        GameResultStore.StoredGameResult corrected = adapter.find(114L, GameType.QUADWORDS,
+                LocalDate.of(2026, 7, 29)).orElseThrow();
+
+        assertEquals(resultId, correctedSubmission.gameResultId().orElseThrow());
+        assertEquals(resultId, corrected.id());
+        assertEquals(correction.parsedResult().quadWordsBoards(), corrected.parsedResult().quadWordsBoards());
+        assertEquals("quadwords-image-v3", corrected.parserVersion());
+        assertEquals(5, ((ShareOutcome.Solved) corrected.parsedResult().outcome()).attemptsUsed());
+    }
+
+    @Test
+    void recordsQuadWordsRejectionWithoutCreatingAGameResult() {
+        adapter.upsert(new PlayerStore.PlayerUpsert(115L, "Rejected QuadWords", true, false));
+        registerSubmission(916L, 115L);
+
+        SubmissionStore.StoredSubmission rejected = transactions.execute(status -> adapter.reject(
+                new SubmissionStore.RejectedSubmission(916L, "UNCERTAIN_IMAGE_COLOUR")));
+
+        assertEquals(SubmissionStore.SubmissionState.PARSE_REJECTED, rejected.state());
+        assertEquals(0, jdbc.queryForObject(
+                "SELECT count(*) FROM game_result WHERE player_id = 115 AND game_type = 'QUADWORDS'", Integer.class));
     }
 
     @Test

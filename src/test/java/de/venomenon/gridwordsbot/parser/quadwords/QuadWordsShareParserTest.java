@@ -52,17 +52,14 @@ class QuadWordsShareParserTest {
     }
 
     @Test
-    void rejectsMissingAndNonImageAttachments() {
-        assertInvalid(
-                input("quadwords/solved/synthetic-solved-with-streak.txt"),
-                ParseErrorCode.MISSING_IMAGE_ATTACHMENT);
-        assertInvalid(
-                input(
-                        "quadwords/solved/synthetic-solved-with-streak.txt",
-                        new AttachmentMetadata("result.txt", "text/plain", 10)),
-                ParseErrorCode.MISSING_IMAGE_ATTACHMENT);
+    void parsesTheHeaderWithoutSelectingAnAttachment() {
+        assertThat(parser.parse(input("quadwords/solved/synthetic-solved-with-streak.txt")))
+                .isInstanceOf(ParseResult.Parsed.class);
+        assertThat(parser.parse(input(
+                "quadwords/solved/synthetic-solved-with-streak.txt",
+                new AttachmentMetadata("result.txt", "text/plain", 10))))
+                .isInstanceOf(ParseResult.Parsed.class);
     }
-
     @ParameterizedTest
     @MethodSource("invalidFixtureCases")
     void classifiesInvalidQuadWordsFixturesWithStableCodes(String fixturePath, ParseErrorCode expectedCode) {
