@@ -22,7 +22,11 @@ class QuadWordsGoldenFixtureTest {
 
         assertThat(result).isInstanceOf(QuadWordsImageParser.Parse.Parsed.class);
         String actual = canonical(((QuadWordsImageParser.Parse.Parsed) result).boards());
-        assertThat(actual).isEqualTo(Files.readString(expected).stripTrailing());
+        assertThat(actual).isEqualTo(readCanonicalText(expected));
+    }
+
+    private static String readCanonicalText(Path path) throws Exception {
+        return String.join("\n", Files.readAllLines(path)).stripTrailing();
     }
 
     private static String canonical(QuadWordsBoards boards) {
