@@ -21,6 +21,8 @@ import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.exceptions.ErrorResponseException;
+import net.dv8tion.jda.api.exceptions.InsufficientPermissionException;
+import net.dv8tion.jda.api.exceptions.MissingAccessException;
 import net.dv8tion.jda.api.requests.ErrorResponse;
 import net.dv8tion.jda.api.requests.RestAction;
 import net.dv8tion.jda.api.utils.NamedAttachmentProxy;
@@ -111,6 +113,24 @@ class JdaAttachmentContentLoaderTest {
         assertThatThrownBy(() -> new JdaAttachmentContentLoader(jda).load(metadata(1)))
                 .isInstanceOf(AttachmentUnavailableException.class)
                 .hasCause(failure);
+    }
+
+    @Test
+    void translatesSynchronousPermissionFailuresToUnavailableAttachments() {
+        for (RuntimeException failure : List.of(
+                mock(MissingAccessException.class), mock(InsufficientPermissionException.class))) {
+            JDA jda = mock(JDA.class);
+            TextChannel channel = mock(TextChannel.class);
+            @SuppressWarnings("unchecked")
+            RestAction<Message> retrieve = mock(RestAction.class);
+            when(jda.getTextChannelById(12L)).thenReturn(channel);
+            when(channel.retrieveMessageById(500L)).thenReturn(retrieve);
+            when(retrieve.complete()).thenThrow(failure);
+
+            assertThatThrownBy(() -> new JdaAttachmentContentLoader(jda).load(metadata(1)))
+                    .isInstanceOf(AttachmentUnavailableException.class)
+                    .hasCause(failure);
+        }
     }
 
     @Test
