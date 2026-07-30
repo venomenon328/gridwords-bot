@@ -1,6 +1,6 @@
 # Zwischeninkrement 7.2: Dynamische Spieler, Teilnahmezeiträume und Reminder-Opt-in
 
-**Status:** umgesetzt; Draft-PR #20 bleibt offen fuer den manuellen Smoke-Test
+**Status:** umgesetzt; Draft-PR #20 bleibt offen für den manuellen Smoke-Test  
 **Issue:** #19  
 **Branch:** `feature/dynamic-player-participation`
 
@@ -14,26 +14,29 @@ Verbindliche Fachdetails stehen in:
 - [`docs/requirements/series-model.md`](../requirements/series-model.md)
 - Issue #19
 
-## Geplanter Umfang
+## Umgesetzter Umfang
 
 - Listener akzeptiert jeden menschlichen Autor im konfigurierten Server und Channel.
 - Normale Texte bleiben ohne DB-Zugriff ignoriert.
 - Ungültige Shares erzeugen kein Spielerprofil.
-- Vollständig gültige Shares legen Spieler an oder synchronisieren sie.
+- Vollständig gültige Shares legen Spieler und Teilnahmezeitraum atomar mit dem Ergebnis an oder synchronisieren sie.
 - serverbezogener Anzeigename mit Fallback auf globalen Username.
-- dynamische Administratorflags weiterhin aus externer Admin-ID-Liste.
+- dynamische Administratorflags aus der externen Admin-ID-Liste; Name und Flag werden bei Share und Commands synchronisiert.
 - `player.active` als aktueller Status.
 - datierte, nicht überlappende Teilnahmezeiträume für historische gemeinsame Serien.
 - automatische Aktivierung ab fachlichem Share-Spieltag.
 - Self-Service `/participation join|leave|status`.
 - Admin `/player activate|deactivate|status`.
 - Self-Service `/reminders on|off|status`.
+- ephemere Command-Antworten und Statusausgabe mit laufendem Teilnahmezeitraum.
 - `reminder_opt_in` unabhängig von Teilnahmeaktivität.
 - gemeinsame Komplett-/Perfektserie über alle am jeweiligen Tag aktiven Spieler.
 - mindestens zwei aktive Spieler für einen gemeinsamen Serientag.
 - transportneutraler Reminder-Kandidaten-Port für Inkrement 8.
 - Entfernung der festen `PLAYER_1_*`-/`PLAYER_2_*`-Konfiguration.
 - Liquibase-Backfill für bestehende Spieler und Ergebnisse.
+- serialisierte erstmalige Spieler-/Ergebnisregistrierung vor der atomaren PublicationContext-Ermittlung.
+- genau ein dynamischer PostgreSQL-Persistenzadapter im produktiven Datenbankprofil; Legacy-Kompatibilität bleibt isoliert testbar.
 
 ## Wirksamkeitsregeln
 
@@ -64,11 +67,19 @@ Noch kein Scheduler und kein Versand. Vorbereitet werden:
 - Parser- oder Rendereränderungen,
 - neue Publish-/Delete-Zustandsmaschine.
 
-## Validierung
+## Automatisierte Abnahme
 
 ```powershell
 mvn --batch-mode --no-transfer-progress clean verify
 mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
 ```
 
-Automatisiert validiert: 197 Standardtests sowie 56 PostgreSQL-Integrationstests lokal gruen. Offen bleibt ausschliesslich ein realer Discord-/PostgreSQL-Smoke-Test mit mindestens drei Nutzern durch Tobias.
+Auf dem finalen CI-Head erfolgreich:
+
+- 207 Standardtests,
+- 63 PostgreSQL-Integrationstests,
+- keine Fehler oder Fehlschläge.
+
+Zusätzlich abgesichert sind insbesondere Command-Adapter und Startup-Reihenfolge, Spring-/PostgreSQL-Startup nach Liquibase, Migration und Backfill, Constraints, Profil-/Admin-Synchronisierung, atomarer Rollback unbekannter Spieler, konkurrierte Erst-Submissions sowie gemeinsame Serien bei Beitritt, Austritt und weniger als zwei Teilnehmern.
+
+Offen bleibt ausschließlich Tobias' realer Discord-/PostgreSQL-Smoke-Test mit mindestens drei Nutzern.
