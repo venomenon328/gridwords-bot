@@ -14,14 +14,14 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 ## Aktueller Stand
 
-Die Inkremente 0 bis 6 sind abgeschlossen. Inkrement 6, der QuadWords-Bildparser, wurde in PR #14 vollständig automatisiert und am 30. Juli 2026 lokal sowie mit einem echten Discord-/PostgreSQL-Smoke-Test abgenommen. Als Nächstes folgt Inkrement 7: kanonische QuadWords-Konsolidierung und sichere Ersetzung.
+Die Inkremente 0 bis 6 sind abgeschlossen. Inkrement 7, die kanonische QuadWords-Konsolidierung und sichere Ersetzung aus Issue #15, ist in Draft-PR #16 vollständig automatisiert. Beide lokalen Vollbuilds sind grün; ausschließlich Tobias’ realer Discord-/PostgreSQL-Smoke-Test ist vor der Abnahme noch offen.
 
 Der Projektstand umfasst:
 
 - Java 21, Spring Boot, Maven, JDA, PostgreSQL und Liquibase
 - deterministische GridWords- und QuadWords-Textparser
 - idempotente Spieler-, Ergebnis- und Submission-Persistenz
-- kanonische GridWords-Embeds und sichere GridWords-Quelllöschung
+- kanonische GridWords- und QuadWords-Embeds mit sicherer Quelllöschung nach persistierter Veröffentlichung
 - Retry-, Claim-, Recovery-, Supersession- und Duplikatschutz
 - transportneutrale Referenzen auf Discord-Anhänge
 - verzögerten Download genau des ausgewählten QuadWords-Anhangs außerhalb des JDA-Event-Threads
@@ -31,9 +31,12 @@ Der Projektstand umfasst:
 - Persistenz aller vier Boards und der Parser-Version `quadwords-image-v2`
 - kontrollierte Wiederaufnahme technischer Attachment-Fehler
 - Schutz gegen ein Zurückstufen parallel bereits gespeicherter Ergebnisse
-- Kompatibilität mit bereits gespeicherten QuadWords-Ergebnissen aus `quadwords-share-v1`
+- Korrekturen beider Spieltypen durch Edit derselben kanonischen Bot-Message-ID
+- spieltypbezogene Publication-Keys sowie gemeinsame Claims, Delivery-Fence, Retry, Recovery, Supersession und Duplikatbereinigung
+- PublicationContext für persönliche und gemeinsame Komplett-/Perfektübergänge, auch wenn QuadWords die zweite Einreichung ist
+- sichere Lesbarkeit bereits gespeicherter QuadWords-Ergebnisse aus `quadwords-share-v1`, ohne Publish, Delete-Handoff oder Refresh-Schleife bei fehlenden Boards
 
-Seit Inkrement 6 bleiben QuadWords-Originalnachrichten sichtbar. Ein sicher geparstes und gespeichertes Ergebnis erhält `✅`; eine stabile fachliche Bildablehnung erhält `⚠️`. Technische Downloadfehler erhalten keine irreführende Reaktion. Kanonische QuadWords-Nachrichten und deren sichere Quelllöschung folgen in Inkrement 7.
+Ein sicher geparstes und gespeichertes QuadWords-Ergebnis wird ohne zusätzliche `✅`-Reaktion als genau eine kanonische Bot-Nachricht veröffentlicht; erst nach persistierter Veröffentlichung wird die menschliche Quelle gelöscht. Eine stabile fachliche Bildablehnung bleibt mit `⚠️` sichtbar. Technische Downloadfehler sowie boardlose Legacy-Ergebnisse erhalten weder ein Erfolgssignal noch einen Discord-Publish-/Delete-Aufruf.
 
 ## QuadWords-Bildparser
 
@@ -166,6 +169,8 @@ Relevante Tabellen sind insbesondere `player`, `submission`, `game_result` und `
 - JPEG-Kompatibilität: programmatisch erzeugtes Bild im Unit-Test
 - manuelle Smoke-Tests: echte Discord-Verbindung und Compose-PostgreSQL
 - H2 ersetzt keine PostgreSQL-Integrationstests
+
+Aktueller automatisierter Stand für Draft-PR #16: 194 Standardtests und 53 PostgreSQL-Integrationstests, jeweils ohne echte Discord-Verbindung oder Token.
 
 ## Geheimnisse
 

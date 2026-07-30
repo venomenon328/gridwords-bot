@@ -1,8 +1,11 @@
 # Inkrement 7: Kanonische QuadWords-Konsolidierung und sichere Ersetzung
 
-**Status:** automatisiert umgesetzt; manueller Discord-/PostgreSQL-Smoke-Test offen  
-**Issue:** #15  
-**Draft-PR:** #16  
+**Status:** automatisiert umgesetzt; ausschließlich Tobias’ manueller Discord-/PostgreSQL-Smoke-Test ist offen
+
+**Issue:** #15
+
+**Draft-PR:** #16
+
 **Branch:** `feature/canonical-quadwords-replacement`
 
 ## Ziel
@@ -14,7 +17,7 @@ Ein sicher geparstes und persistiertes QuadWords-Ergebnis wird in genau einer ka
 - Inkremente 0 bis 6 sind abgeschlossen.
 - QuadWords besitzt vier normalisierte und persistierte Boards sowie Parser-Version `quadwords-image-v2`.
 - GridWords besitzt bereits den vollständigen sicheren Publish-/Edit-/Delete-Ablauf mit Claims, Delivery-Fence, Recovery, Supersession und Duplikatbereinigung.
-- Gültige QuadWords-Quellen bleiben derzeit sichtbar und erhalten `✅`.
+- Vor diesem Inkrement blieben gültige QuadWords-Quellen sichtbar und erhielten `✅`.
 
 ## Umgesetzter Umfang
 
@@ -29,6 +32,10 @@ Ein sicher geparstes und persistiertes QuadWords-Ergebnis wird in genau einer ka
 - begrenzte Bereinigung älterer supersedierter Quellen
 - kein Publish oder Delete für fachlich abgelehnte Bilder oder boardlose `quadwords-share-v1`-Ergebnisse
 - Wegfall der `✅`-Reaktion für erfolgreich konsolidierte QuadWords-Quellen
+- PublicationContext auch bei QuadWords als zweiter Einreichung; Korrekturen etablieren Zustände nicht erneut und erhalten bestehende Kontextzeilen beim Edit
+- expliziter `NOT_PUBLISHABLE`-Ausgang für boardlose Legacy-Ergebnisse ohne Discord-Aufruf, Delete-Handoff, Erfolgssignal oder Refresh-Hot-Loop
+- parametrisierte gemeinsame Sicherheitsfälle für Erstpublish, Edit, Retry-Handoff, Delivery-Fence und Superseded-Reconciliation
+- QuadWords-spezifische Startup-, Legacy-, Delete-Recovery- und Permanentfehlerfälle
 - vollständige GridWords-Regression
 
 ## Ausgeführte Validierung
@@ -38,9 +45,15 @@ mvn --batch-mode --no-transfer-progress clean verify
 mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
 ```
 
-Automatisierte Tests verwenden keinen echten Discord-Token und öffnen keine echte Discord-Verbindung. Docker Desktop darf für PostgreSQL vorausgesetzt werden.
+Ergebnisse vom 30. Juli 2026:
 
-## Manueller Smoke-Test vor Merge
+- Standardbuild: 194 Tests, 0 Fehler, 0 Fehlschläge, 0 übersprungen
+- Datenbankprofil: 194 Standardtests und 53 PostgreSQL-Integrationstests, jeweils 0 Fehler, 0 Fehlschläge, 0 übersprungen
+- PostgreSQL-Vollpfad: bildgestütztes QuadWords bis `COMPLETED`, Korrektur derselben kanonischen Message-ID, einmaliger PublicationContext, Legacy-Schutz und permanenter Delete-Fehler ohne Recovery-Hot-Loop
+
+Automatisierte Tests verwenden keinen echten Discord-Token, keine `.env` und öffnen keine echte Discord-Verbindung. Docker Desktop wird ausschließlich für PostgreSQL-Testcontainers verwendet.
+
+## Tobias’ manueller Smoke-Test vor Merge
 
 - gelöstes QuadWords: genau ein Embed, danach sichere Quelllöschung
 - visueller Vergleich aller vier Boards

@@ -101,17 +101,28 @@ Abnahme:
 
 ## Inkrement 7 – Kanonische QuadWords-Konsolidierung und sichere Ersetzung
 
+**Status:** automatisiert vollständig umgesetzt in Draft-PR #16; ausschließlich Tobias’ realer Discord-/PostgreSQL-Smoke-Test ist offen.
+
 **Ziel:** QuadWords-Text und vier normalisierte Boards in genau eine korrigierbare Bot-Nachricht überführen und die Quelle danach sicher löschen.
 
-Umfang:
+Umgesetzter Umfang:
 
-- kanonische Darstellung aller vier Boards
-- Spieler, Datum, Ergebnis, Dauer und Serien
-- persistierte Bot-Message-ID
-- Korrektur durch Edit derselben Bot-Nachricht
-- Publication-Key, Claims, Recovery, Supersession und Duplikatbereinigung analog zu GridWords
-- Quelllöschung erst nach persistierter kanonischer Veröffentlichung
-- kein Löschen bei unsicherem oder fehlerhaftem Bildparse
+- kanonische Darstellung aller vier Boards sowie Spieler, Datum, Ergebnis, Dauer und verbindliche Serien
+- genau eine persistierte Bot-Message-ID je Spieler, Spieltyp und Spieltag
+- Korrektur durch Edit derselben Bot-Nachricht mit Erhalt bereits etablierter Kontextzeilen
+- spieltypbezogener Publication-Key
+- gemeinsame, begrenzt generalisierte Claims, Delivery-Fence, Retry-, Startup-Recovery-, Supersession- und Duplikatbereinigung für GridWords und QuadWords
+- Quelllöschung erst nach persistierter kanonischer Veröffentlichung sowie Delete-Recovery
+- explizit nicht publizierbare boardlose `quadwords-share-v1`-Ergebnisse: kein Discord-Aufruf, Delete-Handoff, Erfolgssignal oder Refresh-Hot-Loop
+- PublicationContext auch dann genau einmal, wenn QuadWords als zweite Einreichung persönliche und gemeinsame Komplett-/Perfektzustände etabliert
+- kein QuadWords-`✅` nach erfolgreicher Konsolidierung
+- parametrisierte gemeinsame Sicherheitsfälle statt einer kopierten GridWords-Zustandsmaschine
+
+Validierung:
+
+- `mvn --batch-mode --no-transfer-progress clean verify`: 194 Tests grün
+- `mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify`: 194 Standardtests plus 53 PostgreSQL-Integrationstests grün
+- keine echte Discord-Verbindung, kein Token und keine `.env` in automatisierten Tests
 
 ## Inkrement 8 – Tagesstatus, vollständige Serien und Erinnerungen
 
