@@ -8,11 +8,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
+import java.util.function.BiFunction;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.exceptions.ErrorResponseException;
 import net.dv8tion.jda.api.exceptions.InsufficientPermissionException;
+import net.dv8tion.jda.api.utils.NamedAttachmentProxy;
 
 /** JDA implementation that resolves and downloads exactly the attachment selected in an inbound snapshot. */
 public final class JdaAttachmentContentLoader implements AttachmentContentLoader {
@@ -22,17 +24,26 @@ public final class JdaAttachmentContentLoader implements AttachmentContentLoader
 
     private final JDA jda;
     private final long maximumAttachmentBytes;
+    private final BiFunction<String, String, NamedAttachmentProxy> proxyFactory;
 
     public JdaAttachmentContentLoader(JDA jda) {
         this(jda, DEFAULT_MAX_ATTACHMENT_BYTES);
     }
 
     public JdaAttachmentContentLoader(JDA jda, long maximumAttachmentBytes) {
+        this(jda, maximumAttachmentBytes, NamedAttachmentProxy::new);
+    }
+
+    JdaAttachmentContentLoader(
+            JDA jda,
+            long maximumAttachmentBytes,
+            BiFunction<String, String, NamedAttachmentProxy> proxyFactory) {
         this.jda = Objects.requireNonNull(jda, "jda");
         if (maximumAttachmentBytes <= 0) {
             throw new IllegalArgumentException("maximumAttachmentBytes must be positive");
         }
         this.maximumAttachmentBytes = maximumAttachmentBytes;
+        this.proxyFactory = Objects.requireNonNull(proxyFactory, "proxyFactory");
     }
 
     @Override
@@ -57,7 +68,13 @@ public final class JdaAttachmentContentLoader implements AttachmentContentLoader
             if (attachment.getSize() > maximumAttachmentBytes) {
                 throw tooLarge();
             }
-            try (InputStream input = attachment.getProxy().download().get()) {
+
+            // JDA's Attachment#getProxy() deliberately selects Discord's media-proxy URL for images. That proxy may
+            // transcode the payload, so the bytes no longer necessarily match the uploaded PNG/JPEG. The parser needs
+            // the original attachment bytes and therefore downloads the signed CDN URL returned by getUrl().
+            NamedAttachmentProxy originalAttachment = Objects.requireNonNull(
+                    proxyFactory.apply(attachment.getUrl(), attachment.getFileName()), "attachment proxy");
+            try (InputStream input = originalAttachment.download().get()) {
                 return readWithinLimit(input);
             }
         } catch (AttachmentContentLoadException exception) {
