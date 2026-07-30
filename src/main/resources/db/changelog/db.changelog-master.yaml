@@ -29,3 +29,7 @@ databaseChangeLog:
   - include:
       file: 008-gridwords-source-deletion.sql
       relativeToChangelogFile: true
+
+  - include:
+      file: 009-quadwords-boards.sql
+      relativeToChangelogFile: true

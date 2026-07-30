@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
@@ -42,6 +43,36 @@ class PostgresSchemaIT {
         assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(
                 "insert into canonical_delivery_attempt(claim_token,game_result_id,source_message_id,refresh_generation,created_at) values ('00000000-0000-0000-0000-000000000208',999,999,1,?)", now));
     }    @Test void submissionPrimaryKeyIsUnique() { insertPlayer(206); insertSubmission(206,206); assertThrows(DataIntegrityViolationException.class, () -> insertSubmission(206,206)); }
+    @Test
+    void migrationAddsFourMandatoryQuadWordsBoardColumnsInCanonicalOrder() {
+        List<String> columns = jdbc.queryForList("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'game_result'
+                  AND column_name LIKE 'quadwords_%_board'
+                ORDER BY column_name
+                """, String.class);
+        assertEquals(List.of(
+                "quadwords_bottom_left_board",
+                "quadwords_bottom_right_board",
+                "quadwords_top_left_board",
+                "quadwords_top_right_board"), columns);
+
+        insertPlayer(209);
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("""
+                insert into game_result(player_id,game_type,game_date,solved,max_attempts,duration_seconds,
+                    raw_share_text,parser_version,created_at,updated_at)
+                values (209,'QUADWORDS',current_date,false,9,0,'x','v',?,?)
+                """, now, now));
+        jdbc.update("""
+                insert into game_result(player_id,game_type,game_date,solved,max_attempts,duration_seconds,
+                    quadwords_top_left_board,quadwords_top_right_board,quadwords_bottom_left_board,
+                    quadwords_bottom_right_board,raw_share_text,parser_version,created_at,updated_at)
+                values (209,'QUADWORDS',current_date,false,9,0,'top-left','top-right','bottom-left',
+                    'bottom-right','x','v',?,?)
+                """, now, now);
+    }
+
     private void insertPlayer(long id) { jdbc.update("insert into player values (?, 'p'||?,true,false,?,?) on conflict do nothing",id,id,now,now); }
     private void insertSubmission(long id,long player) { jdbc.update("insert into submission(source_message_id,guild_id,channel_id,author_player_id,raw_message_content,processing_state,received_at,updated_at) values (?,1,1,?,'x','RECEIVED',?,?)",id,player,now,now); }
     private void insertGridResult(long player) { jdbc.update("insert into game_result(player_id,game_type,game_date,solved,max_attempts,duration_seconds,normalized_board,raw_share_text,parser_version,created_at,updated_at) values (?,'GRIDWORDS',current_date,false,6,0,'b','x','v',?,?)",player,now,now); }
