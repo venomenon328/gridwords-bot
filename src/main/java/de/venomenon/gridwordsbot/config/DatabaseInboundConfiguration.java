@@ -113,7 +113,8 @@ class DatabaseInboundConfiguration {
             SourceMessageDeletionGateway deletionGateway,
             Clock clock,
             PublicationRetryScheduler retryScheduler,
-            SourceDeletionRecoveryStore recoveryStore) {
+            ObjectProvider<SourceDeletionRecoveryStore> recoveryProvider) {
+        SourceDeletionRecoveryStore recoveryStore = recoveryProvider.getIfAvailable(() -> ignored -> 0);
         return new GridWordsSourceDeletionService(
                 submissions, deletionGateway, clock, retryScheduler, recoveryStore);
     }
