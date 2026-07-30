@@ -22,6 +22,7 @@ import de.venomenon.gridwordsbot.port.out.SubmissionStore;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.Collections;
@@ -73,24 +74,28 @@ class QuadWordsPersistenceCompatibilityIT {
 
     @Test
     void firstImageBackedCorrectionUpgradesTheExistingLegacyResultInPlace() {
+        long playerId = 9003L;
+        long sourceMessageId = 9903L;
+        LocalDate gameDate = LocalDate.of(2026, 7, 28);
+        insertLegacyResult(playerId, gameDate);
         long resultIdBefore = jdbc.queryForObject(
-                "select id from game_result where player_id = 9001 and game_type = 'QUADWORDS'",
-                Long.class);
+                "select id from game_result where player_id = ? and game_type = 'QUADWORDS'",
+                Long.class,
+                playerId);
         ProcessSharedResultService service = service(attachment -> new byte[] {1}, parsedBoards(7));
 
         ProcessingResult result = service.process(message(
-                9901L,
-                9001L,
-                LocalDate.of(2026, 7, 28),
+                sourceMessageId,
+                playerId,
                 "QuadWords (28. Juli 2026) 7/9 in 4:05"));
 
         assertEquals(new ProcessingResult.Accepted(GameType.QUADWORDS), result);
-        var upgraded = adapter.find(9001L, GameType.QUADWORDS, LocalDate.of(2026, 7, 28)).orElseThrow();
+        var upgraded = adapter.find(playerId, GameType.QUADWORDS, gameDate).orElseThrow();
         assertEquals(resultIdBefore, upgraded.id());
         assertEquals(QuadWordsImageParser.VERSION, upgraded.parserVersion());
         assertTrue(upgraded.parsedResult().quadWordsBoards().isPresent());
         assertEquals(SubmissionStore.SubmissionState.RESULT_STORED,
-                adapter.findBySourceMessageId(9901L).orElseThrow().state());
+                adapter.findBySourceMessageId(sourceMessageId).orElseThrow().state());
     }
 
     @Test
@@ -109,7 +114,6 @@ class QuadWordsPersistenceCompatibilityIT {
         InboundSharedMessage inbound = message(
                 sourceMessageId,
                 playerId,
-                LocalDate.of(2026, 7, 29),
                 "QuadWords (29. Juli 2026) 7/9 in 4:05");
 
         assertEquals(new ProcessingResult.Ignored(), service.process(inbound));
@@ -126,6 +130,22 @@ class QuadWordsPersistenceCompatibilityIT {
         assertTrue(adapter.find(playerId, GameType.QUADWORDS, LocalDate.of(2026, 7, 29))
                 .orElseThrow().parsedResult().quadWordsBoards().isPresent());
         assertEquals(2, loads.get());
+    }
+
+    private void insertLegacyResult(long playerId, LocalDate gameDate) {
+        adapter.upsert(new PlayerStore.PlayerUpsert(playerId, "Legacy correction", true, false));
+        jdbc.update("""
+                insert into game_result(
+                    player_id, game_type, game_date, solved, attempts_used, max_attempts,
+                    duration_seconds, normalized_board, raw_share_text, parser_version,
+                    created_at, updated_at)
+                values (?, 'QUADWORDS', ?, true, 7, 9, 245, null, 'legacy share',
+                    'quadwords-share-v1', ?, ?)
+                """,
+                playerId,
+                gameDate,
+                OffsetDateTime.ofInstant(NOW, ZoneOffset.UTC),
+                OffsetDateTime.ofInstant(NOW, ZoneOffset.UTC));
     }
 
     private ProcessSharedResultService service(
@@ -153,7 +173,6 @@ class QuadWordsPersistenceCompatibilityIT {
     private static InboundSharedMessage message(
             long sourceMessageId,
             long playerId,
-            LocalDate date,
             String content) {
         return new InboundSharedMessage(
                 200L,
