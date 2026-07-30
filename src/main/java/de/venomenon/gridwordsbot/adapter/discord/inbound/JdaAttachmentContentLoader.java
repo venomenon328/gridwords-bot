@@ -13,7 +13,7 @@ import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.exceptions.ErrorResponseException;
 import net.dv8tion.jda.api.exceptions.InsufficientPermissionException;
-
+import net.dv8tion.jda.api.exceptions.MissingAccessException;
 
 /** JDA implementation that resolves and downloads exactly the attachment selected in an inbound snapshot. */
 public final class JdaAttachmentContentLoader implements AttachmentContentLoader {
@@ -65,7 +65,7 @@ public final class JdaAttachmentContentLoader implements AttachmentContentLoader
             throw exception;
         } catch (ErrorResponseException exception) {
             throw translateDiscordFailure(exception);
-        } catch (InsufficientPermissionException exception) {
+        } catch (MissingAccessException | InsufficientPermissionException exception) {
             throw new AttachmentUnavailableException("attachment cannot be accessed", exception);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
