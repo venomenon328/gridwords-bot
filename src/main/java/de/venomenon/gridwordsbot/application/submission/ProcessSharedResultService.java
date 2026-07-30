@@ -172,15 +172,17 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
     }
 
     private void markPreResultRetryableFailure(long sourceMessageId, String safeTechnicalMessage) {
-        submissionStore.transition(
+        boolean transitioned = submissionStore.transition(
                 sourceMessageId,
                 SubmissionStore.SubmissionState.RECEIVED,
-                SubmissionStore.SubmissionState.FAILED_RETRYABLE);
-        submissionStore.transition(
-                sourceMessageId,
-                SubmissionStore.SubmissionState.VALIDATED,
-                SubmissionStore.SubmissionState.FAILED_RETRYABLE);
-        submissionStore.markRetryableFailure(sourceMessageId, safeTechnicalMessage);
+                SubmissionStore.SubmissionState.FAILED_RETRYABLE)
+                || submissionStore.transition(
+                        sourceMessageId,
+                        SubmissionStore.SubmissionState.VALIDATED,
+                        SubmissionStore.SubmissionState.FAILED_RETRYABLE);
+        if (transitioned) {
+            submissionStore.markRetryableFailure(sourceMessageId, safeTechnicalMessage);
+        }
     }
 
     private ProcessingResult.Rejected reject(long sourceMessageId, ParseErrorCode errorCode) {
