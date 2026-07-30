@@ -127,9 +127,16 @@ class QuadWordsImageParserTest {
     }
 
     @Test
-    void rejectsMissingActiveRowsInsteadOfInventingBlankRows() throws IOException {
-        assertInvalid(parser.parse(imageBytes(6, 24, 30, defaultBoards(), "png"), solved(7)),
-                ParseErrorCode.INVALID_IMAGE_ROW_COUNT);
+    void representsClearlyAbsentTrailingRowsAsCanonicalBlanks() throws IOException {
+        QuadWordsImageParser.Parse result = parser.parse(
+                imageBytes(6, 24, 30, defaultBoards(), "png"), solved(7));
+
+        assertThat(result).isInstanceOf(QuadWordsImageParser.Parse.Parsed.class);
+        assertThat(((QuadWordsImageParser.Parse.Parsed) result).boards().ordered())
+                .allSatisfy(board -> {
+                    assertThat(board.rows()).hasSize(7);
+                    assertThat(board.rows().getLast()).isEqualTo(BLANK.repeat(5));
+                });
     }
 
     @Test
