@@ -17,12 +17,16 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 Die Inkremente 0 bis 7 sowie Zwischeninkrement 7.1 sind abgeschlossen. Das kompakte 2×2-Layout der QuadWords-Grids, der konsistente GridWords-Codeblock und die Wiederherstellung historisch etablierter Kontextzeilen wurden mit PR #18 gemergt und visuell in Discord abgenommen.
 
-Zwischeninkrement 7.2 aus Issue #19 ist auf dem Draft-PR-Branch umgesetzt: Gueltige Shares registrieren dynamische Spieler erst nach vollstaendiger Validierung. Teilnahmezeitraeume steuern gemeinsame Serien historisch, und die Slash-Commands verwalten Teilnahme sowie Reminder-Opt-in. Tagesstatus, Scheduler und tatsaechlicher Reminder-Versand folgen erst in Inkrement 8.
+Zwischeninkrement 7.2 aus Issue #19 ist auf Draft-PR #20 vollständig automatisiert umgesetzt: Gültige Shares registrieren dynamische Spieler erst nach vollständiger Validierung. Teilnahmezeiträume steuern gemeinsame Serien historisch, und Slash-Commands verwalten Teilnahme sowie Reminder-Opt-in. Tagesstatus, Scheduler und tatsächlicher Reminder-Versand folgen erst in Inkrement 8. Offen bleibt der reale Discord-/PostgreSQL-Smoke-Test mit mindestens drei Nutzern.
 
 Der Projektstand umfasst:
 
 - Java 21, Spring Boot, Maven, JDA, PostgreSQL und Liquibase
 - deterministische GridWords- und QuadWords-Textparser
+- dynamische Spielerprofile mit serverbezogenem Anzeigenamen und extern bestimmtem Administratorstatus
+- historisch stabile, nicht überlappende Teilnahmezeiträume
+- Self-Service- und Admin-Slash-Commands für Teilnahme und Reminder-Opt-in
+- transportneutrale Reminder-Kandidaten mit konkret fehlenden Spielen
 - idempotente Spieler-, Ergebnis- und Submission-Persistenz
 - kanonische GridWords- und QuadWords-Embeds mit sicherer Quelllöschung nach persistierter Veröffentlichung
 - kompaktes QuadWords-2×2-Raster und Monospace-Codeblöcke für beide Spiele
@@ -37,7 +41,7 @@ Der Projektstand umfasst:
 - Schutz gegen ein Zurückstufen parallel bereits gespeicherter Ergebnisse
 - Korrekturen beider Spieltypen durch Edit derselben kanonischen Bot-Message-ID
 - spieltypbezogene Publication-Keys sowie gemeinsame Claims, Delivery-Fence, Retry, Recovery, Supersession und Duplikatbereinigung
-- PublicationContext für persönliche und gemeinsame Komplett-/Perfektübergänge, auch wenn QuadWords die zweite Einreichung ist
+- PublicationContext für persönliche und gemeinsame Komplett-/Perfektübergänge über die je Spieltag aktive Teilnehmermenge
 - sichere Lesbarkeit bereits gespeicherter QuadWords-Ergebnisse aus `quadwords-share-v1`, ohne Publish, Delete-Handoff oder Refresh-Schleife bei fehlenden Boards
 - permanente Löschfehler ohne Scheduler- oder Hot-Loop sowie kontrollierte Wiederaufnahme bei Neustart oder nach einer späteren bestätigten Veröffentlichung desselben Ergebnisses
 
@@ -163,7 +167,7 @@ JDBC-URL:
 jdbc:postgresql://localhost:5432/gridwords
 ```
 
-Relevante Tabellen sind insbesondere `player`, `submission`, `game_result` und `canonical_delivery_attempt`. Die vier QuadWords-Raster stehen in den Spalten `quadwords_top_left_board`, `quadwords_top_right_board`, `quadwords_bottom_left_board` und `quadwords_bottom_right_board`. Zwischeninkrement 7.2 ergänzt Teilnahmezeiträume und Reminder-Opt-in.
+Relevante Tabellen sind insbesondere `player`, `player_participation_period`, `submission`, `game_result` und `canonical_delivery_attempt`. Die vier QuadWords-Raster stehen in den Spalten `quadwords_top_left_board`, `quadwords_top_right_board`, `quadwords_bottom_left_board` und `quadwords_bottom_right_board`. `player.reminder_opt_in` ist unabhängig vom aktuellen Teilnahmezustand.
 
 ## Teststrategie
 
@@ -175,7 +179,7 @@ Relevante Tabellen sind insbesondere `player`, `submission`, `game_result` und `
 - manuelle Smoke-Tests: echte Discord-Verbindung und Compose-PostgreSQL
 - H2 ersetzt keine PostgreSQL-Integrationstests
 
-Stand von Draft-PR #20: 197 Standardtests und 56 PostgreSQL-Integrationstests sind lokal gruen. Offen bleibt ausschliesslich Tobias realer Drei-Nutzer-Discord-/PostgreSQL-Smoke-Test; weder automatisierte Tests noch der Build verwenden einen Discord-Token.
+Stand von Draft-PR #20: 207 Standardtests und 63 PostgreSQL-Integrationstests sind in GitHub Actions grün. Abgedeckt sind unter anderem dynamische Profil-/Admin-Synchronisierung, Command-Adapter, Startup nach Liquibase, Migration und Backfill, konkurrierte Erstregistrierung, atomarer Rollback und gemeinsame Serien bei wechselnden Teilnehmern. Offen bleibt ausschließlich Tobias' realer Drei-Nutzer-Discord-/PostgreSQL-Smoke-Test; weder automatisierte Tests noch der Build verwenden einen Discord-Token.
 
 ## Geheimnisse
 
