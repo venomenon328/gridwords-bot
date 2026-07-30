@@ -89,8 +89,11 @@ final class CanonicalEmbedRenderer {
     private static String series(CanonicalResultMessage message) {
         StringBuilder series = new StringBuilder()
                 .append("\uD83D\uDD25 Aktivität: ").append(days(message.streaks().personalActivity()))
-                .append("\n\uD83D\uDFE9 GridWords gelöst: ")
-                .append(daysOrNone(message.streaks().personalGridWordsSolved()));
+                .append("\n\uD83D\uDFE9 ")
+                .append(message.gameType() == de.venomenon.gridwordsbot.domain.model.GameType.GRIDWORDS ? "GridWords" : "QuadWords")
+                .append(" gel??st: ")
+                .append(daysOrNone(message.gameType() == de.venomenon.gridwordsbot.domain.model.GameType.GRIDWORDS
+                        ? message.streaks().personalGridWordsSolved() : message.streaks().personalQuadWordsSolved()));
         appendOptional(series, PERSONAL_COMPLETE, message.personalComplete());
         appendOptional(series, PERSONAL_PERFECT, message.personalPerfect());
         appendOptional(series, SHARED_COMPLETE, message.sharedComplete());
