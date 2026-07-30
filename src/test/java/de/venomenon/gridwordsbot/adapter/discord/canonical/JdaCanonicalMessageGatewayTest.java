@@ -165,7 +165,7 @@ class JdaCanonicalMessageGatewayTest {
                 new ShareOutcome.Solved(3, 6),
                 Duration.ofSeconds(85),
                 new NormalizedBoard(List.of("⬜⬜⬜⬜⬜")),
-                new StreakSummary(1, 1, 1, 4, 3, 5, 2),
+                new StreakSummary(1, 4, 1, 1, 3, 5, 2),
                 OptionalInt.empty(),
                 OptionalInt.empty(),
                 OptionalInt.empty(),
