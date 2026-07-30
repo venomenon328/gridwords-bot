@@ -6,11 +6,14 @@ import de.venomenon.gridwordsbot.application.canonical.CanonicalResultMessage;
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.model.NormalizedBoard;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
+import de.venomenon.gridwordsbot.domain.model.QuadWordsBoard;
+import de.venomenon.gridwordsbot.domain.model.QuadWordsBoards;
 import de.venomenon.gridwordsbot.domain.streak.StreakSummary;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalInt;
 import net.dv8tion.jda.api.EmbedBuilder;
 import org.junit.jupiter.api.Test;
@@ -104,6 +107,23 @@ class CanonicalEmbedRendererTest {
         assertThat(new CanonicalEmbedRenderer().render(message).getDescription())
                 .contains("X/6", "keine laufende Serie")
                 .doesNotContain("Komplett", "Perfekt", "Gemeinsam");
+    }
+
+
+    @Test
+    void rendersFourQuadWordsBoardsInCanonicalOrderWithoutLinksOrImages() {
+        String row = "\u2b1c\ud83d\udfe8\ud83d\udfe9\u2b1c\ud83d\udfe8";
+        CanonicalResultMessage message = new CanonicalResultMessage("Tobias", GameType.QUADWORDS,
+                LocalDate.of(2026, 7, 29), new ShareOutcome.Unsolved(9), Duration.ofSeconds(587), null,
+                new StreakSummary(12, 8, 7, 4, 3, 5, 2), OptionalInt.of(8), OptionalInt.empty(),
+                OptionalInt.of(5), OptionalInt.empty(), Optional.of(new QuadWordsBoards(
+                        new QuadWordsBoard(List.of(row)), new QuadWordsBoard(List.of(row, row)),
+                        new QuadWordsBoard(List.of(row)), new QuadWordsBoard(List.of(row)))), "quadwords-result-4");
+        var embed = new CanonicalEmbedRenderer().render(message);
+        assertThat(embed.getTitle()).contains("QuadWords");
+        assertThat(embed.getDescription()).contains("X/9", "9:47", "Oben links", "Oben rechts", "Unten links", "Unten rechts", "QuadWords gel??st");
+        assertThat(embed.getDescription()).doesNotContain("http", "gridgames");
+        assertThat(DiscordPublicationKey.matches("quadwords-result-4", embed.getFooter().getText())).isTrue();
     }
 
     private static CanonicalResultMessage solvedMessage(
