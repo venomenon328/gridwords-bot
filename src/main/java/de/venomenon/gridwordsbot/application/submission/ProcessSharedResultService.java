@@ -73,19 +73,13 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
         this.playerStore = Objects.requireNonNull(playerStore);
         this.submissionStore = Objects.requireNonNull(submissionStore);
         this.configuredPlayerIds = List.copyOf(Objects.requireNonNull(configuredPlayerIds));
-        if (!this.configuredPlayerIds.isEmpty() && (this.configuredPlayerIds.size() != 2
-                || this.configuredPlayerIds.stream().distinct().count() != 2
-                || this.configuredPlayerIds.stream().anyMatch(playerId -> playerId <= 0))) {
-            throw new IllegalArgumentException("configuredPlayerIds must contain exactly two distinct positive IDs");
-        }
         this.canonicalPublisher = Objects.requireNonNull(canonicalPublisher);
     }
 
     @Override
     public ProcessingResult process(InboundSharedMessage message) {
         ParseResult parseResult = parse(message);
-        if (parseResult instanceof ParseResult.NotApplicable
-                || playerStore.findByDiscordUserId(message.authorId()).filter(PlayerStore.StoredPlayer::active).isEmpty()) {
+        if (parseResult instanceof ParseResult.NotApplicable) {
             return new ProcessingResult.Ignored();
         }
         SubmissionStore.StoredSubmission submission = submissionStore.register(registration(message));
@@ -132,10 +126,12 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
             }
         }
 
+        playerStore.activate(new PlayerStore.ParticipationChange(
+                new PlayerStore.ProfileUpdate(message.authorId(), message.authorDisplayName(), false), parsed.gameDate()));
         GameResultStore.GameResultUpsert result = new GameResultStore.GameResultUpsert(
                 message.authorId(), parsed, message.content(), parserVersion(parsed));
         SubmissionStore.StoredSubmission stored = submissionStore.storeResult(
-                new SubmissionStore.ResultStorage(message.messageId(), result, configuredPlayerIds));
+                new SubmissionStore.ResultStorage(message.messageId(), result));
         if (stored.state() == SubmissionStore.SubmissionState.SUPERSEDED) {
             return new ProcessingResult.Ignored();
         }

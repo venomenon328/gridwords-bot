@@ -27,13 +27,6 @@ gridwords:
     guild-id: ${DISCORD_GUILD_ID:255064124902473729}
     channel-id: ${DISCORD_CHANNEL_ID:1531398793713549494}
     admin-user-ids: ${ADMIN_USER_IDS:255063936410451978,451773931351834634}
-  players:
-    first:
-      user-id: ${PLAYER_1_USER_ID:255063936410451978}
-      display-name: ${PLAYER_1_DISPLAY_NAME:Tobias}
-    second:
-      user-id: ${PLAYER_2_USER_ID:451773931351834634}
-      display-name: ${PLAYER_2_DISPLAY_NAME:Georgia}
   schedule:
     first-reminder: ${REMINDER_FIRST_TIME:18:00}
     second-reminder: ${REMINDER_SECOND_TIME:23:00}

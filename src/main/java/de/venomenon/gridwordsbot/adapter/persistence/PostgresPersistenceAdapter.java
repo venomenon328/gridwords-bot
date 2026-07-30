@@ -2,6 +2,7 @@ package de.venomenon.gridwordsbot.adapter.persistence;
 
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.model.NormalizedBoard;
+import de.venomenon.gridwordsbot.domain.model.ParticipationPeriod;
 import de.venomenon.gridwordsbot.domain.model.ParsedGameResult;
 import de.venomenon.gridwordsbot.domain.model.QuadWordsBoard;
 import de.venomenon.gridwordsbot.domain.model.QuadWordsBoards;
@@ -262,6 +263,68 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         return jdbc.query("SELECT * FROM player WHERE active = true ORDER BY discord_user_id", PLAYER);
     }
 
+    @Override
+    public List<ParticipationPeriod> findParticipationPeriods() {
+        return jdbc.query("SELECT player_id, active_from, inactive_from FROM player_participation_period ORDER BY player_id, active_from",
+                (rs, row) -> new ParticipationPeriod(rs.getLong("player_id"), rs.getObject("active_from", LocalDate.class), rs.getObject("inactive_from", LocalDate.class)));
+    }
+
+    @Override
+    @Transactional
+    public StoredPlayer activate(ParticipationChange request) {
+        ensureProfile(request.profile());
+        List<ParticipationPeriod> periods = jdbc.query("SELECT player_id, active_from, inactive_from FROM player_participation_period WHERE player_id = ? ORDER BY active_from FOR UPDATE",
+                (rs, row) -> new ParticipationPeriod(rs.getLong("player_id"), rs.getObject("active_from", LocalDate.class), rs.getObject("inactive_from", LocalDate.class)), request.profile().discordUserId());
+        if (periods.stream().noneMatch(period -> period.contains(request.effectiveDate()))) {
+            jdbc.update("INSERT INTO player_participation_period (player_id, active_from, inactive_from, created_at, updated_at) VALUES (?, ?, NULL, ?, ?)", request.profile().discordUserId(), request.effectiveDate(), databaseTime(clock.instant()), databaseTime(clock.instant()));
+        }
+        jdbc.update("UPDATE player SET active = TRUE, updated_at = ? WHERE discord_user_id = ?", databaseTime(clock.instant()), request.profile().discordUserId());
+        return findByDiscordUserId(request.profile().discordUserId()).orElseThrow();
+    }
+
+    @Override
+    @Transactional
+    public StoredPlayer deactivate(ParticipationChange request) {
+        ensureProfile(request.profile());
+        jdbc.update("UPDATE player_participation_period SET inactive_from = ?, updated_at = ? WHERE player_id = ? AND inactive_from IS NULL AND active_from < ?", request.effectiveDate(), databaseTime(clock.instant()), request.profile().discordUserId(), request.effectiveDate());
+        jdbc.update("UPDATE player SET active = ?, updated_at = ? WHERE discord_user_id = ?", request.effectiveDate().isAfter(clock.instant().atZone(java.time.ZoneId.of("Europe/Berlin")).toLocalDate()), databaseTime(clock.instant()), request.profile().discordUserId());
+        return findByDiscordUserId(request.profile().discordUserId()).orElseThrow();
+    }
+
+    @Override
+    @Transactional
+    public StoredPlayer setReminderOptIn(ProfileUpdate request, boolean reminderOptIn) {
+        ensureProfile(request);
+        jdbc.update("UPDATE player SET reminder_opt_in = ?, updated_at = ? WHERE discord_user_id = ?", reminderOptIn, databaseTime(clock.instant()), request.discordUserId());
+        return findByDiscordUserId(request.discordUserId()).orElseThrow();
+    }
+
+    @Override
+    public List<ReminderCandidate> findReminderCandidates(LocalDate gameDate) {
+        return jdbc.query("""
+                SELECT p.discord_user_id, p.display_name,
+                    NOT EXISTS (SELECT 1 FROM game_result r WHERE r.player_id = p.discord_user_id AND r.game_type = 'GRIDWORDS' AND r.game_date = ?) AS missing_gridwords,
+                    NOT EXISTS (SELECT 1 FROM game_result r WHERE r.player_id = p.discord_user_id AND r.game_type = 'QUADWORDS' AND r.game_date = ?) AS missing_quadwords
+                FROM player p JOIN player_participation_period pp ON pp.player_id = p.discord_user_id
+                WHERE p.reminder_opt_in = TRUE AND pp.active_from <= ? AND (pp.inactive_from IS NULL OR ? < pp.inactive_from)
+                ORDER BY p.discord_user_id
+                """, (rs, row) -> {
+                    List<GameType> missing = new java.util.ArrayList<>();
+                    if (rs.getBoolean("missing_gridwords")) missing.add(GameType.GRIDWORDS);
+                    if (rs.getBoolean("missing_quadwords")) missing.add(GameType.QUADWORDS);
+                    return missing.isEmpty() ? null : new ReminderCandidate(rs.getLong("discord_user_id"), rs.getString("display_name"), missing);
+                }, gameDate, gameDate, gameDate, gameDate).stream().filter(java.util.Objects::nonNull).toList();
+    }
+
+    private void ensureProfile(ProfileUpdate profile) {
+        Instant now = clock.instant();
+        jdbc.update("""
+                INSERT INTO player (discord_user_id, display_name, active, administrator, reminder_opt_in, created_at, updated_at)
+                VALUES (?, ?, FALSE, ?, FALSE, ?, ?)
+                ON CONFLICT (discord_user_id) DO UPDATE SET display_name = EXCLUDED.display_name,
+                    administrator = EXCLUDED.administrator, updated_at = EXCLUDED.updated_at
+                """, profile.discordUserId(), profile.displayName(), profile.administrator(), databaseTime(now), databaseTime(now));
+    }
     @Override
     public Optional<StoredGameResult> findById(long id) {
         return jdbc.query("SELECT * FROM game_result WHERE id = ?", RESULT, id).stream().findFirst();
@@ -936,7 +999,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
     }
 
     private static final RowMapper<StoredPlayer> PLAYER = (rs, row) -> new StoredPlayer(rs.getLong("discord_user_id"),
-            rs.getString("display_name"), rs.getBoolean("active"), rs.getBoolean("administrator"), instant(rs, "created_at"),
+            rs.getString("display_name"), rs.getBoolean("active"), rs.getBoolean("administrator"), rs.getBoolean("reminder_opt_in"), instant(rs, "created_at"),
             instant(rs, "updated_at"));
 
     private static final RowMapper<StoredGameResult> RESULT = (rs, row) -> {

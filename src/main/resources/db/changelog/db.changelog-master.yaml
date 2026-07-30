@@ -33,3 +33,7 @@ databaseChangeLog:
   - include:
       file: 009-quadwords-boards.sql
       relativeToChangelogFile: true
+
+  - include:
+      file: 010-dynamic-player-participation.sql
+      relativeToChangelogFile: true

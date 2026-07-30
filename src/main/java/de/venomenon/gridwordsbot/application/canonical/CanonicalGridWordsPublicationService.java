@@ -89,11 +89,6 @@ public final class CanonicalGridWordsPublicationService {
         this.clock = Objects.requireNonNull(clock);
         this.zoneId = Objects.requireNonNull(zoneId);
         this.configuredPlayerIds = List.copyOf(Objects.requireNonNull(configuredPlayerIds));
-        if (this.configuredPlayerIds.size() != 2
-                || this.configuredPlayerIds.stream().distinct().count() != 2
-                || this.configuredPlayerIds.stream().anyMatch(id -> id <= 0)) {
-            throw new IllegalArgumentException("exactly two distinct configured player IDs are required");
-        }
         this.streakCalculator = new StreakCalculator();
         this.retryScheduler = Objects.requireNonNull(retryScheduler);
         this.postPublication = Objects.requireNonNull(postPublication);

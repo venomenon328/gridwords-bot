@@ -74,9 +74,7 @@ public final class DiscordInboundListener extends ListenerAdapter {
                 || event.getChannel().getIdLong() != properties.discord().channelId()) {
             return false;
         }
-        long authorId = author.getIdLong();
-        return authorId == properties.players().first().userId()
-                || authorId == properties.players().second().userId();
+        return true;
     }
 
     private InboundSharedMessage copy(MessageReceivedEvent event, Message message) {
