@@ -37,3 +37,7 @@ databaseChangeLog:
   - include:
       file: 010-dynamic-player-participation.sql
       relativeToChangelogFile: true
+
+  - include:
+      file: 011-daily-status-reminders.sql
+      relativeToChangelogFile: true
