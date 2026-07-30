@@ -13,6 +13,20 @@ public interface PlayerStore extends ReminderCandidateStore {
     Optional<StoredPlayer> findByDiscordUserId(long discordUserId);
     default List<StoredPlayer> findActivePlayers() { throw new UnsupportedOperationException("active-player lookup is not available"); }
     default List<ParticipationPeriod> findParticipationPeriods() { throw new UnsupportedOperationException("participation periods are not available"); }
+    default Optional<ParticipationPeriod> findParticipationPeriod(long discordUserId, LocalDate date) {
+        Objects.requireNonNull(date, "date");
+        return findParticipationPeriods().stream()
+                .filter(period -> period.playerId() == discordUserId && period.contains(date))
+                .findFirst();
+    }
+    default StoredPlayer synchronizeProfile(ProfileUpdate request) {
+        StoredPlayer existing = findByDiscordUserId(request.discordUserId()).orElse(null);
+        return upsert(new PlayerUpsert(
+                request.discordUserId(),
+                request.displayName(),
+                existing != null && existing.active(),
+                request.administrator()));
+    }
     default StoredPlayer activate(ParticipationChange request) { throw new UnsupportedOperationException("participation changes are not available"); }
     default StoredPlayer deactivate(ParticipationChange request) { throw new UnsupportedOperationException("participation changes are not available"); }
     default StoredPlayer setReminderOptIn(ProfileUpdate request, boolean reminderOptIn) { throw new UnsupportedOperationException("reminder opt-in is not available"); }
