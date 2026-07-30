@@ -8,7 +8,7 @@ import org.springframework.stereotype.Repository;
 /** PostgreSQL lookup used to restore contextual series lines when a canonical Discord message must be recreated. */
 @Repository
 @Profile("database")
-public final class PostgresCanonicalPublicationContextStore implements CanonicalPublicationContextStore {
+public class PostgresCanonicalPublicationContextStore implements CanonicalPublicationContextStore {
 
     private final JdbcTemplate jdbc;
 
