@@ -1,8 +1,8 @@
 # Inkrement 6: QuadWords-Bildparser
 
-**Status:** automatisiert umgesetzt; lokale Maven-Abnahme und echter Smoke-Test ausstehend  
+**Status:** abgeschlossen; lokale Maven-Abnahme und vollständiger Discord-/PostgreSQL-Smoke-Test am 30. Juli 2026 erfolgreich  
 **Issue:** #13  
-**Draft-PR:** #14  
+**PR:** #14  
 **Branch:** `feature/quadwords-image-parser`
 
 ## Ziel
@@ -14,6 +14,7 @@ QuadWords-Ergebnisbilder werden ohne OCR geometrisch und farbbasiert in vier tra
 - transportneutrale `AttachmentReference` aus Channel-, Message- und Attachment-ID
 - `AttachmentContentLoader`-Port mit JDA-Adapter
 - Kopfzeilenprüfung und eindeutige Bildauswahl vor dem Download
+- Download der originalen signierten Discord-CDN-Datei statt der möglicherweise transformierten Medienproxy-Variante
 - Download und Decode außerhalb des JDA-Event-Threads und außerhalb von DB-Transaktionen
 - reine Java-Bildanalyse mit `ImageIO` und `BufferedImage`
 - keine JDA-, Spring-, Datenbank-, Netzwerk-, OCR-, ML- oder KI-Abhängigkeit im Parser
@@ -72,31 +73,27 @@ Die Farbklassifikation verwendet Flächenstichproben und eine Mindestkonfidenz f
 - reale PNG-Fixtures mit exakten `.expected.txt`-Golden-Ausgaben
 - synthetische Skalierungs-, Rand-, JPEG-, Beschädigungs-, Farb- und Ressourcenfälle
 - Application-Tests für Auswahl, Downloadreihenfolge, fachliche Ablehnung, technischen Retry, Replay und Korrektur
-- JDA-Adaptertests für exakte IDs, Größenlimit und Fehlerübersetzung
+- JDA-Adaptertests für exakte IDs, originale CDN-URL, Größenlimit und Fehlerübersetzung
 - ArchUnit-Regeln für die Schichtgrenzen
 - PostgreSQL-Integration für Migration, Round-trip, Replay, Korrektur, technischen Retry und Legacy-Upgrade
 - Spring-Startup mit Profil `database`
 
-## Noch ausstehende Abnahme
+## Abnahme
 
-Tobias führt lokal aus:
+Am 30. Juli 2026 erfolgreich geprüft:
 
-```powershell
-mvn --batch-mode --no-transfer-progress clean verify
-mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
-```
+- `mvn --batch-mode --no-transfer-progress clean verify`: 181 Tests grün
+- `mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify`: 51 PostgreSQL-Integrationstests zusätzlich grün
+- beide GitHub-Actions-Jobs grün
+- reales gelöstes QuadWords-Bild einschließlich visuellem Vergleich aller vier Boards und Zellfarben
+- reales `X/9` mit neun kanonischen Zeilen je Board
+- fachliche Fehlerfälle: fehlendes Bild, widersprüchliche Versuchszahl, mehrere Bilder, nicht unterstütztes Format und Zusatztext
+- Korrektur desselben Spieltags bei gleichbleibender `game_result.id`
+- Neustart ohne Duplikate oder zusätzliche Discord-Aktionen
+- unveränderter GridWords-Ablauf
+- keine kanonische QuadWords-Message-ID und keine gelöschte QuadWords-Quelle
 
-Danach folgt der echte Discord-/PostgreSQL-Smoke-Test mit mindestens:
-
-- realem gelöstem QuadWords-Bild,
-- realem `X/9`,
-- visuellem Vergleich aller vier Boards und Zellfarben,
-- ungültigem beziehungsweise nicht unterstütztem Bild,
-- Korrektur desselben Spieltags,
-- Neustart ohne Duplikate,
-- unverändertem GridWords-Ablauf.
-
-PR #14 bleibt bis zu dieser Abnahme Draft und ungemergt.
+Der erste reale Discord-Test deckte einen Adapterfehler auf: `Message.Attachment#getProxy()` lieferte bei Bildanhängen eine möglicherweise transformierte Medienproxy-Variante, die vom absichtlich auf PNG und JPEG begrenzten Parser als `UNSUPPORTED_IMAGE_FORMAT` abgelehnt wurde. Der Loader verwendet seitdem die signierte Original-CDN-URL aus `getUrl()`; der wiederholte vollständige Smoke-Test war erfolgreich.
 
 ## Ausdrückliche Nicht-Ziele
 
