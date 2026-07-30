@@ -18,7 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 /** PostgreSQL compare-and-set claims. Every public operation is a short database transaction. */
 @Repository
 @Profile("database")
-public final class PostgresDailyStatusStore implements DailyStatusStore {
+public class PostgresDailyStatusStore implements DailyStatusStore {
     private final JdbcTemplate jdbc;
     private final Clock clock;
     public PostgresDailyStatusStore(JdbcTemplate jdbc, Clock clock) { this.jdbc = jdbc; this.clock = clock; }
