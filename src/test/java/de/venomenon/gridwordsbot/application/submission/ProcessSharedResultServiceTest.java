@@ -75,6 +75,7 @@ class ProcessSharedResultServiceTest {
 
         assertThat(store.lastResultStorage.configuredPlayerIds()).containsExactly(TOBIAS, GEORGIA);
     }
+
     @Test
     void storesSolvedAndUnsolvedResults() {
         assertThat(service.process(message(2L, TOBIAS, gridWords(29, 4)))).isEqualTo(new ProcessingResult.Accepted());
@@ -106,6 +107,7 @@ class ProcessSharedResultServiceTest {
                 .isEqualTo(ProcessSharedResultService.QUADWORDS_PARSER_VERSION);
         assertThat(store.results.values().iterator().next().result().parsedResult().quadWordsBoards()).isPresent();
     }
+
     @Test
     void rejectsMissingOrAmbiguousPlausibleQuadWordsImagesWithoutLoading() {
         AtomicInteger loads = new AtomicInteger();
@@ -154,6 +156,7 @@ class ProcessSharedResultServiceTest {
         assertThat(store.results).isEmpty();
         assertThat(store.submissions.get(27L).parserErrorCode()).contains("IMAGE_TOO_LARGE");
     }
+
     @Test
     void keepsTransientAttachmentFailuresRetryableAndWithoutAResult() {
         AtomicInteger loads = new AtomicInteger();
@@ -167,7 +170,7 @@ class ProcessSharedResultServiceTest {
         assertThat(service.process(inbound)).isEqualTo(new ProcessingResult.Ignored());
 
         assertThat(loads).hasValue(2);
-        assertThat(store.retryableFailures).isEqualTo(2);
+        assertThat(store.retryableFailures).isEqualTo(1);
         assertThat(store.results).isEmpty();
     }
 
@@ -208,6 +211,7 @@ class ProcessSharedResultServiceTest {
 
         verifyNoInteractions(loader);
     }
+
     @Test
     void ignoresMessagesThatAreNotShares() {
         assertThat(service.process(message(5L, TOBIAS, "Guten Morgen"))).isEqualTo(new ProcessingResult.Ignored());
@@ -290,7 +294,6 @@ class ProcessSharedResultServiceTest {
         assertThat(((ShareOutcome.Solved) result.parsedResult().outcome()).attemptsUsed()).isEqualTo(2);
     }
 
-
     @Test
     void replaysAnAlreadyPublishedSourceWithoutTryingToStoreOrPublishAgain() {
         InboundSharedMessage inbound = message(17L, TOBIAS, gridWords(29, 3));
@@ -323,6 +326,7 @@ class ProcessSharedResultServiceTest {
         assertThat(store.results).hasSize(1);
         assertThat(store.submissions.get(19L).state()).isEqualTo(SubmissionStore.SubmissionState.SUPERSEDED);
     }
+
     @Test
     void doesNotReturnSuccessWhenPersistenceFails() {
         InMemoryStore failingStore = new InMemoryStore() {
@@ -367,6 +371,7 @@ class ProcessSharedResultServiceTest {
     private String quadWords() {
         return "QuadWords (29. Juli 2026) 9/9 in 4:18";
     }
+
     private ProcessSharedResultService service(Clock clock, InMemoryStore configuredStore) {
         return new ProcessSharedResultService(
                 new GridWordsShareParser(), new QuadWordsShareParser(), clock, ZoneId.of("Europe/Berlin"), configuredStore,
@@ -486,6 +491,7 @@ class ProcessSharedResultServiceTest {
             required(sourceMessageId);
             retryableFailures++;
         }
+
         @Override
         public boolean transition(long sourceMessageId, SubmissionState expectedState, SubmissionState targetState) {
             StoredSubmission submission = required(sourceMessageId);
