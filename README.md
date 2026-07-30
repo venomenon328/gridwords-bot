@@ -14,7 +14,7 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 ## Aktueller Stand
 
-Die Inkremente 0 bis 5 sind abgeschlossen. Inkrement 6, der QuadWords-Bildparser, ist in Draft-PR #14 implementiert. Lokale Maven-Abnahme, finale CI-Prüfung und der echte Discord-/PostgreSQL-Smoke-Test stehen noch aus.
+Die Inkremente 0 bis 6 sind abgeschlossen. Inkrement 6, der QuadWords-Bildparser, wurde in PR #14 vollständig automatisiert und am 30. Juli 2026 lokal sowie mit einem echten Discord-/PostgreSQL-Smoke-Test abgenommen. Als Nächstes folgt Inkrement 7: kanonische QuadWords-Konsolidierung und sichere Ersetzung.
 
 Der Projektstand umfasst:
 
@@ -25,6 +25,7 @@ Der Projektstand umfasst:
 - Retry-, Claim-, Recovery-, Supersession- und Duplikatschutz
 - transportneutrale Referenzen auf Discord-Anhänge
 - verzögerten Download genau des ausgewählten QuadWords-Anhangs außerhalb des JDA-Event-Threads
+- Download der originalen signierten Discord-CDN-Datei statt einer möglicherweise transformierten Medienproxy-Variante
 - reinen QuadWords-Bildparser ohne OCR, ML, Netzwerk, Spring oder Datenbank
 - vier normalisierte Boards in der Reihenfolge `Oben links`, `Oben rechts`, `Unten links`, `Unten rechts`
 - Persistenz aller vier Boards und der Parser-Version `quadwords-image-v2`
@@ -32,7 +33,7 @@ Der Projektstand umfasst:
 - Schutz gegen ein Zurückstufen parallel bereits gespeicherter Ergebnisse
 - Kompatibilität mit bereits gespeicherten QuadWords-Ergebnissen aus `quadwords-share-v1`
 
-In Inkrement 6 bleiben QuadWords-Originalnachrichten sichtbar. Ein sicher geparstes und gespeichertes Ergebnis erhält weiterhin `✅`; eine stabile fachliche Bildablehnung erhält `⚠️`. Technische Downloadfehler erhalten keine irreführende Reaktion. Kanonische QuadWords-Nachrichten und deren sichere Quelllöschung folgen erst in Inkrement 7.
+Seit Inkrement 6 bleiben QuadWords-Originalnachrichten sichtbar. Ein sicher geparstes und gespeichertes Ergebnis erhält `✅`; eine stabile fachliche Bildablehnung erhält `⚠️`. Technische Downloadfehler erhalten keine irreführende Reaktion. Kanonische QuadWords-Nachrichten und deren sichere Quelllöschung folgen in Inkrement 7.
 
 ## QuadWords-Bildparser
 
