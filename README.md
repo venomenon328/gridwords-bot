@@ -14,7 +14,7 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 ## Aktueller Stand
 
-Die Inkremente 0 bis 6 sind abgeschlossen. Inkrement 7, die kanonische QuadWords-Konsolidierung und sichere Ersetzung aus Issue #15, ist in Draft-PR #16 vollständig automatisiert. Beide lokalen Vollbuilds sind grün; ausschließlich Tobias’ realer Discord-/PostgreSQL-Smoke-Test ist vor der Abnahme noch offen.
+Die Inkremente 0 bis 7 sind abgeschlossen. Inkrement 7, die kanonische QuadWords-Konsolidierung und sichere Ersetzung aus Issue #15, wurde mit PR #16 gemergt und am 30. Juli 2026 durch lokale Vollbuilds sowie einen vollständigen realen Discord-/PostgreSQL-Smoke-Test abgenommen. Als Nächstes folgt das kleine Zwischeninkrement 7.1 aus Issue #17: ein kompaktes 2×2-Layout der QuadWords-Grids vor Inkrement 8.
 
 Der Projektstand umfasst:
 
@@ -171,7 +171,7 @@ Relevante Tabellen sind insbesondere `player`, `submission`, `game_result` und `
 - manuelle Smoke-Tests: echte Discord-Verbindung und Compose-PostgreSQL
 - H2 ersetzt keine PostgreSQL-Integrationstests
 
-Aktueller automatisierter Stand für Draft-PR #16: 196 Standardtests und 56 PostgreSQL-Integrationstests, jeweils ohne echte Discord-Verbindung oder Token.
+Abgenommener Stand von PR #16: 196 Standardtests und 56 PostgreSQL-Integrationstests sowie ein vollständiger realer Discord-/PostgreSQL-Smoke-Test, jeweils ohne offengebliebene Blocker.
 
 ## Geheimnisse
 
