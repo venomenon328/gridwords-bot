@@ -11,6 +11,7 @@ import de.venomenon.gridwordsbot.domain.model.ParsedGameResult;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
 import de.venomenon.gridwordsbot.port.out.GameResultStore;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
+import de.venomenon.gridwordsbot.port.out.ReminderCandidateStore;
 import de.venomenon.gridwordsbot.port.out.SubmissionStore;
 import java.time.Clock;
 import java.time.Duration;
@@ -86,7 +87,7 @@ class DynamicPlayerPostgresPersistenceAdapterIT {
     }
 
     @Test
-    void rollsBackProfilePeriodAndResultTogetherWhenValidResultStorageFails() {
+    void rollsBackProfilePeriodReminderAndResultTogetherWhenValidResultStorageFails() {
         long playerId = 20_002L;
         long sourceMessageId = 30_002L;
         register(sourceMessageId, playerId);
@@ -104,7 +105,7 @@ class DynamicPlayerPostgresPersistenceAdapterIT {
     }
 
     @Test
-    void serializesConcurrentFirstSubmissionsWithoutDeadlockOrOverlappingPeriods() throws Exception {
+    void serializesConcurrentFirstSubmissionsAndEnablesRemindersByDefault() throws Exception {
         long firstPlayer = 20_003L;
         long secondPlayer = 20_004L;
         long firstSource = 30_003L;
@@ -125,13 +126,73 @@ class DynamicPlayerPostgresPersistenceAdapterIT {
         }
 
         assertTrue(adapter.findByDiscordUserId(firstPlayer).orElseThrow().active());
+        assertTrue(adapter.findByDiscordUserId(firstPlayer).orElseThrow().reminderOptIn());
         assertTrue(adapter.findByDiscordUserId(secondPlayer).orElseThrow().active());
+        assertTrue(adapter.findByDiscordUserId(secondPlayer).orElseThrow().reminderOptIn());
         assertEquals(1, adapter.findParticipationPeriods().stream()
                 .filter(period -> period.playerId() == firstPlayer).count());
         assertEquals(1, adapter.findParticipationPeriods().stream()
                 .filter(period -> period.playerId() == secondPlayer).count());
         assertTrue(adapter.find(firstPlayer, GameType.GRIDWORDS, GAME_DATE).isPresent());
         assertTrue(adapter.find(secondPlayer, GameType.GRIDWORDS, GAME_DATE).isPresent());
+    }
+
+    @Test
+    void activeOptOutIsPreservedByAnotherValidResult() {
+        long playerId = 20_005L;
+        long firstSource = 30_005L;
+        long correctionSource = 30_006L;
+        register(firstSource, playerId);
+        adapter.storeResult(storage(firstSource, playerId, "first result"));
+        adapter.setReminderOptIn(profile(playerId), false);
+        register(correctionSource, playerId);
+
+        adapter.storeResult(storage(correctionSource, playerId, "corrected result"));
+
+        PlayerStore.StoredPlayer stored = adapter.findByDiscordUserId(playerId).orElseThrow();
+        assertTrue(stored.active());
+        assertFalse(stored.reminderOptIn());
+    }
+
+    @Test
+    void validResultReactivatesAnInactiveOptOutAndEnablesRemindersAgain() {
+        long playerId = 20_006L;
+        long firstSource = 30_007L;
+        long reactivationSource = 30_008L;
+        register(firstSource, playerId);
+        adapter.storeResult(storage(firstSource, playerId, "first result"));
+        adapter.setReminderOptIn(profile(playerId), false);
+        adapter.deactivate(new PlayerStore.ParticipationChange(profile(playerId), GAME_DATE));
+        assertFalse(adapter.findByDiscordUserId(playerId).orElseThrow().active());
+        register(reactivationSource, playerId);
+
+        adapter.storeResult(storage(reactivationSource, playerId, "reactivating correction"));
+
+        PlayerStore.StoredPlayer stored = adapter.findByDiscordUserId(playerId).orElseThrow();
+        assertTrue(stored.active());
+        assertTrue(stored.reminderOptIn());
+    }
+
+    @Test
+    void reminderReadModelContainsAllMissingPlayersAndSeparatesMentionPreference() {
+        long optedIn = 20_007L;
+        long optedOut = 20_008L;
+        adapter.activate(new PlayerStore.ParticipationChange(profile(optedIn), GAME_DATE));
+        adapter.activate(new PlayerStore.ParticipationChange(profile(optedOut), GAME_DATE));
+        adapter.setReminderOptIn(profile(optedOut), false);
+
+        List<ReminderCandidateStore.ReminderCandidate> candidates = adapter.findReminderCandidates(GAME_DATE);
+
+        ReminderCandidateStore.ReminderCandidate included = candidates.stream()
+                .filter(candidate -> candidate.discordUserId() == optedIn)
+                .findFirst().orElseThrow();
+        ReminderCandidateStore.ReminderCandidate plain = candidates.stream()
+                .filter(candidate -> candidate.discordUserId() == optedOut)
+                .findFirst().orElseThrow();
+        assertTrue(included.reminderOptIn());
+        assertFalse(plain.reminderOptIn());
+        assertEquals(List.of(GameType.GRIDWORDS, GameType.QUADWORDS), included.missingGames());
+        assertEquals(List.of(GameType.GRIDWORDS, GameType.QUADWORDS), plain.missingGames());
     }
 
     private void register(long sourceMessageId, long playerId) {
@@ -145,13 +206,15 @@ class DynamicPlayerPostgresPersistenceAdapterIT {
                 NOW));
     }
 
+    private PlayerStore.ProfileUpdate profile(long playerId) {
+        return new PlayerStore.ProfileUpdate(playerId, "Player " + playerId, playerId == 20_003L);
+    }
+
     private SubmissionStore.ResultStorage storage(long sourceMessageId, long playerId, String text) {
         return new SubmissionStore.ResultStorage(
                 sourceMessageId,
                 result(playerId, text),
-                new PlayerStore.ParticipationChange(
-                        new PlayerStore.ProfileUpdate(playerId, "Player " + playerId, playerId == 20_003L),
-                        GAME_DATE));
+                new PlayerStore.ParticipationChange(profile(playerId), GAME_DATE));
     }
 
     private GameResultStore.GameResultUpsert result(long playerId, String text) {
