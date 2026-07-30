@@ -1,6 +1,6 @@
 # Inkrement 7: Kanonische QuadWords-Konsolidierung und sichere Ersetzung
 
-**Status:** vorbereitet  
+**Status:** automatisiert umgesetzt; manueller Discord-/PostgreSQL-Smoke-Test offen  
 **Issue:** #15  
 **Draft-PR:** #16  
 **Branch:** `feature/canonical-quadwords-replacement`
@@ -16,7 +16,7 @@ Ein sicher geparstes und persistiertes QuadWords-Ergebnis wird in genau einer ka
 - GridWords besitzt bereits den vollständigen sicheren Publish-/Edit-/Delete-Ablauf mit Claims, Delivery-Fence, Recovery, Supersession und Duplikatbereinigung.
 - Gültige QuadWords-Quellen bleiben derzeit sichtbar und erhalten `✅`.
 
-## Geplanter Umfang
+## Umgesetzter Umfang
 
 - kanonischer QuadWords-Renderer mit allen vier Boards
 - Ergebnis, Dauer und verbindliche Serienanzeige
@@ -31,7 +31,7 @@ Ein sicher geparstes und persistiertes QuadWords-Ergebnis wird in genau einer ka
 - Wegfall der `✅`-Reaktion für erfolgreich konsolidierte QuadWords-Quellen
 - vollständige GridWords-Regression
 
-## Verbindliche Validierung
+## Ausgef?hrte Validierung
 
 ```powershell
 mvn --batch-mode --no-transfer-progress clean verify
