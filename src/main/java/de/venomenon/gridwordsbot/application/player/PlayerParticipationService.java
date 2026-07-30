@@ -33,15 +33,16 @@ public final class PlayerParticipationService implements PlayerParticipationUseC
     @Override public PlayerStatus status(PlayerIdentity actor) { return statusFor(actor); }
 
     @Override public PlayerStatus activate(PlayerIdentity actor, PlayerIdentity target) {
-        if (!isAdministrator(actor)) return denied();
+        if (!authorize(actor)) return denied();
         return changed(players.activate(change(target, today())), "Teilnahme ist ab heute aktiv.");
     }
     @Override public PlayerStatus deactivate(PlayerIdentity actor, PlayerIdentity target) {
-        if (!isAdministrator(actor)) return denied();
+        if (!authorize(actor)) return denied();
         return changed(players.deactivate(change(target, today().plusDays(1))), "Teilnahme endet ab morgen.");
     }
     @Override public PlayerStatus status(PlayerIdentity actor, PlayerIdentity target) {
-        return isAdministrator(actor) ? statusFor(target) : denied();
+        if (!authorize(actor)) return denied();
+        return statusFor(target);
     }
 
     @Override public PlayerStatus enableReminders(PlayerIdentity actor) {
@@ -62,6 +63,11 @@ public final class PlayerParticipationService implements PlayerParticipationUseC
                 player.active(),
                 player.reminderOptIn(),
                 statusMessage(player.active(), player.reminderOptIn(), period));
+    }
+    private boolean authorize(PlayerIdentity actor) {
+        if (!isAdministrator(actor)) return false;
+        players.synchronizeProfile(profile(actor));
+        return true;
     }
     private PlayerStore.ParticipationChange change(PlayerIdentity identity, LocalDate effectiveDate) {
         return new PlayerStore.ParticipationChange(profile(identity), effectiveDate);
