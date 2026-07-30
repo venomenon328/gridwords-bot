@@ -110,8 +110,9 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
         }
         if (parsed.gameType() == GameType.QUADWORDS) {
             if (submission.state() == SubmissionStore.SubmissionState.RESULT_STORED) {
-                canonicalPublisher.test(message.messageId());
-                return new ProcessingResult.Accepted(GameType.QUADWORDS);
+                return canonicalPublisher.test(message.messageId())
+                        ? new ProcessingResult.Accepted(GameType.QUADWORDS)
+                        : new ProcessingResult.Ignored();
             }
             QuadWordsCompletion completion = completeQuadWords(message, parsed);
             if (completion instanceof QuadWordsCompletion.Rejected rejected) {

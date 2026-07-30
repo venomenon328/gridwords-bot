@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.function.LongConsumer;
 
-/** Coordinates one resumable canonical GridWords publication without a Discord call in a transaction. */
+/** Coordinates one resumable canonical game-result publication without a Discord call in a transaction. */
 public final class CanonicalGridWordsPublicationService {
 
     private static final long LEASE_SECONDS = 60;
@@ -128,18 +128,20 @@ private PublicationOutcome publishAndHandOff(long sourceMessageId) {
         try {
             SubmissionStore.StoredSubmission submission = submissions.findBySourceMessageId(sourceMessageId)
                     .orElseThrow();
-            if (submission.state() == SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED
-                    || submission.state() == SubmissionStore.SubmissionState.ORIGINAL_MESSAGE_DELETED
-                    || submission.state() == SubmissionStore.SubmissionState.COMPLETED) {
-                return PublicationOutcome.PUBLISHED;
-            }
             if (submission.state() == SubmissionStore.SubmissionState.SUPERSEDED) {
                 return PublicationOutcome.SUPERSEDED;
             }
 
             resultId = submission.gameResultId().orElseThrow();
             GameResultStore.StoredGameResult result = results.findById(resultId).orElseThrow();
-            if (!isPublishable(result)) return PublicationOutcome.PUBLISHED;
+            if (!isPublishable(result)) {
+                return PublicationOutcome.NOT_PUBLISHABLE;
+            }
+            if (submission.state() == SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED
+                    || submission.state() == SubmissionStore.SubmissionState.ORIGINAL_MESSAGE_DELETED
+                    || submission.state() == SubmissionStore.SubmissionState.COMPLETED) {
+                return PublicationOutcome.PUBLISHED;
+            }
 
             SubmissionStore.CanonicalPublicationPreparation preparation =
                     submissions.prepareCanonicalPublication(sourceMessageId, resultId);
@@ -316,6 +318,7 @@ private PublicationOutcome publishAndHandOff(long sourceMessageId) {
                     && current.state() != SubmissionStore.SubmissionState.ORIGINAL_MESSAGE_DELETED
                     && current.state() != SubmissionStore.SubmissionState.COMPLETED) {
                 return switch (publishAndHandOff(current.sourceMessageId())) {
+                    case NOT_PUBLISHABLE -> RefreshOutcome.COMPLETED;
                     case PUBLISHED, RETRY_SCHEDULED, SUPERSEDED -> RefreshOutcome.RETRY_SCHEDULED;
                 };
             }
@@ -431,7 +434,8 @@ private PublicationOutcome publishAndHandOff(long sourceMessageId) {
     private enum PublicationOutcome {
         PUBLISHED,
         RETRY_SCHEDULED,
-        SUPERSEDED
+        SUPERSEDED,
+        NOT_PUBLISHABLE
     }
 
     private enum RefreshOutcome {

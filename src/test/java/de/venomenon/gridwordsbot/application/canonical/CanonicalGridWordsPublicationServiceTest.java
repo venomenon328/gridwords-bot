@@ -17,6 +17,8 @@ import static org.mockito.Mockito.when;
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.model.NormalizedBoard;
 import de.venomenon.gridwordsbot.domain.model.ParsedGameResult;
+import de.venomenon.gridwordsbot.domain.model.QuadWordsBoard;
+import de.venomenon.gridwordsbot.domain.model.QuadWordsBoards;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
 import de.venomenon.gridwordsbot.port.out.CanonicalMessageGateway;
 import de.venomenon.gridwordsbot.port.out.GameResultStore;
@@ -45,6 +47,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 
 class CanonicalGridWordsPublicationServiceTest {
@@ -99,8 +104,10 @@ class CanonicalGridWordsPublicationServiceTest {
         });
     }
 
-    @Test
-    void handsOffSuccessfulScheduledPublicationRetryToTheExactSourceDeletionWithoutAnotherEvent() {
+    @ParameterizedTest
+    @EnumSource(GameType.class)
+    void handsOffSuccessfulScheduledPublicationRetryToTheExactSourceDeletionWithoutAnotherEvent(GameType gameType) {
+        useResult(resultForGame(gameType, OptionalLong.empty(), 3));
         GridWordsSourceDeletionService deletion = mock(GridWordsSourceDeletionService.class);
         CanonicalGridWordsPublicationService retryingService = new CanonicalGridWordsPublicationService(
                 results, players, submissions, discord, Clock.fixed(NOW, ZoneOffset.UTC), ZoneId.of("Europe/Berlin"),
@@ -152,8 +159,10 @@ class CanonicalGridWordsPublicationServiceTest {
         verify(retryScheduler, times(1)).schedule(any(), any());
         verify(deletion).deleteAfterCanonicalPublication(SOURCE);
     }
-    @Test
-    void publishesFirstGridWordsExactlyOnceAndPersistsStateWithTheClaimToken() {
+    @ParameterizedTest
+    @EnumSource(GameType.class)
+    void publishesEachGameTypeExactlyOnceAndPersistsStateWithTheClaimToken(GameType gameType) {
+        useResult(resultForGame(gameType, OptionalLong.empty(), 3));
         stored(SubmissionStore.SubmissionState.RESULT_STORED);
         when(results.findById(RESULT)).thenReturn(Optional.of(result));
         GameResultStore.PublicationClaim claim = claim("00000000-0000-0000-0000-000000000001");
@@ -185,8 +194,10 @@ class CanonicalGridWordsPublicationServiceTest {
         order.verify(submissions).completeCanonicalPublication(SOURCE, RESULT, 77L, claim.token());
         verify(discord, never()).create(anyLong(), any());
     }
-    @Test
-    void persistsTheDeliveryFenceBeforeCreateAndRemovesRecognizedDuplicateMessages() {
+    @ParameterizedTest
+    @EnumSource(GameType.class)
+    void persistsTheDeliveryFenceBeforeCreateAndRemovesRecognizedDuplicateMessages(GameType gameType) {
+        useResult(resultForGame(gameType, OptionalLong.empty(), 3));
         stored(SubmissionStore.SubmissionState.RESULT_STORED);
         when(results.findById(RESULT)).thenReturn(Optional.of(result));
         GameResultStore.PublicationClaim claim = claim("00000000-0000-0000-0000-000000000021");
@@ -205,10 +216,12 @@ class CanonicalGridWordsPublicationServiceTest {
     @Test
     void replayOfPublishedSubmissionDoesNotSendOrEdit() {
         stored(SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED);
+        when(results.findById(RESULT)).thenReturn(Optional.of(result));
 
         assertThat(service.publish(SOURCE)).isTrue();
 
-        verifyNoInteractions(results, players, discord);
+        verifyNoInteractions(players, discord);
+        verify(results).findById(RESULT);
         verify(submissions, never()).completeCanonicalPublication(anyLong(), anyLong(), anyLong(), any());
     }
 
@@ -318,11 +331,11 @@ class CanonicalGridWordsPublicationServiceTest {
     }
 
 
-    @Test
-    void correctionWithANewSourceMessageEditsTheExistingCanonicalMessage() {
+    @ParameterizedTest
+    @EnumSource(GameType.class)
+    void correctionWithANewSourceMessageEditsTheExistingCanonicalMessage(GameType gameType) {
+        useResult(resultForGame(gameType, OptionalLong.of(88L), 2));
         long correctionSource = 11L;
-        result = gridResult(RESULT, TOBIAS, OptionalLong.of(88L), 2);
-        when(results.findAll()).thenReturn(List.of(result));
         SubmissionStore.StoredSubmission correction = new SubmissionStore.StoredSubmission(
                 correctionSource,
                 11L,
@@ -788,6 +801,83 @@ class CanonicalGridWordsPublicationServiceTest {
 
         verifyNoInteractions(results, players, discord, retryScheduler);
     }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void boardlessLegacyQuadWordsIsNotPublishedOrHandedToDeletionEvenWithCanonicalId(boolean hasCanonicalId) {
+        GameResultStore.StoredGameResult legacy = legacyQuadResult(
+                RESULT, TOBIAS, hasCanonicalId ? OptionalLong.of(88L) : OptionalLong.empty());
+        useResult(legacy);
+        stored(SubmissionStore.SubmissionState.RESULT_STORED);
+        java.util.function.LongConsumer handoff = mock(java.util.function.LongConsumer.class);
+        service = new CanonicalGridWordsPublicationService(
+                results, players, submissions, discord, Clock.fixed(NOW, ZoneOffset.UTC), ZoneId.of("Europe/Berlin"),
+                List.of(TOBIAS, GEORGIA), retryScheduler, handoff);
+
+        assertThat(service.publish(SOURCE)).isFalse();
+
+        verifyNoInteractions(discord, retryScheduler, handoff);
+        verify(results, never()).claimCanonicalPublication(anyLong(), any());
+        verify(submissions, never()).prepareCanonicalPublication(anyLong(), anyLong());
+    }
+
+    @Test
+    void boardlessLegacyRefreshCompletesWithoutDiscordOrRetryHotLoop() {
+        GameResultStore.StoredGameResult legacy = legacyQuadResult(RESULT, TOBIAS, OptionalLong.of(88L));
+        SubmissionStore.StoredSubmission published = stored(SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED);
+        SubmissionStore.CanonicalRefreshCandidate refresh = new SubmissionStore.CanonicalRefreshCandidate(published, 7);
+        when(submissions.findCanonicalRefreshCandidates()).thenReturn(List.of(refresh));
+        when(submissions.findCurrentCanonicalPublicationCandidate(RESULT)).thenReturn(Optional.of(refresh));
+        when(results.findById(RESULT)).thenReturn(Optional.of(legacy));
+
+        service.resumeOpenPublications();
+
+        verifyNoInteractions(discord, retryScheduler);
+        verify(results, never()).claimCanonicalPublication(anyLong(), any());
+    }
+
+    @Test
+    void startupRecoversOpenImageBackedQuadWordsSubmissionThroughTheDeliveryFence() {
+        useResult(imageQuadResult(RESULT, TOBIAS, OptionalLong.empty(), 4));
+        SubmissionStore.StoredSubmission open = stored(SubmissionStore.SubmissionState.RESULT_STORED);
+        when(submissions.findAwaitingCanonicalPublication(GameType.QUADWORDS)).thenReturn(List.of(open));
+        GameResultStore.PublicationClaim claim = claim("00000000-0000-0000-0000-000000000030");
+        when(results.claimCanonicalPublication(eq(RESULT), any())).thenReturn(Optional.of(claim));
+        when(discord.findByPublicationKey(anyLong(), any())).thenReturn(OptionalLong.empty());
+        when(discord.create(anyLong(), any())).thenReturn(99L);
+        when(submissions.completeCanonicalPublication(SOURCE, RESULT, 99L, claim.token())).thenReturn(true);
+
+        service.resumeOpenPublications();
+
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(submissions, discord);
+        order.verify(submissions).beginCanonicalDelivery(SOURCE, RESULT, claim.token());
+        order.verify(discord).create(eq(12L), any());
+        order.verify(submissions).completeCanonicalPublication(SOURCE, RESULT, 99L, claim.token());
+    }
+
+    @Test
+    void imageBackedQuadWordsUsesItsEstablishedContext() {
+        useResult(imageQuadResult(RESULT, TOBIAS, OptionalLong.of(88L), 3));
+        SubmissionStore.PublicationContext established = new SubmissionStore.PublicationContext(true, true, true, true);
+        stored(SubmissionStore.SubmissionState.RESULT_STORED, established);
+        GameResultStore.StoredGameResult tobiasGrid = gridResult(21L, TOBIAS, OptionalLong.empty(), 3);
+        GameResultStore.StoredGameResult georgiaGrid = gridResult(22L, GEORGIA, OptionalLong.empty(), 3);
+        GameResultStore.StoredGameResult georgiaQuad = imageQuadResult(23L, GEORGIA, OptionalLong.empty(), 3);
+        when(results.findAll()).thenReturn(List.of(result, tobiasGrid, georgiaGrid, georgiaQuad));
+        GameResultStore.PublicationClaim claim = claim("00000000-0000-0000-0000-000000000031");
+        when(results.claimCanonicalPublication(eq(RESULT), any())).thenReturn(Optional.of(claim));
+        when(submissions.completeCanonicalPublication(SOURCE, RESULT, 88L, claim.token())).thenReturn(true);
+        ArgumentCaptor<CanonicalResultMessage> message = ArgumentCaptor.forClass(CanonicalResultMessage.class);
+
+        assertThat(service.publish(SOURCE)).isTrue();
+
+        verify(discord).edit(eq(12L), eq(88L), message.capture());
+        assertThat(message.getValue().personalComplete()).hasValue(1);
+        assertThat(message.getValue().personalPerfect()).hasValue(1);
+        assertThat(message.getValue().sharedComplete()).hasValue(1);
+        assertThat(message.getValue().sharedPerfect()).hasValue(1);
+    }
+
     private SubmissionStore.StoredSubmission stored(SubmissionStore.SubmissionState state) {
         return stored(state, SubmissionStore.PublicationContext.none());
     }
@@ -822,6 +912,41 @@ class CanonicalGridWordsPublicationServiceTest {
 
     private record ScheduledAction(Instant at, Runnable action) {
     }
+
+    private void useResult(GameResultStore.StoredGameResult selected) {
+        result = selected;
+        when(results.findById(RESULT)).thenReturn(Optional.of(selected));
+        when(results.findAll()).thenReturn(List.of(selected));
+    }
+
+    private static GameResultStore.StoredGameResult resultForGame(
+            GameType gameType, OptionalLong canonicalMessageId, int attempts) {
+        return gameType == GameType.GRIDWORDS
+                ? gridResult(RESULT, TOBIAS, canonicalMessageId, attempts)
+                : imageQuadResult(RESULT, TOBIAS, canonicalMessageId, attempts);
+    }
+
+    private static GameResultStore.StoredGameResult imageQuadResult(
+            long id, long playerId, OptionalLong canonicalMessageId, int attempts) {
+        String row = "\u2B1C\uD83D\uDFE8\uD83D\uDFE9\u2B1C\uD83D\uDFE8";
+        QuadWordsBoard board = new QuadWordsBoard(java.util.Collections.nCopies(attempts, row));
+        ParsedGameResult parsed = new ParsedGameResult(
+                GameType.QUADWORDS, LocalDate.of(2026, 7, 29), new ShareOutcome.Solved(attempts, 9),
+                Duration.ofSeconds(90), OptionalInt.empty(), Optional.empty(),
+                Optional.of(new QuadWordsBoards(board, board, board, board)));
+        return new GameResultStore.StoredGameResult(
+                id, playerId, parsed, "quad", "quadwords-image-v2", canonicalMessageId, Instant.EPOCH, Instant.EPOCH);
+    }
+
+    private static GameResultStore.StoredGameResult legacyQuadResult(
+            long id, long playerId, OptionalLong canonicalMessageId) {
+        ParsedGameResult parsed = new ParsedGameResult(
+                GameType.QUADWORDS, LocalDate.of(2026, 7, 29), new ShareOutcome.Solved(4, 9),
+                Duration.ofSeconds(90), OptionalInt.empty(), Optional.empty());
+        return new GameResultStore.StoredGameResult(
+                id, playerId, parsed, "quad", "quadwords-share-v1", canonicalMessageId, Instant.EPOCH, Instant.EPOCH);
+    }
+
     private static GameResultStore.PublicationClaim claim(String token) {
         return new GameResultStore.PublicationClaim(UUID.fromString(token), NOW.plusSeconds(60));
     }

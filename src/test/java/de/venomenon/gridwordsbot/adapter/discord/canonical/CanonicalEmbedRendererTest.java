@@ -113,17 +113,31 @@ class CanonicalEmbedRendererTest {
     @Test
     void rendersFourQuadWordsBoardsInCanonicalOrderWithoutLinksOrImages() {
         String row = "\u2b1c\ud83d\udfe8\ud83d\udfe9\u2b1c\ud83d\udfe8";
+        QuadWordsBoards boards = new QuadWordsBoards(
+                new QuadWordsBoard(List.of(row)), new QuadWordsBoard(List.of(row, row)),
+                new QuadWordsBoard(List.of(row)), new QuadWordsBoard(List.of(row)));
         CanonicalResultMessage message = new CanonicalResultMessage("Tobias", GameType.QUADWORDS,
                 LocalDate.of(2026, 7, 29), new ShareOutcome.Unsolved(9), Duration.ofSeconds(587), null,
-                new StreakSummary(12, 8, 7, 4, 3, 5, 2), OptionalInt.of(8), OptionalInt.empty(),
-                OptionalInt.of(5), OptionalInt.empty(), Optional.of(new QuadWordsBoards(
-                        new QuadWordsBoard(List.of(row)), new QuadWordsBoard(List.of(row, row)),
-                        new QuadWordsBoard(List.of(row)), new QuadWordsBoard(List.of(row)))), "quadwords-result-4");
-        var embed = new CanonicalEmbedRenderer().render(message);
-        assertThat(embed.getTitle()).contains("QuadWords");
-        assertThat(embed.getDescription()).contains("X/9", "9:47", "Oben links", "Oben rechts", "Unten links", "Unten rechts", "QuadWords gel??st");
+                new StreakSummary(12, 8, 7, 4, 3, 5, 2), OptionalInt.of(8), OptionalInt.of(3),
+                OptionalInt.of(5), OptionalInt.of(2), Optional.of(boards), "quadwords-result-4");
+        CanonicalEmbedRenderer renderer = new CanonicalEmbedRenderer();
+        var embed = renderer.render(message);
+        assertThat(embed.getTitle()).isEqualTo("\uD83D\uDFE6 QuadWords \u00B7 29. Juli 2026");
+        assertThat(embed.getDescription()).contains(
+                "X/9", "9:47", "Oben links", "Oben rechts", "Unten links", "Unten rechts",
+                "QuadWords gel\u00F6st", "\u2705 Komplett: 8 Tage", "\uD83D\uDC8E Perfekt: 3 Tage",
+                "\uD83E\uDD1D Gemeinsam komplett: 5 Tage", "\uD83C\uDFC6 Gemeinsam perfekt: 2 Tage");
         assertThat(embed.getDescription()).doesNotContain("http", "gridgames");
         assertThat(DiscordPublicationKey.matches("quadwords-result-4", embed.getFooter().getText())).isTrue();
+
+        CanonicalResultMessage correction = new CanonicalResultMessage("Tobias", GameType.QUADWORDS,
+                LocalDate.of(2026, 7, 29), new ShareOutcome.Solved(8, 9), Duration.ofSeconds(560), null,
+                message.streaks(), OptionalInt.empty(), OptionalInt.empty(), OptionalInt.empty(), OptionalInt.empty(),
+                Optional.of(boards), "quadwords-result-4");
+        var edited = renderer.renderForEdit(correction, embed);
+        assertThat(edited.getDescription()).contains(
+                "8/9", "\u2705 Komplett: 8 Tage", "\uD83D\uDC8E Perfekt: 3 Tage",
+                "\uD83E\uDD1D Gemeinsam komplett: 5 Tage", "\uD83C\uDFC6 Gemeinsam perfekt: 2 Tage");
     }
 
     private static CanonicalResultMessage solvedMessage(

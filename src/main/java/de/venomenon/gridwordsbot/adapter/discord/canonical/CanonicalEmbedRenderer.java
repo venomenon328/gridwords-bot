@@ -18,7 +18,7 @@ final class CanonicalEmbedRenderer {
     MessageEmbed render(CanonicalResultMessage message) {
         String outcome = outcome(message);
         String duration = String.format("%d:%02d", message.duration().toMinutes(), message.duration().toSecondsPart());
-        String title = gameTitle(message) + " ?? "
+        String title = gameTitle(message) + " \u00B7 "
                 + message.gameDate().format(DateTimeFormatter.ofPattern("d. MMMM uuuu", Locale.GERMAN));
         return new EmbedBuilder()
                 .setTitle(title)
@@ -91,7 +91,7 @@ final class CanonicalEmbedRenderer {
                 .append("\uD83D\uDD25 Aktivität: ").append(days(message.streaks().personalActivity()))
                 .append("\n\uD83D\uDFE9 ")
                 .append(message.gameType() == de.venomenon.gridwordsbot.domain.model.GameType.GRIDWORDS ? "GridWords" : "QuadWords")
-                .append(" gel??st: ")
+                .append(" gel\u00F6st: ")
                 .append(daysOrNone(message.gameType() == de.venomenon.gridwordsbot.domain.model.GameType.GRIDWORDS
                         ? message.streaks().personalGridWordsSolved() : message.streaks().personalQuadWordsSolved()));
         appendOptional(series, PERSONAL_COMPLETE, message.personalComplete());

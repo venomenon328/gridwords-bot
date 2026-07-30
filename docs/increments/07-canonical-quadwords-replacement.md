@@ -31,7 +31,7 @@ Ein sicher geparstes und persistiertes QuadWords-Ergebnis wird in genau einer ka
 - Wegfall der `✅`-Reaktion für erfolgreich konsolidierte QuadWords-Quellen
 - vollständige GridWords-Regression
 
-## Ausgef?hrte Validierung
+## Ausgeführte Validierung
 
 ```powershell
 mvn --batch-mode --no-transfer-progress clean verify

@@ -144,8 +144,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
             throw new SubmissionConflictException("submission state does not allow result storage: " + existing.state());
         }
 
-        boolean recordsPublicationContext = request.result().parsedResult().gameType() == GameType.GRIDWORDS
-                && !request.configuredPlayerIds().isEmpty();
+        boolean recordsPublicationContext = !request.configuredPlayerIds().isEmpty();
         List<StoredGameResult> before = List.of();
         if (recordsPublicationContext) {
             lockConfiguredPlayers(request.configuredPlayerIds());
@@ -372,6 +371,16 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                     LIMIT 1
                 ) s ON TRUE
                 WHERE r.canonical_refresh_required = TRUE
+                  AND (
+                    r.game_type = 'GRIDWORDS'
+                    OR (
+                        r.game_type = 'QUADWORDS'
+                        AND r.quadwords_top_left_board IS NOT NULL
+                        AND r.quadwords_top_right_board IS NOT NULL
+                        AND r.quadwords_bottom_left_board IS NOT NULL
+                        AND r.quadwords_bottom_right_board IS NOT NULL
+                    )
+                  )
                 ORDER BY r.id
                 """, this::refreshCandidate);
     }
@@ -529,7 +538,17 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
     public List<StoredSubmission> findAwaitingCanonicalPublication(GameType gameType) {
         return jdbc.query("""
                 SELECT s.* FROM submission s JOIN game_result r ON r.id = s.game_result_id
-                WHERE r.game_type = ? AND s.processing_state IN ('RESULT_STORED', 'FAILED_RETRYABLE')
+                WHERE r.game_type = ?
+                  AND s.processing_state IN ('RESULT_STORED', 'FAILED_RETRYABLE')
+                  AND (
+                    r.game_type = 'GRIDWORDS'
+                    OR (
+                        r.quadwords_top_left_board IS NOT NULL
+                        AND r.quadwords_top_right_board IS NOT NULL
+                        AND r.quadwords_bottom_left_board IS NOT NULL
+                        AND r.quadwords_bottom_right_board IS NOT NULL
+                    )
+                  )
                 """, SUBMISSION, gameType.name());
     }
 
@@ -623,6 +642,16 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                 FROM submission s
                 JOIN game_result r ON r.id = s.game_result_id
                 WHERE r.game_type = ?
+                  AND s.source_delete_failure_class <> 'PERMANENT'
+                  AND (
+                    r.game_type = 'GRIDWORDS'
+                    OR (
+                        r.quadwords_top_left_board IS NOT NULL
+                        AND r.quadwords_top_right_board IS NOT NULL
+                        AND r.quadwords_bottom_left_board IS NOT NULL
+                        AND r.quadwords_bottom_right_board IS NOT NULL
+                    )
+                  )
                   AND (
                     s.processing_state = 'ORIGINAL_MESSAGE_DELETED'
                     OR (
@@ -656,12 +685,25 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
     }
 
     private boolean isEligibleForOriginalSourceDeletion(StoredSubmission submission, long resultId) {
+        if (submission.originalDeletionFailure() == OriginalDeletionFailure.PERMANENT) {
+            return false;
+        }
         return jdbc.queryForList("""
                 SELECT r.id
                 FROM game_result r
                 WHERE r.id = ?
                   AND r.canonical_message_id IS NOT NULL
                   AND r.canonical_message_id <> ?
+                  AND (
+                    r.game_type = 'GRIDWORDS'
+                    OR (
+                        r.game_type = 'QUADWORDS'
+                        AND r.quadwords_top_left_board IS NOT NULL
+                        AND r.quadwords_top_right_board IS NOT NULL
+                        AND r.quadwords_bottom_left_board IS NOT NULL
+                        AND r.quadwords_bottom_right_board IS NOT NULL
+                    )
+                  )
                 """, Long.class, resultId, submission.sourceMessageId()).size() == 1
                 && (submission.state() == SubmissionState.CANONICAL_MESSAGE_PUBLISHED
                 || hasNewerConfirmedCanonicalSource(submission, resultId));
@@ -904,9 +946,10 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                 ? new ShareOutcome.Solved(rs.getInt("attempts_used"), maximum)
                 : new ShareOutcome.Unsolved(maximum);
         String boardText = rs.getString("normalized_board");
-        Optional<QuadWordsBoards> quadWordsBoards = type == GameType.QUADWORDS
+        String quadTopLeft = rs.getString("quadwords_top_left_board");
+        Optional<QuadWordsBoards> quadWordsBoards = type == GameType.QUADWORDS && quadTopLeft != null
                 ? Optional.of(new QuadWordsBoards(
-                        QuadWordsBoard.fromCanonicalText(required(rs, "quadwords_top_left_board")),
+                        QuadWordsBoard.fromCanonicalText(quadTopLeft),
                         QuadWordsBoard.fromCanonicalText(required(rs, "quadwords_top_right_board")),
                         QuadWordsBoard.fromCanonicalText(required(rs, "quadwords_bottom_left_board")),
                         QuadWordsBoard.fromCanonicalText(required(rs, "quadwords_bottom_right_board"))))
