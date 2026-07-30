@@ -19,7 +19,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
-import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -34,7 +33,6 @@ import org.springframework.transaction.annotation.Transactional;
  * the same player and game day is stored.</p>
  */
 @Repository
-@Primary
 @Profile("database")
 public class LegacyCompatiblePostgresPersistenceAdapter extends PostgresPersistenceAdapter {
 
