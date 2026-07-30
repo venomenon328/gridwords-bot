@@ -98,7 +98,7 @@ public class QuadWordsImageParser {
         int split = indexAfterLargestGap(detectedRows);
         List<Span> topRows = detectedRows.subList(0, split);
         List<Span> bottomRows = detectedRows.subList(split, detectedRows.size());
-        if (topRows.isEmpty() || bottomRows.isEmpty() || topRows.size() > rows || bottomRows.size() > rows) {
+        if (topRows.size() != rows || bottomRows.size() != rows) {
             throw new ImageParseException(ParseErrorCode.INVALID_IMAGE_ROW_COUNT);
         }
         validateRegularSpans(topRows, ParseErrorCode.INVALID_IMAGE_GEOMETRY);
@@ -168,7 +168,7 @@ public class QuadWordsImageParser {
             for (int column = 0; column < COLUMNS_PER_BOARD; column++) {
                 Span x = geometry.columns().get(boardColumn * COLUMNS_PER_BOARD + column);
                 List<Span> boardRows = geometry.rowsByBoardRow().get(boardRow);
-                line.append(row < boardRows.size() ? classify(image, x, boardRows.get(row)).symbol() : CellColour.BLANK.symbol());
+                line.append(classify(image, x, boardRows.get(row)).symbol());
             }
             normalized.add(line.toString());
         }
@@ -237,9 +237,9 @@ public class QuadWordsImageParser {
     }
 
     private enum CellColour {
-        BLANK("\u2b1c"),
-        YELLOW("\ud83d\udfe8"),
-        GREEN("\ud83d\udfe9"),
+        BLANK("⬜"),
+        YELLOW("🟨"),
+        GREEN("🟩"),
         UNKNOWN("");
 
         private final String symbol;
