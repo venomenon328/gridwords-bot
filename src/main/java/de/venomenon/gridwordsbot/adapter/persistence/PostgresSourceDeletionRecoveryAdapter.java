@@ -13,14 +13,14 @@ import org.springframework.transaction.annotation.Transactional;
 /** Reactivates permanent source-delete failures only at explicit recovery boundaries. */
 @Repository
 @Profile("database")
-public final class PostgresSourceDeletionRecoveryAdapter implements SourceDeletionRecoveryStore {
+public class PostgresSourceDeletionRecoveryAdapter implements SourceDeletionRecoveryStore {
 
     private static final String BASE_UPDATE = """
             UPDATE submission s
             SET source_delete_failure_class = 'NONE',
                 technical_error_message = NULL,
                 updated_at = ?,
-                version = version + 1
+                version = s.version + 1
             FROM game_result r
             WHERE s.game_result_id = r.id
               AND s.source_delete_failure_class = 'PERMANENT'
