@@ -6,6 +6,7 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 - [`docs/anforderungsspezifikation.md`](docs/anforderungsspezifikation.md) – verbindliche fachliche Grundanforderungen
 - [`docs/requirements/series-model.md`](docs/requirements/series-model.md) – verbindliche Seriensemantik
+- [`docs/requirements/dynamic-player-model.md`](docs/requirements/dynamic-player-model.md) – dynamische Spieler, Teilnahmezeiträume und Reminder-Opt-in
 - [`docs/architecture.md`](docs/architecture.md) – Architektur und Modulgrenzen
 - [`docs/implementation-plan.md`](docs/implementation-plan.md) – Inkremente und Reihenfolge
 - [`docs/development-guide.md`](docs/development-guide.md) – lokaler Build, Docker und Tests
@@ -14,7 +15,9 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 ## Aktueller Stand
 
-Die Inkremente 0 bis 7 sind abgeschlossen. Inkrement 7, die kanonische QuadWords-Konsolidierung und sichere Ersetzung aus Issue #15, wurde mit PR #16 gemergt und am 30. Juli 2026 durch lokale Vollbuilds sowie einen vollständigen realen Discord-/PostgreSQL-Smoke-Test abgenommen. Als Nächstes folgt das kleine Zwischeninkrement 7.1 aus Issue #17: ein kompaktes 2×2-Layout der QuadWords-Grids vor Inkrement 8.
+Die Inkremente 0 bis 7 sowie Zwischeninkrement 7.1 sind abgeschlossen. Das kompakte 2×2-Layout der QuadWords-Grids, der konsistente GridWords-Codeblock und die Wiederherstellung historisch etablierter Kontextzeilen wurden mit PR #18 gemergt und visuell in Discord abgenommen.
+
+Vor Inkrement 8 folgt Zwischeninkrement 7.2 aus Issue #19: Die feste Zwei-Spieler-Konfiguration wird durch dynamische Spielerprofile, datierte Teilnahmezeiträume, Self-Service-/Admin-Commands und ein globales Reminder-Opt-in ersetzt. Der aktuelle Produktivcode bleibt bis zur Umsetzung dieses Branches noch auf die zwei konfigurierten Spieler begrenzt.
 
 Der Projektstand umfasst:
 
@@ -22,6 +25,7 @@ Der Projektstand umfasst:
 - deterministische GridWords- und QuadWords-Textparser
 - idempotente Spieler-, Ergebnis- und Submission-Persistenz
 - kanonische GridWords- und QuadWords-Embeds mit sicherer Quelllöschung nach persistierter Veröffentlichung
+- kompaktes QuadWords-2×2-Raster und Monospace-Codeblöcke für beide Spiele
 - Retry-, Claim-, Recovery-, Supersession- und Duplikatschutz
 - transportneutrale Referenzen auf Discord-Anhänge
 - verzögerten Download genau des ausgewählten QuadWords-Anhangs außerhalb des JDA-Event-Threads
@@ -159,7 +163,7 @@ JDBC-URL:
 jdbc:postgresql://localhost:5432/gridwords
 ```
 
-Relevante Tabellen sind insbesondere `player`, `submission`, `game_result` und `canonical_delivery_attempt`. Die vier QuadWords-Raster stehen in den Spalten `quadwords_top_left_board`, `quadwords_top_right_board`, `quadwords_bottom_left_board` und `quadwords_bottom_right_board`.
+Relevante Tabellen sind insbesondere `player`, `submission`, `game_result` und `canonical_delivery_attempt`. Die vier QuadWords-Raster stehen in den Spalten `quadwords_top_left_board`, `quadwords_top_right_board`, `quadwords_bottom_left_board` und `quadwords_bottom_right_board`. Zwischeninkrement 7.2 ergänzt Teilnahmezeiträume und Reminder-Opt-in.
 
 ## Teststrategie
 
@@ -171,7 +175,7 @@ Relevante Tabellen sind insbesondere `player`, `submission`, `game_result` und `
 - manuelle Smoke-Tests: echte Discord-Verbindung und Compose-PostgreSQL
 - H2 ersetzt keine PostgreSQL-Integrationstests
 
-Abgenommener Stand von PR #16: 196 Standardtests und 56 PostgreSQL-Integrationstests sowie ein vollständiger realer Discord-/PostgreSQL-Smoke-Test, jeweils ohne offengebliebene Blocker.
+Abgenommener Stand von PR #18: 199 Standardtests und 57 PostgreSQL-Integrationstests sowie erfolgreiche visuelle Discord-Smoke-Tests, jeweils ohne offengebliebene Blocker.
 
 ## Geheimnisse
 
