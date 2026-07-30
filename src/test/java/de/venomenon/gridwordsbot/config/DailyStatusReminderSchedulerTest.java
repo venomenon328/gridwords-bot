@@ -22,12 +22,13 @@ class DailyStatusReminderSchedulerTest {
     private static final LocalDate DATE = LocalDate.of(2026, 7, 30);
 
     @Test
-    void startupBeforeFirstReminderReconcilesTodayAndYesterdayWithoutPrematureCreate() {
+    void startupBeforeFirstReminderRebuildsYesterdayButDoesNotCreateTodayPrematurely() {
         Fixture fixture = fixture("2026-07-30T15:00:00Z");
         fixture.scheduler.startupReconciliation();
-        verify(fixture.status).reconcile(DATE.minusDays(1), false);
+        verify(fixture.status).reconcile(DATE.minusDays(1), true);
         verify(fixture.status).reconcile(DATE, false);
-        verify(fixture.reminders, never()).deliver(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.any());
+        verify(fixture.reminders, never()).deliver(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test
