@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   restore-persistence-base:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/feature/quadwords-image-parser'
+    if: github.event_name == 'pull_request' && github.head_ref == 'feature/quadwords-image-parser'
     runs-on: ubuntu-latest
     steps:
       - name: Check out feature branch
