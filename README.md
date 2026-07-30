@@ -14,7 +14,7 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 ## Aktueller Stand
 
-Die Inkremente 0 bis 5 sind abgeschlossen. Inkrement 6, der QuadWords-Bildparser, ist in Draft-PR #14 automatisiert umgesetzt und wartet nach der lokalen Abnahme noch auf Tobias’ echten Discord-/PostgreSQL-Smoke-Test.
+Die Inkremente 0 bis 5 sind abgeschlossen. Inkrement 6, der QuadWords-Bildparser, ist in Draft-PR #14 implementiert. Lokale Maven-Abnahme, finale CI-Prüfung und der echte Discord-/PostgreSQL-Smoke-Test stehen noch aus.
 
 Der Projektstand umfasst:
 
@@ -28,7 +28,8 @@ Der Projektstand umfasst:
 - reinen QuadWords-Bildparser ohne OCR, ML, Netzwerk, Spring oder Datenbank
 - vier normalisierte Boards in der Reihenfolge `Oben links`, `Oben rechts`, `Unten links`, `Unten rechts`
 - Persistenz aller vier Boards und der Parser-Version `quadwords-image-v2`
-- kontrollierte Wiederaufnahme transienter Attachment-Fehler
+- kontrollierte Wiederaufnahme technischer Attachment-Fehler
+- Schutz gegen ein Zurückstufen parallel bereits gespeicherter Ergebnisse
 - Kompatibilität mit bereits gespeicherten QuadWords-Ergebnissen aus `quadwords-share-v1`
 
 In Inkrement 6 bleiben QuadWords-Originalnachrichten sichtbar. Ein sicher geparstes und gespeichertes Ergebnis erhält weiterhin `✅`; eine stabile fachliche Bildablehnung erhält `⚠️`. Technische Downloadfehler erhalten keine irreführende Reaktion. Kanonische QuadWords-Nachrichten und deren sichere Quelllöschung folgen erst in Inkrement 7.
@@ -51,9 +52,9 @@ Maximale Höhe:                    4096 Pixel
 Maximale Gesamtfläche:            12.000.000 Pixel
 ```
 
-Der Parser erkennt eine 2×2-Anordnung mit genau fünf Spalten je Board. Er klassifiziert Zellen anhand mehrerer Flächenstichproben in `⬜`, `🟨` und `🟩`. Unsichere Geometrie, Farben, Struktur oder widersprüchliche aktive Zeilen führen zu einer kontrollierten Ablehnung. Klar fehlende nachlaufende Zeilen eines bereits früher abgeschlossenen Teilboards werden als kanonische Leerzellen normalisiert.
+Der Parser erkennt eine 2×2-Anordnung mit genau fünf Spalten je Board. Er klassifiziert Zellen anhand mehrerer Flächenstichproben in `⬜`, `🟨` und `🟩`. Unsichere Geometrie, Farben, Struktur oder widersprüchliche aktive Zeilen führen zu einer kontrollierten Ablehnung. Klar fehlende nachlaufende Zeilen eines bereits früher abgeschlossenen Teilboards werden als kanonische Leerzellen normalisiert; mindestens ein Teilboard muss die in der Kopfzeile gemeldete Versuchszahl erreichen.
 
-Die freigegebenen PNG-Fixtures besitzen jeweils eine eingecheckte erwartete kanonische Ausgabe. Zusätzlich decken synthetische Fixtures Skalierung, Ränder, JPEG, beschädigte und abgeschnittene Dateien, unsichere Farben sowie Ressourcenlimits ab.
+Die freigegebenen realen PNG-Fixtures besitzen jeweils eine eingecheckte erwartete kanonische Ausgabe. Zusätzlich decken synthetische Dateien Skalierung, Ränder, beschädigte und abgeschnittene Bilder, unsichere Farben sowie Ressourcenlimits ab. JPEG wird programmatisch in einem Unit-Test erzeugt und geprüft.
 
 ## Lokale Voraussetzungen
 
@@ -161,6 +162,7 @@ Relevante Tabellen sind insbesondere `player`, `submission`, `game_result` und `
 - PostgreSQL-Integration: echtes PostgreSQL über `database-integration`
 - Discord-Adaptertests: JDA-Grenze ohne echte Verbindung
 - Bildparser-Fixtures: reale PNGs mit Golden-Ausgabe plus synthetische Fehler- und Layoutvarianten
+- JPEG-Kompatibilität: programmatisch erzeugtes Bild im Unit-Test
 - manuelle Smoke-Tests: echte Discord-Verbindung und Compose-PostgreSQL
 - H2 ersetzt keine PostgreSQL-Integrationstests
 
