@@ -12,6 +12,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Stream;
 import javax.imageio.ImageIO;
@@ -127,16 +128,24 @@ class QuadWordsImageParserTest {
     }
 
     @Test
-    void representsClearlyAbsentTrailingRowsAsCanonicalBlanks() throws IOException {
+    void representsClearlyAbsentTrailingRowsOfIndividualBoardsAsCanonicalBlanks() throws IOException {
+        List<String> boards = defaultBoards();
         QuadWordsImageParser.Parse result = parser.parse(
-                imageBytes(6, 24, 30, defaultBoards(), "png"), solved(7));
+                imageBytes(List.of(6, 6, 6, 7), 24, 30, boards, "png"), solved(7));
 
         assertThat(result).isInstanceOf(QuadWordsImageParser.Parse.Parsed.class);
-        assertThat(((QuadWordsImageParser.Parse.Parsed) result).boards().ordered())
-                .allSatisfy(board -> {
-                    assertThat(board.rows()).hasSize(7);
-                    assertThat(board.rows().getLast()).isEqualTo(BLANK.repeat(5));
-                });
+        List<QuadWordsBoard> parsed = ((QuadWordsImageParser.Parse.Parsed) result).boards().ordered();
+        assertThat(parsed.subList(0, 3)).allSatisfy(board -> {
+            assertThat(board.rows()).hasSize(7);
+            assertThat(board.rows().getLast()).isEqualTo(BLANK.repeat(5));
+        });
+        assertThat(parsed.get(3).rows().getLast()).isEqualTo(boards.get(3));
+    }
+
+    @Test
+    void rejectsWhenNoBoardReachesTheReportedAttempt() throws IOException {
+        assertInvalid(parser.parse(imageBytes(6, 24, 30, defaultBoards(), "png"), solved(7)),
+                ParseErrorCode.INVALID_IMAGE_ROW_COUNT);
     }
 
     @Test
@@ -196,10 +205,26 @@ class QuadWordsImageParserTest {
 
     private static byte[] imageBytes(int rows, int cellSize, int margin, List<String> boards, String format)
             throws IOException {
-        return encode(image(rows, cellSize, margin, boards), format);
+        return imageBytes(Collections.nCopies(4, rows), cellSize, margin, boards, format);
+    }
+
+    private static byte[] imageBytes(
+            List<Integer> boardRowCounts, int cellSize, int margin, List<String> boards, String format)
+            throws IOException {
+        return encode(image(boardRowCounts, cellSize, margin, boards), format);
     }
 
     private static BufferedImage image(int rows, int cellSize, int margin, List<String> boards) {
+        return image(Collections.nCopies(4, rows), cellSize, margin, boards);
+    }
+
+    private static BufferedImage image(
+            List<Integer> boardRowCounts, int cellSize, int margin, List<String> boards) {
+        if (boardRowCounts.size() != 4 || boards.size() != 4
+                || boardRowCounts.stream().anyMatch(rows -> rows <= 0 || rows > 9)) {
+            throw new IllegalArgumentException("four valid board row counts and patterns are required");
+        }
+        int rows = boardRowCounts.stream().mapToInt(Integer::intValue).max().orElseThrow();
         int cellGap = 3;
         int boardGap = 31;
         int boardWidth = 5 * cellSize + 4 * cellGap;
@@ -212,10 +237,11 @@ class QuadWordsImageParserTest {
             graphics.fillRect(0, 0, image.getWidth(), image.getHeight());
             for (int boardRow = 0; boardRow < 2; boardRow++) {
                 for (int boardColumn = 0; boardColumn < 2; boardColumn++) {
-                    String pattern = boards.get(boardRow * 2 + boardColumn);
+                    int boardIndex = boardRow * 2 + boardColumn;
+                    String pattern = boards.get(boardIndex);
                     int originX = margin + boardColumn * (boardWidth + boardGap);
                     int originY = margin + boardRow * (boardHeight + boardGap);
-                    for (int row = 0; row < rows; row++) {
+                    for (int row = 0; row < boardRowCounts.get(boardIndex); row++) {
                         for (int column = 0; column < 5; column++) {
                             graphics.setColor(colour(pattern.codePointAt(pattern.offsetByCodePoints(0, column))));
                             graphics.fillRect(originX + column * (cellSize + cellGap),
