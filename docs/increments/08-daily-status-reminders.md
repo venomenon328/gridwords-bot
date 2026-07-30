@@ -25,7 +25,7 @@ Verbindliche Grundlagen sind [`../requirements/series-model.md`](../requirements
 
 Die Statusprojektion verwendet den angeforderten Spieltag als Serien-Stichtag. Fehlende Einreichungen werden nur dann vorläufig behandelt, wenn dieser Stichtag dem aktuellen Tag der injizierten `Clock` in `Europe/Berlin` entspricht. Gestern und alle anderen historischen Tage werden endgültig berechnet. Ein Vortagsnachtrag rekonstruiert persönliche und gemeinsame Serien aus den persistierten Ergebnissen und den je Tag wirksamen Teilnahmezeiträumen.
 
-Der Status wird nach gültigen Ergebnissen, Korrekturen, zulässigen Nachträgen und heute wirksamen Aktivierungen aktualisiert. Ein Fehler dieses entkoppelten Refresh-Hooks rollt weder Ergebnis noch Teilnahmeänderung zurück. Prospektive Deaktivierungen ab morgen verändern den heutigen Status nicht.
+Ein gültiges Ergebnis, eine Korrektur oder ein zulässiger Nachtrag darf den Status des Spieltags erzeugen beziehungsweise aktualisieren. Eine heute wirksame Aktivierung aktualisiert ausschließlich eine bereits vorhandene Statusnachricht und erzeugt morgens vor dem ersten Ergebnis oder Reminder keinen verfrühten Status. Ein Fehler dieses entkoppelten Refresh-Hooks rollt weder Ergebnis noch Teilnahmeänderung zurück. Prospektive Deaktivierungen ab morgen verändern den heutigen Status nicht.
 
 Der Renderer erzeugt eine Discord-Nachricht mit bei Bedarf mehreren Embeds, enthält alle aktiven Spieler, deaktiviert Mentions und prüft Feld-, Embed- und Gesamtlimits vollständig. Eine nicht vollständig darstellbare Nachricht wird kontrolliert abgelehnt.
 
@@ -37,7 +37,7 @@ Statusinhalte erhalten einen SHA-256-Fingerabdruck. Unveränderte Zustände prü
 
 Reminder-Kandidaten werden bei jedem tatsächlichen Sendeversuch neu ermittelt. `X/6` und `X/9` gelten als eingereicht. Ohne Kandidaten wird die Stufe persistent als No-op abgeschlossen. Beim Start nach 23 Uhr wird ausschließlich Stufe 2 gesendet und die frühere offene Stufe superseded; bereits erfolgreich abgeschlossene Stufe 1 bleibt terminal. Offene Stufen vergangener Tage laufen ab. Retryfähige Fehler erhalten Backoff, permanente Fehler erzeugen keinen Hot-Loop.
 
-Startup und Minutentakt verwenden dieselben idempotenten Use Cases. Heute und gestern werden reconciled; Zeitberechnung und DST-Grenzen verwenden die konfigurierte `ZoneId` und eine injizierte `Clock`.
+Startup und Minutentakt verwenden dieselben idempotenten Use Cases. Der aktuelle Tag wird vor dem ersten fälligen Reminder nur aktualisiert, wenn bereits ein Status existiert. Der Vortag wird auch nach einem vollständigen Bot-Ausfall neu rekonstruiert, sofern für ihn aktive Teilnehmer existierten. Zeitberechnung und DST-Grenzen verwenden die konfigurierte `ZoneId` und eine injizierte `Clock`.
 
 ## Automatisierte Abnahme aus Issue #21
 
@@ -67,10 +67,10 @@ Die zusammengefassten Punkte entsprechen vollständig den einzeln nummerierten K
 
 ## Testnachweis
 
-Finaler lokaler Stand:
+Finaler CI-Stand:
 
-- `mvn --batch-mode --no-transfer-progress clean verify`: 246 Tests, 0 Fehler, 0 übersprungen.
-- `mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify`: 246 Standardtests plus 73 PostgreSQL-Integrationstests, jeweils 0 Fehler und 0 übersprungen.
+- `mvn --batch-mode --no-transfer-progress clean verify`: 247 Tests, 0 Fehler, 0 übersprungen.
+- `mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify`: 247 Standardtests plus 73 PostgreSQL-Integrationstests, jeweils 0 Fehler und 0 übersprungen.
 
 Die Standardtests öffnen keine Datenbank-, Container- oder Discord-Verbindung und benötigen keinen Token. Das Profil `database-integration` verwendet PostgreSQL 16.6 über Testcontainers und führt alle realen Liquibase-Migrationen aus.
 
