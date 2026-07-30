@@ -73,7 +73,7 @@ class CanonicalEmbedRendererTest {
                 LocalDate.of(2026, 7, 29),
                 new ShareOutcome.Unsolved(6),
                 Duration.ofSeconds(10),
-                new NormalizedBoard(Collections.nCopies(6, "\u2b1c\u2b1c\u2b1c\u2b1c\u2b1c")),
+                new NormalizedBoard(Collections.nCopies(6, "⬜⬜⬜⬜⬜")),
                 new StreakSummary(1, 8, 0, 4, 0, 5, 0),
                 OptionalInt.empty(),
                 OptionalInt.empty(),
@@ -96,7 +96,7 @@ class CanonicalEmbedRendererTest {
                 LocalDate.of(2026, 7, 29),
                 new ShareOutcome.Unsolved(6),
                 Duration.ofSeconds(10),
-                new NormalizedBoard(Collections.nCopies(6, "\u2b1c\u2b1c\u2b1c\u2b1c\u2b1c")),
+                new NormalizedBoard(Collections.nCopies(6, "⬜⬜⬜⬜⬜")),
                 new StreakSummary(1, 0, 0, 0, 0, 0, 0),
                 OptionalInt.empty(),
                 OptionalInt.empty(),
@@ -109,35 +109,105 @@ class CanonicalEmbedRendererTest {
                 .doesNotContain("Komplett", "Perfekt", "Gemeinsam");
     }
 
+    @Test
+    void rendersQuadWordsAsCompactTwoByTwoPairsWithVisiblePairHeights() {
+        String topLeft = "⬜🟨🟩⬜🟨";
+        String topRight = "🟨🟩⬜🟨🟩";
+        String bottomLeft = "🟩⬜🟨🟩⬜";
+        String bottomRight = "🟨⬜🟩⬜🟨";
+        QuadWordsBoards boards = new QuadWordsBoards(
+                solvedBoard(topLeft, 7), solvedBoard(topRight, 9),
+                solvedBoard(bottomLeft, 4), solvedBoard(bottomRight, 6));
+
+        String[] pairs = quadWordsGrid(new CanonicalEmbedRenderer().render(quadWordsMessage(boards))).split("\n\n");
+        String[] topPair = pairs[0].split("\n", -1);
+        String[] bottomPair = pairs[1].split("\n", -1);
+
+        assertThat(pairs).hasSize(2);
+        assertThat(topPair).hasSize(9);
+        assertThat(bottomPair).hasSize(6);
+        assertThat(topPair[0]).isEqualTo(topLeft + "  " + topRight);
+        assertThat(bottomPair[0]).isEqualTo(bottomLeft + "  " + bottomRight);
+        assertThat(topPair[7]).isEqualTo("⬛⬛⬛⬛⬛  " + topRight);
+        assertThat(bottomPair[4]).isEqualTo("⬛⬛⬛⬛⬛  " + bottomRight);
+    }
 
     @Test
-    void rendersFourQuadWordsBoardsInCanonicalOrderWithoutLinksOrImages() {
-        String row = "\u2b1c\ud83d\udfe8\ud83d\udfe9\u2b1c\ud83d\udfe8";
+    void keepsEveryStoredRowForAnUnsolvedNineRowQuadWordsBoard() {
+        String unsolved = "⬜🟨🟩⬜🟨";
         QuadWordsBoards boards = new QuadWordsBoards(
-                new QuadWordsBoard(List.of(row)), new QuadWordsBoard(List.of(row, row)),
-                new QuadWordsBoard(List.of(row)), new QuadWordsBoard(List.of(row)));
-        CanonicalResultMessage message = new CanonicalResultMessage("Tobias", GameType.QUADWORDS,
-                LocalDate.of(2026, 7, 29), new ShareOutcome.Unsolved(9), Duration.ofSeconds(587), null,
+                new QuadWordsBoard(Collections.nCopies(9, unsolved)), solvedBoard(unsolved, 2),
+                solvedBoard(unsolved, 2), solvedBoard(unsolved, 2));
+
+        String[] topPair = quadWordsGrid(new CanonicalEmbedRenderer().render(quadWordsMessage(boards)))
+                .split("\n\n")[0].split("\n", -1);
+
+        assertThat(topPair).hasSize(9);
+        for (String line : topPair) {
+            assertThat(line).startsWith(unsolved);
+        }
+        assertThat(topPair[8]).isEqualTo(unsolved + "  ⬛⬛⬛⬛⬛");
+    }
+
+    @Test
+    void preservesCorrectionContextAndPublicationKeyAndUsesMonospaceForBothGames() {
+        String row = "⬜🟨🟩⬜🟨";
+        QuadWordsBoards boards = new QuadWordsBoards(
+                solvedBoard(row, 7), solvedBoard(row, 9), solvedBoard(row, 4), solvedBoard(row, 6));
+        CanonicalEmbedRenderer renderer = new CanonicalEmbedRenderer();
+        var embed = renderer.render(quadWordsMessage(boards));
+        CanonicalResultMessage correction = new CanonicalResultMessage(
+                "Tobias",
+                GameType.QUADWORDS,
+                LocalDate.of(2026, 7, 29),
+                new ShareOutcome.Solved(8, 9),
+                Duration.ofSeconds(560),
+                null,
+                quadWordsMessage(boards).streaks(),
+                OptionalInt.empty(),
+                OptionalInt.empty(),
+                OptionalInt.empty(),
+                OptionalInt.empty(),
+                Optional.of(boards),
+                "quadwords-result-4");
+
+        var edited = renderer.renderForEdit(correction, embed);
+        var gridWordsEmbed = renderer.render(solvedMessage(
+                OptionalInt.of(8), OptionalInt.of(3), OptionalInt.of(5), OptionalInt.of(2)));
+        String expectedGridWordsBoard = "⬜⬜⬜⬜⬜\n🟨🟨🟨🟨🟨\n🟩🟩🟩🟩🟩";
+
+        assertThat(embed.getDescription()).doesNotContain("Oben links", "Oben rechts", "Unten links", "Unten rechts");
+        assertThat(edited.getDescription()).contains(
+                "8/9", "✅ Komplett: 8 Tage", "💎 Perfekt: 3 Tage",
+                "🤝 Gemeinsam komplett: 5 Tage", "🏆 Gemeinsam perfekt: 2 Tage");
+        assertThat(DiscordPublicationKey.matches("quadwords-result-4", edited.getFooter().getText())).isTrue();
+        assertThat(gridWordsEmbed.getDescription()).contains("```\n" + expectedGridWordsBoard + "\n```");
+        assertThat(embed.getDescription().length()).isLessThanOrEqualTo(4096);
+        assertThat(embed.getTitle().length()).isLessThanOrEqualTo(256);
+        assertThat(embed.getFooter().getText().length()).isLessThanOrEqualTo(2048);
+    }
+
+    private static CanonicalResultMessage quadWordsMessage(QuadWordsBoards boards) {
+        return new CanonicalResultMessage("Tobias", GameType.QUADWORDS,
+                LocalDate.of(2026, 7, 29), new ShareOutcome.Solved(9, 9), Duration.ofSeconds(587), null,
                 new StreakSummary(12, 8, 7, 4, 3, 5, 2), OptionalInt.of(8), OptionalInt.of(3),
                 OptionalInt.of(5), OptionalInt.of(2), Optional.of(boards), "quadwords-result-4");
-        CanonicalEmbedRenderer renderer = new CanonicalEmbedRenderer();
-        var embed = renderer.render(message);
-        assertThat(embed.getTitle()).isEqualTo("\uD83D\uDFE6 QuadWords \u00B7 29. Juli 2026");
-        assertThat(embed.getDescription()).contains(
-                "X/9", "9:47", "Oben links", "Oben rechts", "Unten links", "Unten rechts",
-                "QuadWords gel\u00F6st", "\u2705 Komplett: 8 Tage", "\uD83D\uDC8E Perfekt: 3 Tage",
-                "\uD83E\uDD1D Gemeinsam komplett: 5 Tage", "\uD83C\uDFC6 Gemeinsam perfekt: 2 Tage");
-        assertThat(embed.getDescription()).doesNotContain("http", "gridgames");
-        assertThat(DiscordPublicationKey.matches("quadwords-result-4", embed.getFooter().getText())).isTrue();
+    }
 
-        CanonicalResultMessage correction = new CanonicalResultMessage("Tobias", GameType.QUADWORDS,
-                LocalDate.of(2026, 7, 29), new ShareOutcome.Solved(8, 9), Duration.ofSeconds(560), null,
-                message.streaks(), OptionalInt.empty(), OptionalInt.empty(), OptionalInt.empty(), OptionalInt.empty(),
-                Optional.of(boards), "quadwords-result-4");
-        var edited = renderer.renderForEdit(correction, embed);
-        assertThat(edited.getDescription()).contains(
-                "8/9", "\u2705 Komplett: 8 Tage", "\uD83D\uDC8E Perfekt: 3 Tage",
-                "\uD83E\uDD1D Gemeinsam komplett: 5 Tage", "\uD83C\uDFC6 Gemeinsam perfekt: 2 Tage");
+    private static QuadWordsBoard solvedBoard(String activeRow, int height) {
+        List<String> rows = new java.util.ArrayList<>(Collections.nCopies(9, "⬜⬜⬜⬜⬜"));
+        for (int index = 0; index < height - 1; index++) {
+            rows.set(index, activeRow);
+        }
+        rows.set(height - 1, "🟩🟩🟩🟩🟩");
+        return new QuadWordsBoard(rows);
+    }
+
+    private static String quadWordsGrid(net.dv8tion.jda.api.entities.MessageEmbed embed) {
+        String description = embed.getDescription();
+        int start = description.indexOf("```\n") + 4;
+        int end = description.indexOf("\n```", start);
+        return description.substring(start, end);
     }
 
     private static CanonicalResultMessage solvedMessage(
@@ -152,9 +222,9 @@ class CanonicalEmbedRendererTest {
                 new ShareOutcome.Solved(3, 6),
                 Duration.ofSeconds(85),
                 new NormalizedBoard(List.of(
-                        "\u2b1c\u2b1c\u2b1c\u2b1c\u2b1c",
-                        "\ud83d\udfe8\ud83d\udfe8\ud83d\udfe8\ud83d\udfe8\ud83d\udfe8",
-                        "\ud83d\udfe9\ud83d\udfe9\ud83d\udfe9\ud83d\udfe9\ud83d\udfe9")),
+                        "⬜⬜⬜⬜⬜",
+                        "🟨🟨🟨🟨🟨",
+                        "🟩🟩🟩🟩🟩")),
                 new StreakSummary(12, 8, 7, 4, 3, 5, 2),
                 personalComplete,
                 personalPerfect,

@@ -14,6 +14,7 @@ import de.venomenon.gridwordsbot.domain.model.NormalizedBoard;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
 import de.venomenon.gridwordsbot.domain.streak.StreakSummary;
 import de.venomenon.gridwordsbot.port.out.CanonicalMessageGateway;
+import de.venomenon.gridwordsbot.port.out.CanonicalPublicationContextStore;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.Collections;
@@ -22,6 +23,7 @@ import java.util.OptionalInt;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.Message;
+import net.dv8tion.jda.api.entities.MessageEmbed;
 import net.dv8tion.jda.api.entities.MessageHistory;
 import net.dv8tion.jda.api.entities.SelfUser;
 import net.dv8tion.jda.api.entities.User;
@@ -32,6 +34,7 @@ import net.dv8tion.jda.api.requests.RestAction;
 import net.dv8tion.jda.api.requests.restaction.MessageCreateAction;
 import net.dv8tion.jda.api.requests.restaction.MessageEditAction;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 class JdaCanonicalMessageGatewayTest {
 
@@ -42,7 +45,7 @@ class JdaCanonicalMessageGatewayTest {
         MessageCreateAction create = mock(MessageCreateAction.class);
         Message sent = mock(Message.class);
         when(jda.getTextChannelById(12L)).thenReturn(channel);
-        when(channel.sendMessageEmbeds(any(net.dv8tion.jda.api.entities.MessageEmbed.class))).thenReturn(create);
+        when(channel.sendMessageEmbeds(any(MessageEmbed.class))).thenReturn(create);
         when(create.setAllowedMentions(any())).thenReturn(create);
         when(create.complete()).thenReturn(sent);
         when(sent.getIdLong()).thenReturn(99L);
@@ -57,11 +60,37 @@ class JdaCanonicalMessageGatewayTest {
         MessageEditAction edit = mock(MessageEditAction.class);
         when(channel.retrieveMessageById(99L)).thenReturn(lookup);
         when(lookup.complete()).thenReturn(original);
-        when(original.editMessageEmbeds(any(net.dv8tion.jda.api.entities.MessageEmbed.class))).thenReturn(edit);
+        when(original.editMessageEmbeds(any(MessageEmbed.class))).thenReturn(edit);
         when(edit.setAllowedMentions(any())).thenReturn(edit);
         gateway.edit(12L, 99L, message());
 
         verify(edit).setAllowedMentions(Collections.emptyList());
+    }
+
+    @Test
+    void restoresHistoricalCompleteAndPerfectContextWhenAMessageIsRecreated() {
+        JDA jda = mock(JDA.class);
+        TextChannel channel = mock(TextChannel.class);
+        MessageCreateAction create = mock(MessageCreateAction.class);
+        Message sent = mock(Message.class);
+        CanonicalPublicationContextStore contextStore = mock(CanonicalPublicationContextStore.class);
+        when(contextStore.findForResult(20L)).thenReturn(new CanonicalPublicationContextStore.HistoricalContext(
+                true, true, true, true));
+        when(jda.getTextChannelById(12L)).thenReturn(channel);
+        when(channel.sendMessageEmbeds(any(MessageEmbed.class))).thenReturn(create);
+        when(create.setAllowedMentions(any())).thenReturn(create);
+        when(create.complete()).thenReturn(sent);
+        when(sent.getIdLong()).thenReturn(99L);
+        ArgumentCaptor<MessageEmbed> embed = ArgumentCaptor.forClass(MessageEmbed.class);
+
+        new JdaCanonicalMessageGateway(jda, contextStore).create(12L, messageWithContextStreaks());
+
+        verify(channel).sendMessageEmbeds(embed.capture());
+        assertThat(embed.getValue().getDescription()).contains(
+                "✅ Komplett: 4 Tage",
+                "💎 Perfekt: 3 Tage",
+                "🤝 Gemeinsam komplett: 5 Tage",
+                "🏆 Gemeinsam perfekt: 2 Tage");
     }
 
     @Test
@@ -119,8 +148,24 @@ class JdaCanonicalMessageGatewayTest {
                 LocalDate.of(2026, 7, 29),
                 new ShareOutcome.Solved(3, 6),
                 Duration.ofSeconds(85),
-                new NormalizedBoard(List.of("\u2B1C\u2B1C\u2B1C\u2B1C\u2B1C")),
+                new NormalizedBoard(List.of("⬜⬜⬜⬜⬜")),
                 new StreakSummary(1, 1, 1, 0, 1, 0, 0),
+                OptionalInt.empty(),
+                OptionalInt.empty(),
+                OptionalInt.empty(),
+                OptionalInt.empty(),
+                "gridwords-result-20");
+    }
+
+    private static CanonicalResultMessage messageWithContextStreaks() {
+        return new CanonicalResultMessage(
+                "Tobias",
+                GameType.GRIDWORDS,
+                LocalDate.of(2026, 7, 29),
+                new ShareOutcome.Solved(3, 6),
+                Duration.ofSeconds(85),
+                new NormalizedBoard(List.of("⬜⬜⬜⬜⬜")),
+                new StreakSummary(1, 4, 1, 1, 3, 5, 2),
                 OptionalInt.empty(),
                 OptionalInt.empty(),
                 OptionalInt.empty(),
