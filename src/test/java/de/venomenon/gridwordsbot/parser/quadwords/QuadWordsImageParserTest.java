@@ -20,9 +20,9 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 class QuadWordsImageParserTest {
-    private static final String BLANK = "\u2b1c";
-    private static final String YELLOW = "\ud83d\udfe8";
-    private static final String GREEN = "\ud83d\udfe9";
+    private static final String BLANK = "⬜";
+    private static final String YELLOW = "🟨";
+    private static final String GREEN = "🟩";
 
     private final QuadWordsImageParser parser = new QuadWordsImageParser();
 
@@ -123,6 +123,12 @@ class QuadWordsImageParserTest {
     @Test
     void rejectsWrongActiveRowCount() throws IOException {
         assertInvalid(parser.parse(imageBytes(8, 24, 30, defaultBoards(), "png"), solved(7)),
+                ParseErrorCode.INVALID_IMAGE_ROW_COUNT);
+    }
+
+    @Test
+    void rejectsMissingActiveRowsInsteadOfInventingBlankRows() throws IOException {
+        assertInvalid(parser.parse(imageBytes(6, 24, 30, defaultBoards(), "png"), solved(7)),
                 ParseErrorCode.INVALID_IMAGE_ROW_COUNT);
     }
 
