@@ -1,6 +1,6 @@
 # Zwischeninkrement 7.1: Kompaktes 2×2-Layout der QuadWords-Grids
 
-**Status:** umgesetzt; abschließender visueller Discord-Smoke-Test offen
+**Status:** umgesetzt und visuell abgenommen
 
 **Issue:** #17
 
@@ -17,7 +17,8 @@ Die vier bereits korrekt geparsten, gespeicherten und kanonisch veröffentlichte
 - keine sichtbaren Positionslabels
 - kompakter Abstand zwischen den beiden Boards eines Paares
 - klare vertikale Trennung zwischen oberem und unterem Paar
-- fehlende Zeilen des kürzeren Boards werden mit kanonischen Leerzellen `⬜⬜⬜⬜⬜` aufgefüllt; dadurch bleibt die zweite Spalte in Discord unabhängig von dessen Emoji-Breiten stabil ausgerichtet
+- fehlende Zeilen des kürzeren Boards werden mit dunklen Platzhalterzellen `⬛⬛⬛⬛⬛` aufgefüllt; dadurch bleibt die zweite Spalte in Discord unabhängig von dessen Emoji-Breiten stabil ausgerichtet und die Auffüllung unterscheidet sich sichtbar von regulären weißen Feldern
+- Discord erlaubt in diesem textbasierten Unicode-Renderer keine frei definierbare Hex-Farbe; `⬛` ist daher die stabile Annäherung an den gewünschten dunklen Farbton `#3c3d4f`
 - GridWords- und QuadWords-Raster stehen jeweils in einem Monospace-Codeblock
 
 ## Sichtbare Boardhöhe
@@ -25,7 +26,7 @@ Die vier bereits korrekt geparsten, gespeicherten und kanonisch veröffentlichte
 - Eine vollständig grüne Zeile `🟩🟩🟩🟩🟩` beendet den fachlichen Inhalt des betreffenden Boards einschließlich dieser Zeile.
 - Ein Board ohne vollständig grüne Zeile behält alle gespeicherten Zeilen.
 - Die Höhe eines horizontalen Paares entspricht dem längeren der beiden Boards.
-- Unter einem früher gelösten Board erscheinen ausschließlich die für die stabile 2×2-Ausrichtung nötigen kanonischen Leerzellen.
+- Unter einem früher gelösten Board erscheinen ausschließlich die für die stabile 2×2-Ausrichtung nötigen dunklen Platzhalterzellen.
 
 ## Kontextzeilen
 
@@ -51,8 +52,7 @@ Automatisierte Abnahme am 30. Juli 2026:
 
 - 199 Standardtests, 0 Fehler, 0 Fehlschläge
 - 57 PostgreSQL-Integrationstests, 0 Fehler, 0 Fehlschläge
-- Rendererfälle für Paarhöhen 7/9 und 4/6, stabile Leerzellenauffüllung, ungelöstes neunzeiliges Board, 2×2-Reihenfolge, fehlende Positionslabels, Korrekturkontext, Publication-Key und Monospace-Blöcke beider Spiele
+- Rendererfälle für Paarhöhen 7/9 und 4/6, stabile dunkle Platzhalterzellen, ungelöstes neunzeiliges Board, 2×2-Reihenfolge, fehlende Positionslabels, Korrekturkontext, Publication-Key und Monospace-Blöcke beider Spiele
 - JDA-Test für die Wiederherstellung historisch etablierter Komplett-/Perfektzeilen bei Neuerzeugung
 - PostgreSQL-Test für die Aggregation des historischen PublicationContext über mehrere Submissions desselben Ergebnisses
-
-Offen bleibt ausschließlich Tobias' kurzer visueller Discord-Smoke-Test: Beide QuadWords-Spalten müssen durch die weißen Auffüllzeilen ohne Versatz stehen, GridWords muss im Codeblock bleiben, die für den Tag ursprünglich etablierte Komplett-/Perfektinformation muss im dafür zuständigen Embed bei Korrektur beziehungsweise Neuerzeugung wieder erscheinen und die sichere Quelllöschung muss unverändert funktionieren.
+- visueller Discord-Smoke-Test für 2×2-Ausrichtung, GridWords-Codeblock, Kontextzeilen und sichere Korrektur-/Löschfolge erfolgreich
