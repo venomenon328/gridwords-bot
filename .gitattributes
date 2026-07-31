@@ -1,0 +1,10 @@
+# Keep executable and deployment text files Unix-compatible on every checkout.
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.service text eol=lf
+*.timer text eol=lf
+Dockerfile text eol=lf
+.env.example text eol=lf
+.env.production.example text eol=lf
+deployment.env.example text eol=lf
