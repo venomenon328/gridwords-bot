@@ -53,7 +53,17 @@ write_deployment() {
 }
 
 image_id() { docker image inspect "$1" --format '{{.Id}}'; }
-image_repo_digest() { docker image inspect "$1" --format '{{range .RepoDigests}}{{println .}}{{end}}' | head -n 1; }
+
+image_repo_digest() {
+  local image="$1" repository digest
+  repository="${image%:*}"
+  while IFS= read -r digest; do
+    if [[ "$digest" == "$repository@"* ]]; then
+      printf '%s\n' "$digest"
+      return 0
+    fi
+  done < <(docker image inspect "$image" --format '{{range .RepoDigests}}{{println .}}{{end}}')
+}
 
 acquire_operation_lock() {
   mkdir -p "$(dirname "$OPERATION_LOCK_FILE")"
