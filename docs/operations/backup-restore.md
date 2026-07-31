@@ -59,7 +59,7 @@ DUMP=/opt/gridwords-bot/backups/gridwords-YYYYMMDDTHHMMSSNNNNNNNNNZ.dump
 ./scripts/restore.sh --to-empty-database gridwords_restore_test "$DUMP"
 ```
 
-Der Testmodus verweigert ausdrücklich den in `runtime.env` konfigurierten Produktionsdatenbanknamen sowie PostgreSQL-Wartungsdatenbanken.
+Der Testmodus akzeptiert ausschließlich einen noch nicht vorhandenen Datenbanknamen. Er verweigert die konfigurierte Produktionsdatenbank, PostgreSQL-Wartungsdatenbanken und jede bereits existierende Testdatenbank. Bei einem fehlgeschlagenen Restore wird die vom Skript neu angelegte, unvollständige Testdatenbank wieder entfernt.
 
 Inhalt prüfen:
 
@@ -102,6 +102,7 @@ Folgende Aufrufe müssen fehlschlagen:
 ./scripts/restore.sh BACKUP.dump
 ./scripts/restore.sh --to-empty-database "$(grep '^POSTGRES_DB=' runtime.env | cut -d= -f2-)" BACKUP.dump
 ./scripts/restore.sh --to-empty-database postgres BACKUP.dump
+./scripts/restore.sh --to-empty-database BEREITS_EXISTIERENDE_DB BACKUP.dump
 ```
 
 Ein beschädigter Dump wird bereits vor jeder Datenbankänderung durch `pg_restore --list` abgelehnt.
@@ -120,7 +121,7 @@ Die Retention löscht ausschließlich zum jeweiligen Namensmuster gehörende äl
 Mindestens nach relevanten Schemaänderungen und anschließend vierteljährlich:
 
 1. aktuellen Dump erzeugen,
-2. in `gridwords_restore_test` wiederherstellen,
+2. in eine neue, noch nicht vorhandene Testdatenbank wiederherstellen,
 3. `databasechangelog`, Spieler, Ergebnisse, Status- und Reminderzustände stichprobenartig prüfen,
 4. Testdatenbank entfernen,
 5. Ergebnis im Betriebsprotokoll festhalten.
