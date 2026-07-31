@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the GridWords PostgreSQL backup every night
+
+[Timer]
+OnCalendar=*-*-* 01:30:00 Europe/Berlin
+Persistent=true
+RandomizedDelaySec=5m
+AccuracySec=1m
+Unit=gridwords-backup.service
+
+[Install]
+WantedBy=timers.target
