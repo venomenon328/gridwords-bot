@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+# shellcheck source=common.sh
 source "$(dirname "$0")/common.sh"
 
 [[ $# -le 1 ]] || die 'Usage: verify-deployment.sh [expected-image]'
