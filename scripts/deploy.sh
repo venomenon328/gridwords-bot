@@ -32,7 +32,17 @@ write_state() {
 if [[ "$target" == "$recorded_previous" && -n "$bot_id" ]] \
     && [[ "$(docker inspect "$bot_id" --format '{{.Config.Image}}')" == "$target" ]] \
     && "$verify_script" "$target"; then
-  echo 'Deployment already active and healthy'
+  if "$verify_script" >/dev/null 2>&1; then
+    echo 'Deployment already active and healthy'
+  else
+    recovered_previous="$(state_value ACTIVE_IMAGE)"
+    if [[ -z "$recovered_previous" || "$recovered_previous" == "$target" ]]; then
+      recovered_previous="$(state_value PREVIOUS_IMAGE)"
+    fi
+    write_state "$target" "$recovered_previous"
+    "$verify_script"
+    echo 'Deployment was healthy; missing or stale confirmation metadata was reconciled'
+  fi
   exit 0
 fi
 
