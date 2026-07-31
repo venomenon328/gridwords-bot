@@ -143,6 +143,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Refuse an existing manual release tag
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          RELEASE_IMAGE: ghcr.io/venomenon328/gridwords-bot:${{ inputs.release_tag }}
+        run: |
+          if docker manifest inspect "$RELEASE_IMAGE" >/dev/null 2>&1; then
+            echo "::error::Release tag already exists and is immutable: $RELEASE_IMAGE"
+            exit 1
+          fi
+
       - name: Generate image metadata
         id: image-metadata
         uses: docker/metadata-action@v5
