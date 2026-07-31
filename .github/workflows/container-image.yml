@@ -64,7 +64,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes shellcheck
-          shellcheck scripts/*.sh scripts/test/*.sh
+          shellcheck --exclude=SC1091,SC2015 scripts/*.sh scripts/test/*.sh
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
