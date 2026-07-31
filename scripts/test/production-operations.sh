@@ -18,6 +18,7 @@ export HEALTH_RETRIES=30
 export HEALTH_INTERVAL_SECONDS=2
 
 cp "$REPO_ROOT/scripts/test/production-runtime.test.env" "$RUNTIME_ENV_FILE"
+# shellcheck source=../common.sh
 source "$REPO_ROOT/scripts/common.sh"
 
 fail() { echo "TEST FAILURE: $*" >&2; exit 1; }
