@@ -25,27 +25,33 @@ public final class StreakCalculator {
 
     public StreakSummary calculateWithParticipation(
             List<PlayerResult> results, List<ParticipationPeriod> participationPeriods, long playerId, LocalDate today) {
+        return calculateWithParticipation(results, participationPeriods, playerId, today, true);
+    }
+
+    public StreakSummary calculateWithParticipation(
+            List<PlayerResult> results, List<ParticipationPeriod> participationPeriods, long playerId,
+            LocalDate asOfDate, boolean provisionalCurrentDay) {
         Objects.requireNonNull(results, "results");
         Objects.requireNonNull(participationPeriods, "participationPeriods");
-        Objects.requireNonNull(today, "today");
+        Objects.requireNonNull(asOfDate, "asOfDate");
         Map<Long, Map<LocalDate, Map<GameType, PlayerResult>>> index = index(results);
         Map<LocalDate, Map<GameType, PlayerResult>> ownDays = index.getOrDefault(playerId, Map.of());
         return new StreakSummary(
-                current(today, day -> activity(ownDays, day)),
-                current(today, day -> complete(ownDays, day)),
-                current(today, day -> solved(ownDays, day, GameType.GRIDWORDS)),
-                current(today, day -> solved(ownDays, day, GameType.QUADWORDS)),
-                current(today, day -> perfect(ownDays, day)),
-                current(today, day -> sharedComplete(index, participationPeriods, day)),
-                current(today, day -> sharedPerfect(index, participationPeriods, day)));
+                current(asOfDate, provisionalCurrentDay, day -> activity(ownDays, day)),
+                current(asOfDate, provisionalCurrentDay, day -> complete(ownDays, day)),
+                current(asOfDate, provisionalCurrentDay, day -> solved(ownDays, day, GameType.GRIDWORDS)),
+                current(asOfDate, provisionalCurrentDay, day -> solved(ownDays, day, GameType.QUADWORDS)),
+                current(asOfDate, provisionalCurrentDay, day -> perfect(ownDays, day)),
+                current(asOfDate, provisionalCurrentDay, day -> sharedComplete(index, participationPeriods, day)),
+                current(asOfDate, provisionalCurrentDay, day -> sharedPerfect(index, participationPeriods, day)));
     }
 
-    private int current(LocalDate today, Function<LocalDate, DayState> condition) {
+    private int current(LocalDate asOfDate, boolean provisionalCurrentDay, Function<LocalDate, DayState> condition) {
         int count = 0;
-        for (LocalDate day = today; ; day = day.minusDays(1)) {
+        for (LocalDate day = asOfDate; ; day = day.minusDays(1)) {
             DayState state = condition.apply(day);
             if (state == DayState.MET) { count++; continue; }
-            if (day.equals(today) && state == DayState.PENDING) continue;
+            if (provisionalCurrentDay && day.equals(asOfDate) && state == DayState.PENDING) continue;
             return count;
         }
     }

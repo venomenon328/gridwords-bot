@@ -8,6 +8,7 @@ import de.venomenon.gridwordsbot.adapter.discord.inbound.JdaAttachmentContentLoa
 import de.venomenon.gridwordsbot.application.canonical.CanonicalGridWordsPublicationService;
 import de.venomenon.gridwordsbot.application.canonical.GridWordsSourceDeletionService;
 import de.venomenon.gridwordsbot.application.player.PlayerParticipationService;
+import de.venomenon.gridwordsbot.application.status.DailyStatusRefreshService;
 import de.venomenon.gridwordsbot.application.submission.ProcessSharedResultService;
 import de.venomenon.gridwordsbot.parser.gridwords.GridWordsShareParser;
 import de.venomenon.gridwordsbot.parser.quadwords.QuadWordsImageParser;
@@ -39,15 +40,31 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 @Configuration(proxyBeanMethods = false)
 @Profile("database")
 class DatabaseInboundConfiguration {
-    @Bean ProcessSharedResultUseCase processSharedResultUseCase(Clock clock, GridwordsBotProperties properties, PlayerStore players, SubmissionStore submissions, ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider, ObjectProvider<AttachmentContentLoader> loaderProvider) {
-        AttachmentContentLoader loader = loaderProvider.getIfAvailable(() -> attachment -> { throw new AttachmentContentLoader.RetryableAttachmentException("attachment loader is unavailable", null); });
-        return new ProcessSharedResultService(new GridWordsShareParser(), new QuadWordsShareParser(), loader, new QuadWordsImageParser(), clock, properties.schedule().timeZone(), players, submissions, sourceMessageId -> {
-            CanonicalGridWordsPublicationService canonical = canonicalProvider.getIfAvailable();
-            return canonical != null && canonical.publish(sourceMessageId);
-        }, properties.discord().adminUserIds()::contains);
+    @Bean ProcessSharedResultUseCase processSharedResultUseCase(Clock clock, GridwordsBotProperties properties,
+            PlayerStore players, SubmissionStore submissions,
+            ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider,
+            ObjectProvider<AttachmentContentLoader> loaderProvider,
+            ObjectProvider<DailyStatusRefreshService> statusProvider) {
+        AttachmentContentLoader loader = loaderProvider.getIfAvailable(() -> attachment -> {
+            throw new AttachmentContentLoader.RetryableAttachmentException("attachment loader is unavailable", null);
+        });
+        return new ProcessSharedResultService(new GridWordsShareParser(), new QuadWordsShareParser(), loader,
+                new QuadWordsImageParser(), clock, properties.schedule().timeZone(), players, submissions,
+                sourceMessageId -> {
+                    CanonicalGridWordsPublicationService canonical = canonicalProvider.getIfAvailable();
+                    return canonical != null && canonical.publish(sourceMessageId);
+                }, properties.discord().adminUserIds()::contains, gameDate -> {
+                    DailyStatusRefreshService status = statusProvider.getIfAvailable();
+                    if (status != null) status.refresh(gameDate);
+                });
     }
-    @Bean PlayerParticipationUseCase playerParticipationUseCase(Clock clock, GridwordsBotProperties properties, PlayerStore players) {
-        return new PlayerParticipationService(players, clock, properties.schedule().timeZone(), Set.copyOf(properties.discord().adminUserIds()));
+    @Bean PlayerParticipationUseCase playerParticipationUseCase(Clock clock, GridwordsBotProperties properties,
+            PlayerStore players, ObjectProvider<DailyStatusRefreshService> statusProvider) {
+        return new PlayerParticipationService(players, clock, properties.schedule().timeZone(),
+                Set.copyOf(properties.discord().adminUserIds()), gameDate -> {
+                    DailyStatusRefreshService status = statusProvider.getIfAvailable();
+                    if (status != null) status.refreshExisting(gameDate);
+                });
     }
     @Bean ZoneId businessZone(GridwordsBotProperties properties) { return properties.schedule().timeZone(); }
     @Bean @ConditionalOnBean(JDA.class) DiscordParticipationCommandListener discordParticipationCommandListener(GridwordsBotProperties properties, PlayerParticipationUseCase commands) {

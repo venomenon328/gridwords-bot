@@ -6,7 +6,8 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 - [`docs/anforderungsspezifikation.md`](docs/anforderungsspezifikation.md) – verbindliche fachliche Grundanforderungen
 - [`docs/requirements/series-model.md`](docs/requirements/series-model.md) – verbindliche Seriensemantik
-- [`docs/requirements/dynamic-player-model.md`](docs/requirements/dynamic-player-model.md) – dynamische Spieler, Teilnahmezeiträume und Reminder-Opt-in
+- [`docs/requirements/dynamic-player-model.md`](docs/requirements/dynamic-player-model.md) – dynamische Spieler, Teilnahmezeiträume und Reminder-Opt-out
+- [`docs/requirements/daily-status-reminders.md`](docs/requirements/daily-status-reminders.md) – Tagesstatus, Scheduler und persistente Reminder-Auslieferung
 - [`docs/architecture.md`](docs/architecture.md) – Architektur und Modulgrenzen
 - [`docs/implementation-plan.md`](docs/implementation-plan.md) – Inkremente und Reihenfolge
 - [`docs/development-guide.md`](docs/development-guide.md) – lokaler Build, Docker und Tests
@@ -15,9 +16,9 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 ## Aktueller Stand
 
-Die Inkremente 0 bis 7 sowie die Zwischeninkremente 7.1 und 7.2 sind abgeschlossen. Das dynamische Spielermodell, historisch stabile Teilnahmezeiträume sowie Teilnahme- und Reminder-Commands wurden automatisiert und am 30. Juli 2026 in einem realen Discord-/PostgreSQL-Smoke-Test mit mindestens drei Nutzern abgenommen.
+Die Inkremente 0 bis 8 sowie die Zwischeninkremente 7.1 und 7.2 sind abgeschlossen. Das dynamische Spielermodell, historisch stabile Teilnahmezeiträume, Tagesstatus, vollständige persönliche und gemeinsame Serien sowie persistente Reminder wurden automatisiert und in realen Discord-/PostgreSQL-Smoke-Tests abgenommen.
 
-Als Nächstes folgt Inkrement 8 mit Tagesstatus, vollständigen Serien und zeitgesteuerten Erinnerungen. Der eigentliche Scheduler und Reminder-Versand sind bewusst noch nicht Bestandteil des aktuellen Stands.
+Inkrement 8 umfasst persistente Tagesstatusnachrichten, alle persönlichen und gemeinsamen Serien, historische Finalisierung, DST-sicheres Scheduling sowie idempotente Reminder um 18:00 und 23:00 Uhr. Die aus dem ersten realen Smoke-Test abgeleiteten UX-Korrekturen wurden umgesetzt und am 31. Juli 2026 erfolgreich nachgetestet.
 
 Der Projektstand umfasst:
 
@@ -25,8 +26,15 @@ Der Projektstand umfasst:
 - deterministische GridWords- und QuadWords-Textparser
 - dynamische Spielerprofile mit serverbezogenem Anzeigenamen und extern bestimmtem Administratorstatus
 - historisch stabile, nicht überlappende Teilnahmezeiträume
-- Self-Service- und Admin-Slash-Commands für Teilnahme und Reminder-Opt-in
-- transportneutrale Reminder-Kandidaten mit konkret fehlenden Spielen
+- Self-Service- und Admin-Slash-Commands für Teilnahme und Reminderstatus
+- Reminder-Opt-out bei neuer beziehungsweise erneuter Aktivierung
+- transportneutrale Reminder-Audience mit konkret fehlenden Spielen und getrenntem Mentionstatus
+- reine Text-Reminder mit verlinkten Spielnamen, Klartextnamen für Opt-outs und ausschließlich ID-basierten Mentions für Opt-ins
+- persistente Tagesstatusnachrichten mit allen fünf persönlichen und beiden gemeinsamen Serien
+- endgültige historische Serienprojektion und ausschließlich heute vorläufige Semantik
+- keine sichtbaren technischen Delivery-Schlüssel im Tagesstatus oder als Reminder-Footer
+- idempotente Reminder-Delivery mit No-op, Supersession, Ablauf, Backoff und Recovery
+- nicht sichtbare Discord-Delivery-Schlüssel, Status-Fingerprints und kontrollierter Ersatz extern gelöschter Nachrichten
 - idempotente Spieler-, Ergebnis- und Submission-Persistenz
 - kanonische GridWords- und QuadWords-Embeds mit sicherer Quelllöschung nach persistierter Veröffentlichung
 - kompaktes QuadWords-2×2-Raster und Monospace-Codeblöcke für beide Spiele
@@ -167,7 +175,7 @@ JDBC-URL:
 jdbc:postgresql://localhost:5432/gridwords
 ```
 
-Relevante Tabellen sind insbesondere `player`, `player_participation_period`, `submission`, `game_result` und `canonical_delivery_attempt`. Die vier QuadWords-Raster stehen in den Spalten `quadwords_top_left_board`, `quadwords_top_right_board`, `quadwords_bottom_left_board` und `quadwords_bottom_right_board`. `player.reminder_opt_in` ist unabhängig vom aktuellen Teilnahmezustand.
+Relevante Tabellen sind insbesondere `player`, `player_participation_period`, `submission`, `game_result`, `daily_status_message`, `reminder_delivery` und `canonical_delivery_attempt`. Die vier QuadWords-Raster stehen in den Spalten `quadwords_top_left_board`, `quadwords_top_right_board`, `quadwords_bottom_left_board` und `quadwords_bottom_right_board`. `player.reminder_opt_in` ist technisch unabhängig vom aktuellen Teilnahmezustand; eine neue beziehungsweise erneute Aktivierung setzt den Wert fachlich standardmäßig auf `true`.
 
 ## Teststrategie
 
@@ -179,7 +187,7 @@ Relevante Tabellen sind insbesondere `player`, `player_participation_period`, `s
 - manuelle Smoke-Tests: echte Discord-Verbindung und Compose-PostgreSQL
 - H2 ersetzt keine PostgreSQL-Integrationstests
 
-Abgenommener Stand von Zwischeninkrement 7.2: 207 Standardtests und 63 PostgreSQL-Integrationstests sind lokal und in GitHub Actions grün. Der reale Drei-Nutzer-Discord-/PostgreSQL-Smoke-Test war ebenfalls erfolgreich. Abgedeckt sind unter anderem dynamische Profil-/Admin-Synchronisierung, Command-Adapter, Startup nach Liquibase, Migration und Backfill, konkurrierte Erstregistrierung, atomarer Rollback und gemeinsame Serien bei wechselnden Teilnehmern. Weder automatisierte Tests noch der Build verwenden einen Discord-Token.
+Finaler Stand von Inkrement 8: **249 Standardtests und 76 PostgreSQL-Integrationstests** sind grün. Abgedeckt sind insbesondere historische Finalisierung, Vortagsnachträge, Status-Create/Edit/Recreate, unsichtbare Status-Reconciliation, Reminder-Opt-out bei implizitem Join und Reaktivierung, bewahrte aktive Opt-outs, reine Text-Reminder, Spiellinks, Klartextnamen, JDA-Mention-Sicherheit, beide Reminderstufen, Startup/DST, Konkurrenz, Retry/Permanentfehler, Liquibase und vollständige Ergebnisregression. Weder automatisierte Tests noch der Build verwenden einen Discord-Token. Die reale Discord-/PostgreSQL-Abnahme einschließlich des gezielten UX-Nachtests ist erfolgreich abgeschlossen.
 
 ## Geheimnisse
 

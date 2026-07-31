@@ -103,6 +103,34 @@ class PlayerParticipationServiceTest {
         verify(store).synchronizeProfile(new PlayerStore.ProfileUpdate(ADMIN, "Player", true));
     }
 
+    @Test
+    void joinAndAdminActivationRefreshTodaysStatusButProspectiveLeaveDoesNot() {
+        PlayerStore store = mock(PlayerStore.class);
+        when(store.activate(any())).thenReturn(player(true, false));
+        when(store.deactivate(any())).thenReturn(player(true, false));
+        when(store.synchronizeProfile(any())).thenReturn(new PlayerStore.StoredPlayer(
+                ADMIN, "Admin", true, true, false, Instant.EPOCH, Instant.EPOCH));
+        java.util.List<LocalDate> refreshes = new java.util.ArrayList<>();
+        PlayerParticipationService service = new PlayerParticipationService(
+                store, CLOCK, BERLIN, Set.of(ADMIN), refreshes::add);
+
+        service.join(identity(PLAYER));
+        service.leave(identity(PLAYER));
+        service.activate(identity(ADMIN), identity(PLAYER));
+
+        assertThat(refreshes).containsExactly(LocalDate.of(2026, 7, 29), LocalDate.of(2026, 7, 29));
+    }
+
+    @Test
+    void statusRefreshFailureDoesNotRollBackSuccessfulJoin() {
+        PlayerStore store = mock(PlayerStore.class);
+        when(store.activate(any())).thenReturn(player(true, false));
+        PlayerParticipationService service = new PlayerParticipationService(store, CLOCK, BERLIN, Set.of(ADMIN),
+                ignored -> { throw new IllegalStateException("status unavailable"); });
+
+        assertThat(service.join(identity(PLAYER)).active()).isTrue();
+        verify(store).activate(any());
+    }
     private static PlayerParticipationService service(PlayerStore store) {
         return new PlayerParticipationService(store, CLOCK, BERLIN, Set.of(ADMIN));
     }
