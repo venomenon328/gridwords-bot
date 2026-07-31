@@ -8,9 +8,11 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 - [`docs/requirements/series-model.md`](docs/requirements/series-model.md) – verbindliche Seriensemantik
 - [`docs/requirements/dynamic-player-model.md`](docs/requirements/dynamic-player-model.md) – dynamische Spieler, Teilnahmezeiträume und Reminder-Opt-out
 - [`docs/requirements/daily-status-reminders.md`](docs/requirements/daily-status-reminders.md) – Tagesstatus, Scheduler und persistente Reminder-Auslieferung
+- [`docs/requirements/production-deployment.md`](docs/requirements/production-deployment.md) – verbindlicher Produktions-, Deployment-, Secret- und Backupweg
 - [`docs/architecture.md`](docs/architecture.md) – Architektur und Modulgrenzen
 - [`docs/implementation-plan.md`](docs/implementation-plan.md) – Inkremente und Reihenfolge
 - [`docs/development-guide.md`](docs/development-guide.md) – lokaler Build, Docker und Tests
+- [`docs/increments/09-production-deployment-hardening.md`](docs/increments/09-production-deployment-hardening.md) – Umsetzung und Abnahme von Inkrement 9
 - [`docs/adr/`](docs/adr/) – Architekturentscheidungen
 - [`AGENTS.md`](AGENTS.md) – Arbeitsregeln für Codex/Terra
 
@@ -19,6 +21,8 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 Die Inkremente 0 bis 8 sowie die Zwischeninkremente 7.1 und 7.2 sind abgeschlossen. Das dynamische Spielermodell, historisch stabile Teilnahmezeiträume, Tagesstatus, vollständige persönliche und gemeinsame Serien sowie persistente Reminder wurden automatisiert und in realen Discord-/PostgreSQL-Smoke-Tests abgenommen.
 
 Inkrement 8 umfasst persistente Tagesstatusnachrichten, alle persönlichen und gemeinsamen Serien, historische Finalisierung, DST-sicheres Scheduling sowie idempotente Reminder um 18:00 und 23:00 Uhr. Die aus dem ersten realen Smoke-Test abgeleiteten UX-Korrekturen wurden umgesetzt und am 31. Juli 2026 erfolgreich nachgetestet.
+
+Inkrement 9 ist mit Issue #23, Branch `feature/production-deployment-hardening` und Draft-PR #24 vorbereitet. Ziel ist ein reproduzierbarer und gehärteter Produktionsbetrieb auf einem Netcup VPS 500 G12 mit Debian 13, privatem GHCR-Image, Docker Compose, frischer PostgreSQL-Datenbank, lokaler SSH-Auslösung des Deployments sowie 14 täglichen und 8 wöchentlichen lokalen Backups.
 
 Der Projektstand umfasst:
 
@@ -54,6 +58,25 @@ Der Projektstand umfasst:
 - permanente Löschfehler ohne Scheduler- oder Hot-Loop sowie kontrollierte Wiederaufnahme bei Neustart oder nach einer späteren bestätigten Veröffentlichung desselben Ergebnisses
 
 Ein sicher geparstes und gespeichertes QuadWords-Ergebnis wird ohne zusätzliche `✅`-Reaktion als genau eine kanonische Bot-Nachricht veröffentlicht; erst nach persistierter Veröffentlichung wird die menschliche Quelle gelöscht. Eine stabile fachliche Bildablehnung bleibt mit `⚠️` sichtbar. Technische Downloadfehler sowie boardlose Legacy-Ergebnisse erhalten weder ein Erfolgssignal noch einen Discord-Publish-/Delete-Aufruf.
+
+## Produktionsziel für Inkrement 9
+
+Verbindlich beschlossen:
+
+```text
+Host:             Netcup VPS 500 G12, x86-64
+Betriebssystem:   Debian 13
+Runtime:          Docker Engine und Docker Compose
+Image:            privat in GHCR
+Deployment:       bewusst lokal per SSH ausgelöst
+Discord:          separate Produktionsanwendung
+Datenbank:        frische PostgreSQL-16-Datenbank
+Backups:          14 tägliche + 8 wöchentliche lokale Stände
+Netzwerk:         nur SSH öffentlich; kein PostgreSQL-/Actuator-Hostport
+Domain:           zunächst keine
+```
+
+Der Serverzugang, Discord-Token, Datenbankpasswörter und GHCR-Token werden niemals im Repository oder Image gespeichert. Der Pull Request von Inkrement 9 bleibt bis zur realen Netcup-/Discord-/PostgreSQL-Abnahme Draft und ungemergt.
 
 ## QuadWords-Bildparser
 
@@ -191,4 +214,4 @@ Finaler Stand von Inkrement 8: **249 Standardtests und 76 PostgreSQL-Integration
 
 ## Geheimnisse
 
-Der Discord-Bot-Token gehört ausschließlich in eine lokale, nicht versionierte Konfiguration beziehungsweise später in den Secret Store des Hosts. Automatisierte Tests und Entwicklungsaufträge dürfen keinen echten Token anfordern oder verwenden.
+Der Discord-Bot-Token gehört ausschließlich in eine lokale, nicht versionierte Konfiguration beziehungsweise später in die serverseitige `runtime.env`. Automatisierte Tests und Entwicklungsaufträge dürfen keinen echten Token anfordern oder verwenden. Gleiches gilt für produktive Datenbankpasswörter, GHCR-Tokens und private SSH-Schlüssel.
