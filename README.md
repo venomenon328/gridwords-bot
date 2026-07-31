@@ -16,9 +16,9 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 ## Aktueller Stand
 
-Die Inkremente 0 bis 7 sowie die Zwischeninkremente 7.1 und 7.2 sind abgeschlossen. Das dynamische Spielermodell, historisch stabile Teilnahmezeiträume sowie Teilnahme- und Reminder-Commands wurden automatisiert und am 30. Juli 2026 in einem realen Discord-/PostgreSQL-Smoke-Test mit mindestens drei Nutzern abgenommen.
+Die Inkremente 0 bis 8 sowie die Zwischeninkremente 7.1 und 7.2 sind abgeschlossen. Das dynamische Spielermodell, historisch stabile Teilnahmezeiträume, Tagesstatus, vollständige persönliche und gemeinsame Serien sowie persistente Reminder wurden automatisiert und in realen Discord-/PostgreSQL-Smoke-Tests abgenommen.
 
-Inkrement 8 ist in Draft-PR #22 vollständig implementiert und automatisiert abgenommen. Es umfasst persistente Tagesstatusnachrichten, alle persönlichen und gemeinsamen Serien, historische Finalisierung, DST-sicheres Scheduling sowie idempotente Reminder um 18:00 und 23:00 Uhr. Die UX-Korrekturen aus dem ersten realen Smoke-Test sind umgesetzt; ausschließlich ein gezielter Discord-Nachtest dieser Korrekturen ist noch offen. Der PR bleibt bis dahin Draft und ungemergt.
+Inkrement 8 umfasst persistente Tagesstatusnachrichten, alle persönlichen und gemeinsamen Serien, historische Finalisierung, DST-sicheres Scheduling sowie idempotente Reminder um 18:00 und 23:00 Uhr. Die aus dem ersten realen Smoke-Test abgeleiteten UX-Korrekturen wurden umgesetzt und am 31. Juli 2026 erfolgreich nachgetestet.
 
 Der Projektstand umfasst:
 
@@ -187,7 +187,7 @@ Relevante Tabellen sind insbesondere `player`, `player_participation_period`, `s
 - manuelle Smoke-Tests: echte Discord-Verbindung und Compose-PostgreSQL
 - H2 ersetzt keine PostgreSQL-Integrationstests
 
-Automatisierter Stand von Inkrement 8 nach den Korrekturen aus dem ersten realen Smoke-Test: **249 Standardtests und 76 PostgreSQL-Integrationstests** sind grün. Abgedeckt sind insbesondere historische Finalisierung, Vortagsnachträge, Status-Create/Edit/Recreate, unsichtbare Status-Reconciliation, Reminder-Opt-out bei implizitem Join und Reaktivierung, bewahrte aktive Opt-outs, reine Text-Reminder, Spiellinks, Klartextnamen, JDA-Mention-Sicherheit, beide Reminderstufen, Startup/DST, Konkurrenz, Retry/Permanentfehler, Liquibase und vollständige Ergebnisregression. Weder automatisierte Tests noch der Build verwenden einen Discord-Token. Ausschließlich der gezielte reale Nachtest der drei UX-Korrekturen bleibt offen.
+Finaler Stand von Inkrement 8: **249 Standardtests und 76 PostgreSQL-Integrationstests** sind grün. Abgedeckt sind insbesondere historische Finalisierung, Vortagsnachträge, Status-Create/Edit/Recreate, unsichtbare Status-Reconciliation, Reminder-Opt-out bei implizitem Join und Reaktivierung, bewahrte aktive Opt-outs, reine Text-Reminder, Spiellinks, Klartextnamen, JDA-Mention-Sicherheit, beide Reminderstufen, Startup/DST, Konkurrenz, Retry/Permanentfehler, Liquibase und vollständige Ergebnisregression. Weder automatisierte Tests noch der Build verwenden einen Discord-Token. Die reale Discord-/PostgreSQL-Abnahme einschließlich des gezielten UX-Nachtests ist erfolgreich abgeschlossen.
 
 ## Geheimnisse
 
