@@ -33,7 +33,12 @@ fi
 name="gridwords-$(date -u +%Y%m%dT%H%M%S%NZ).dump"
 tmp="$BACKUP_DIR/.${name}.tmp.$$"
 final="$BACKUP_DIR/$name"
-cleanup() { [[ -n "${tmp:-}" ]] && rm -f -- "$tmp"; }
+cleanup() {
+  if [[ -n "${tmp:-}" ]]; then
+    rm -f -- "$tmp"
+  fi
+  :
+}
 trap cleanup EXIT
 
 compose exec -T postgres pg_dump \
