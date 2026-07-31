@@ -28,7 +28,7 @@ Der Ablauf ist:
 6. Liveness, Readiness, Datenbank, Liquibase und fehlende Hostports prüfen.
 7. Erst danach `deployment.env` und `deployment-state.env` atomar aktualisieren.
 
-`deployment-state.env` protokolliert Tag, lokale Image-ID, vorhandenen Registry-Repo-Digest, vorherige Version und Zeitpunkt. Die Datei ist Betriebszustand und wird nicht versioniert.
+`deployment-state.env` protokolliert Tag, lokale Image-ID, den zur angeforderten Repository-Referenz gehörenden Registry-Repo-Digest, vorherige Version und Zeitpunkt. Die Datei ist Betriebszustand und wird nicht versioniert.
 
 ## Normales Update
 
@@ -48,12 +48,14 @@ Ein erneuter Aufruf mit derselben bereits gesunden Version ist ein Verifikations
 
 ## Unterbrochenes Deployment
 
-Wird SSH getrennt, der Prozess beendet oder der Server neu gestartet, kann derselbe Befehl erneut ausgeführt werden. Da `deployment.env` erst nach erfolgreicher Verifikation wechselt, wird ein unvollständiger Rollout nicht fälschlich als aktiv behandelt.
+Wird SSH getrennt, der Prozess beendet oder der Server neu gestartet, kann derselbe Befehl erneut ausgeführt werden. Ein unvollständiger Rollout wird nicht fälschlich als bestätigt behandelt.
 
 ```bash
 cd /opt/gridwords-bot
 ./scripts/deploy.sh GEWÜNSCHTER_TAG
 ```
+
+Das gilt auch für einen sehr späten Abbruch: Läuft der Zielcontainer bereits gesund und wurde `deployment.env` geschrieben, während `deployment-state.env` noch fehlt oder veraltet ist, verifiziert derselbe Aufruf den tatsächlichen Container und repariert ausschließlich den bestätigten Zustandsdatensatz. Der Bot-Container wird dabei nicht neu erzeugt.
 
 Vor einer manuellen Reparatur zunächst prüfen:
 
@@ -84,7 +86,7 @@ Vorher muss geklärt sein, dass das ältere App-Image mit dem aktuellen Datenban
 
 ## Manuell veröffentlichter SemVer-Tag
 
-Der Workflow `Container image` kann über `workflow_dispatch` einen Tag wie `0.9.0` veröffentlichen. Der Workflow akzeptiert dies ausschließlich von `main` und nach vollständiger CI. Ein SemVer-Tag ist ein Komfortname; für maximale Nachvollziehbarkeit bleibt der zugehörige `sha-...`-Tag die bevorzugte Deploymentreferenz.
+Der Workflow `Container image` kann über `workflow_dispatch` einen Tag wie `0.9.0` veröffentlichen. Der Workflow akzeptiert dies ausschließlich von `main`, nach vollständiger CI und nur, wenn der Release-Tag in GHCR noch nicht existiert. Vorhandene SemVer-Tags werden nicht überschrieben. Für maximale Nachvollziehbarkeit bleibt der zugehörige `sha-...`-Tag die bevorzugte Deploymentreferenz.
 
 ## Diagnose
 
