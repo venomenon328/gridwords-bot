@@ -11,7 +11,7 @@ Dieser Plan zerlegt die Anforderungsspezifikation in kleine, reviewbare Inkremen
 - Persistenzänderungen werden lokal mit `database-integration` und zusätzlich in GitHub Actions geprüft.
 - Originalnachrichten werden erst nach vollständig getesteter kanonischer Veröffentlichung gelöscht.
 - QuadWords-Bildparser und sichere QuadWords-Konsolidierung werden vor Tagesstatus und Erinnerungen umgesetzt.
-- Dynamische Spieler, historische Teilnahmezeiträume und Reminder-Opt-in werden vor dem Reminder-Scheduler umgesetzt.
+- Dynamische Spieler, historische Teilnahmezeiträume und Reminder-Opt-out werden vor dem Reminder-Scheduler umgesetzt.
 
 ## Inkremente 0 bis 5
 
@@ -155,7 +155,7 @@ Abnahme:
 - 57 PostgreSQL-Integrationstests grün
 - echte Discord-Ausrichtung, GridWords-Codeblock, Kontextzeilen und sichere Löschung erfolgreich geprüft
 
-## Zwischeninkrement 7.2 – Dynamische Spieler, Teilnahmezeiträume und Reminder-Opt-in
+## Zwischeninkrement 7.2 – Dynamische Spieler, Teilnahmezeiträume und Reminder-Opt-out
 
 **Status:** abgeschlossen; automatisierte und reale Discord-/PostgreSQL-Abnahme am 30. Juli 2026 erfolgreich.
 
@@ -176,7 +176,7 @@ Umgesetzt:
 - ephemere Antworten und Statusausgabe mit laufendem Teilnahmezeitraum
 - gemeinsamer Komplett-/Perfekttag über alle am jeweiligen Tag aktiven Spieler, mindestens zwei Teilnehmer
 - historische Serien bleiben bei späterem Beitritt oder Austritt unverändert
-- transportneutraler Reminder-Kandidaten-Port mit fehlenden Spieltypen und Discord-User-ID
+- transportneutrale Reminder-Audience mit fehlenden Spieltypen, Discord-User-ID und getrenntem Mentionstatus
 - Entfernung der festen `PLAYER_1_*`-/`PLAYER_2_*`-Konfiguration
 - Liquibase-Migration und Backfill für bestehende Spieler
 - produktiver Spring-/PostgreSQL-Startup mit genau einem dynamischen Persistenzadapter
@@ -190,11 +190,11 @@ Abnahme:
 - 63 PostgreSQL-Integrationstests lokal und in GitHub Actions grün
 - keine automatisierte Discord-Verbindung oder Token-Verwendung
 - realer Discord-/PostgreSQL-Smoke-Test mit mindestens drei Nutzern erfolgreich
-- automatische Registrierung, Namenssynchronisierung, Commands, Reminder-Opt-in, wechselnde Teilnehmer und sichere Ergebnisersetzung geprüft
+- automatische Registrierung, Namenssynchronisierung, Commands, Reminder-Opt-out, wechselnde Teilnehmer und sichere Ergebnisersetzung geprüft
 
 ## Inkrement 8 – Tagesstatus, vollständige Serien und Erinnerungen
 
-**Status:** vollständig implementiert und automatisiert abgenommen in Draft-PR #22; ausschließlich Tobias' realer Discord-/PostgreSQL-Smoke-Test ist offen.
+**Status:** abgeschlossen; automatisierte und reale Discord-/PostgreSQL-Abnahme am 31. Juli 2026 erfolgreich.
 
 **Ergebnis:** Der tägliche Kernnutzen basiert vollständig auf der historisch wirksamen dynamischen Teilnehmermenge.
 
@@ -207,21 +207,25 @@ Umgesetzt:
 - alle fünf persönlichen Serien sowie gemeinsame Komplett- und Perfektserie
 - vorläufige Semantik ausschließlich für heute; historische Tage einschließlich gestern werden endgültig berechnet
 - vollständige Rekonstruktion nach zulässigen Vortagsnachträgen
-- Reminder um 18:00 und 23:00 Uhr nur für aktive Opt-ins mit konkret fehlenden Einreichungen
+- Reminder um 18:00 und 23:00 Uhr mit vollständiger Audience aller aktiven unvollständigen Spieler
+- Reminder-Opt-out bei neuer beziehungsweise erneuter Aktivierung
+- reine Text-Reminder mit verlinkten Spielnamen
+- echte ID-basierte Mentions ausschließlich für Opt-ins; Klartextnamen für Opt-outs
 - `X/6` und `X/9` gelten als eingereicht
-- strikt begrenzte ID-basierte User-Mentions
-- persistierter No-op, erneute Kandidatenbewertung, Supersession und Ablauf vergangener Stufen
+- strikt begrenzte Allowed Mentions
+- persistierter No-op, erneute Audience-Bewertung, Supersession und Ablauf vergangener Stufen
 - Startup-Reconciliation für heute und gestern sowie DST-sichere Zeitberechnung
 - tokengebundene Claims/Leases, Fingerprints, Retry-Backoff, permanente Zustände und Crash-Recovery
+- keine sichtbaren technischen Delivery-Schlüssel
 - keine Discord-I/O innerhalb von Datenbanktransaktionen
 
-Automatisierte Abnahme:
+Abnahme:
 
-- alle 24 Kriterien aus Issue #21 nachweislich abgedeckt
-- 246 Standardtests lokal grün
-- 73 PostgreSQL-Integrationstests lokal grün
+- 249 Standardtests grün
+- 76 PostgreSQL-Integrationstests grün
 - vollständige Spring-, JDA-, Liquibase-, Konkurrenz-, Recovery- und Ergebnisregression
 - keine echte Discord-Verbindung und kein Token in automatisierten Tests
+- realer Discord-/PostgreSQL-Smoke-Test einschließlich gezieltem UX-Nachtest erfolgreich
 
 Verbindlich: `docs/requirements/daily-status-reminders.md`, `docs/increments/08-daily-status-reminders.md`, ADR 0012 und Issue #21.
 
@@ -263,7 +267,7 @@ Verbindlich: `docs/requirements/daily-status-reminders.md`, `docs/increments/08-
 - QuadWords-Bildparser vor QuadWords-Konsolidierung
 - sichere Konsolidierung beider Spiele vor Tagesstatus und Erinnerungen
 - kompaktes QuadWords-Layout als isoliertes Renderer-Polish vor dynamischen Spielern
-- dynamische Teilnahmezeiträume und Reminder-Opt-in vor Tagesstatus und Scheduler
+- dynamische Teilnahmezeiträume und Reminder-Opt-out vor Tagesstatus und Scheduler
 - robuste Serienlogik vor Berichten und Kommentaren
 
 ## Definition of Done
