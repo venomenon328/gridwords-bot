@@ -28,6 +28,20 @@ cleanup() {
   compose down -v --remove-orphans >/dev/null 2>&1
   rm -rf "$TEST_ROOT"
 }
+
+diagnose() {
+  local rc="$1" line="$2" command="$3"
+  trap - ERR
+  set +e
+  echo "TEST FAILURE at line $line (exit $rc): $command" >&2
+  compose ps -a >&2
+  compose logs --tail=120 postgres >&2
+  compose logs --tail=120 bot >&2
+  find "$TEST_ROOT" -maxdepth 2 -type f -printf '%M %s %p\n' >&2
+  exit "$rc"
+}
+
+trap 'diagnose "$?" "$LINENO" "$BASH_COMMAND"' ERR
 trap cleanup EXIT
 
 for image in gridwords-bot:1.0.0 gridwords-bot:1.0.1 gridwords-bot:9.9.9; do
@@ -39,6 +53,7 @@ done
 BOT_IMAGE=gridwords-bot:1.0.0 compose config >/dev/null
 compose down -v --remove-orphans >/dev/null 2>&1 || true
 
+echo '== first deployment from an empty volume =='
 "$REPO_ROOT/scripts/deploy.sh" 1.0.0
 "$REPO_ROOT/scripts/verify-deployment.sh"
 assert_eq "$(deployment_value)" 'gridwords-bot:1.0.0' 'first deployment metadata'
@@ -52,6 +67,7 @@ sql() {
   compose exec -T postgres psql -U "$postgres_user" -d "$database" -v ON_ERROR_STOP=1 -tAc "$statement"
 }
 
+echo '== backup and restore paths =='
 sql "$postgres_db" 'CREATE TABLE operations_test_marker (id integer PRIMARY KEY, value text NOT NULL);'
 sql "$postgres_db" "INSERT INTO operations_test_marker (id, value) VALUES (1, 'before-backup');"
 backup_path="$(BACKUP_FORCE_WEEKLY=true "$REPO_ROOT/scripts/backup.sh")"
@@ -82,6 +98,7 @@ assert_eq "$(sql "$postgres_db" 'SELECT value FROM operations_test_marker WHERE 
   'before-backup' 'production restore'
 "$REPO_ROOT/scripts/verify-deployment.sh"
 
+echo '== retention =='
 retention_dir="$TEST_ROOT/retention"
 mkdir -p "$retention_dir"
 for age in $(seq 1 17); do
@@ -99,6 +116,7 @@ BACKUP_DIR="$retention_dir" DAILY_RETENTION=14 WEEKLY_RETENTION=8 \
 assert_eq "$(find "$retention_dir" -maxdepth 1 -name 'gridwords-*.dump' | wc -l)" '14' 'daily retention'
 assert_eq "$(find "$retention_dir" -maxdepth 1 -name 'weekly-gridwords-*.dump' | wc -l)" '8' 'weekly retention'
 
+echo '== healthy update and verified rollback =='
 "$REPO_ROOT/scripts/deploy.sh" 1.0.1
 "$REPO_ROOT/scripts/verify-deployment.sh"
 assert_eq "$(deployment_value)" 'gridwords-bot:1.0.1' 'second deployment metadata'
@@ -111,6 +129,7 @@ assert_eq "$(deployment_value)" 'gridwords-bot:1.0.1' 'verified rollback metadat
 assert_eq "$(docker inspect "$(compose ps -q bot)" --format '{{.Config.Image}}')" \
   'gridwords-bot:1.0.1' 'verified rollback container'
 
+echo '== resume and no-op =='
 # Simulate metadata written ahead of an interrupted deployment while the old image still runs.
 printf 'BOT_IMAGE=gridwords-bot:1.0.0\n' > "$DEPLOYMENT_ENV_FILE"
 "$REPO_ROOT/scripts/deploy.sh" 1.0.0
@@ -124,6 +143,7 @@ container_before="$(compose ps -q bot)"
 container_after="$(compose ps -q bot)"
 assert_eq "$container_after" "$container_before" 'idempotent deployment must not recreate the bot'
 
+echo '== restart persistence =='
 compose restart postgres >/dev/null
 wait_healthy postgres
 "$REPO_ROOT/scripts/verify-deployment.sh"
