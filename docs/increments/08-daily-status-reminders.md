@@ -1,10 +1,10 @@
 # Inkrement 8: Tagesstatus, vollständige Serien und Erinnerungen
 
-**Status:** automatisierte Abnahme vollständig; Korrekturen aus dem ersten realen Smoke-Test umgesetzt; gezielter Discord-Nachtest offen
+**Status:** abgeschlossen; automatisierte und reale Discord-/PostgreSQL-Abnahme erfolgreich
 
 **Issue:** #21  
 **Branch:** `feature/daily-status-reminders`  
-**Draft-PR:** #22
+**PR:** #22
 
 ## Ergebnis
 
@@ -27,7 +27,7 @@ Die Statusprojektion verwendet den angeforderten Spieltag als Serien-Stichtag. F
 
 Ein gültiges Ergebnis, eine Korrektur oder ein zulässiger Nachtrag darf den Status des Spieltags erzeugen beziehungsweise aktualisieren. Eine heute wirksame Aktivierung aktualisiert ausschließlich eine bereits vorhandene Statusnachricht und erzeugt morgens vor dem ersten Ergebnis oder Reminder keinen verfrühten Status. Ein Fehler dieses entkoppelten Refresh-Hooks rollt weder Ergebnis noch Teilnahmeänderung zurück. Prospektive Deaktivierungen ab morgen verändern den heutigen Status nicht.
 
-Der Statusrenderer erzeugt eine Discord-Nachricht mit bei Bedarf mehreren Embeds, enthält alle aktiven Spieler, deaktiviert Mentions und prüft Feld-, Embed- und Gesamtlimits vollständig. Eine nicht vollständig darstellbare Nachricht wird kontrolliert abgelehnt. Der technische Statusschlüssel ist nicht mehr sichtbar; Recovery verwendet den eindeutigen Titel des Tagesstatus.
+Der Statusrenderer erzeugt eine Discord-Nachricht mit bei Bedarf mehreren Embeds, enthält alle aktiven Spieler, deaktiviert Mentions und prüft Feld-, Embed- und Gesamtlimits vollständig. Eine nicht vollständig darstellbare Nachricht wird kontrolliert abgelehnt. Der technische Statusschlüssel ist nicht sichtbar; Recovery verwendet den eindeutigen Titel des Tagesstatus.
 
 ## Reminder-Opt-out und Darstellung
 
@@ -84,18 +84,22 @@ Finaler Code-Stand nach den Smoke-Test-Korrekturen:
 
 Die Standardtests öffnen keine Datenbank-, Container- oder Discord-Verbindung und benötigen keinen Token. Das Profil `database-integration` verwendet PostgreSQL 16.6 über Testcontainers und führt alle realen Liquibase-Migrationen aus.
 
+## Reale Abnahme
+
+Die reale Discord-/PostgreSQL-Abnahme wurde am 31. Juli 2026 erfolgreich abgeschlossen. Geprüft wurden insbesondere:
+
+- Statusprojektion und Edit derselben Statusnachricht,
+- kanonischer Ergebnispublish und sichere Quelllöschung,
+- Reminder-Scheduling und zweite Stufe,
+- impliziter Join und Reaktivierung mit automatisch eingeschalteten Remindern,
+- Erhalt eines ausdrücklichen Opt-outs bei bereits aktiven Spielern,
+- Tagesstatus ohne sichtbaren technischen Schlüssel,
+- reine Text-Reminder mit verlinkten Spielnamen,
+- vollständige Listen aller aktiven unvollständigen Spieler je Spiel,
+- echte Discord-Mentions ausschließlich für Opt-ins.
+
+Damit sind die automatisierte und die manuelle Definition of Done vollständig erfüllt.
+
 ## Nicht-Ziele
 
 Unverändert außerhalb dieses Inkrements liegen Wochen-/Monatsberichte, Statistik-Commands, konfigurierbare Reminderzeiten per Slash-Command, regelbasierte Kommentare, Mehrserverbetrieb und Änderungen an Share- oder Bildparsern.
-
-## Noch offene manuelle Abnahme
-
-Der erste reale Discord-/PostgreSQL-Smoke-Test bestätigte Statusprojektion, Ergebnispublish und Reminder-Scheduling und führte zu den drei umgesetzten UX-Korrekturen. Offen ist nur ein gezielter Nachtest dieser Korrekturen:
-
-- impliziter Join und Reaktivierung schalten Reminder ein,
-- der Tagesstatus enthält keinen sichtbaren technischen Schlüssel,
-- der Reminder ist reiner Text mit verlinkten Spielnamen,
-- alle unvollständigen aktiven Spieler werden angezeigt,
-- ausschließlich Opt-ins erhalten echte Discord-Mentions.
-
-PR #22 bleibt bis zu diesem Nachtest Draft und ungemergt.
