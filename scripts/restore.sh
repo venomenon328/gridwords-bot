@@ -60,15 +60,28 @@ docker run --rm \
 wait_healthy postgres
 if [[ "$production_restore" == true ]]; then
   "$(dirname "$0")/backup.sh" >/dev/null
+  compose exec -T postgres psql -U "$user" -d postgres -v ON_ERROR_STOP=1 \
+    -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$target' AND pid <> pg_backend_pid();" \
+    -c "DROP DATABASE IF EXISTS \"$target\";" \
+    -c "CREATE DATABASE \"$target\" OWNER \"$user\";"
+else
+  existing="$(compose exec -T postgres psql -U "$user" -d postgres -v ON_ERROR_STOP=1 \
+    -tAc "SELECT 1 FROM pg_database WHERE datname = '$target';")"
+  [[ -z "$existing" ]] || die "Test restore target already exists and will not be replaced: $target"
+  compose exec -T postgres psql -U "$user" -d postgres -v ON_ERROR_STOP=1 \
+    -c "CREATE DATABASE \"$target\" OWNER \"$user\";"
 fi
 
-compose exec -T postgres psql -U "$user" -d postgres -v ON_ERROR_STOP=1 \
-  -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$target' AND pid <> pg_backend_pid();" \
-  -c "DROP DATABASE IF EXISTS \"$target\";" \
-  -c "CREATE DATABASE \"$target\" OWNER \"$user\";"
-compose exec -T postgres pg_restore \
+if ! compose exec -T postgres pg_restore \
   -U "$user" -d "$target" \
-  --no-owner --no-privileges --exit-on-error < "$dump"
+  --no-owner --no-privileges --exit-on-error < "$dump"; then
+  if [[ "$production_restore" == false ]]; then
+    compose exec -T postgres psql -U "$user" -d postgres -v ON_ERROR_STOP=1 \
+      -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$target' AND pid <> pg_backend_pid();" \
+      -c "DROP DATABASE IF EXISTS \"$target\";" >/dev/null 2>&1 || true
+  fi
+  die "Restore failed: $target"
+fi
 
 if [[ "$production_restore" == true ]]; then
   compose up -d bot
