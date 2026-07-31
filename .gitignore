@@ -19,14 +19,16 @@ application-local.yml
 application-local.yaml
 runtime.env
 deployment.env
+deployment-state.env
+.production-operation.lock
 
 # Logs and runtime data
 logs/
 *.log
 data/
 tmp/
-
 backups/
+
 # OS files
 .DS_Store
 Thumbs.db
