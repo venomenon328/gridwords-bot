@@ -14,8 +14,11 @@
 .env
 .env.*
 !.env.example
+!.env.production.example
 application-local.yml
 application-local.yaml
+runtime.env
+deployment.env
 
 # Logs and runtime data
 logs/
@@ -23,6 +26,7 @@ logs/
 data/
 tmp/
 
+backups/
 # OS files
 .DS_Store
 Thumbs.db
