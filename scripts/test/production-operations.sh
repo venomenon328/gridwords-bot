@@ -130,8 +130,7 @@ assert_eq "$(deployment_value)" 'gridwords-bot:1.0.1' 'verified rollback metadat
 assert_eq "$(docker inspect "$(compose ps -q bot)" --format '{{.Config.Image}}')" \
   'gridwords-bot:1.0.1' 'verified rollback container'
 
-echo '== resume and no-op =='
-# Simulate metadata written ahead of an interrupted deployment while the old image still runs.
+echo '== resume after target metadata was written before the container update =='
 printf 'BOT_IMAGE=gridwords-bot:1.0.0\n' > "$DEPLOYMENT_ENV_FILE"
 "$REPO_ROOT/scripts/deploy.sh" 1.0.0
 "$REPO_ROOT/scripts/verify-deployment.sh"
@@ -139,7 +138,17 @@ assert_eq "$(deployment_value)" 'gridwords-bot:1.0.0' 'resumed deployment metada
 assert_eq "$(docker inspect "$(compose ps -q bot)" --format '{{.Config.Image}}')" \
   'gridwords-bot:1.0.0' 'resumed deployment container'
 
+echo '== reconcile confirmation metadata after a post-health interruption =='
 container_before="$(compose ps -q bot)"
+rm -f "$DEPLOYMENT_STATE_FILE"
+"$REPO_ROOT/scripts/deploy.sh" 1.0.0
+container_after="$(compose ps -q bot)"
+assert_eq "$container_after" "$container_before" 'confirmation reconciliation must not recreate the bot'
+assert_eq "$(state_value ACTIVE_IMAGE)" 'gridwords-bot:1.0.0' 'reconciled deployment state'
+"$REPO_ROOT/scripts/verify-deployment.sh"
+
+echo '== idempotent no-op =='
+container_before="$container_after"
 "$REPO_ROOT/scripts/deploy.sh" 1.0.0
 container_after="$(compose ps -q bot)"
 assert_eq "$container_after" "$container_before" 'idempotent deployment must not recreate the bot'
