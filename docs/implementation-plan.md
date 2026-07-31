@@ -1,6 +1,6 @@
 # Implementierungsplan
 
-Dieser Plan zerlegt die Anforderungsspezifikation in kleine, reviewbare Inkremente. Für Serien gilt `docs/requirements/series-model.md`; für dynamische Spieler und Reminder-Teilnahme `docs/requirements/dynamic-player-model.md`; für Tagesstatus und Reminder-Auslieferung `docs/requirements/daily-status-reminders.md`; für lokale Infrastruktur und Datenbanktests `docs/adr/0010-docker-available-local-development.md`.
+Dieser Plan zerlegt die Anforderungsspezifikation in kleine, reviewbare Inkremente. Für Serien gilt `docs/requirements/series-model.md`; für dynamische Spieler und Reminder-Teilnahme `docs/requirements/dynamic-player-model.md`; für Tagesstatus und Reminder-Auslieferung `docs/requirements/daily-status-reminders.md`; für das Produktionsdeployment `docs/requirements/production-deployment.md`; für lokale Infrastruktur und Datenbanktests `docs/adr/0010-docker-available-local-development.md`.
 
 ## Leitprinzipien
 
@@ -12,6 +12,7 @@ Dieser Plan zerlegt die Anforderungsspezifikation in kleine, reviewbare Inkremen
 - Originalnachrichten werden erst nach vollständig getesteter kanonischer Veröffentlichung gelöscht.
 - QuadWords-Bildparser und sichere QuadWords-Konsolidierung werden vor Tagesstatus und Erinnerungen umgesetzt.
 - Dynamische Spieler, historische Teilnahmezeiträume und Reminder-Opt-out werden vor dem Reminder-Scheduler umgesetzt.
+- Der Produktionsweg baut auf unveränderlichen Containerimages, serverseitigen Secrets, Backups vor Updates und expliziten Deployments auf.
 
 ## Inkremente 0 bis 5
 
@@ -229,13 +230,57 @@ Abnahme:
 
 Verbindlich: `docs/requirements/daily-status-reminders.md`, `docs/increments/08-daily-status-reminders.md`, ADR 0012 und Issue #21.
 
-## Inkrement 9 – Kernversion härten und veröffentlichen
+## Inkrement 9 – Reproduzierbares Produktionsdeployment und Betriebshärtung
 
-- Ende-zu-Ende-Test
-- Logs und Fehlertexte
-- Betriebs-, Backup- und Restore-Dokumentation
-- reproduzierbarer Deploymentweg
-- Hostingentscheidung und Migration in den endgültigen Channel
+**Status:** vorbereitet; Issue #23, Branch `feature/production-deployment-hardening` und Draft-PR #24.
+
+**Ziel:** Die vollständig abgenommene Kernversion wird reproduzierbar, sicher und wartbar auf einem Netcup VPS 500 G12 unter Debian 13 betrieben.
+
+Verbindliche Zielarchitektur:
+
+- privates Bot-Image in GHCR
+- Docker Engine und Docker Compose
+- Bot und PostgreSQL als getrennte Container im internen Netz
+- frische Produktionsdatenbank
+- separate Discord-Produktionsanwendung
+- Deployment bewusst lokal per SSH ausgelöst
+- kein SSH-Zugang des GitHub-Runners zum Server
+- nur SSH öffentlich; keine Domain und kein öffentliches HTTP/HTTPS
+- 14 tägliche und 8 wöchentliche lokale PostgreSQL-Backups
+
+Umsetzungspakete:
+
+1. Multi-Stage-Dockerfile, Nicht-Root-Runtime und Healthchecks
+2. Produktions-Compose, interne Datenbank und Secretmodell
+3. private GHCR-Pipeline mit Commit- und Release-Tags
+4. idempotentes Deploy-/Verify-/App-Rollback-Skript
+5. atomare Backup-/Restore-Skripte und Retention
+6. Debian-13-Bootstrap-, Deployment-, Backup- und Troubleshooting-Handbuch
+
+Automatisierte Abnahme:
+
+- beide vollständigen Maven-Builds grün
+- Containerimage gebaut und ohne Secrets geprüft
+- Produktion aus leerem Volume gestartet
+- PostgreSQL nicht am Host veröffentlicht
+- Healthchecks und Neustart grün
+- Backup in leere Testdatenbank restauriert
+- Deployment und App-Rollback automatisiert geprüft
+- bestehende Bot-Funktionalität regressionsfrei
+
+Manuelle Abnahme auf Netcup:
+
+- gehärteter Debian-13-Host
+- privater GHCR-Pull
+- frische Datenbank und Liquibase-Startup
+- separate Discord-Produktionsanwendung
+- vollständiger GridWords-/QuadWords-/Status-/Reminder-Ende-zu-Ende-Test
+- Container- und Serverreboot
+- Backup, Restore und App-Rollback
+
+Verbindlich: `docs/requirements/production-deployment.md`, `docs/increments/09-production-deployment-hardening.md`, ADR 0013 und Issue #23.
+
+Der PR bleibt bis zur vollständigen automatisierten und realen Serverabnahme Draft und ungemergt.
 
 ## Inkrement 10 – Wochen- und Monatsberichte
 
@@ -268,6 +313,7 @@ Verbindlich: `docs/requirements/daily-status-reminders.md`, `docs/increments/08-
 - sichere Konsolidierung beider Spiele vor Tagesstatus und Erinnerungen
 - kompaktes QuadWords-Layout als isoliertes Renderer-Polish vor dynamischen Spielern
 - dynamische Teilnahmezeiträume und Reminder-Opt-out vor Tagesstatus und Scheduler
+- Produktionshärtung und reproduzierbarer Betrieb vor Berichten und Komfortfunktionen
 - robuste Serienlogik vor Berichten und Kommentaren
 
 ## Definition of Done
@@ -279,4 +325,5 @@ Verbindlich: `docs/requirements/daily-status-reminders.md`, `docs/increments/08-
 - keine Secrets
 - Dokumentation aktualisiert
 - notwendiger manueller Smoke-Test erfolgreich
+- bei Betriebsinkrementen zusätzlich Backup-/Restore-/Upgrade-/Rollback-Weg praktisch geprüft
 - PR reviewbar, Draft-Status erst nach vollständiger Abnahme aufheben
