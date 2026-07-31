@@ -14,13 +14,25 @@ POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:16.14-alpine@sha256:57c72fd2a128e416c
 die() { echo "ERROR: $*" >&2; exit 1; }
 require_file() { [[ -f "$1" ]] || die "Required file is missing: $1"; }
 runtime_value() { grep -E "^$1=" "$RUNTIME_ENV_FILE" | tail -n 1 | cut -d= -f2-; }
-deployment_value() { [[ -f "$DEPLOYMENT_ENV_FILE" ]] && grep -E '^BOT_IMAGE=' "$DEPLOYMENT_ENV_FILE" | tail -n 1 | cut -d= -f2- || true; }
-state_value() { [[ -f "$DEPLOYMENT_STATE_FILE" ]] && grep -E "^$1=" "$DEPLOYMENT_STATE_FILE" | tail -n 1 | cut -d= -f2- || true; }
+
+deployment_value() {
+  if [[ -f "$DEPLOYMENT_ENV_FILE" ]]; then
+    grep -E '^BOT_IMAGE=' "$DEPLOYMENT_ENV_FILE" | tail -n 1 | cut -d= -f2-
+  fi
+}
+
+state_value() {
+  if [[ -f "$DEPLOYMENT_STATE_FILE" ]]; then
+    grep -E "^$1=" "$DEPLOYMENT_STATE_FILE" | tail -n 1 | cut -d= -f2-
+  fi
+}
 
 compose() {
   local image="${BOT_IMAGE:-$(deployment_value)}"
   local -a args=(docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$RUNTIME_ENV_FILE")
-  [[ -f "$DEPLOYMENT_ENV_FILE" ]] && args+=(--env-file "$DEPLOYMENT_ENV_FILE")
+  if [[ -f "$DEPLOYMENT_ENV_FILE" ]]; then
+    args+=(--env-file "$DEPLOYMENT_ENV_FILE")
+  fi
   args+=(-f "$COMPOSE_FILE")
   BOT_IMAGE="${image:-gridwords-bot:unconfigured}" "${args[@]}" "$@"
 }
@@ -52,7 +64,10 @@ acquire_operation_lock() {
 service_running() {
   local id
   id="$(compose ps -q "$1")"
-  [[ -n "$id" ]] && [[ "$(docker inspect --format '{{.State.Running}}' "$id")" == true ]]
+  if [[ -z "$id" ]]; then
+    return 1
+  fi
+  [[ "$(docker inspect --format '{{.State.Running}}' "$id")" == true ]]
 }
 
 wait_healthy() {
@@ -61,8 +76,12 @@ wait_healthy() {
     id="$(compose ps -q "$service")"
     if [[ -n "$id" ]]; then
       status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$id")"
-      [[ "$status" == healthy ]] && return
-      [[ "$status" == exited || "$status" == dead ]] && die "$service stopped before becoming healthy"
+      if [[ "$status" == healthy ]]; then
+        return
+      fi
+      if [[ "$status" == exited || "$status" == dead ]]; then
+        die "$service stopped before becoming healthy"
+      fi
     fi
     sleep "${HEALTH_INTERVAL_SECONDS:-5}"
   done
