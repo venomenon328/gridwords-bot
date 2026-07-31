@@ -1,0 +1,16 @@
+.git/
+.github/
+.vscode/
+.agents/
+.codex/
+target/
+.env
+.env.*
+!.env.example
+!.env.production.example
+backups/
+logs/
+tmp/
+data/
+*.log
+*.md
