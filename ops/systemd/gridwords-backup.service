@@ -1,0 +1,20 @@
+[Unit]
+Description=Create and validate a GridWords PostgreSQL backup
+Requires=docker.service
+After=docker.service
+ConditionPathExists=/opt/gridwords-bot/runtime.env
+
+[Service]
+Type=oneshot
+User=gridwords
+Group=gridwords
+WorkingDirectory=/opt/gridwords-bot
+ExecStart=/opt/gridwords-bot/scripts/backup.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/gridwords-bot/backups
+ReadOnlyPaths=/opt/gridwords-bot
