@@ -37,7 +37,11 @@ fi
 
 compose_with_image "$target" up -d postgres
 BOT_IMAGE="$target" wait_healthy postgres
-BOT_IMAGE="$target" "$(dirname "$0")/backup.sh" >/dev/null
+backup_path=''
+if ! backup_path="$(BOT_IMAGE="$target" "$(dirname "$0")/backup.sh")"; then
+  die 'Pre-deployment database backup failed'
+fi
+echo "Pre-deployment backup verified: $backup_path"
 [[ "${SKIP_IMAGE_PULL:-false}" == true ]] || docker pull "$target"
 
 if compose_with_image "$target" up -d --no-deps bot && "$verify_script" "$target"; then
