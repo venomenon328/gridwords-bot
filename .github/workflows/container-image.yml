@@ -41,9 +41,10 @@ jobs:
         run: mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
 
   verify-image:
-    name: Build and inspect image
+    name: Build and exercise production image
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     outputs:
       revision: ${{ steps.metadata.outputs.revision }}
       build_date: ${{ steps.metadata.outputs.build_date }}
@@ -57,6 +58,13 @@ jobs:
         run: |
           echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "build_date=$(git log -1 --format=%cI)" >> "$GITHUB_OUTPUT"
+
+      - name: Install shell tooling
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes shellcheck
+          shellcheck scripts/*.sh scripts/test/*.sh
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -85,6 +93,25 @@ jobs:
             test ! -d /root/.m2
           '
 
+      - name: Build operation-test releases
+        shell: bash
+        run: |
+          docker tag gridwords-bot:ci gridwords-bot:1.0.0
+          cat > /tmp/gridwords-release.Dockerfile <<'EOF'
+          FROM gridwords-bot:ci
+          LABEL io.gridwords.test.release="1.0.1"
+          EOF
+          docker build --pull=false --file /tmp/gridwords-release.Dockerfile --tag gridwords-bot:1.0.1 .
+          cat > /tmp/gridwords-unhealthy.Dockerfile <<'EOF'
+          FROM gridwords-bot:ci
+          ENTRYPOINT ["/bin/sh", "-c", "exit 42"]
+          EOF
+          docker build --pull=false --file /tmp/gridwords-unhealthy.Dockerfile --tag gridwords-bot:9.9.9 .
+
+      - name: Exercise Compose, backup, restore, resume and rollback
+        shell: bash
+        run: bash scripts/test/production-operations.sh
+
   publish-image:
     name: Publish private GHCR image
     needs: [test, verify-image]
@@ -96,14 +123,15 @@ jobs:
       contents: read
       packages: write
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Validate manual release tag
+      - name: Validate manual release source and tag
         if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
+          [[ "$GITHUB_REF" == 'refs/heads/main' ]]
           [[ "${{ inputs.release_tag }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+
+      - name: Check out repository
+        uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
