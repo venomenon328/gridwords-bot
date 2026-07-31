@@ -1,0 +1,85 @@
+name: gridwords-production
+
+services:
+  postgres:
+    image: postgres:16.14-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB must be set}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER must be set}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+    command: ["postgres", "-c", "max_connections=50"]
+    volumes:
+      - gridwords-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1g
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "5"
+
+  bot:
+    image: ${BOT_IMAGE:?BOT_IMAGE must be set to an immutable image tag}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-production,database}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set}
+      DATABASE_USERNAME: ${DATABASE_USERNAME:?DATABASE_USERNAME must be set}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set}
+      DISCORD_ENABLED: ${DISCORD_ENABLED:?DISCORD_ENABLED must be set}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:?DISCORD_GUILD_ID must be set}
+      DISCORD_CHANNEL_ID: ${DISCORD_CHANNEL_ID:?DISCORD_CHANNEL_ID must be set}
+      ADMIN_USER_IDS: ${ADMIN_USER_IDS:?ADMIN_USER_IDS must be set}
+      REMINDER_FIRST_TIME: ${REMINDER_FIRST_TIME:-18:00}
+      REMINDER_SECOND_TIME: ${REMINDER_SECOND_TIME:-23:00}
+      WEEKLY_REPORT_TIME: ${WEEKLY_REPORT_TIME:-08:00}
+      MONTHLY_REPORT_TIME: ${MONTHLY_REPORT_TIME:-08:15}
+      TIME_ZONE: ${TIME_ZONE:-Europe/Berlin}
+      RAW_IMAGE_RETENTION_HOURS: ${RAW_IMAGE_RETENTION_HOURS:-48}
+      TZ: ${TIME_ZONE:-Europe/Berlin}
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent --show-error http://127.0.0.1:8081/actuator/health/readiness >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 60s
+    networks:
+      - backend
+      - default
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1g
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "5"
+
+networks:
+  backend:
+    internal: true
+
+volumes:
+  gridwords-postgres-data:
+

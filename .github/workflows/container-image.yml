@@ -1,0 +1,178 @@
+name: Container image
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Explicit release tag in MAJOR.MINOR.PATCH format
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: container-image-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Maven verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Verify project
+        run: mvn --batch-mode --no-transfer-progress clean verify
+
+      - name: Verify PostgreSQL persistence integration
+        run: mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
+
+  verify-image:
+    name: Build and exercise production image
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    outputs:
+      revision: ${{ steps.metadata.outputs.revision }}
+      build_date: ${{ steps.metadata.outputs.build_date }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Read deterministic image metadata
+        id: metadata
+        shell: bash
+        run: |
+          echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "build_date=$(git log -1 --format=%cI)" >> "$GITHUB_OUTPUT"
+
+      - name: Install shell tooling
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes shellcheck
+          shellcheck -x -P scripts -P scripts/test scripts/*.sh scripts/test/*.sh
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build local image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          push: false
+          tags: gridwords-bot:ci
+          build-args: |
+            VCS_REF=${{ steps.metadata.outputs.revision }}
+            VERSION=sha-${{ steps.metadata.outputs.revision }}
+            BUILD_DATE=${{ steps.metadata.outputs.build_date }}
+
+      - name: Verify runtime image contents
+        shell: bash
+        run: |
+          test "$(docker image inspect gridwords-bot:ci --format '{{.Config.User}}')" = "gridwords:gridwords"
+          docker run --rm --entrypoint /bin/sh gridwords-bot:ci -c '
+            test "$(id -u)" = "10001" &&
+            test -f /app/gridwords-bot.jar &&
+            test ! -e /app/.env &&
+            test ! -e /workspace &&
+            test ! -d /root/.m2
+          '
+
+      - name: Build operation-test releases
+        shell: bash
+        run: |
+          docker tag gridwords-bot:ci gridwords-bot:1.0.0
+          cat > /tmp/gridwords-release.Dockerfile <<'EOF'
+          FROM gridwords-bot:ci
+          LABEL io.gridwords.test.release="1.0.1"
+          EOF
+          docker build --pull=false --file /tmp/gridwords-release.Dockerfile --tag gridwords-bot:1.0.1 .
+          cat > /tmp/gridwords-unhealthy.Dockerfile <<'EOF'
+          FROM gridwords-bot:ci
+          ENTRYPOINT ["/bin/sh", "-c", "exit 42"]
+          EOF
+          docker build --pull=false --file /tmp/gridwords-unhealthy.Dockerfile --tag gridwords-bot:9.9.9 .
+
+      - name: Exercise Compose, backup, restore, resume and rollback
+        shell: bash
+        run: bash scripts/test/production-operations.sh
+
+  publish-image:
+    name: Publish private GHCR image
+    needs: [test, verify-image]
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Validate manual release source and tag
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          [[ "$GITHUB_REF" == 'refs/heads/main' ]]
+          [[ "${{ inputs.release_tag }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Refuse an existing manual release tag
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          RELEASE_IMAGE: ghcr.io/venomenon328/gridwords-bot:${{ inputs.release_tag }}
+        run: |
+          if docker manifest inspect "$RELEASE_IMAGE" >/dev/null 2>&1; then
+            echo "::error::Release tag already exists and is immutable: $RELEASE_IMAGE"
+            exit 1
+          fi
+
+      - name: Generate image metadata
+        id: image-metadata
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/venomenon328/gridwords-bot
+          tags: |
+            type=sha,prefix=sha-,format=long
+            type=raw,value=${{ inputs.release_tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
+
+      - name: Build and publish image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.image-metadata.outputs.tags }}
+          labels: ${{ steps.image-metadata.outputs.labels }}
+          sbom: true
+          provenance: mode=max
+          build-args: |
+            VCS_REF=${{ needs.verify-image.outputs.revision }}
+            VERSION=sha-${{ needs.verify-image.outputs.revision }}
+            BUILD_DATE=${{ needs.verify-image.outputs.build_date }}

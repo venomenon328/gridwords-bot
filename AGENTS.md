@@ -8,10 +8,13 @@ Lies vor der Implementierung mindestens:
 
 1. `docs/anforderungsspezifikation.md` – verbindliche fachliche Grundanforderungen und Versionsgrenzen
 2. `docs/requirements/series-model.md` – verbindliche Präzisierung und Änderung der Serien-, Tagesstatus- und Berichtssemantik
-3. `docs/architecture.md` – verbindliche Architektur, Modulgrenzen und Abläufe
-4. `docs/development-guide.md` – Build, Tests, Secrets und Arbeitsweise
-5. `docs/implementation-plan.md` – Reihenfolge der Inkremente
-6. vorhandene ADRs unter `docs/adr/`, wenn die Aufgabe die dort behandelten Entscheidungen berührt
+3. `docs/requirements/dynamic-player-model.md` – dynamische Spieler, Teilnahmezeiträume und Reminder-Opt-out
+4. `docs/requirements/daily-status-reminders.md` – Tagesstatus, Scheduler und Reminder-Auslieferung
+5. `docs/architecture.md` – verbindliche Architektur, Modulgrenzen und Abläufe
+6. `docs/development-guide.md` – Build, Tests, Secrets und Arbeitsweise
+7. `docs/implementation-plan.md` – Reihenfolge der Inkremente
+8. `docs/requirements/production-deployment.md`, wenn die Aufgabe Build, Container, Deployment, Secrets, Backups oder Produktion betrifft
+9. vorhandene ADRs unter `docs/adr/`, wenn die Aufgabe die dort behandelten Entscheidungen berührt
 
 Bei Widersprüchen gilt:
 
@@ -29,10 +32,11 @@ Widersprüche nicht stillschweigend auflösen. Im Ergebnisbericht benennen oder 
 
 - Kleiner, einzelner Discord-Bot als modularer Monolith
 - Java 21, Spring Boot, Maven, JDA, PostgreSQL, Liquibase
-- Genau ein konfigurierter Server, ein Channel und zwei Spieler in Version 1
+- Genau ein konfigurierter Discord-Server und ein Channel; Spieler werden dynamisch aus gültigen Shares beziehungsweise Commands verwaltet
 - Keine Microservices, keine verteilte Queue, kein generisches Plugin-Framework
 - Keine generative KI zur Laufzeit
-- Docker Desktop und Docker Compose stehen auf dem primären Entwicklungsrechner zur Verfügung und dürfen für Persistenz-, Integrations- und Smoke-Tests vorausgesetzt werden.
+- Docker Desktop und Docker Compose stehen auf dem primären Entwicklungsrechner zur Verfügung und dürfen für Persistenz-, Integrations-, Container- und Smoke-Tests vorausgesetzt werden
+- Produktionsziel ist ein containerisierter Betrieb auf einem Debian-13-VPS gemäß ADR 0013
 
 Einfachheit, Nachvollziehbarkeit und robuste Fehlerbehandlung sind wichtiger als abstrakte Wiederverwendbarkeit.
 
@@ -51,7 +55,8 @@ Einfachheit, Nachvollziehbarkeit und robuste Fehlerbehandlung sind wichtiger als
 
 - Der JDA-Listener bleibt dünn: filtern, unveränderliche Eingabedaten kopieren, an einen Use Case delegieren.
 - Keine längeren Datenbank- oder Discord-Operationen auf dem JDA-Event-Thread.
-- Nur der konfigurierte Server, Channel und die zwei konfigurierten Nutzer werden verarbeitet.
+- Nur der konfigurierte Server und Channel werden verarbeitet.
+- Jeder menschliche Nutzer kann durch ein vollständig gültiges Share Spieler werden; die dynamischen Teilnahme- und Reminderregeln sind verbindlich.
 - Bot- und Webhook-Nachrichten werden ignoriert.
 
 ### Sichere Ergebnisersetzung
@@ -76,7 +81,7 @@ Jeder Schritt muss nach einem Absturz oder erneut zugestellten Event gefahrlos f
 
 ### Serienmodell
 
-- Serien werden aus den persistierten Spielergebnissen abgeleitet und eindeutig benannt.
+- Serien werden aus den persistierten Spielergebnissen und den historisch wirksamen Teilnahmezeiträumen abgeleitet und eindeutig benannt.
 - Persönlich zu berechnen sind Aktivitätsserie, Komplettserie, GridWords-Lösungsserie, QuadWords-Lösungsserie und Perfektserie.
 - Gemeinsam zu berechnen sind gemeinsame Komplettserie und gemeinsame Perfektserie.
 - Es gibt keine gemeinsame Aktivitätsserie.
@@ -96,10 +101,24 @@ Jeder Schritt muss nach einem Absturz oder erneut zugestellten Event gefahrlos f
 - H2 ersetzt keine PostgreSQL-Integrationstests.
 - Maßgeblich ist `docs/adr/0010-docker-available-local-development.md`; ADR 0004 dokumentiert nur noch den historischen Ausgangspunkt.
 
+### Produktionscontainer und Betrieb
+
+- Verbindlich sind `docs/requirements/production-deployment.md` und ADR 0013.
+- Das Produktionsimage läuft als Nicht-Root-Benutzer.
+- Runtimeimages enthalten keine Quellen, Maven-Caches, `.env`-Dateien, Tokens, Passwörter oder privaten Schlüssel.
+- Produktive Secrets werden ausschließlich serverseitig und mit restriktiven Dateirechten bereitgestellt.
+- PostgreSQL und Management-/Actuatorports werden in Produktion nicht öffentlich veröffentlicht.
+- Deployment verwendet explizite unveränderliche Image-Tags; `latest` ist keine zulässige reproduzierbare Referenz.
+- Vor jedem Produktionsdeployment wird ein geprüftes Datenbankbackup erstellt.
+- App-Rollback und Datenbank-Restore sind getrennte Vorgänge.
+- Shellskripte verwenden sichere Optionen, validieren Eingaben und melden Fehler eindeutig; kein stilles Weiterlaufen nach Teilfehlern.
+- Backups werden atomar erzeugt und vor Erfolgsmeldung validiert.
+- Kein automatisches Produktionsdeployment aus GitHub Actions in Inkrement 9.
+
 ## 4. Code- und Testregeln
 
 - Bevorzuge kleine, benannte Typen und klare Kontrollflüsse gegenüber cleveren Abstraktionen.
-- Keine vorauseilende Generalisierung für weitere Server, Spiele oder beliebig viele Nutzer.
+- Keine vorauseilende Generalisierung für weitere Server, Spiele oder beliebige Infrastrukturziele.
 - Keine Lombok-Abhängigkeit.
 - Keine ungeprüften `Optional.get()`, keine leeren Catch-Blöcke, keine pauschalen `catch (Exception)` ohne fachliche Übersetzung oder Logging.
 - Logs dürfen niemals Tokens, Passwörter, vollständige `.env`-Inhalte oder unnötige fremde Nachrichteninhalte enthalten.
@@ -110,6 +129,8 @@ Jeder Schritt muss nach einem Absturz oder erneut zugestellten Event gefahrlos f
 - Zeitabhängige Tests verwenden eine feste `Clock`.
 - Fehlerpfade und Idempotenz sind ebenso zu testen wie der Happy Path.
 - Unit-, Domain-, Application-, Architektur- und Discord-Adaptertests müssen ohne Container-Runtime laufen; Persistenzintegration darf und soll Docker verwenden.
+- Deployment-, Backup- und Restore-Skripte benötigen automatisierte Happy-Path-, Fehler- und Wiederholungstests in einer isolierten Containerumgebung.
+- Containerprüfungen müssen mindestens Nicht-Root-Runtime, Secretfreiheit, Health, leeres Volume, Neustart und fehlende PostgreSQL-Portfreigabe abdecken.
 
 ## 5. Standardbefehle
 
@@ -134,14 +155,26 @@ docker compose up -d postgres
 docker compose ps
 ```
 
-Nicht behaupten, Datenbankintegrationstests seien erfolgreich gewesen, wenn nur der Standardbuild ausgeführt wurde.
+Bei Produktionscontaineränderungen zusätzlich mindestens:
 
-Für lokale manuelle Ausführung gelten die Befehle aus `README.md` und `docs/development-guide.md`.
+```bash
+docker build -t gridwords-bot:test .
+docker compose --env-file .env.production.test -f compose.production.yaml config
+docker compose --env-file .env.production.test -f compose.production.yaml up -d
+docker compose --env-file .env.production.test -f compose.production.yaml ps
+```
 
-## 6. Umgang mit Abhängigkeiten
+Die konkrete Test-Environment-Datei darf nur nicht geheime Testwerte enthalten und wird nicht als produktive Konfiguration verwendet.
+
+Nicht behaupten, Datenbankintegrationstests, Container-, Backup-, Restore- oder Deploymenttests seien erfolgreich gewesen, wenn sie nicht tatsächlich ausgeführt wurden.
+
+Für lokale manuelle Ausführung gelten die Befehle aus `README.md`, `docs/development-guide.md` und den Betriebsdokumenten.
+
+## 6. Umgang mit Abhängigkeiten und Basisimages
 
 - Keine Versionsnummer erfinden.
 - Neue oder geänderte Versionen gegen Maven Central beziehungsweise die offizielle Projektdokumentation prüfen.
+- Containerbasis- und PostgreSQL-Images bewusst auf unterstützte Versionen pinnen und die Auswahl dokumentieren.
 - Stabile Releases bevorzugen; keine Snapshot-, Milestone- oder Release-Candidate-Version ohne explizite Begründung.
 - Neue Bibliotheken nur hinzufügen, wenn die Standardbibliothek oder bestehende Abhängigkeiten die Aufgabe nicht angemessen lösen.
 - Bei einer neuen wesentlichen Bibliothek Nutzen, Alternativen und Betriebsfolgen im PR beschreiben.
@@ -149,10 +182,11 @@ Für lokale manuelle Ausführung gelten die Befehle aus `README.md` und `docs/de
 ## 7. Dokumentation und Architekturänderungen
 
 - Fachliche Anforderungen nicht beiläufig im Code neu definieren.
-- Eine Änderung an Modulgrenzen, Persistenzstrategie, Discord-Ersetzungsablauf, Scheduling, Testinfrastruktur oder Technologieauswahl erfordert vor der Implementierung ein neues beziehungsweise aktualisiertes ADR.
+- Eine Änderung an Modulgrenzen, Persistenzstrategie, Discord-Ersetzungsablauf, Scheduling, Testinfrastruktur, Deployment oder Technologieauswahl erfordert vor der Implementierung ein neues beziehungsweise aktualisiertes ADR.
 - Bestehende ADRs werden nicht rückwirkend umgeschrieben, wenn eine Entscheidung ersetzt wird; stattdessen neues ADR mit Verweis auf das abgelöste Dokument.
 - Fachliche Präzisierungen, die ältere Anforderungsformulierungen ersetzen, werden unter `docs/requirements/` dokumentiert und müssen ihren Geltungsbereich ausdrücklich nennen.
 - README bleibt Einstiegsdokument und verlinkt auf detaillierte Dokumente, dupliziert sie aber nicht vollständig.
+- Betriebsanleitungen enthalten kopierbare Befehle, Voraussetzungen, erwartete Ergebnisse, Abbruchbedingungen und sichere Rückwege.
 
 ## 8. Git- und Aufgabenworkflow
 
@@ -161,8 +195,9 @@ Für lokale manuelle Ausführung gelten die Befehle aus `README.md` und `docs/de
 - Keine direkte Änderung von `main`, sofern nicht ausdrücklich verlangt.
 - Kleine logisch zusammengehörige Commits mit verständlichen Commit-Nachrichten.
 - Bestehende Nutzeränderungen nicht zurücksetzen.
-- Keine Secrets, lokalen Datenbanken, generierten Binärdateien oder IDE-Artefakte committen.
-- Docker darf in Issues, Codex-/Terra-Aufträgen und lokalen Prüfungen vorausgesetzt werden, wenn der Aufgabenbereich Persistenz oder Integration betrifft. Der infrastrukturlosen Standardbuild bleibt dennoch verpflichtend.
+- Keine Secrets, lokalen Datenbanken, generierten Binärdateien, Backups oder IDE-Artefakte committen.
+- Docker darf in Issues, Codex-/Terra-Aufträgen und lokalen Prüfungen vorausgesetzt werden, wenn der Aufgabenbereich Persistenz, Container oder Integration betrifft. Der infrastrukturlose Standardbuild bleibt dennoch verpflichtend.
+- PRs für Produktionsbetrieb bleiben Draft, bis automatisierte und reale Serverabnahme vollständig sind.
 
 ## 9. Abschlussbericht für Codex-Aufgaben
 
@@ -175,4 +210,4 @@ Am Ende immer knapp berichten:
 - nicht ausgeführte Tests mit Grund,
 - verbleibende Risiken oder notwendige manuelle beziehungsweise CI-Prüfungen.
 
-Nicht behaupten, ein Build, Test oder Discord-Smoke-Test sei erfolgreich gewesen, wenn er nicht tatsächlich ausgeführt wurde.
+Nicht behaupten, ein Build, Test, Imagepush, Backup, Restore, Deployment, Rollback oder Discord-Smoke-Test sei erfolgreich gewesen, wenn er nicht tatsächlich ausgeführt wurde.
