@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+# shellcheck source=common.sh
 source "$(dirname "$0")/common.sh"
 require_file "$RUNTIME_ENV_FILE"
 
@@ -19,7 +20,9 @@ flock -n 9 || die 'Another backup is already running'
 prune() {
   local pattern="$1" keep="$2" file
   while IFS= read -r file; do
-    [[ -n "$file" ]] && rm -f -- "$file"
+    if [[ -n "$file" ]]; then
+      rm -f -- "$file"
+    fi
   done < <(find "$BACKUP_DIR" -maxdepth 1 -type f -name "$pattern" -printf '%T@ %p\n' \
     | sort -nr | tail -n +$((keep + 1)) | cut -d' ' -f2-)
 }
@@ -33,9 +36,13 @@ fi
 name="gridwords-$(date -u +%Y%m%dT%H%M%S%NZ).dump"
 tmp="$BACKUP_DIR/.${name}.tmp.$$"
 final="$BACKUP_DIR/$name"
+weekly_tmp=''
 cleanup() {
   if [[ -n "${tmp:-}" ]]; then
     rm -f -- "$tmp"
+  fi
+  if [[ -n "${weekly_tmp:-}" ]]; then
+    rm -f -- "$weekly_tmp"
   fi
   :
 }
@@ -57,6 +64,7 @@ if [[ "$(TZ=Europe/Berlin date +%u)" == 1 || "${BACKUP_FORCE_WEEKLY:-false}" == 
   weekly_tmp="${weekly}.tmp.$$"
   cp "$final" "$weekly_tmp"
   mv -f "$weekly_tmp" "$weekly"
+  weekly_tmp=''
 fi
 
 prune 'gridwords-*.dump' "${DAILY_RETENTION:-14}"
