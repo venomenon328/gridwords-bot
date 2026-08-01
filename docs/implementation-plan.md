@@ -1,6 +1,6 @@
 # Implementierungsplan
 
-Dieser Plan zerlegt die Anforderungsspezifikation in kleine, reviewbare Inkremente. Für Serien gilt `docs/requirements/series-model.md`; für dynamische Spieler und Reminder-Teilnahme `docs/requirements/dynamic-player-model.md`; für Tagesstatus und Reminder-Auslieferung `docs/requirements/daily-status-reminders.md`; für das Produktionsdeployment `docs/requirements/production-deployment.md`; für lokale Infrastruktur und Datenbanktests `docs/adr/0010-docker-available-local-development.md`.
+Dieser Plan zerlegt die Anforderungsspezifikation in kleine, reviewbare Inkremente. Für Serien gilt `docs/requirements/series-model.md`; für dynamische Spieler und Reminder-Teilnahme `docs/requirements/dynamic-player-model.md`; für Tagesstatus und Reminder-Auslieferung `docs/requirements/daily-status-reminders.md`; für periodische Berichte `docs/requirements/periodic-reports.md`; für das Produktionsdeployment `docs/requirements/production-deployment.md`; für lokale Infrastruktur und Datenbanktests `docs/adr/0010-docker-available-local-development.md`.
 
 ## Leitprinzipien
 
@@ -13,6 +13,8 @@ Dieser Plan zerlegt die Anforderungsspezifikation in kleine, reviewbare Inkremen
 - QuadWords-Bildparser und sichere QuadWords-Konsolidierung werden vor Tagesstatus und Erinnerungen umgesetzt.
 - Dynamische Spieler, historische Teilnahmezeiträume und Reminder-Opt-out werden vor dem Reminder-Scheduler umgesetzt.
 - Der Produktionsweg baut auf unveränderlichen Containerimages, serverseitigen Secrets, Backups vor Updates und expliziten Deployments auf.
+- Periodische Berichte bauen auf abgeleiteten Kennzahlen, einem expliziten Periodenend-Stichtag und persistenter idempotenter Delivery auf.
+- Große Inkremente werden in kleine, einzeln reviewbare und jeweils vollständig getestete Terra-Pakete zerlegt.
 
 ## Inkremente 0 bis 5
 
@@ -232,98 +234,126 @@ Verbindlich: `docs/requirements/daily-status-reminders.md`, `docs/increments/08-
 
 ## Inkrement 9 – Reproduzierbares Produktionsdeployment und Betriebshärtung
 
-**Status:** vorbereitet; Issue #23, Branch `feature/production-deployment-hardening` und Draft-PR #24.
+**Status:** abgeschlossen; Issue #23 geschlossen und PR #24 am 1. August 2026 gemergt.
 
-**Ziel:** Die vollständig abgenommene Kernversion wird reproduzierbar, sicher und wartbar auf einem Netcup VPS 500 G12 unter Debian 13 betrieben.
+**Ergebnis:** Die Kernversion läuft reproduzierbar und gehärtet auf einem Netcup VPS 500 G12 unter Debian 13.
 
-Verbindliche Zielarchitektur:
+Umgesetzt:
 
-- privates Bot-Image in GHCR
-- Docker Engine und Docker Compose
-- Bot und PostgreSQL als getrennte Container im internen Netz
-- frische Produktionsdatenbank
-- separate Discord-Produktionsanwendung
-- Deployment bewusst lokal per SSH ausgelöst
-- kein SSH-Zugang des GitHub-Runners zum Server
-- nur SSH öffentlich; keine Domain und kein öffentliches HTTP/HTTPS
-- 14 tägliche und 8 wöchentliche lokale PostgreSQL-Backups
-
-Umsetzungspakete:
-
-1. Multi-Stage-Dockerfile, Nicht-Root-Runtime und Healthchecks
-2. Produktions-Compose, interne Datenbank und Secretmodell
-3. private GHCR-Pipeline mit Commit- und Release-Tags
-4. idempotentes Deploy-/Verify-/App-Rollback-Skript
-5. atomare Backup-/Restore-Skripte und Retention
-6. Debian-13-Bootstrap-, Deployment-, Backup- und Troubleshooting-Handbuch
+- privates GHCR-Image mit unveränderlichen SHA- und expliziten Release-Tags,
+- Multi-Stage-Java-21-Image mit Nicht-Root-Runtime, Healthchecks und begrenzter JVM,
+- Docker Compose mit Bot und PostgreSQL im internen Netz,
+- keine PostgreSQL- oder Actuator-Hostports,
+- serverseitige Secrets und frische PostgreSQL-Datenbank,
+- separate Discord-Produktionsanwendung,
+- idempotentes Deploy-/Verify-/App-Rollback-Skript,
+- atomare Backup-/Restore-Skripte mit 14 täglichen und 8 wöchentlichen Generationen,
+- Debian-13-Bootstrap-, Deployment-, Backup- und Troubleshooting-Handbuch,
+- vollständiger automatisierter Container-, Backup-, Restore-, Upgrade- und Rollback-Vollpfad.
 
 Automatisierte Abnahme:
 
-- beide vollständigen Maven-Builds grün
-- Containerimage gebaut und ohne Secrets geprüft
-- Produktion aus leerem Volume gestartet
-- PostgreSQL nicht am Host veröffentlicht
-- Healthchecks und Neustart grün
-- Backup in leere Testdatenbank restauriert
-- Deployment und App-Rollback automatisiert geprüft
-- bestehende Bot-Funktionalität regressionsfrei
+- 253 Standardtests grün,
+- 76 PostgreSQL-Integrationstests grün,
+- Imagebau, Nicht-Root- und Secretfreiheitsprüfung grün,
+- leeres Volume, Liquibase, Healthchecks und Neustart grün,
+- Backup, separater Restore, Retention, Upgrade und Rollback grün,
+- Fortsetzung nach Unterbrechung, Zustandsreconciliation und No-op grün.
 
-Manuelle Abnahme auf Netcup:
+Reale Produktionsabnahme:
 
-- gehärteter Debian-13-Host
-- privater GHCR-Pull
-- frische Datenbank und Liquibase-Startup
-- separate Discord-Produktionsanwendung
-- vollständiger GridWords-/QuadWords-/Status-/Reminder-Ende-zu-Ende-Test
-- Container- und Serverreboot
-- Backup, Restore und App-Rollback
+- gehärteter Debian-13-Host,
+- authentifizierter privater GHCR-Pull,
+- frische Datenbank und Liquibase-Startup,
+- separate Discord-Produktionsanwendung,
+- Bot und PostgreSQL gesund,
+- Nachrichtenverarbeitung im Produktionschannel erfolgreich,
+- öffentlich weiterhin ausschließlich SSH.
 
-Verbindlich: `docs/requirements/production-deployment.md`, `docs/increments/09-production-deployment-hardening.md`, ADR 0013 und Issue #23.
+Reminder über reguläre Fälligkeiten sowie Restart-, Restore- und Rollbackverhalten werden im laufenden Betrieb beziehungsweise bei realem Anlass beobachtet und nicht künstlich als Mergeblocker erzwungen.
 
-Der PR bleibt bis zur vollständigen automatisierten und realen Serverabnahme Draft und ungemergt.
+Verbindlich: `docs/requirements/production-deployment.md`, `docs/increments/09-production-deployment-hardening.md`, ADR 0013, Issue #23 und PR #24.
 
-## Inkrement 10 – Wochen- und Monatsberichte
+## Inkrement 10 – Abgeleitete Wochen- und Monatsberichte
 
-- Wochenbericht Montag 08:00
-- Monatsbericht am Monatsersten 08:15
-- persistierte Delivery-Idempotenz
-- persönliche und gemeinsame Kennzahlen und längste Serien
-- keine Gewinnerlogik
+**Status:** vorbereitet; Issue #25, Branch `feature/periodic-reporting` und Draft-PR #26.
+
+**Ziel:** Der produktive Bot veröffentlicht idempotente Berichte über die vollständig abgeschlossene Vorwoche und den vollständig abgeschlossenen Vormonat. Alle Kennzahlen bleiben aus Ergebnissen und historischen Teilnahmezeiträumen abgeleitet.
+
+Verbindliche Entscheidungen:
+
+- Wochenbericht montags um 08:00,
+- Monatsbericht am Monatsersten um 08:15,
+- `Europe/Berlin` und expliziter Periodenend-Stichtag,
+- alle Spieler mit mindestens einem Teilnahmetag in der Periode,
+- individuelle Nenner nur aus Teilnahmetagen,
+- gemeinsame Nenner nur aus Tagen mit mindestens zwei aktiven Spielern,
+- persönliche Spiel-, Tages- und Serienwerte,
+- beide gemeinsamen Serien,
+- Serienstand und Allzeitrekord bis Periodenende,
+- keine Gewinnerlogik, Ranglisten oder Mentions,
+- deterministische Mehrseiten-Pagination,
+- persistente Delivery mit Claim, Lease, Retry, Fingerprint und geordneten Message-IDs,
+- 72 Stunden Wochen- und sieben Tage Monats-Catch-up,
+- erfolgreiche Berichte bleiben Snapshots,
+- keine persistierten Statistik-Snapshots als zweite fachliche Wahrheit.
+
+Umsetzungspakete:
+
+0. Fachliche Grundlage und Projektstatus
+1. Perioden- und Reportdomäne
+2. Teilnehmer und mögliche Tage
+3. Spielbezogene Periodenstatistiken
+4. Tagesmerkmale und Serien-Snapshots
+5. Gemeinsamer Reporting-Use-Case
+6. Discord-Renderer und Pagination
+7. Persistente Report-Delivery
+8. Wochenbericht und Scheduler
+9. Monatsbericht und Scheduler
+10. Gesamtintegration und Produktionsfreigabe
+
+Jedes Paket endet mit einem kompilierenden Commit und den einschlägigen Tests. Terra erhält immer nur den nächsten Paketauftrag.
+
+Verbindlich: `docs/requirements/periodic-reports.md`, `docs/increments/10-periodic-reports.md`, ADR 0014 und Issue #25.
 
 ## Inkrement 11 – Statistik- und Konfigurations-Commands
 
-- Statistik-Slash-Commands
-- eindeutige Auswahl der sieben Serienarten
-- Zeitkonfiguration
-- Admin-Autorisierung
-- Scheduler-Neuplanung ohne Neustart
+- Read-only-Statistik-Slash-Commands auf derselben Reporting-Grundlage,
+- eindeutige Auswahl der sieben Serienarten,
+- danach getrennt persistente Zeitkonfiguration,
+- Admin-Autorisierung,
+- Scheduler-Neuplanung ohne Neustart.
 
 ## Inkrement 12 – Regelbasierte Kommentare
 
-- regelbasierte Kategorien und Textvarianten
-- Serien-, Komplett- und Perfekt-Auslöser
-- definierte Nachrichtenlimits
-- keine generative KI
+- regelbasierte Kategorien und Textvarianten,
+- Serien-, Komplett- und Perfekt-Auslöser,
+- definierte Nachrichtenlimits,
+- keine generative KI.
 
 ## Bewusste Reihenfolge
 
-- Persistenzzustände vor automatischer Löschung
-- GridWords-Ersetzung vor QuadWords-Ersetzung
-- QuadWords-Bildparser vor QuadWords-Konsolidierung
-- sichere Konsolidierung beider Spiele vor Tagesstatus und Erinnerungen
-- kompaktes QuadWords-Layout als isoliertes Renderer-Polish vor dynamischen Spielern
-- dynamische Teilnahmezeiträume und Reminder-Opt-out vor Tagesstatus und Scheduler
-- Produktionshärtung und reproduzierbarer Betrieb vor Berichten und Komfortfunktionen
-- robuste Serienlogik vor Berichten und Kommentaren
+- Persistenzzustände vor automatischer Löschung,
+- GridWords-Ersetzung vor QuadWords-Ersetzung,
+- QuadWords-Bildparser vor QuadWords-Konsolidierung,
+- sichere Konsolidierung beider Spiele vor Tagesstatus und Erinnerungen,
+- kompaktes QuadWords-Layout als isoliertes Renderer-Polish vor dynamischen Spielern,
+- dynamische Teilnahmezeiträume und Reminder-Opt-out vor Tagesstatus und Scheduler,
+- Produktionshärtung und reproduzierbarer Betrieb vor Berichten und Komfortfunktionen,
+- robuste Serienlogik vor Berichten und Kommentaren,
+- gemeinsamer Reporting-Kern vor Statistik-Commands,
+- Read-only-Statistik vor schreibender Zeitkonfiguration,
+- Kommentare zuletzt.
 
 ## Definition of Done
 
-- Issue-Abnahmekriterien erfüllt
-- lokaler Standardbuild grün
-- bei Persistenzumfang lokales Datenbankprofil mit Docker grün
-- GitHub Actions vollständig grün
-- keine Secrets
-- Dokumentation aktualisiert
-- notwendiger manueller Smoke-Test erfolgreich
-- bei Betriebsinkrementen zusätzlich Backup-/Restore-/Upgrade-/Rollback-Weg praktisch geprüft
-- PR reviewbar, Draft-Status erst nach vollständiger Abnahme aufheben
+- Issue-Abnahmekriterien erfüllt,
+- lokaler Standardbuild grün,
+- bei Persistenzumfang lokales Datenbankprofil mit Docker grün,
+- GitHub Actions vollständig grün,
+- keine Secrets,
+- Dokumentation aktualisiert,
+- notwendiger manueller Smoke-Test erfolgreich,
+- bei Betriebsinkrementen zusätzlich Backup-/Restore-/Upgrade-/Rollback-Weg angemessen geprüft,
+- bei Reportinkrementen beide Berichtstypen real dargestellt und duplikatsicher geprüft,
+- PR reviewbar, Draft-Status erst nach vollständiger Abnahme aufheben.
