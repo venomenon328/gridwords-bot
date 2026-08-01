@@ -130,7 +130,7 @@ public final class PeriodicReportRenderer {
         return normalized.isEmpty() ? UNDEFINED : normalized;
     }
 
-    private static List<RenderedReportPage> paginate(String title, List<RenderedReportField> fields) {
+    static List<RenderedReportPage> paginate(String title, List<RenderedReportField> fields) {
         List<RenderedReportPage> pages = List.of();
         int assumedPageCount = 1;
         for (int attempt = 0; attempt <= fields.size() + 1; attempt++) {
@@ -177,7 +177,7 @@ public final class PeriodicReportRenderer {
         }
     }
 
-    private static String fingerprint(List<RenderedReportPage> pages) {
+    static String fingerprint(List<RenderedReportPage> pages) {
         StringBuilder canonical = new StringBuilder();
         append(canonical, "pages", Integer.toString(pages.size()));
         for (RenderedReportPage page : pages) {
