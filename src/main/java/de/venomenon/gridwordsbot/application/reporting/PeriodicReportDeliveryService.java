@@ -60,12 +60,10 @@ public final class PeriodicReportDeliveryService {
         Objects.requireNonNull(result, "result");
         validateReportIdentity(key, metadata, result);
 
-        Instant now = clock.instant();
         Optional<PeriodicReportDeliverySnapshot> existing = store.find(key);
-        if (existing.isPresent() && !now.isBefore(existing.get().registration().metadata().catchUpEndsAt())) {
-            if (!existing.get().state().isTerminal()) {
-                store.markExpired(key, now);
-            }
+        Instant now = clock.instant();
+        if (existing.isPresent() && catchUpEnded(existing.get(), now)) {
+            expireUnfinished(key, existing.get(), now);
             return;
         }
         if (existing.filter(snapshot -> snapshot.state().isTerminal() && snapshot.state() != PeriodicReportDeliveryState.SUCCEEDED)
@@ -96,36 +94,51 @@ public final class PeriodicReportDeliveryService {
         }
 
         Instant claimedAt = clock.instant();
+        Instant catchUpEndsAt = snapshot.registration().metadata().catchUpEndsAt();
+        if (!claimedAt.isBefore(catchUpEndsAt)) {
+            expireUnfinished(key, snapshot, claimedAt);
+            return;
+        }
+        Instant leaseUntil = claimedAt.plus(LEASE);
+        if (leaseUntil.isAfter(catchUpEndsAt)) {
+            leaseUntil = catchUpEndsAt;
+        }
         Optional<PeriodicReportDeliveryClaim> claim = store.claim(
-                key, new PeriodicReportDeliveryClaimRequest(claimedAt, claimedAt.plus(LEASE)));
+                key, new PeriodicReportDeliveryClaimRequest(claimedAt, leaseUntil));
         if (claim.isEmpty()) {
             return;
         }
 
-        Optional<PeriodicReportDeliverySnapshot> ownedSnapshot = ownedSnapshot(key, claim.get());
-        if (ownedSnapshot.isEmpty()) {
+        Optional<ActiveClaim> ownedClaim = activeClaim(key, claim.get());
+        if (ownedClaim.isEmpty()) {
             return;
         }
 
         try {
             if (rendered == null) {
-                store.markNoOp(key, claim.get().token(), clock.instant());
+                activeClaim(key, claim.get()).ifPresent(current ->
+                        store.markNoOp(key, claim.get().token(), current.checkedAt()));
                 return;
             }
             boolean delivered = reconcileSucceededSnapshot
-                    ? reconcileSucceededSnapshot(key, claim.get(), ownedSnapshot.get(), rendered)
-                    : reconcilePages(key, claim.get(), rendered, ownedSnapshot.get().pageProgress());
+                    ? reconcileSucceededSnapshot(key, claim.get(), ownedClaim.get().snapshot(), rendered)
+                    : reconcilePages(key, claim.get(), rendered, ownedClaim.get().snapshot().pageProgress());
             if (delivered) {
-                store.markSucceeded(key, claim.get().token(), clock.instant());
+                activeClaim(key, claim.get()).ifPresent(current ->
+                        store.markSucceeded(key, claim.get().token(), current.checkedAt()));
             }
         } catch (PeriodicReportMessageGateway.PermanentMessageException exception) {
-            markPermanentFailure(key, claim.get(), "periodic report Discord delivery permanently failed");
+            markPermanentFailure(
+                    key,
+                    claim.get(),
+                    "periodic report Discord delivery permanently failed");
         } catch (PeriodicReportMessageGateway.UnknownMessageException
                 | PeriodicReportMessageGateway.MissingMessageException exception) {
             markRetryableFailure(
                     key,
                     claim.get(),
                     snapshot.attemptCount(),
+                    catchUpEndsAt,
                     PeriodicReportDeliveryFailureCategory.UNKNOWN,
                     "periodic report Discord delivery outcome is unknown");
         } catch (PeriodicReportMessageGateway.RetryableMessageException exception) {
@@ -133,6 +146,7 @@ public final class PeriodicReportDeliveryService {
                     key,
                     claim.get(),
                     snapshot.attemptCount(),
+                    catchUpEndsAt,
                     PeriodicReportDeliveryFailureCategory.RETRYABLE,
                     "periodic report Discord delivery is retryable");
         } catch (RuntimeException exception) {
@@ -140,6 +154,7 @@ public final class PeriodicReportDeliveryService {
                     key,
                     claim.get(),
                     snapshot.attemptCount(),
+                    catchUpEndsAt,
                     PeriodicReportDeliveryFailureCategory.UNKNOWN,
                     "unexpected periodic report delivery failure");
         }
@@ -155,18 +170,27 @@ public final class PeriodicReportDeliveryService {
                 .orElse(true);
         boolean missing = false;
         for (PeriodicReportDeliveryPageProgress progress : snapshot.pageProgress()) {
+            if (!ownsActiveClaim(key, claim)) {
+                return false;
+            }
             try {
                 PeriodicReportMessageGateway.PublishedReportPage published = messages.load(key.channelId(), progress.messageId());
-                if (!ownsClaim(key, claim)) {
+                if (!ownsActiveClaim(key, claim)) {
                     return false;
                 }
                 if (!fingerprintChanged && !published.page().equals(expectedPage(rendered, progress.pageIndex()))) {
+                    if (!ownsActiveClaim(key, claim)) {
+                        return false;
+                    }
                     messages.edit(key.channelId(), progress.messageId(), expectedPage(rendered, progress.pageIndex()));
-                    if (!ownsClaim(key, claim)) {
+                    if (!ownsActiveClaim(key, claim)) {
                         return false;
                     }
                 }
             } catch (PeriodicReportMessageGateway.MissingMessageException ignored) {
+                if (!ownsActiveClaim(key, claim)) {
+                    return false;
+                }
                 missing = true;
             }
         }
@@ -186,14 +210,20 @@ public final class PeriodicReportDeliveryService {
             List<PeriodicReportDeliveryPageProgress> confirmedPages) {
         for (PeriodicReportDeliveryPageProgress progress : confirmedPages) {
             PeriodicReportMessageGateway.ReportPage expected = expectedPage(rendered, progress.pageIndex());
+            if (!ownsActiveClaim(key, claim)) {
+                return false;
+            }
             try {
                 PeriodicReportMessageGateway.PublishedReportPage published = messages.load(key.channelId(), progress.messageId());
-                if (!ownsClaim(key, claim)) {
+                if (!ownsActiveClaim(key, claim)) {
                     return false;
                 }
                 if (!published.page().equals(expected)) {
+                    if (!ownsActiveClaim(key, claim)) {
+                        return false;
+                    }
                     messages.edit(key.channelId(), progress.messageId(), expected);
-                    if (!ownsClaim(key, claim)) {
+                    if (!ownsActiveClaim(key, claim)) {
                         return false;
                     }
                 }
@@ -201,7 +231,7 @@ public final class PeriodicReportDeliveryService {
                     return false;
                 }
             } catch (PeriodicReportMessageGateway.MissingMessageException ignored) {
-                if (!replaceMissingPage(key, claim, expected)) {
+                if (!ownsActiveClaim(key, claim) || !replaceMissingPage(key, claim, expected)) {
                     return false;
                 }
             }
@@ -218,11 +248,28 @@ public final class PeriodicReportDeliveryService {
             PeriodicReportDeliveryKey key,
             PeriodicReportDeliveryClaim claim,
             PeriodicReportMessageGateway.ReportPage expected) {
-        long winner = findExactMatches(key, expected).stream()
-                .mapToLong(PeriodicReportMessageGateway.PublishedReportPage::messageId)
-                .min()
-                .orElseGet(() -> messages.create(key.channelId(), expected));
-        if (!store.replacePage(key, claim.token(), new PeriodicReportDeliveryPageProgress(expected.pageIndex(), winner))) {
+        Optional<List<PeriodicReportMessageGateway.PublishedReportPage>> exactMatches =
+                findExactMatches(key, claim, expected);
+        if (exactMatches.isEmpty()) {
+            return false;
+        }
+        long winner;
+        if (exactMatches.get().isEmpty()) {
+            if (!ownsActiveClaim(key, claim)) {
+                return false;
+            }
+            winner = messages.create(key.channelId(), expected);
+            if (!ownsActiveClaim(key, claim)) {
+                return false;
+            }
+        } else {
+            winner = exactMatches.get().getFirst().messageId();
+        }
+        if (!ownsActiveClaim(key, claim)
+                || !store.replacePage(
+                        key,
+                        claim.token(),
+                        new PeriodicReportDeliveryPageProgress(expected.pageIndex(), winner))) {
             return false;
         }
         return reconcileDuplicates(key, claim, expected, winner);
@@ -232,11 +279,28 @@ public final class PeriodicReportDeliveryService {
             PeriodicReportDeliveryKey key,
             PeriodicReportDeliveryClaim claim,
             PeriodicReportMessageGateway.ReportPage expected) {
-        long winner = findExactMatches(key, expected).stream()
-                .mapToLong(PeriodicReportMessageGateway.PublishedReportPage::messageId)
-                .min()
-                .orElseGet(() -> messages.create(key.channelId(), expected));
-        if (!store.recordPage(key, claim.token(), new PeriodicReportDeliveryPageProgress(expected.pageIndex(), winner))) {
+        Optional<List<PeriodicReportMessageGateway.PublishedReportPage>> exactMatches =
+                findExactMatches(key, claim, expected);
+        if (exactMatches.isEmpty()) {
+            return false;
+        }
+        long winner;
+        if (exactMatches.get().isEmpty()) {
+            if (!ownsActiveClaim(key, claim)) {
+                return false;
+            }
+            winner = messages.create(key.channelId(), expected);
+            if (!ownsActiveClaim(key, claim)) {
+                return false;
+            }
+        } else {
+            winner = exactMatches.get().getFirst().messageId();
+        }
+        if (!ownsActiveClaim(key, claim)
+                || !store.recordPage(
+                        key,
+                        claim.token(),
+                        new PeriodicReportDeliveryPageProgress(expected.pageIndex(), winner))) {
             return false;
         }
         return reconcileDuplicates(key, claim, expected, winner);
@@ -248,18 +312,21 @@ public final class PeriodicReportDeliveryService {
             List<PeriodicReportDeliveryPageProgress> existingPages,
             RenderedPeriodicReport rendered) {
         for (PeriodicReportDeliveryPageProgress progress : existingPages) {
+            if (!ownsActiveClaim(key, claim)) {
+                return false;
+            }
             try {
                 messages.delete(key.channelId(), progress.messageId());
             } catch (PeriodicReportMessageGateway.MissingMessageException ignored) {
                 // A missing old page already satisfies controlled replacement.
             }
-            if (!ownsClaim(key, claim)) {
+            if (!ownsActiveClaim(key, claim)) {
                 return false;
             }
         }
         PeriodicReportDeliveryContent content = new PeriodicReportDeliveryContent(
                 rendered.contentFingerprint(), rendered.pages().size());
-        if (!store.replaceContent(key, claim.token(), content)) {
+        if (!ownsActiveClaim(key, claim) || !store.replaceContent(key, claim.token(), content)) {
             return false;
         }
         for (int index = 0; index < rendered.pages().size(); index++) {
@@ -288,7 +355,12 @@ public final class PeriodicReportDeliveryService {
             PeriodicReportDeliveryClaim claim,
             PeriodicReportMessageGateway.ReportPage expected,
             long persistedMessageId) {
-        List<PeriodicReportMessageGateway.PublishedReportPage> matches = findExactMatches(key, expected);
+        Optional<List<PeriodicReportMessageGateway.PublishedReportPage>> exactMatches =
+                findExactMatches(key, claim, expected);
+        if (exactMatches.isEmpty()) {
+            return false;
+        }
+        List<PeriodicReportMessageGateway.PublishedReportPage> matches = exactMatches.get();
         boolean persistedMatch = matches.stream().anyMatch(match -> match.messageId() == persistedMessageId);
         long winner = persistedMatch ? persistedMessageId : matches.stream()
                 .mapToLong(PeriodicReportMessageGateway.PublishedReportPage::messageId)
@@ -296,12 +368,15 @@ public final class PeriodicReportDeliveryService {
                 .orElse(persistedMessageId);
         for (PeriodicReportMessageGateway.PublishedReportPage match : matches) {
             if (match.messageId() != winner) {
+                if (!ownsActiveClaim(key, claim)) {
+                    return false;
+                }
                 try {
                     messages.delete(key.channelId(), match.messageId());
                 } catch (PeriodicReportMessageGateway.MissingMessageException ignored) {
                     // The exact duplicate is already gone.
                 }
-                if (!ownsClaim(key, claim)) {
+                if (!ownsActiveClaim(key, claim)) {
                     return false;
                 }
             }
@@ -309,11 +384,18 @@ public final class PeriodicReportDeliveryService {
         return true;
     }
 
-    private List<PeriodicReportMessageGateway.PublishedReportPage> findExactMatches(
-            PeriodicReportDeliveryKey key, PeriodicReportMessageGateway.ReportPage expected) {
-        return messages.findExactMatches(key.channelId(), expected).stream()
+    private Optional<List<PeriodicReportMessageGateway.PublishedReportPage>> findExactMatches(
+            PeriodicReportDeliveryKey key,
+            PeriodicReportDeliveryClaim claim,
+            PeriodicReportMessageGateway.ReportPage expected) {
+        if (!ownsActiveClaim(key, claim)) {
+            return Optional.empty();
+        }
+        List<PeriodicReportMessageGateway.PublishedReportPage> matches = messages.findExactMatches(key.channelId(), expected)
+                .stream()
                 .sorted(Comparator.comparingLong(PeriodicReportMessageGateway.PublishedReportPage::messageId))
                 .toList();
+        return ownsActiveClaim(key, claim) ? Optional.of(matches) : Optional.empty();
     }
 
     private Optional<PeriodicReportDeliverySnapshot> ownedSnapshot(
@@ -325,8 +407,37 @@ public final class PeriodicReportDeliveryService {
                         .isPresent());
     }
 
-    private boolean ownsClaim(PeriodicReportDeliveryKey key, PeriodicReportDeliveryClaim claim) {
-        return ownedSnapshot(key, claim).isPresent();
+    private Optional<ActiveClaim> activeClaim(
+            PeriodicReportDeliveryKey key, PeriodicReportDeliveryClaim claim) {
+        Optional<PeriodicReportDeliverySnapshot> current = ownedSnapshot(key, claim);
+        Instant now = clock.instant();
+        if (current.isEmpty()) {
+            return Optional.empty();
+        }
+        PeriodicReportDeliverySnapshot snapshot = current.get();
+        PeriodicReportDeliveryClaim persistedClaim = snapshot.claim().orElseThrow();
+        if (!withinCatchUp(snapshot, now) || !now.isBefore(persistedClaim.leaseUntil())) {
+            expireUnfinished(key, snapshot, now);
+            return Optional.empty();
+        }
+        return Optional.of(new ActiveClaim(snapshot, now));
+    }
+
+    private boolean ownsActiveClaim(PeriodicReportDeliveryKey key, PeriodicReportDeliveryClaim claim) {
+        return activeClaim(key, claim).isPresent();
+    }
+
+    private void expireUnfinished(
+            PeriodicReportDeliveryKey key,
+            PeriodicReportDeliverySnapshot snapshot,
+            Instant now) {
+        if (!snapshot.state().isTerminal() && catchUpEnded(snapshot, now)) {
+            store.markExpired(key, now);
+        }
+    }
+
+    private static boolean catchUpEnded(PeriodicReportDeliverySnapshot snapshot, Instant now) {
+        return !now.isBefore(snapshot.registration().metadata().catchUpEndsAt());
     }
 
     private static boolean withinCatchUp(PeriodicReportDeliverySnapshot snapshot, Instant now) {
@@ -339,22 +450,38 @@ public final class PeriodicReportDeliveryService {
             PeriodicReportDeliveryKey key,
             PeriodicReportDeliveryClaim claim,
             int priorAttemptCount,
+            Instant catchUpEndsAt,
             PeriodicReportDeliveryFailureCategory category,
             String safeMessage) {
+        Optional<ActiveClaim> current = activeClaim(key, claim);
+        if (current.isEmpty()) {
+            return;
+        }
+        Instant failureAt = current.get().checkedAt();
+        Instant nextRetryAt = retryAt(failureAt, priorAttemptCount);
+        if (nextRetryAt.isAfter(catchUpEndsAt)) {
+            nextRetryAt = catchUpEndsAt;
+        }
         store.markRetryableFailure(
                 key,
                 claim.token(),
                 new PeriodicReportDeliveryFailure(category, safeMessage),
-                retryAt(clock.instant(), priorAttemptCount));
+                nextRetryAt);
     }
 
     private void markPermanentFailure(
-            PeriodicReportDeliveryKey key, PeriodicReportDeliveryClaim claim, String safeMessage) {
+            PeriodicReportDeliveryKey key,
+            PeriodicReportDeliveryClaim claim,
+            String safeMessage) {
+        Optional<ActiveClaim> current = activeClaim(key, claim);
+        if (current.isEmpty()) {
+            return;
+        }
         store.markPermanentFailure(
                 key,
                 claim.token(),
                 new PeriodicReportDeliveryFailure(PeriodicReportDeliveryFailureCategory.PERMANENT, safeMessage),
-                clock.instant());
+                current.get().checkedAt());
     }
 
     static Instant retryAt(Instant failureAt, int priorAttemptCount) {
@@ -385,6 +512,8 @@ public final class PeriodicReportDeliveryService {
                         .map(value -> new PeriodicReportDeliveryContent(
                                 value.contentFingerprint(), value.pages().size())));
     }
+
+    private record ActiveClaim(PeriodicReportDeliverySnapshot snapshot, Instant checkedAt) { }
 
     private static void validateReportIdentity(
             PeriodicReportDeliveryKey key,
