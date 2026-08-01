@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReport;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportParticipantSection;
+import de.venomenon.gridwordsbot.domain.reporting.RenderedPeriodicReport;
 import de.venomenon.gridwordsbot.domain.reporting.RenderedReportField;
 import de.venomenon.gridwordsbot.domain.reporting.RenderedReportPage;
 import de.venomenon.gridwordsbot.domain.reporting.ReportGameStatistics;
@@ -22,6 +23,7 @@ import de.venomenon.gridwordsbot.domain.reporting.ReportStreakSnapshot;
 import de.venomenon.gridwordsbot.domain.reporting.ReportType;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -104,12 +106,12 @@ class PeriodicReportRendererTest {
     }
 
     @Test
-    void usesDeterministicHalfUpRoundingForPercentagesAttemptsAndDurations() {
+    void usesDeterministicHalfUpRoundingAtMeaningfulBoundariesIncludingDurationsAboveOneHour() {
         var rendered = renderer.render(report(ReportType.WEEKLY, new ReportPeriod(date(2026, 7, 27), date(2026, 8, 2)),
-                player(1, "Anna", 2, 2, 2, 1, 2, 2, 0, 5, 2, 181, 90)));
+                player(1, "Anna", 3, 3, 2, 1, 3, 2, 1, 5, 2, 7_321, 3_660)));
 
         assertThat(rendered.pages().getFirst().fields().getFirst().value())
-                .contains("Quote: 100,0 % · Ø Versuche: 2,5 · Ø Zeit: 1:31 · Bestzeit: 1:30");
+                .contains("Quote: 66,7 % · Ø Versuche: 2,5 · Ø Zeit: 1:01:01 · Bestzeit: 1:01:00");
     }
 
     @Test
@@ -123,7 +125,7 @@ class PeriodicReportRendererTest {
     }
 
     @Test
-    void paginatesAtomicallyForFieldAndVisibleCharacterLimitsAndPlacesSharedLast() {
+    void paginatesAtomicallyForVisibleCharacterLimitsAndPlacesSharedLast() {
         List<PeriodicReportParticipantSection> players = java.util.stream.IntStream.rangeClosed(1, 26)
                 .mapToObj(index -> player(index, "P" + index, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)).toList();
         var rendered = renderer.render(report(ReportType.WEEKLY, new ReportPeriod(date(2026, 7, 27), date(2026, 8, 2)), players));
@@ -131,9 +133,6 @@ class PeriodicReportRendererTest {
         assertThat(rendered.pages()).hasSize(2);
         assertThat(rendered.pages().getFirst().fields()).hasSize(14);
         assertThat(rendered.pages().getFirst().footer()).contains("Seite 1/2");
-        assertThat(new RenderedReportPage("t", java.util.Collections.nCopies(25, new RenderedReportField("n", "v")), Optional.empty()).fields()).hasSize(25);
-        assertThatThrownBy(() -> new RenderedReportPage("t", java.util.Collections.nCopies(26, new RenderedReportField("n", "v")), Optional.empty()))
-                .isInstanceOf(ReportRenderingException.class);
         assertThat(rendered.pages().getLast().fields()).extracting(RenderedReportField::name).contains("P26", "Gemeinsam");
         assertThat(rendered.pages().stream().flatMap(page -> page.fields().stream()).map(RenderedReportField::name))
                 .containsExactlyElementsOf(java.util.stream.Stream.concat(
@@ -146,6 +145,39 @@ class PeriodicReportRendererTest {
                 new ReportPeriod(date(2026, 7, 27), date(2026, 8, 2)), longNamed));
         assertThat(characterLimited.pages()).hasSizeGreaterThan(1);
         assertThat(characterLimited.pages()).allSatisfy(page -> assertThat(page.visibleLength()).isLessThanOrEqualTo(6_000));
+    }
+
+    @Test
+    void paginatesBecauseOfTheFieldCountLimit() {
+        List<RenderedReportField> fields = java.util.stream.IntStream.rangeClosed(1, 26)
+                .mapToObj(index -> new RenderedReportField("F" + index, "v"))
+                .toList();
+
+        List<RenderedReportPage> pages = PeriodicReportRenderer.paginate("t", fields);
+
+        assertThat(pages).hasSize(2);
+        assertThat(pages.getFirst().fields()).hasSize(RenderedReportPage.MAX_FIELDS);
+        assertThat(pages.getLast().fields()).containsExactly(fields.getLast());
+        assertThat(pages).extracting(RenderedReportPage::footer)
+                .containsExactly(Optional.of("Seite 1/2"), Optional.of("Seite 2/2"));
+    }
+
+    @Test
+    void keepsSharedSectionOnTheLastPageWhenItFitsAndMovesItAtomicallyWhenItDoesNot() {
+        RenderedReportField shared = new RenderedReportField("Gemeinsam", "s".repeat(50));
+        List<RenderedReportField> fitting = wideFields(160, shared);
+        List<RenderedReportField> overflowing = wideFields(170, shared);
+
+        List<RenderedReportPage> fittingPages = PeriodicReportRenderer.paginate("t", fitting);
+        List<RenderedReportPage> overflowingPages = PeriodicReportRenderer.paginate("t", overflowing);
+
+        assertThat(fittingPages).singleElement().satisfies(page -> {
+            assertThat(page.fields()).hasSize(6);
+            assertThat(page.fields().getLast()).isEqualTo(shared);
+        });
+        assertThat(overflowingPages).hasSize(2);
+        assertThat(overflowingPages.getFirst().fields()).hasSize(5).doesNotContain(shared);
+        assertThat(overflowingPages.getLast().fields()).containsExactly(shared);
     }
 
     @Test
@@ -168,7 +200,7 @@ class PeriodicReportRendererTest {
     }
 
     @Test
-    void producesStableFingerprintsAndChangesThemForVisibleContentOrderAndPagination() {
+    void producesStableFingerprintsAndChangesThemForVisibleContentAndOrder() {
         PeriodicReport one = report(ReportType.WEEKLY, new ReportPeriod(date(2026, 7, 27), date(2026, 8, 2)),
                 player(1, "Anna", 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), player(2, "Bernd", 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
         PeriodicReport changed = report(ReportType.WEEKLY, one.period(),
@@ -179,8 +211,49 @@ class PeriodicReportRendererTest {
         assertThat(renderer.render(one)).isEqualTo(renderer.render(one));
         assertThat(renderer.render(changed).contentFingerprint()).isNotEqualTo(renderer.render(one).contentFingerprint());
         assertThat(renderer.render(reversed).contentFingerprint()).isNotEqualTo(renderer.render(one).contentFingerprint());
-        assertThatThrownBy(() -> renderer.render(one).pages().add(renderer.render(one).pages().getFirst()))
+    }
+
+    @Test
+    void changesFingerprintWhenOnlyThePaginationStructureChanges() {
+        RenderedReportField first = new RenderedReportField("A", "eins");
+        RenderedReportField second = new RenderedReportField("B", "zwei");
+        List<RenderedReportPage> onePage = List.of(new RenderedReportPage("Titel", List.of(first, second), Optional.empty()));
+        List<RenderedReportPage> twoPages = List.of(
+                new RenderedReportPage("Titel", List.of(first), Optional.of("Seite 1/2")),
+                new RenderedReportPage("Titel", List.of(second), Optional.of("Seite 2/2")));
+
+        assertThat(PeriodicReportRenderer.fingerprint(twoPages))
+                .isNotEqualTo(PeriodicReportRenderer.fingerprint(onePage));
+    }
+
+    @Test
+    void renderedModelsDefensivelyCopyNestedCollectionsAndExposeThemAsImmutable() {
+        RenderedReportField original = new RenderedReportField("A", "eins");
+        List<RenderedReportField> mutableFields = new ArrayList<>();
+        mutableFields.add(original);
+        RenderedReportPage page = new RenderedReportPage("Titel", mutableFields, Optional.empty());
+        List<RenderedReportPage> mutablePages = new ArrayList<>();
+        mutablePages.add(page);
+        RenderedPeriodicReport rendered = new RenderedPeriodicReport(mutablePages, "0".repeat(64));
+
+        mutableFields.add(new RenderedReportField("B", "zwei"));
+        mutablePages.clear();
+
+        assertThat(page.fields()).containsExactly(original);
+        assertThat(rendered.pages()).containsExactly(page);
+        assertThatThrownBy(() -> page.fields().add(new RenderedReportField("C", "drei")))
                 .isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> rendered.pages().add(page))
+                .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    private static List<RenderedReportField> wideFields(int nameLength, RenderedReportField shared) {
+        List<RenderedReportField> fields = new ArrayList<>();
+        for (int index = 0; index < 5; index++) {
+            fields.add(new RenderedReportField("n".repeat(nameLength), "v".repeat(1_024)));
+        }
+        fields.add(shared);
+        return List.copyOf(fields);
     }
 
     private static PeriodicReport report(ReportType type, ReportPeriod period, PeriodicReportParticipantSection... participants) {
