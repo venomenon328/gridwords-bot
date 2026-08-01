@@ -41,3 +41,7 @@ databaseChangeLog:
   - include:
       file: 011-daily-status-reminders.sql
       relativeToChangelogFile: true
+
+  - include:
+      file: 012-periodic-report-delivery.sql
+      relativeToChangelogFile: true
