@@ -91,6 +91,8 @@ public final class PostgresPeriodicReportDeliveryStore implements PeriodicReport
                 SET delivery_state = 'CLAIMED', claim_token = ?, claim_until = ?, next_retry_at = NULL,
                     attempt_count = attempt_count + 1, updated_at = ?
                 WHERE guild_id = ? AND channel_id = ? AND report_type = ? AND period_start = ?
+                  AND due_at <= ?
+                  AND ? < catch_up_ends_at
                   AND (
                       delivery_state = 'OPEN'
                       OR (delivery_state = 'RETRYABLE' AND next_retry_at <= ?)
@@ -100,7 +102,8 @@ public final class PostgresPeriodicReportDeliveryStore implements PeriodicReport
                 """, (rs, row) -> new PeriodicReportDeliveryClaim(
                 rs.getObject("claim_token", UUID.class), instant(rs, "claim_until")), token, utc(request.leaseUntil()),
                 utc(request.claimedAt()), key.guildId(), key.channelId(), key.reportType().name(), key.periodStart(),
-                utc(request.claimedAt()), utc(request.claimedAt())).stream().findFirst();
+                utc(request.claimedAt()), utc(request.claimedAt()), utc(request.claimedAt()), utc(request.claimedAt()))
+                .stream().findFirst();
     }
 
     @Override

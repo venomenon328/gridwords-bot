@@ -133,6 +133,36 @@ class PostgresPeriodicReportDeliveryStoreIT {
     }
 
     @Test
+    void claimUsesThePersistedHalfOpenDeliveryWindow() {
+        PostgresPeriodicReportDeliveryStore windowStore = new PostgresPeriodicReportDeliveryStore(
+                jdbc, Clock.fixed(dueAt().instant().minusSeconds(1), ZoneOffset.UTC));
+
+        assertClaimAt(windowStore, 30, dueAt().instant().minusMillis(1), false);
+        assertClaimAt(windowStore, 31, dueAt().instant(), true);
+        assertClaimAt(windowStore, 32, CATCH_UP_END.minusMillis(1), true);
+        assertClaimAt(windowStore, 33, CATCH_UP_END, false);
+        assertClaimAt(windowStore, 34, CATCH_UP_END.plusMillis(1), false);
+    }
+
+    @Test
+    void expiredLeaseCannotBeTakenOverAfterCatchUpAndCanThenBeExpired() {
+        PostgresPeriodicReportDeliveryStore windowStore = new PostgresPeriodicReportDeliveryStore(
+                jdbc, Clock.fixed(dueAt().instant().minusSeconds(1), ZoneOffset.UTC));
+        PeriodicReportDeliveryRegistration registration = registration(35, Optional.of(content(1)));
+        windowStore.register(registration);
+
+        assertThat(windowStore.claim(
+                registration.key(),
+                request(CATCH_UP_END.minusSeconds(2), CATCH_UP_END.minusSeconds(1)))).isPresent();
+        assertThat(windowStore.claim(
+                registration.key(),
+                request(CATCH_UP_END, CATCH_UP_END.plusSeconds(60)))).isEmpty();
+        assertThat(windowStore.markExpired(registration.key(), CATCH_UP_END)).isTrue();
+        assertThat(windowStore.find(registration.key()).orElseThrow().state())
+                .isEqualTo(PeriodicReportDeliveryState.EXPIRED);
+    }
+
+    @Test
     void tokenFencingAndPageWritesPersistOnlyContiguousVisibleOrder() {
         PeriodicReportDeliveryRegistration registration = registration(4, Optional.of(content(2)));
         store.register(registration);
@@ -211,6 +241,19 @@ class PostgresPeriodicReportDeliveryStoreIT {
         assertThatThrownBy(() -> jdbc.update("""
                 UPDATE periodic_report_delivery SET claim_until = ? WHERE id = ?
                 """, NOW, deliveryId)).isInstanceOf(Exception.class);
+    }
+
+    private void assertClaimAt(
+            PostgresPeriodicReportDeliveryStore targetStore,
+            long channelId,
+            Instant claimedAt,
+            boolean expectedClaim) {
+        PeriodicReportDeliveryRegistration registration = registration(channelId, Optional.of(content(1)));
+        targetStore.register(registration);
+
+        assertThat(targetStore.claim(
+                registration.key(),
+                request(claimedAt, claimedAt.plusSeconds(60))).isPresent()).isEqualTo(expectedClaim);
     }
 
     private Callable<Optional<PeriodicReportDeliveryClaim>> claimAction(

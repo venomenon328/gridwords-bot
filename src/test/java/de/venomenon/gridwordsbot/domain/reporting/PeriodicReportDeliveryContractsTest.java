@@ -78,6 +78,66 @@ class PeriodicReportDeliveryContractsTest {
     }
 
     @Test
+    void snapshotEnforcesTerminalContentAndRetryFailureInvariants() {
+        Instant completedAt = Instant.parse("2026-08-03T08:10:00Z");
+        PeriodicReportDeliveryContent content = new PeriodicReportDeliveryContent(FINGERPRINT, 2);
+        List<PeriodicReportDeliveryPageProgress> allPages = List.of(
+                new PeriodicReportDeliveryPageProgress(0, 101),
+                new PeriodicReportDeliveryPageProgress(1, 102));
+
+        assertThat(snapshot(
+                Optional.empty(),
+                PeriodicReportDeliveryState.NO_OP,
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                List.of(),
+                Optional.of(completedAt)).state()).isEqualTo(PeriodicReportDeliveryState.NO_OP);
+        assertThat(snapshot(
+                Optional.of(content),
+                PeriodicReportDeliveryState.SUCCEEDED,
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                allPages,
+                Optional.of(completedAt)).state()).isEqualTo(PeriodicReportDeliveryState.SUCCEEDED);
+
+        assertThatIllegalArgumentException().isThrownBy(() -> snapshot(
+                Optional.of(content),
+                PeriodicReportDeliveryState.NO_OP,
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                List.of(),
+                Optional.of(completedAt)));
+        assertThatIllegalArgumentException().isThrownBy(() -> snapshot(
+                Optional.of(content),
+                PeriodicReportDeliveryState.SUCCEEDED,
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                List.of(new PeriodicReportDeliveryPageProgress(0, 101)),
+                Optional.of(completedAt)));
+        assertThatIllegalArgumentException().isThrownBy(() -> snapshot(
+                Optional.empty(),
+                PeriodicReportDeliveryState.SUCCEEDED,
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                List.of(),
+                Optional.of(completedAt)));
+        assertThatIllegalArgumentException().isThrownBy(() -> snapshot(
+                Optional.of(content),
+                PeriodicReportDeliveryState.RETRYABLE,
+                Optional.empty(),
+                Optional.of(Instant.parse("2026-08-03T08:20:00Z")),
+                Optional.of(new PeriodicReportDeliveryFailure(
+                        PeriodicReportDeliveryFailureCategory.PERMANENT, "Missing channel permission")),
+                List.of(),
+                Optional.empty()));
+    }
+
+    @Test
     void deliveryDomainAndPortsDoNotDependOnInfrastructureTypes() {
         var classes = new ClassFileImporter().importPackages(
                 "de.venomenon.gridwordsbot.domain.reporting", "de.venomenon.gridwordsbot.port.out");
@@ -100,9 +160,27 @@ class PeriodicReportDeliveryContractsTest {
             Optional<PeriodicReportDeliveryFailure> failure,
             List<PeriodicReportDeliveryPageProgress> progress,
             Optional<Instant> completedAt) {
+        return snapshot(
+                Optional.of(new PeriodicReportDeliveryContent(FINGERPRINT, 2)),
+                state,
+                claim,
+                nextRetryAt,
+                failure,
+                progress,
+                completedAt);
+    }
+
+    private static PeriodicReportDeliverySnapshot snapshot(
+            Optional<PeriodicReportDeliveryContent> content,
+            PeriodicReportDeliveryState state,
+            Optional<PeriodicReportDeliveryClaim> claim,
+            Optional<Instant> nextRetryAt,
+            Optional<PeriodicReportDeliveryFailure> failure,
+            List<PeriodicReportDeliveryPageProgress> progress,
+            Optional<Instant> completedAt) {
         Instant createdAt = Instant.parse("2026-08-03T08:00:00Z");
         return new PeriodicReportDeliverySnapshot(
-                new PeriodicReportDeliveryRegistration(key(), metadata(), Optional.of(new PeriodicReportDeliveryContent(FINGERPRINT, 2))),
+                new PeriodicReportDeliveryRegistration(key(), metadata(), content),
                 state, claim, 1, nextRetryAt, failure, progress, completedAt, createdAt, createdAt);
     }
 

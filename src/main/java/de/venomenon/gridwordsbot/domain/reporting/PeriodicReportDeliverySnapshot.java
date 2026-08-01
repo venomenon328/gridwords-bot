@@ -31,7 +31,7 @@ public record PeriodicReportDeliverySnapshot(
             throw new IllegalArgumentException("attemptCount and timestamps must be consistent");
         }
         validatePageProgress(registration.content(), pageProgress);
-        validateState(state, claim, nextRetryAt, failure, pageProgress, completedAt);
+        validateState(registration.content(), state, claim, nextRetryAt, failure, pageProgress, completedAt);
     }
 
     private static void validatePageProgress(
@@ -51,6 +51,7 @@ public record PeriodicReportDeliverySnapshot(
     }
 
     private static void validateState(
+            Optional<PeriodicReportDeliveryContent> content,
             PeriodicReportDeliveryState state,
             Optional<PeriodicReportDeliveryClaim> claim,
             Optional<Instant> nextRetryAt,
@@ -63,8 +64,9 @@ public record PeriodicReportDeliverySnapshot(
         if (state == PeriodicReportDeliveryState.RETRYABLE != nextRetryAt.isPresent()) {
             throw new IllegalArgumentException("only a retryable delivery may have nextRetryAt");
         }
-        if (state == PeriodicReportDeliveryState.RETRYABLE && failure.isEmpty()) {
-            throw new IllegalArgumentException("retryable delivery needs a failure");
+        if (state == PeriodicReportDeliveryState.RETRYABLE
+                && (failure.isEmpty() || failure.get().category() == PeriodicReportDeliveryFailureCategory.PERMANENT)) {
+            throw new IllegalArgumentException("retryable delivery needs a non-permanent failure");
         }
         if (state == PeriodicReportDeliveryState.FAILED_PERMANENT
                 && (failure.isEmpty() || failure.get().category() != PeriodicReportDeliveryFailureCategory.PERMANENT)) {
@@ -73,11 +75,12 @@ public record PeriodicReportDeliverySnapshot(
         if (state.isTerminal() != completedAt.isPresent()) {
             throw new IllegalArgumentException("only terminal delivery states may have completedAt");
         }
-        if (state == PeriodicReportDeliveryState.NO_OP && !pageProgress.isEmpty()) {
-            throw new IllegalArgumentException("NO_OP delivery must not have page progress");
+        if (state == PeriodicReportDeliveryState.NO_OP && (content.isPresent() || !pageProgress.isEmpty())) {
+            throw new IllegalArgumentException("NO_OP delivery must not have generated content or page progress");
         }
-        if (state == PeriodicReportDeliveryState.SUCCEEDED && pageProgress.isEmpty()) {
-            throw new IllegalArgumentException("successful delivery needs page progress");
+        if (state == PeriodicReportDeliveryState.SUCCEEDED
+                && (content.isEmpty() || pageProgress.size() != content.get().expectedPageCount())) {
+            throw new IllegalArgumentException("successful delivery needs every expected generated page");
         }
     }
 }
