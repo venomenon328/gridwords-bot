@@ -181,6 +181,34 @@ class PostgresPeriodicReportDeliveryStoreIT {
     }
 
     @Test
+    void parallelPageWritersKeepOneContiguousMessageIdPerIndexAndFenceTheStaleLease() throws Exception {
+        PeriodicReportDeliveryRegistration registration = registration(40, Optional.of(content(2)));
+        store.register(registration);
+        PeriodicReportDeliveryClaim stale = store.claim(registration.key(), request(NOW, NOW.plusSeconds(1))).orElseThrow();
+        PeriodicReportDeliveryClaim owner = store.claim(
+                registration.key(), request(NOW.plusSeconds(1), NOW.plusSeconds(60))).orElseThrow();
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(3)) {
+            List<Boolean> firstPageWrites = executor.invokeAll(List.<Callable<Boolean>>of(
+                            () -> store.recordPage(registration.key(), stale.token(), new PeriodicReportDeliveryPageProgress(0, 400)),
+                            () -> store.recordPage(registration.key(), owner.token(), new PeriodicReportDeliveryPageProgress(0, 401)),
+                            () -> store.recordPage(registration.key(), owner.token(), new PeriodicReportDeliveryPageProgress(0, 402))))
+                    .stream().map(this::result).toList();
+            assertThat(firstPageWrites).filteredOn(Boolean::booleanValue).hasSize(1);
+
+            List<Boolean> secondPageWrites = executor.invokeAll(List.<Callable<Boolean>>of(
+                            () -> store.recordPage(registration.key(), stale.token(), new PeriodicReportDeliveryPageProgress(1, 410)),
+                            () -> store.recordPage(registration.key(), owner.token(), new PeriodicReportDeliveryPageProgress(1, 411))))
+                    .stream().map(this::result).toList();
+            assertThat(secondPageWrites).filteredOn(Boolean::booleanValue).hasSize(1);
+        }
+
+        assertThat(store.find(registration.key()).orElseThrow().pageProgress())
+                .extracting(PeriodicReportDeliveryPageProgress::pageIndex).containsExactly(0, 1);
+        assertThat(store.markSucceeded(registration.key(), stale.token(), NOW.plusSeconds(2))).isFalse();
+        assertThat(store.markSucceeded(registration.key(), owner.token(), NOW.plusSeconds(2))).isTrue();
+    }
+    @Test
     void succeededDeliveryCanBeClaimedForRepairAndTokenFencedPagesOrContentCanBeReplaced() {
         PeriodicReportDeliveryRegistration registration = registration(41, Optional.of(content(2)));
         store.register(registration);
@@ -267,6 +295,13 @@ class PostgresPeriodicReportDeliveryStoreIT {
                 """, NOW, deliveryId)).isInstanceOf(Exception.class);
     }
 
+    private boolean result(java.util.concurrent.Future<Boolean> future) {
+        try {
+            return future.get();
+        } catch (Exception exception) {
+            throw new AssertionError(exception);
+        }
+    }
     private void assertClaimAt(
             PostgresPeriodicReportDeliveryStore targetStore,
             long channelId,
