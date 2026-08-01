@@ -20,6 +20,7 @@ import de.venomenon.gridwordsbot.port.out.PeriodicReportMessageGateway;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -79,7 +80,9 @@ public final class PeriodicReportDeliveryService {
 
         Optional<PeriodicReportDeliverySnapshot> ownedSnapshot = store.find(key)
                 .filter(current -> current.state() == PeriodicReportDeliveryState.CLAIMED)
-                .filter(current -> current.claim().map(PeriodicReportDeliveryClaim::token).filter(claim.get().token()::equals).isPresent());
+                .filter(current -> current.claim().map(PeriodicReportDeliveryClaim::token)
+                        .filter(claim.get().token()::equals)
+                        .isPresent());
         if (ownedSnapshot.isEmpty()) {
             return;
         }
@@ -89,20 +92,33 @@ public final class PeriodicReportDeliveryService {
                 store.markNoOp(key, claim.get().token(), clock.instant());
                 return;
             }
-            if (sendPages(key, claim.get(), rendered, ownedSnapshot.get().pageProgress().size())) {
+            if (sendPages(key, claim.get(), rendered, ownedSnapshot.get().pageProgress())) {
                 store.markSucceeded(key, claim.get().token(), clock.instant());
             }
         } catch (PeriodicReportMessageGateway.PermanentMessageException exception) {
             markPermanentFailure(key, claim.get(), "periodic report Discord delivery permanently failed");
-        } catch (PeriodicReportMessageGateway.UnknownMessageException | PeriodicReportMessageGateway.MissingMessageException exception) {
-            markRetryableFailure(key, claim.get(), snapshot.attemptCount(),
-                    PeriodicReportDeliveryFailureCategory.UNKNOWN, "periodic report Discord delivery outcome is unknown");
+        } catch (PeriodicReportMessageGateway.UnknownMessageException
+                | PeriodicReportMessageGateway.MissingMessageException exception) {
+            markRetryableFailure(
+                    key,
+                    claim.get(),
+                    snapshot.attemptCount(),
+                    PeriodicReportDeliveryFailureCategory.UNKNOWN,
+                    "periodic report Discord delivery outcome is unknown");
         } catch (PeriodicReportMessageGateway.RetryableMessageException exception) {
-            markRetryableFailure(key, claim.get(), snapshot.attemptCount(),
-                    PeriodicReportDeliveryFailureCategory.RETRYABLE, "periodic report Discord delivery is retryable");
+            markRetryableFailure(
+                    key,
+                    claim.get(),
+                    snapshot.attemptCount(),
+                    PeriodicReportDeliveryFailureCategory.RETRYABLE,
+                    "periodic report Discord delivery is retryable");
         } catch (RuntimeException exception) {
-            markRetryableFailure(key, claim.get(), snapshot.attemptCount(),
-                    PeriodicReportDeliveryFailureCategory.UNKNOWN, "unexpected periodic report delivery failure");
+            markRetryableFailure(
+                    key,
+                    claim.get(),
+                    snapshot.attemptCount(),
+                    PeriodicReportDeliveryFailureCategory.UNKNOWN,
+                    "unexpected periodic report delivery failure");
         }
     }
 
@@ -110,15 +126,42 @@ public final class PeriodicReportDeliveryService {
             PeriodicReportDeliveryKey key,
             PeriodicReportDeliveryClaim claim,
             RenderedPeriodicReport rendered,
-            int confirmedPageCount) {
-        for (int index = confirmedPageCount; index < rendered.pages().size(); index++) {
-            long messageId = messages.create(key.channelId(),
+            List<PeriodicReportDeliveryPageProgress> confirmedPages) {
+        for (PeriodicReportDeliveryPageProgress progress : confirmedPages) {
+            PeriodicReportMessageGateway.ReportPage expectedPage = new PeriodicReportMessageGateway.ReportPage(
+                    progress.pageIndex(), rendered.pages().get(progress.pageIndex()));
+            PeriodicReportMessageGateway.PublishedReportPage publishedPage =
+                    messages.load(key.channelId(), progress.messageId());
+            if (!ownsClaim(key, claim)) {
+                return false;
+            }
+            if (!publishedPage.page().equals(expectedPage)) {
+                messages.edit(key.channelId(), progress.messageId(), expectedPage);
+                if (!ownsClaim(key, claim)) {
+                    return false;
+                }
+            }
+        }
+
+        for (int index = confirmedPages.size(); index < rendered.pages().size(); index++) {
+            long messageId = messages.create(
+                    key.channelId(),
                     new PeriodicReportMessageGateway.ReportPage(index, rendered.pages().get(index)));
-            if (!store.recordPage(key, claim.token(), new PeriodicReportDeliveryPageProgress(index, messageId))) {
+            if (!store.recordPage(
+                    key, claim.token(), new PeriodicReportDeliveryPageProgress(index, messageId))) {
                 return false;
             }
         }
         return true;
+    }
+
+    private boolean ownsClaim(PeriodicReportDeliveryKey key, PeriodicReportDeliveryClaim claim) {
+        return store.find(key)
+                .filter(current -> current.state() == PeriodicReportDeliveryState.CLAIMED)
+                .flatMap(PeriodicReportDeliverySnapshot::claim)
+                .map(PeriodicReportDeliveryClaim::token)
+                .filter(claim.token()::equals)
+                .isPresent();
     }
 
     private void markRetryableFailure(
@@ -127,13 +170,20 @@ public final class PeriodicReportDeliveryService {
             int priorAttemptCount,
             PeriodicReportDeliveryFailureCategory category,
             String safeMessage) {
-        store.markRetryableFailure(key, claim.token(), new PeriodicReportDeliveryFailure(category, safeMessage),
+        store.markRetryableFailure(
+                key,
+                claim.token(),
+                new PeriodicReportDeliveryFailure(category, safeMessage),
                 retryAt(clock.instant(), priorAttemptCount));
     }
 
-    private void markPermanentFailure(PeriodicReportDeliveryKey key, PeriodicReportDeliveryClaim claim, String safeMessage) {
-        store.markPermanentFailure(key, claim.token(),
-                new PeriodicReportDeliveryFailure(PeriodicReportDeliveryFailureCategory.PERMANENT, safeMessage), clock.instant());
+    private void markPermanentFailure(
+            PeriodicReportDeliveryKey key, PeriodicReportDeliveryClaim claim, String safeMessage) {
+        store.markPermanentFailure(
+                key,
+                claim.token(),
+                new PeriodicReportDeliveryFailure(PeriodicReportDeliveryFailureCategory.PERMANENT, safeMessage),
+                clock.instant());
     }
 
     static Instant retryAt(Instant failureAt, int priorAttemptCount) {
@@ -150,22 +200,32 @@ public final class PeriodicReportDeliveryService {
     }
 
     private static PeriodicReportDeliveryRegistration registration(
-            PeriodicReportDeliveryKey key, PeriodicReportDeliveryMetadata metadata, RenderedPeriodicReport rendered) {
-        return new PeriodicReportDeliveryRegistration(key, metadata, Optional.ofNullable(rendered)
-                .map(value -> new PeriodicReportDeliveryContent(value.contentFingerprint(), value.pages().size())));
+            PeriodicReportDeliveryKey key,
+            PeriodicReportDeliveryMetadata metadata,
+            RenderedPeriodicReport rendered) {
+        return new PeriodicReportDeliveryRegistration(
+                key,
+                metadata,
+                Optional.ofNullable(rendered)
+                        .map(value -> new PeriodicReportDeliveryContent(
+                                value.contentFingerprint(), value.pages().size())));
     }
 
     private static void validateReportIdentity(
-            PeriodicReportDeliveryKey key, PeriodicReportDeliveryMetadata metadata, PeriodicReportResult result) {
+            PeriodicReportDeliveryKey key,
+            PeriodicReportDeliveryMetadata metadata,
+            PeriodicReportResult result) {
         if (!key.periodStart().equals(metadata.period().startDate())) {
             throw new IllegalArgumentException("delivery key period must match metadata period");
         }
         if (result instanceof PeriodicReport report
-                && (report.reportType() != key.reportType() || !report.period().equals(metadata.period()))) {
+                && (report.reportType() != key.reportType()
+                        || !report.period().equals(metadata.period()))) {
             throw new IllegalArgumentException("generated report must match delivery key and metadata");
         }
         if (result instanceof PeriodicReportNoOp noOp
-                && (noOp.reportType() != key.reportType() || !noOp.period().equals(metadata.period()))) {
+                && (noOp.reportType() != key.reportType()
+                        || !noOp.period().equals(metadata.period()))) {
             throw new IllegalArgumentException("NO_OP report must match delivery key and metadata");
         }
     }
