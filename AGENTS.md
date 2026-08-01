@@ -10,11 +10,12 @@ Lies vor der Implementierung mindestens:
 2. `docs/requirements/series-model.md` – verbindliche Präzisierung und Änderung der Serien-, Tagesstatus- und Berichtssemantik
 3. `docs/requirements/dynamic-player-model.md` – dynamische Spieler, Teilnahmezeiträume und Reminder-Opt-out
 4. `docs/requirements/daily-status-reminders.md` – Tagesstatus, Scheduler und Reminder-Auslieferung
-5. `docs/architecture.md` – verbindliche Architektur, Modulgrenzen und Abläufe
-6. `docs/development-guide.md` – Build, Tests, Secrets und Arbeitsweise
-7. `docs/implementation-plan.md` – Reihenfolge der Inkremente
-8. `docs/requirements/production-deployment.md`, wenn die Aufgabe Build, Container, Deployment, Secrets, Backups oder Produktion betrifft
-9. vorhandene ADRs unter `docs/adr/`, wenn die Aufgabe die dort behandelten Entscheidungen berührt
+5. `docs/requirements/periodic-reports.md`, wenn die Aufgabe Wochen-/Monatsberichte, Periodenstatistiken oder Report-Delivery betrifft
+6. `docs/architecture.md` – verbindliche Architektur, Modulgrenzen und Abläufe
+7. `docs/development-guide.md` – Build, Tests, Secrets und Arbeitsweise
+8. `docs/implementation-plan.md` – Reihenfolge der Inkremente
+9. `docs/requirements/production-deployment.md`, wenn die Aufgabe Build, Container, Deployment, Secrets, Backups oder Produktion betrifft
+10. vorhandene ADRs unter `docs/adr/`, wenn die Aufgabe die dort behandelten Entscheidungen berührt; für periodische Reports insbesondere ADR 0014
 
 Bei Widersprüchen gilt:
 
@@ -78,6 +79,7 @@ Jeder Schritt muss nach einem Absturz oder erneut zugestellten Event gefahrlos f
 - Keine Verwendung von `LocalDate.now()` oder `Instant.now()` in fachlichem Code; `Clock` injizieren.
 - Das Datum im Share-Ergebnis ist der Spieltag.
 - Heute und gestern sind das einzige zulässige automatische Nachtragsfenster.
+- Wochen- und Monatsberichte verwenden ausschließlich vollständig abgeschlossene Kalenderperioden und einen expliziten Periodenend-Stichtag.
 
 ### Serienmodell
 
@@ -87,6 +89,21 @@ Jeder Schritt muss nach einem Absturz oder erneut zugestellten Event gefahrlos f
 - Es gibt keine gemeinsame Aktivitätsserie.
 - GridWords- und QuadWords-Lösungen dürfen nicht zu einer unspezifischen persönlichen Lösungsserie zusammengefasst werden.
 - Maßgeblich sind die Definitionen und Testfälle in `docs/requirements/series-model.md`.
+
+### Periodische Berichte
+
+- Verbindlich sind `docs/requirements/periodic-reports.md` und ADR 0014.
+- Ein Teilnahmetag ist nicht mit einem Aktivitätstag gleichzusetzen.
+- Individuelle Nenner verwenden ausschließlich historisch wirksame Teilnahmetage; gemeinsame Nenner ausschließlich Tage mit mindestens zwei aktiven Spielern.
+- Statistik- und Serienwerte werden bis einschließlich Periodenende abgeleitet. Daten danach dürfen den Bericht nicht beeinflussen.
+- Berechnete Reportwerte werden nicht als zweite fachliche Wahrheit persistiert.
+- Erfolgreich veröffentlichte Berichte sind Snapshots und werden durch spätere Ergebnisse nicht automatisch editiert.
+- Wochen- und Monatsbericht verwenden denselben transportneutralen Reporting-Kern.
+- Keine Mentions, Gewinnerlogik, Ranglisten oder direkten Leistungsvergleiche in Berichten.
+- Mehrseitenberichte bilden eine logische Delivery mit geordnet persistierten Message-IDs.
+- Der Scheduler ist nur Trigger; Fälligkeit, Claims, Retry, NO_OP und Ablauf werden in PostgreSQL nachvollziehbar persistiert.
+- Pro Berichtstyp wird höchstens die jüngste noch relevante versäumte Periode nachgeholt.
+- Keine vorauseilende manuelle Report- oder Konfigurations-Command-Oberfläche in Inkrement 10.
 
 ### Datenbank und lokale Infrastruktur
 
@@ -125,6 +142,7 @@ Jeder Schritt muss nach einem Absturz oder erneut zugestellten Event gefahrlos f
 - Neue fachliche Logik benötigt Tests.
 - Parseränderungen benötigen Fixture-basierte Tests für Erfolg, Nicht-gelöst-Format und Fehlerfälle.
 - Serienänderungen benötigen getrennte Tests für alle sieben definierten Serien und die Regel für den unvollständigen aktuellen Tag.
+- Reportänderungen benötigen getrennte Tests für Wochen-/Monatsperioden, Teilnahmetage, alle persönlichen und gemeinsamen Kennzahlen, Periodenend-Stichtag, Catch-up, NO_OP und Pagination.
 - Tests dürfen keine echte Discord-Verbindung öffnen.
 - Zeitabhängige Tests verwenden eine feste `Clock`.
 - Fehlerpfade und Idempotenz sind ebenso zu testen wie der Happy Path.
@@ -198,6 +216,8 @@ Für lokale manuelle Ausführung gelten die Befehle aus `README.md`, `docs/devel
 - Keine Secrets, lokalen Datenbanken, generierten Binärdateien, Backups oder IDE-Artefakte committen.
 - Docker darf in Issues, Codex-/Terra-Aufträgen und lokalen Prüfungen vorausgesetzt werden, wenn der Aufgabenbereich Persistenz, Container oder Integration betrifft. Der infrastrukturlose Standardbuild bleibt dennoch verpflichtend.
 - PRs für Produktionsbetrieb bleiben Draft, bis automatisierte und reale Serverabnahme vollständig sind.
+- PRs für Wochen-/Monatsberichte bleiben Draft, bis beide Berichtstypen real in Discord dargestellt und duplikatsicher geprüft wurden.
+- Inkrement 10 wird paketweise umgesetzt; Terra erhält immer nur den nächsten in `docs/increments/10-periodic-reports.md` definierten Umfang.
 
 ## 9. Abschlussbericht für Codex-Aufgaben
 
