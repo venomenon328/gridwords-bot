@@ -3,6 +3,7 @@ package de.venomenon.gridwordsbot.adapter.persistence;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryClaim;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryClaimRequest;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryContent;
+import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryExpiration;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryFailure;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryFailureCategory;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryKey;
@@ -10,6 +11,7 @@ import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryMetadata
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryPageProgress;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryRegistration;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliverySnapshot;
+import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryScope;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryState;
 import de.venomenon.gridwordsbot.domain.reporting.ReportDueAt;
 import de.venomenon.gridwordsbot.domain.reporting.ReportPeriod;
@@ -78,6 +80,60 @@ public final class PostgresPeriodicReportDeliveryStore implements PeriodicReport
                 WHERE guild_id = ? AND channel_id = ? AND report_type = ? AND period_start = ?
                 """, (rs, row) -> snapshot(rs), key.guildId(), key.channelId(), key.reportType().name(), key.periodStart())
                 .stream().findFirst();
+    }
+
+    @Override
+    public Optional<LocalDate> findLatestPeriodStart(PeriodicReportDeliveryScope scope) {
+        Objects.requireNonNull(scope, "scope");
+        return jdbc.query("""
+                SELECT max(period_start) AS period_start
+                FROM periodic_report_delivery
+                WHERE guild_id = ? AND channel_id = ? AND report_type = ?
+                """, (rs, row) -> rs.getObject("period_start", LocalDate.class), scope.guildId(), scope.channelId(),
+                scope.reportType().name()).stream().filter(Objects::nonNull).findFirst();
+    }
+
+    @Override
+    public PeriodicReportDeliverySnapshot expire(PeriodicReportDeliveryExpiration expiration, Instant completedAt) {
+        Objects.requireNonNull(expiration, "expiration");
+        Objects.requireNonNull(completedAt, "completedAt");
+        if (completedAt.isBefore(expiration.metadata().catchUpEndsAt())) {
+            throw new IllegalArgumentException("completedAt must not be before catchUpEndsAt");
+        }
+
+        PeriodicReportDeliveryKey key = expiration.key();
+        PeriodicReportDeliveryMetadata metadata = expiration.metadata();
+        Instant updatedAt = clock.instant();
+        jdbc.update("""
+                INSERT INTO periodic_report_delivery (
+                    guild_id, channel_id, report_type, period_start, period_end,
+                    due_local_date, due_local_time, due_zone, due_at, catch_up_ends_at,
+                    delivery_state, attempt_count, completed_at, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'EXPIRED', 0, ?, ?, ?)
+                ON CONFLICT (guild_id, channel_id, report_type, period_start) DO UPDATE
+                SET delivery_state = 'EXPIRED', claim_token = NULL, claim_until = NULL, next_retry_at = NULL,
+                    failure_category = NULL, safe_error = NULL, completed_at = EXCLUDED.completed_at,
+                    updated_at = EXCLUDED.updated_at
+                WHERE periodic_report_delivery.period_end = EXCLUDED.period_end
+                  AND periodic_report_delivery.due_local_date = EXCLUDED.due_local_date
+                  AND periodic_report_delivery.due_local_time = EXCLUDED.due_local_time
+                  AND periodic_report_delivery.due_zone = EXCLUDED.due_zone
+                  AND periodic_report_delivery.due_at = EXCLUDED.due_at
+                  AND periodic_report_delivery.catch_up_ends_at = EXCLUDED.catch_up_ends_at
+                  AND (periodic_report_delivery.delivery_state IN ('OPEN', 'RETRYABLE')
+                       OR (periodic_report_delivery.delivery_state = 'CLAIMED'
+                           AND periodic_report_delivery.claim_until <= EXCLUDED.completed_at))
+                """, key.guildId(), key.channelId(), key.reportType().name(), key.periodStart(),
+                metadata.period().endDate(), metadata.dueAt().localDate(), metadata.dueAt().localTime(),
+                metadata.dueAt().zone().getId(), utc(metadata.dueAt().instant()), utc(metadata.catchUpEndsAt()),
+                utc(completedAt), utc(updatedAt), utc(updatedAt));
+
+        PeriodicReportDeliverySnapshot snapshot = find(key)
+                .orElseThrow(() -> new IllegalStateException("expired periodic report delivery is missing"));
+        if (!snapshot.registration().key().equals(key) || !snapshot.registration().metadata().equals(metadata)) {
+            throw new IllegalStateException("conflicting periodic report delivery expiration");
+        }
+        return snapshot;
     }
 
     @Override

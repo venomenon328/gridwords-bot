@@ -3,12 +3,15 @@ package de.venomenon.gridwordsbot.port.out;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryClaim;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryContent;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryClaimRequest;
+import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryExpiration;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryFailure;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryKey;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryPageProgress;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryRegistration;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliverySnapshot;
+import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryScope;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -22,6 +25,12 @@ public interface PeriodicReportDeliveryStore {
     PeriodicReportDeliverySnapshot register(PeriodicReportDeliveryRegistration registration);
 
     Optional<PeriodicReportDeliverySnapshot> find(PeriodicReportDeliveryKey key);
+
+    /** Finds the latest registered period start for one exact guild, channel, and report type scope. */
+    Optional<LocalDate> findLatestPeriodStart(PeriodicReportDeliveryScope scope);
+
+    /** Atomically materializes or preserves the snapshot resulting from an expired planned delivery. */
+    PeriodicReportDeliverySnapshot expire(PeriodicReportDeliveryExpiration expiration, Instant completedAt);
 
     /** Atomically claims only open/retryable work or work whose persisted lease has expired. */
     Optional<PeriodicReportDeliveryClaim> claim(

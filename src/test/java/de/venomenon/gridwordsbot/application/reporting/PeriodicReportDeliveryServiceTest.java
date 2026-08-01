@@ -7,6 +7,7 @@ import de.venomenon.gridwordsbot.domain.reporting.PeriodicReport;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryClaim;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryClaimRequest;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryContent;
+import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryExpiration;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryFailure;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryFailureCategory;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryKey;
@@ -14,6 +15,7 @@ import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryMetadata
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryPageProgress;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryRegistration;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliverySnapshot;
+import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryScope;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryState;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportNoOp;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportParticipantSection;
@@ -562,6 +564,16 @@ class PeriodicReportDeliveryServiceTest {
         @Override public Optional<PeriodicReportDeliverySnapshot> find(PeriodicReportDeliveryKey key) {
             events.add("find");
             return existing;
+        }
+
+
+        @Override public Optional<LocalDate> findLatestPeriodStart(PeriodicReportDeliveryScope scope) {
+            return Optional.empty();
+        }
+
+        @Override public PeriodicReportDeliverySnapshot expire(
+                PeriodicReportDeliveryExpiration expiration, Instant completedAt) {
+            throw new UnsupportedOperationException("not used by delivery service tests");
         }
 
         @Override public Optional<PeriodicReportDeliveryClaim> claim(
