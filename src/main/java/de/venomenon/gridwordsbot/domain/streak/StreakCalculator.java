@@ -13,6 +13,7 @@ import java.util.function.Function;
 
 /** Pure calendar-day calculation of all accepted, explicitly named current streaks. */
 public final class StreakCalculator {
+    private final CalendarStreakCalculator calendarStreaks = new CalendarStreakCalculator();
 
     /** Compatibility overload for callers whose participants are active for all dates. */
     public StreakSummary calculate(List<PlayerResult> results, List<Long> playerIds, long playerId, LocalDate today) {
@@ -47,13 +48,11 @@ public final class StreakCalculator {
     }
 
     private int current(LocalDate asOfDate, boolean provisionalCurrentDay, Function<LocalDate, DayState> condition) {
-        int count = 0;
-        for (LocalDate day = asOfDate; ; day = day.minusDays(1)) {
-            DayState state = condition.apply(day);
-            if (state == DayState.MET) { count++; continue; }
-            if (provisionalCurrentDay && day.equals(asOfDate) && state == DayState.PENDING) continue;
-            return count;
-        }
+        return calendarStreaks.current(asOfDate, provisionalCurrentDay, day -> switch (condition.apply(day)) {
+            case MET -> CalendarStreakCalculator.DayState.MET;
+            case PENDING -> CalendarStreakCalculator.DayState.PENDING;
+            case VIOLATED -> CalendarStreakCalculator.DayState.VIOLATED;
+        });
     }
 
     private DayState activity(Map<LocalDate, Map<GameType, PlayerResult>> days, LocalDate day) {
