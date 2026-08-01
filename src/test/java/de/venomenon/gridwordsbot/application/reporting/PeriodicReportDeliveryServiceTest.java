@@ -175,6 +175,43 @@ class PeriodicReportDeliveryServiceTest {
         assertThat(store.nextRetryAt).contains(NOW.plusSeconds(30));
     }
 
+    @Test
+    void resumesPersistedProgressBeforeBetweenAndAfterPagesWithoutRecreatingConfirmedPages() {
+        PeriodicReport report = report(51);
+        int pageCount = new PeriodicReportRenderer().render(report).pages().size();
+        assertThat(pageCount).isGreaterThan(1);
+
+        for (int confirmedPageCount = 0; confirmedPageCount <= pageCount; confirmedPageCount++) {
+            RecordingStore store = new RecordingStore(new ArrayList<>());
+            store.seed(interruptedDelivery(report, confirmedPageCount));
+            RecordingGateway gateway = new RecordingGateway(new ArrayList<>());
+
+            service(store, gateway).deliver(KEY, METADATA, report);
+
+            assertThat(gateway.pages()).extracting(PeriodicReportMessageGateway.ReportPage::pageIndex)
+                    .containsExactlyElementsOf(java.util.stream.IntStream.range(confirmedPageCount, pageCount).boxed().toList());
+            assertThat(store.progress).extracting(PeriodicReportDeliveryPageProgress::pageIndex)
+                    .containsExactlyElementsOf(java.util.stream.IntStream.range(0, pageCount).boxed().toList());
+            assertThat(store.succeeded).isTrue();
+
+            service(store, gateway).deliver(KEY, METADATA, report);
+            assertThat(gateway.pages()).hasSize(pageCount - confirmedPageCount);
+        }
+    }
+
+    @Test
+    void stopsWithoutPersistingProgressOrSuccessWhenTheClaimTokenChangesDuringCreate() {
+        RecordingStore store = new RecordingStore(new ArrayList<>());
+        store.seed(interruptedDelivery(report(26), 0));
+        RecordingGateway gateway = new RecordingGateway(new ArrayList<>());
+        gateway.afterCreate = store::replaceClaim;
+
+        service(store, gateway).deliver(KEY, METADATA, report(26));
+
+        assertThat(gateway.pages()).extracting(PeriodicReportMessageGateway.ReportPage::pageIndex).containsExactly(0);
+        assertThat(store.progress).isEmpty();
+        assertThat(store.succeeded).isFalse();
+    }
     private static PeriodicReportDeliveryService service(RecordingStore store, RecordingGateway gateway) {
         return new PeriodicReportDeliveryService(store, gateway, new PeriodicReportRenderer(), Clock.fixed(NOW, ZoneOffset.UTC));
     }
@@ -203,6 +240,16 @@ class PeriodicReportDeliveryServiceTest {
                 Duration.ZERO, 0, Optional.empty());
     }
 
+    private static PeriodicReportDeliverySnapshot interruptedDelivery(PeriodicReport report, int confirmedPageCount) {
+        var rendered = new PeriodicReportRenderer().render(report);
+        List<PeriodicReportDeliveryPageProgress> progress = java.util.stream.IntStream.range(0, confirmedPageCount)
+                .mapToObj(index -> new PeriodicReportDeliveryPageProgress(index, 900L + index)).toList();
+        PeriodicReportDeliveryRegistration registration = new PeriodicReportDeliveryRegistration(KEY, METADATA,
+                Optional.of(new PeriodicReportDeliveryContent(rendered.contentFingerprint(), rendered.pages().size())));
+        return new PeriodicReportDeliverySnapshot(registration, PeriodicReportDeliveryState.CLAIMED,
+                Optional.of(new PeriodicReportDeliveryClaim(new UUID(0, 99), NOW.minusSeconds(1))), 1,
+                Optional.empty(), Optional.empty(), progress, Optional.empty(), NOW, NOW);
+    }
     private static PeriodicReportDeliveryRegistration noOpRegistration() {
         return new PeriodicReportDeliveryRegistration(KEY, METADATA, Optional.empty());
     }
@@ -231,12 +278,27 @@ class PeriodicReportDeliveryServiceTest {
             this.events = events;
         }
 
+        private void seed(PeriodicReportDeliverySnapshot snapshot) {
+            registration = snapshot.registration();
+            existing = Optional.of(snapshot);
+            progress.clear();
+            progress.addAll(snapshot.pageProgress());
+        }
+
         @Override public PeriodicReportDeliverySnapshot register(PeriodicReportDeliveryRegistration value) {
             events.add("register");
             registerCalls++;
+            if (existing.isPresent()) {
+                if (!existing.get().registration().equals(value)) {
+                    throw new IllegalStateException("conflicting registration");
+                }
+                return existing.get();
+            }
             registration = value;
-            return new PeriodicReportDeliverySnapshot(value, PeriodicReportDeliveryState.OPEN, Optional.empty(), 0,
-                    Optional.empty(), Optional.empty(), List.of(), Optional.empty(), NOW, NOW);
+            PeriodicReportDeliverySnapshot snapshot = snapshot(
+                    PeriodicReportDeliveryState.OPEN, Optional.empty(), 0, Optional.empty(), Optional.empty(), List.of(), Optional.empty());
+            existing = Optional.of(snapshot);
+            return snapshot;
         }
 
         @Override public Optional<PeriodicReportDeliverySnapshot> find(PeriodicReportDeliveryKey key) {
@@ -248,50 +310,102 @@ class PeriodicReportDeliveryServiceTest {
                 PeriodicReportDeliveryKey key, PeriodicReportDeliveryClaimRequest request) {
             events.add("claim");
             claimCalls++;
-            return claimAvailable ? Optional.of(new PeriodicReportDeliveryClaim(
-                    UUID.fromString("00000000-0000-0000-0000-000000000001"), request.leaseUntil())) : Optional.empty();
+            if (!claimAvailable) {
+                return Optional.empty();
+            }
+            PeriodicReportDeliveryClaim claim = new PeriodicReportDeliveryClaim(new UUID(0, claimCalls), request.leaseUntil());
+            int attempts = existing.map(PeriodicReportDeliverySnapshot::attemptCount).orElse(0) + 1;
+            existing = Optional.of(snapshot(PeriodicReportDeliveryState.CLAIMED, Optional.of(claim), attempts,
+                    Optional.empty(), Optional.empty(), progress, Optional.empty()));
+            return Optional.of(claim);
         }
 
+        private void replaceClaim() {
+            if (existing.isEmpty()) {
+                throw new IllegalStateException("delivery is not claimed");
+            }
+            PeriodicReportDeliveryClaim replacement = new PeriodicReportDeliveryClaim(new UUID(0, 100), NOW.plusSeconds(60));
+            existing = Optional.of(snapshot(PeriodicReportDeliveryState.CLAIMED, Optional.of(replacement), existing.get().attemptCount(),
+                    Optional.empty(), Optional.empty(), progress, Optional.empty()));
+        }
         @Override public boolean recordPage(PeriodicReportDeliveryKey key, UUID token, PeriodicReportDeliveryPageProgress page) {
             events.add("record-" + page.pageIndex());
-            if (acceptPages) progress.add(page);
-            return acceptPages;
+            if (!acceptPages || existing.isEmpty() || existing.get().claim().map(PeriodicReportDeliveryClaim::token)
+                    .filter(token::equals).isEmpty() || page.pageIndex() != progress.size()) {
+                return false;
+            }
+            progress.add(page);
+            existing = Optional.of(snapshot(PeriodicReportDeliveryState.CLAIMED, existing.get().claim(), existing.get().attemptCount(),
+                    Optional.empty(), Optional.empty(), progress, Optional.empty()));
+            return true;
         }
 
         @Override public boolean markSucceeded(PeriodicReportDeliveryKey key, UUID token, Instant completedAt) {
             events.add("succeeded");
+            if (existing.isEmpty() || existing.get().claim().map(PeriodicReportDeliveryClaim::token).filter(token::equals).isEmpty()) {
+                return false;
+            }
             succeeded = true;
+            existing = Optional.of(snapshot(PeriodicReportDeliveryState.SUCCEEDED, Optional.empty(), existing.get().attemptCount(),
+                    Optional.empty(), Optional.empty(), progress, Optional.of(completedAt)));
             return true;
         }
 
         @Override public boolean markNoOp(PeriodicReportDeliveryKey key, UUID token, Instant completedAt) {
             events.add("no-op");
+            if (existing.isEmpty() || existing.get().claim().map(PeriodicReportDeliveryClaim::token).filter(token::equals).isEmpty()) {
+                return false;
+            }
             noOp = true;
+            existing = Optional.of(snapshot(PeriodicReportDeliveryState.NO_OP, Optional.empty(), existing.get().attemptCount(),
+                    Optional.empty(), Optional.empty(), List.of(), Optional.of(completedAt)));
             return true;
         }
 
         @Override public boolean markRetryableFailure(
                 PeriodicReportDeliveryKey key, UUID token, PeriodicReportDeliveryFailure failure, Instant retryAt) {
             events.add("retryable");
+            if (existing.isEmpty() || existing.get().claim().map(PeriodicReportDeliveryClaim::token).filter(token::equals).isEmpty()) {
+                return false;
+            }
             retryFailure = Optional.of(failure);
             nextRetryAt = Optional.of(retryAt);
+            existing = Optional.of(snapshot(PeriodicReportDeliveryState.RETRYABLE, Optional.empty(), existing.get().attemptCount(),
+                    nextRetryAt, retryFailure, progress, Optional.empty()));
             return true;
         }
 
         @Override public boolean markPermanentFailure(
                 PeriodicReportDeliveryKey key, UUID token, PeriodicReportDeliveryFailure failure, Instant completedAt) {
             events.add("permanent");
+            if (existing.isEmpty() || existing.get().claim().map(PeriodicReportDeliveryClaim::token).filter(token::equals).isEmpty()) {
+                return false;
+            }
             permanentFailure = Optional.of(failure);
+            existing = Optional.of(snapshot(PeriodicReportDeliveryState.FAILED_PERMANENT, Optional.empty(), existing.get().attemptCount(),
+                    Optional.empty(), permanentFailure, progress, Optional.of(completedAt)));
             return true;
         }
 
         @Override public boolean markExpired(PeriodicReportDeliveryKey key, Instant completedAt) { return false; }
-    }
 
+        private PeriodicReportDeliverySnapshot snapshot(
+                PeriodicReportDeliveryState state,
+                Optional<PeriodicReportDeliveryClaim> claim,
+                int attemptCount,
+                Optional<Instant> retryAt,
+                Optional<PeriodicReportDeliveryFailure> failure,
+                List<PeriodicReportDeliveryPageProgress> pages,
+                Optional<Instant> completedAt) {
+            return new PeriodicReportDeliverySnapshot(registration, state, claim, attemptCount, retryAt, failure,
+                    pages, completedAt, NOW, NOW);
+        }
+    }
     private static final class RecordingGateway implements PeriodicReportMessageGateway {
         private final List<String> events;
         private final List<ReportPage> pages = new ArrayList<>();
         private RuntimeException failure;
+        private Runnable afterCreate = () -> { };
 
         private RecordingGateway(List<String> events) {
             this.events = events;
@@ -301,6 +415,7 @@ class PeriodicReportDeliveryServiceTest {
             events.add("create-" + page.pageIndex());
             if (failure != null) throw failure;
             pages.add(page);
+            afterCreate.run();
             return 99L + pages.size();
         }
 

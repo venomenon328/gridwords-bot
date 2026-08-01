@@ -11,6 +11,7 @@ import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryMetadata
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryPageProgress;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryRegistration;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliverySnapshot;
+import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryState;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportNoOp;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportResult;
 import de.venomenon.gridwordsbot.domain.reporting.RenderedPeriodicReport;
@@ -23,8 +24,8 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Performs the first delivery attempt for one rendered periodic report. Store operations are deliberately
- * short and surround, rather than contain, each Discord call; partial-delivery recovery starts in package 7E.
+ * Delivers one rendered periodic report and resumes only persistently confirmed page progress. Store operations
+ * are deliberately short and surround, rather than contain, each Discord call.
  */
 public final class PeriodicReportDeliveryService {
     private static final Duration LEASE = Duration.ofMinutes(2);
@@ -47,10 +48,7 @@ public final class PeriodicReportDeliveryService {
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
-    /**
-     * Registers and attempts one previously unseen delivery. Existing work is intentionally left untouched for
-     * later recovery/reconciliation packages, while terminal snapshots never cause additional Discord I/O.
-     */
+    /** Registers immutable facts, then resumes or starts delivery without repeating confirmed pages. */
     public void deliver(
             PeriodicReportDeliveryKey key,
             PeriodicReportDeliveryMetadata metadata,
@@ -60,15 +58,15 @@ public final class PeriodicReportDeliveryService {
         Objects.requireNonNull(result, "result");
         validateReportIdentity(key, metadata, result);
 
-        if (store.find(key).isPresent()) {
+        Optional<PeriodicReportDeliverySnapshot> existing = store.find(key);
+        if (existing.filter(snapshot -> snapshot.state().isTerminal()).isPresent()) {
             return;
         }
 
         RenderedPeriodicReport rendered = result instanceof PeriodicReport report ? renderer.render(report) : null;
         PeriodicReportDeliveryRegistration registration = registration(key, metadata, rendered);
         PeriodicReportDeliverySnapshot snapshot = store.register(registration);
-        if (snapshot.registration().content().isEmpty() != (rendered == null)
-                || snapshot.state().isTerminal() || !snapshot.pageProgress().isEmpty()) {
+        if (!snapshot.registration().equals(registration) || snapshot.state().isTerminal()) {
             return;
         }
 
@@ -79,12 +77,19 @@ public final class PeriodicReportDeliveryService {
             return;
         }
 
+        Optional<PeriodicReportDeliverySnapshot> ownedSnapshot = store.find(key)
+                .filter(current -> current.state() == PeriodicReportDeliveryState.CLAIMED)
+                .filter(current -> current.claim().map(PeriodicReportDeliveryClaim::token).filter(claim.get().token()::equals).isPresent());
+        if (ownedSnapshot.isEmpty()) {
+            return;
+        }
+
         try {
             if (rendered == null) {
                 store.markNoOp(key, claim.get().token(), clock.instant());
                 return;
             }
-            if (sendPages(key, claim.get(), rendered)) {
+            if (sendPages(key, claim.get(), rendered, ownedSnapshot.get().pageProgress().size())) {
                 store.markSucceeded(key, claim.get().token(), clock.instant());
             }
         } catch (PeriodicReportMessageGateway.PermanentMessageException exception) {
@@ -104,8 +109,9 @@ public final class PeriodicReportDeliveryService {
     private boolean sendPages(
             PeriodicReportDeliveryKey key,
             PeriodicReportDeliveryClaim claim,
-            RenderedPeriodicReport rendered) {
-        for (int index = 0; index < rendered.pages().size(); index++) {
+            RenderedPeriodicReport rendered,
+            int confirmedPageCount) {
+        for (int index = confirmedPageCount; index < rendered.pages().size(); index++) {
             long messageId = messages.create(key.channelId(),
                     new PeriodicReportMessageGateway.ReportPage(index, rendered.pages().get(index)));
             if (!store.recordPage(key, claim.token(), new PeriodicReportDeliveryPageProgress(index, messageId))) {
