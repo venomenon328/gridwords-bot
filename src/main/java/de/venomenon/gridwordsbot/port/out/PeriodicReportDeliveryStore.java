@@ -1,6 +1,7 @@
 package de.venomenon.gridwordsbot.port.out;
 
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryClaim;
+import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryContent;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryClaimRequest;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryFailure;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryKey;
@@ -29,6 +30,14 @@ public interface PeriodicReportDeliveryStore {
     /** Persists one confirmed page only when the supplied token still owns the delivery. */
     boolean recordPage(PeriodicReportDeliveryKey key, UUID claimToken, PeriodicReportDeliveryPageProgress progress);
 
+    /** Replaces one missing confirmed page while retaining its visible position under the current claim. */
+    boolean replacePage(PeriodicReportDeliveryKey key, UUID claimToken, PeriodicReportDeliveryPageProgress progress);
+
+    /** Atomically discards a damaged page group and switches to a newly rendered fingerprint under the current claim. */
+    boolean replaceContent(
+            PeriodicReportDeliveryKey key,
+            UUID claimToken,
+            PeriodicReportDeliveryContent content);
     boolean markSucceeded(PeriodicReportDeliveryKey key, UUID claimToken, Instant completedAt);
 
     boolean markNoOp(PeriodicReportDeliveryKey key, UUID claimToken, Instant completedAt);

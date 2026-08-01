@@ -89,12 +89,12 @@ public final class PostgresPeriodicReportDeliveryStore implements PeriodicReport
         return jdbc.query("""
                 UPDATE periodic_report_delivery
                 SET delivery_state = 'CLAIMED', claim_token = ?, claim_until = ?, next_retry_at = NULL,
-                    attempt_count = attempt_count + 1, updated_at = ?
+                    completed_at = NULL, attempt_count = attempt_count + 1, updated_at = ?
                 WHERE guild_id = ? AND channel_id = ? AND report_type = ? AND period_start = ?
                   AND due_at <= ?
                   AND ? < catch_up_ends_at
                   AND (
-                      delivery_state = 'OPEN'
+                      delivery_state IN ('OPEN', 'SUCCEEDED')
                       OR (delivery_state = 'RETRYABLE' AND next_retry_at <= ?)
                       OR (delivery_state = 'CLAIMED' AND claim_until <= ?)
                   )
@@ -125,6 +125,52 @@ public final class PostgresPeriodicReportDeliveryStore implements PeriodicReport
                 key.reportType().name(), key.periodStart(), claimToken, progress.pageIndex(), progress.pageIndex()) == 1;
     }
 
+    @Override
+    public boolean replacePage(PeriodicReportDeliveryKey key, UUID claimToken, PeriodicReportDeliveryPageProgress progress) {
+        Objects.requireNonNull(key, "key");
+        Objects.requireNonNull(claimToken, "claimToken");
+        Objects.requireNonNull(progress, "progress");
+        return jdbc.update("""
+                UPDATE periodic_report_delivery_page page
+                SET discord_message_id = ?, created_at = ?
+                FROM periodic_report_delivery delivery
+                WHERE page.delivery_id = delivery.id
+                  AND delivery.guild_id = ? AND delivery.channel_id = ?
+                  AND delivery.report_type = ? AND delivery.period_start = ?
+                  AND delivery.delivery_state = 'CLAIMED' AND delivery.claim_token = ?
+                  AND page.page_index = ?
+                  AND NOT EXISTS (
+                      SELECT 1 FROM periodic_report_delivery_page other
+                      WHERE other.delivery_id = delivery.id AND other.discord_message_id = ?
+                        AND other.page_index <> page.page_index)
+                """, progress.messageId(), utc(clock.instant()), key.guildId(), key.channelId(), key.reportType().name(),
+                key.periodStart(), claimToken, progress.pageIndex(), progress.messageId()) == 1;
+    }
+
+    @Override
+    public boolean replaceContent(
+            PeriodicReportDeliveryKey key, UUID claimToken, PeriodicReportDeliveryContent content) {
+        Objects.requireNonNull(key, "key");
+        Objects.requireNonNull(claimToken, "claimToken");
+        Objects.requireNonNull(content, "content");
+        Integer changed = jdbc.queryForObject("""
+                WITH target AS (
+                    UPDATE periodic_report_delivery
+                    SET content_fingerprint = ?, expected_page_count = ?, failure_category = NULL, safe_error = NULL,
+                        updated_at = ?
+                    WHERE guild_id = ? AND channel_id = ? AND report_type = ? AND period_start = ?
+                      AND delivery_state = 'CLAIMED' AND claim_token = ?
+                    RETURNING id
+                ), removed AS (
+                    DELETE FROM periodic_report_delivery_page page
+                    USING target
+                    WHERE page.delivery_id = target.id
+                )
+                SELECT count(*) FROM target
+                """, Integer.class, content.fingerprint(), content.expectedPageCount(), utc(clock.instant()), key.guildId(),
+                key.channelId(), key.reportType().name(), key.periodStart(), claimToken);
+        return changed != null && changed == 1;
+    }
     @Override
     public boolean markSucceeded(PeriodicReportDeliveryKey key, UUID claimToken, Instant completedAt) {
         return transitionToTerminal(key, claimToken, completedAt, "SUCCEEDED", """

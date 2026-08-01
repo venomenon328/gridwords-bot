@@ -92,6 +92,7 @@ class PeriodicReportDeliveryServiceTerminalReplayTest {
         when(store.find(KEY)).thenReturn(Optional.empty(), Optional.of(claimed));
         when(store.register(registration)).thenReturn(open);
         when(store.claim(KEY, claimRequest)).thenReturn(Optional.of(claim));
+        when(messages.findExactMatches(KEY.channelId(), page)).thenReturn(List.of());
         when(messages.create(KEY.channelId(), page)).thenReturn(100L);
         when(store.recordPage(KEY, claim.token(), progress)).thenReturn(true);
         when(store.markSucceeded(KEY, claim.token(), NOW)).thenReturn(true);
@@ -103,30 +104,32 @@ class PeriodicReportDeliveryServiceTerminalReplayTest {
         order.verify(store).register(registration);
         order.verify(store).claim(KEY, claimRequest);
         order.verify(store).find(KEY);
+        order.verify(messages).findExactMatches(KEY.channelId(), page);
         order.verify(messages).create(KEY.channelId(), page);
         order.verify(store).recordPage(KEY, claim.token(), progress);
+        order.verify(messages).findExactMatches(KEY.channelId(), page);
         order.verify(store).markSucceeded(KEY, claim.token(), NOW);
         verifyNoMoreInteractions(store, messages);
     }
 
     @Test
     void replayOfSucceededDeliveryDoesNotRenderRegisterClaimOrCallDiscord() {
-        assertTerminalReplayDoesNothing(PeriodicReportDeliveryState.SUCCEEDED);
+        assertTerminalReplayDoesNothing(PeriodicReportDeliveryState.SUCCEEDED, METADATA.catchUpEndsAt());
     }
 
     @Test
     void replayOfExpiredDeliveryDoesNotRenderRegisterClaimOrCallDiscord() {
-        assertTerminalReplayDoesNothing(PeriodicReportDeliveryState.EXPIRED);
+        assertTerminalReplayDoesNothing(PeriodicReportDeliveryState.EXPIRED, NOW);
     }
 
-    private static void assertTerminalReplayDoesNothing(PeriodicReportDeliveryState state) {
+    private static void assertTerminalReplayDoesNothing(PeriodicReportDeliveryState state, Instant now) {
         PeriodicReport report = report();
         PeriodicReportDeliveryStore store = mock(PeriodicReportDeliveryStore.class);
         PeriodicReportMessageGateway messages = mock(PeriodicReportMessageGateway.class);
         PeriodicReportRenderer renderer = mock(PeriodicReportRenderer.class);
         when(store.find(KEY)).thenReturn(Optional.of(terminalSnapshot(state, report)));
 
-        service(store, messages, renderer).deliver(KEY, METADATA, report);
+        service(store, messages, renderer, now).deliver(KEY, METADATA, report);
 
         verify(store).find(KEY);
         verifyNoMoreInteractions(store);
@@ -137,7 +140,15 @@ class PeriodicReportDeliveryServiceTerminalReplayTest {
             PeriodicReportDeliveryStore store,
             PeriodicReportMessageGateway messages,
             PeriodicReportRenderer renderer) {
-        return new PeriodicReportDeliveryService(store, messages, renderer, Clock.fixed(NOW, ZoneOffset.UTC));
+        return service(store, messages, renderer, NOW);
+    }
+
+    private static PeriodicReportDeliveryService service(
+            PeriodicReportDeliveryStore store,
+            PeriodicReportMessageGateway messages,
+            PeriodicReportRenderer renderer,
+            Instant now) {
+        return new PeriodicReportDeliveryService(store, messages, renderer, Clock.fixed(now, ZoneOffset.UTC));
     }
 
     private static PeriodicReportDeliverySnapshot terminalSnapshot(

@@ -311,8 +311,141 @@ class PeriodicReportDeliveryServiceTest {
         assertThat(store.succeeded).isFalse();
     }
 
+    @Test
+    void recoversAnUnpersistedCreateFromOneExactMatchWithoutCreatingAnotherMessage() {
+        PeriodicReport report = report(1);
+        RecordingStore store = new RecordingStore(new ArrayList<>());
+        store.acceptPages = false;
+        RecordingGateway gateway = new RecordingGateway(new ArrayList<>());
+
+        service(store, gateway).deliver(KEY, METADATA, report);
+        store.acceptPages = true;
+        service(store, gateway).deliver(KEY, METADATA, report);
+
+        assertThat(gateway.pages()).hasSize(1);
+        assertThat(store.progress).containsExactly(new PeriodicReportDeliveryPageProgress(0, 100L));
+        assertThat(store.succeeded).isTrue();
+    }
+
+    @Test
+    void choosesTheSmallestUnpersistedExactMatchAndDeletesOnlyTheOtherExactDuplicate() {
+        PeriodicReport report = report(1);
+        RecordingStore store = new RecordingStore(new ArrayList<>());
+        store.seed(interruptedDelivery(report, 0));
+        RecordingGateway gateway = new RecordingGateway(new ArrayList<>());
+        PeriodicReportMessageGateway.ReportPage page = expectedPages(report).get(0);
+        gateway.seedMessage(500L, page);
+        gateway.seedMessage(400L, page);
+
+        service(store, gateway).deliver(KEY, METADATA, report);
+
+        assertThat(gateway.pages()).isEmpty();
+        assertThat(store.progress).containsExactly(new PeriodicReportDeliveryPageProgress(0, 400L));
+        assertThat(gateway.publishedMessages).containsOnlyKeys(400L);
+        assertThat(gateway.events).contains("delete-500");
+    }
+
+    @Test
+    void repairsExternallyDeletedFirstMiddleAndLastSucceededPagesInsideCatchUpWindow() {
+        PeriodicReport report = report(51);
+        int pageCount = expectedPages(report).size();
+        for (int deletedIndex : List.of(0, 1, pageCount - 1)) {
+            RecordingStore store = new RecordingStore(new ArrayList<>());
+            store.seed(succeededDelivery(report));
+            RecordingGateway gateway = new RecordingGateway(new ArrayList<>());
+            gateway.seedPersisted(report, pageCount);
+            gateway.removePublished(900L + deletedIndex);
+
+            service(store, gateway).deliver(KEY, METADATA, report);
+
+            assertThat(gateway.pages()).extracting(PeriodicReportMessageGateway.ReportPage::pageIndex)
+                    .containsExactly(deletedIndex);
+            assertThat(store.progress).extracting(PeriodicReportDeliveryPageProgress::pageIndex)
+                    .containsExactlyElementsOf(java.util.stream.IntStream.range(0, pageCount).boxed().toList());
+            assertThat(gateway.publishedPages()).containsExactlyElementsOf(expectedPages(report));
+            assertThat(store.succeeded).isTrue();
+        }
+    }
+
+    @Test
+    void keepsSucceededSnapshotUnchangedWhenCurrentReportFingerprintDiffersButNoPageIsMissing() {
+        PeriodicReport snapshotReport = report(26);
+        RecordingStore store = new RecordingStore(new ArrayList<>());
+        store.seed(succeededDelivery(snapshotReport));
+        RecordingGateway gateway = new RecordingGateway(new ArrayList<>());
+        gateway.seedPersisted(snapshotReport, expectedPages(snapshotReport).size());
+
+        service(store, gateway).deliver(KEY, METADATA, report(51));
+
+        assertThat(gateway.pages()).isEmpty();
+        assertThat(gateway.editedPages()).isEmpty();
+        assertThat(gateway.events).noneMatch(event -> event.startsWith("delete-"));
+        assertThat(gateway.publishedPages()).containsExactlyElementsOf(expectedPages(snapshotReport));
+        assertThat(store.replaceContentCalls).isZero();
+    }
+
+    @Test
+    void replacesTheEntireDamagedPageGroupWhenAnExternallyDeletedSnapshotNeedsANewFingerprint() {
+        PeriodicReport oldReport = report(26);
+        PeriodicReport regeneratedReport = report(51);
+        RecordingStore store = new RecordingStore(new ArrayList<>());
+        store.seed(succeededDelivery(oldReport));
+        RecordingGateway gateway = new RecordingGateway(new ArrayList<>());
+        gateway.seedPersisted(oldReport, expectedPages(oldReport).size());
+        gateway.removePublished(900L);
+
+        service(store, gateway).deliver(KEY, METADATA, regeneratedReport);
+
+        assertThat(store.replaceContentCalls).isEqualTo(1);
+        assertThat(gateway.publishedPages()).containsExactlyElementsOf(expectedPages(regeneratedReport));
+        assertThat(store.progress).hasSize(expectedPages(regeneratedReport).size());
+        assertThat(store.succeeded).isTrue();
+    }
+
+    @Test
+    void isStableWithoutDiscordIoAtCatchUpEndAndExpiresUnfinishedWork() {
+        PeriodicReport report = report(1);
+        RecordingStore succeededStore = new RecordingStore(new ArrayList<>());
+        succeededStore.seed(succeededDelivery(report));
+        RecordingGateway succeededGateway = new RecordingGateway(new ArrayList<>());
+        succeededGateway.seedPersisted(report, 1);
+        succeededGateway.removePublished(900L);
+
+        service(succeededStore, succeededGateway, METADATA.catchUpEndsAt()).deliver(KEY, METADATA, report);
+
+        assertThat(succeededGateway.events).isEmpty();
+        assertThat(succeededStore.claimCalls).isZero();
+
+        RecordingStore unfinishedStore = new RecordingStore(new ArrayList<>());
+        unfinishedStore.seed(interruptedDelivery(report, 0));
+        RecordingGateway unfinishedGateway = new RecordingGateway(new ArrayList<>());
+        service(unfinishedStore, unfinishedGateway, METADATA.catchUpEndsAt()).deliver(KEY, METADATA, report);
+
+        assertThat(unfinishedGateway.events).isEmpty();
+        assertThat(unfinishedStore.existing.orElseThrow().state()).isEqualTo(PeriodicReportDeliveryState.EXPIRED);
+    }
+
+    @Test
+    void stopsBeforeRecordingOrDeletingAnExactMatchWhenTheClaimChangesAfterGatewayIo() {
+        PeriodicReport report = report(1);
+        RecordingStore store = new RecordingStore(new ArrayList<>());
+        store.seed(interruptedDelivery(report, 0));
+        RecordingGateway gateway = new RecordingGateway(new ArrayList<>());
+        gateway.seedMessage(400L, expectedPages(report).get(0));
+        gateway.afterFindExact = store::replaceClaim;
+
+        service(store, gateway).deliver(KEY, METADATA, report);
+
+        assertThat(store.progress).isEmpty();
+        assertThat(gateway.events).noneMatch(event -> event.startsWith("delete-"));
+        assertThat(store.succeeded).isFalse();
+    }
     private static PeriodicReportDeliveryService service(RecordingStore store, RecordingGateway gateway) {
-        return new PeriodicReportDeliveryService(store, gateway, new PeriodicReportRenderer(), Clock.fixed(NOW, ZoneOffset.UTC));
+        return service(store, gateway, NOW);
+    }
+
+    private static PeriodicReportDeliveryService service(RecordingStore store, RecordingGateway gateway, Instant now) {
+        return new PeriodicReportDeliveryService(store, gateway, new PeriodicReportRenderer(), Clock.fixed(now, ZoneOffset.UTC));
     }
 
     private static PeriodicReport report(int playerCount) {
@@ -364,6 +497,15 @@ class PeriodicReportDeliveryServiceTest {
                 Optional.empty(), Optional.empty(), progress, Optional.empty(), NOW, NOW);
     }
 
+    private static PeriodicReportDeliverySnapshot succeededDelivery(PeriodicReport report) {
+        var rendered = new PeriodicReportRenderer().render(report);
+        List<PeriodicReportDeliveryPageProgress> progress = java.util.stream.IntStream.range(0, rendered.pages().size())
+                .mapToObj(index -> new PeriodicReportDeliveryPageProgress(index, 900L + index)).toList();
+        PeriodicReportDeliveryRegistration registration = new PeriodicReportDeliveryRegistration(KEY, METADATA,
+                Optional.of(new PeriodicReportDeliveryContent(rendered.contentFingerprint(), rendered.pages().size())));
+        return new PeriodicReportDeliverySnapshot(registration, PeriodicReportDeliveryState.SUCCEEDED, Optional.empty(), 1,
+                Optional.empty(), Optional.empty(), progress, Optional.of(NOW), NOW, NOW);
+    }
     private static PeriodicReportDeliveryRegistration noOpRegistration() {
         return new PeriodicReportDeliveryRegistration(KEY, METADATA, Optional.empty());
     }
@@ -383,6 +525,8 @@ class PeriodicReportDeliveryServiceTest {
         private int claimCalls;
         private boolean succeeded;
         private boolean noOp;
+        private int replacePageCalls;
+        private int replaceContentCalls;
         private final List<PeriodicReportDeliveryPageProgress> progress = new ArrayList<>();
         private Optional<PeriodicReportDeliveryFailure> retryFailure = Optional.empty();
         private Optional<PeriodicReportDeliveryFailure> permanentFailure = Optional.empty();
@@ -455,6 +599,29 @@ class PeriodicReportDeliveryServiceTest {
             return true;
         }
 
+        @Override public boolean replacePage(PeriodicReportDeliveryKey key, UUID token, PeriodicReportDeliveryPageProgress page) {
+            replacePageCalls++;
+            if (existing.isEmpty() || existing.get().claim().map(PeriodicReportDeliveryClaim::token).filter(token::equals).isEmpty()
+                    || page.pageIndex() < 0 || page.pageIndex() >= progress.size()) {
+                return false;
+            }
+            progress.set(page.pageIndex(), page);
+            existing = Optional.of(snapshot(PeriodicReportDeliveryState.CLAIMED, existing.get().claim(), existing.get().attemptCount(),
+                    Optional.empty(), Optional.empty(), progress, Optional.empty()));
+            return true;
+        }
+
+        @Override public boolean replaceContent(PeriodicReportDeliveryKey key, UUID token, PeriodicReportDeliveryContent content) {
+            replaceContentCalls++;
+            if (existing.isEmpty() || existing.get().claim().map(PeriodicReportDeliveryClaim::token).filter(token::equals).isEmpty()) {
+                return false;
+            }
+            registration = new PeriodicReportDeliveryRegistration(registration.key(), registration.metadata(), Optional.of(content));
+            progress.clear();
+            existing = Optional.of(snapshot(PeriodicReportDeliveryState.CLAIMED, existing.get().claim(), existing.get().attemptCount(),
+                    Optional.empty(), Optional.empty(), progress, Optional.empty()));
+            return true;
+        }
         @Override public boolean markSucceeded(PeriodicReportDeliveryKey key, UUID token, Instant completedAt) {
             events.add("succeeded");
             if (existing.isEmpty() || existing.get().claim().map(PeriodicReportDeliveryClaim::token).filter(token::equals).isEmpty()) {
@@ -502,7 +669,14 @@ class PeriodicReportDeliveryServiceTest {
             return true;
         }
 
-        @Override public boolean markExpired(PeriodicReportDeliveryKey key, Instant completedAt) { return false; }
+        @Override public boolean markExpired(PeriodicReportDeliveryKey key, Instant completedAt) {
+            if (existing.isEmpty() || existing.get().state().isTerminal()) {
+                return false;
+            }
+            existing = Optional.of(snapshot(PeriodicReportDeliveryState.EXPIRED, Optional.empty(), existing.get().attemptCount(),
+                    Optional.empty(), Optional.empty(), progress, Optional.of(completedAt)));
+            return true;
+        }
 
         private PeriodicReportDeliverySnapshot snapshot(
                 PeriodicReportDeliveryState state,
@@ -527,6 +701,7 @@ class PeriodicReportDeliveryServiceTest {
         private Runnable afterCreate = () -> { };
         private Runnable afterLoad = () -> { };
         private Runnable afterEdit = () -> { };
+        private Runnable afterFindExact = () -> { };
         private long nextMessageId = 100L;
 
         private RecordingGateway(List<String> events) {
@@ -540,6 +715,15 @@ class PeriodicReportDeliveryServiceTest {
             }
         }
 
+        private void seedMessage(long messageId, ReportPage page) {
+            publishedMessages.put(messageId, page);
+        }
+
+        private void removePublished(long messageId) {
+            if (publishedMessages.remove(messageId) == null) {
+                throw new IllegalArgumentException("message must be seeded before removal");
+            }
+        }
         private void replacePublishedPage(long messageId, ReportPage page) {
             if (!publishedMessages.containsKey(messageId)) {
                 throw new IllegalArgumentException("message must be seeded before replacement");
@@ -579,9 +763,21 @@ class PeriodicReportDeliveryServiceTest {
         }
 
         @Override public List<PublishedReportPage> findExactMatches(long channelId, ReportPage page) {
-            throw new UnsupportedOperationException();
+            events.add("find-" + page.pageIndex());
+            List<PublishedReportPage> matches = publishedMessages.entrySet().stream()
+                    .filter(entry -> entry.getValue().equals(page))
+                    .map(entry -> new PublishedReportPage(entry.getKey(), entry.getValue()))
+                    .sorted(Comparator.comparingLong(PublishedReportPage::messageId))
+                    .toList();
+            afterFindExact.run();
+            return matches;
         }
-        @Override public void delete(long channelId, long messageId) { throw new UnsupportedOperationException(); }
+        @Override public void delete(long channelId, long messageId) {
+            events.add("delete-" + messageId);
+            if (publishedMessages.remove(messageId) == null) {
+                throw new MissingMessageException("periodic report message is missing");
+            }
+        }
 
         private List<ReportPage> pages() { return List.copyOf(pages); }
         private List<Long> loadedMessageIds() { return List.copyOf(loadedMessageIds); }

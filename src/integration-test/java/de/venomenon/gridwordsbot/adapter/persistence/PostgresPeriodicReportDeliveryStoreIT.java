@@ -181,6 +181,30 @@ class PostgresPeriodicReportDeliveryStoreIT {
     }
 
     @Test
+    void succeededDeliveryCanBeClaimedForRepairAndTokenFencedPagesOrContentCanBeReplaced() {
+        PeriodicReportDeliveryRegistration registration = registration(41, Optional.of(content(2)));
+        store.register(registration);
+        PeriodicReportDeliveryClaim first = store.claim(registration.key(), request(NOW, NOW.plusSeconds(60))).orElseThrow();
+        assertThat(store.recordPage(registration.key(), first.token(), new PeriodicReportDeliveryPageProgress(0, 410))).isTrue();
+        assertThat(store.recordPage(registration.key(), first.token(), new PeriodicReportDeliveryPageProgress(1, 411))).isTrue();
+        assertThat(store.markSucceeded(registration.key(), first.token(), NOW)).isTrue();
+
+        PeriodicReportDeliveryClaim repair = store.claim(registration.key(), request(NOW.plusSeconds(1), NOW.plusSeconds(61))).orElseThrow();
+        assertThat(repair.token()).isNotEqualTo(first.token());
+        assertThat(store.replacePage(registration.key(), first.token(), new PeriodicReportDeliveryPageProgress(0, 412))).isFalse();
+        assertThat(store.replacePage(registration.key(), repair.token(), new PeriodicReportDeliveryPageProgress(0, 412))).isTrue();
+        assertThat(store.find(registration.key()).orElseThrow().pageProgress()).containsExactly(
+                new PeriodicReportDeliveryPageProgress(0, 412), new PeriodicReportDeliveryPageProgress(1, 411));
+
+        PeriodicReportDeliveryContent regenerated = new PeriodicReportDeliveryContent("b".repeat(64), 1);
+        assertThat(store.replaceContent(registration.key(), repair.token(), regenerated)).isTrue();
+        assertThat(store.find(registration.key()).orElseThrow())
+                .extracting(snapshot -> snapshot.registration().content().orElseThrow(), snapshot -> snapshot.pageProgress())
+                .containsExactly(regenerated, List.of());
+        assertThat(store.recordPage(registration.key(), repair.token(), new PeriodicReportDeliveryPageProgress(0, 413))).isTrue();
+        assertThat(store.markSucceeded(registration.key(), repair.token(), NOW.plusSeconds(2))).isTrue();
+    }
+    @Test
     void retryKeepsFailureAndBackoffUntilTheNextClaim() {
         PeriodicReportDeliveryRegistration registration = registration(5, Optional.of(content(1)));
         store.register(registration);
