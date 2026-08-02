@@ -8,27 +8,28 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.Objects;
 
-/** Thin weekly facade over the shared periodic report reconciliation workflow. */
-public final class WeeklyReportReconciliationService {
+/** Thin monthly facade over the shared periodic report reconciliation workflow. */
+public final class MonthlyReportReconciliationService {
     private final PeriodicReportReconciliationService reconciliationService;
-    private final LocalTime weeklyReportTime;
+    private final LocalTime monthlyReportTime;
     private final ZoneId zone;
 
-    public WeeklyReportReconciliationService(
+    public MonthlyReportReconciliationService(
             PeriodicReportDeliveryStore store,
             PeriodicReportReconciliationPlanner planner,
             PeriodicReportUseCase reportUseCase,
             PeriodicReportDeliveryService deliveryService,
             Clock clock,
-            LocalTime weeklyReportTime,
+            LocalTime monthlyReportTime,
             ZoneId zone) {
-        reconciliationService = new PeriodicReportReconciliationService(store, planner, reportUseCase, deliveryService, clock);
-        this.weeklyReportTime = Objects.requireNonNull(weeklyReportTime, "weeklyReportTime");
+        reconciliationService = new PeriodicReportReconciliationService(
+                store, planner, reportUseCase, deliveryService, clock);
+        this.monthlyReportTime = Objects.requireNonNull(monthlyReportTime, "monthlyReportTime");
         this.zone = Objects.requireNonNull(zone, "zone");
     }
 
-    /** Reconciles one exact weekly delivery scope in chronological candidate order. */
+    /** Reconciles one exact monthly delivery scope. */
     public void reconcile(long guildId, long channelId) {
-        reconciliationService.reconcile(guildId, channelId, ReportType.WEEKLY, weeklyReportTime, zone);
+        reconciliationService.reconcile(guildId, channelId, ReportType.MONTHLY, monthlyReportTime, zone);
     }
 }
