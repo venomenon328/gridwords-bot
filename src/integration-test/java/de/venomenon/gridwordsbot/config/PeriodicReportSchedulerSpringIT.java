@@ -28,7 +28,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.sql.DataSource;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -77,11 +76,6 @@ class PeriodicReportSchedulerSpringIT {
         jdbc.update("DELETE FROM game_result");
         jdbc.update("DELETE FROM player_participation_period");
         jdbc.update("DELETE FROM player");
-    }
-
-    @AfterEach
-    void clearGateway() {
-        GATEWAY.reset();
     }
 
     @Test
@@ -229,6 +223,8 @@ class PeriodicReportSchedulerSpringIT {
 
     private static ConfigurableApplicationContext start(Class<?> testConfiguration) {
         return new SpringApplicationBuilder(testConfiguration, GridwordsBotApplication.class)
+                .initializers(context -> context.getBeanFactory()
+                        .registerSingleton("testPeriodicReportMessageGateway", GATEWAY))
                 .web(WebApplicationType.NONE)
                 .profiles("database")
                 .run(properties());
@@ -298,11 +294,6 @@ class PeriodicReportSchedulerSpringIT {
         Clock reportClock() {
             return CLOCK;
         }
-
-        @Bean
-        PeriodicReportMessageGateway testPeriodicReportMessageGateway() {
-            return GATEWAY;
-        }
     }
 
     @TestConfiguration(proxyBeanMethods = false)
@@ -317,11 +308,6 @@ class PeriodicReportSchedulerSpringIT {
         @Primary
         WeeklyReportReconciliationService testWeeklyReportReconciliationService() {
             return mock(WeeklyReportReconciliationService.class);
-        }
-
-        @Bean
-        PeriodicReportMessageGateway testPeriodicReportMessageGateway() {
-            return GATEWAY;
         }
     }
 
