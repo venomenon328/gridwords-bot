@@ -2,6 +2,7 @@ package de.venomenon.gridwordsbot.adapter.discord.status;
 
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.status.DailyStatus;
+import de.venomenon.gridwordsbot.domain.status.DailyStatusView;
 import de.venomenon.gridwordsbot.port.out.DailyStatusMessageGateway;
 import de.venomenon.gridwordsbot.port.out.DiscordDeliveryException;
 import de.venomenon.gridwordsbot.port.out.ReminderCandidateStore;
@@ -33,6 +34,7 @@ public final class JdaDailyStatusMessageGateway implements DailyStatusMessageGat
 
     private final JDA jda;
     private final DailyStatusEmbedRenderer renderer = new DailyStatusEmbedRenderer();
+    private final DailyStatusComponentRenderer componentRenderer = new DailyStatusComponentRenderer();
 
     public JdaDailyStatusMessageGateway(JDA jda) {
         this.jda = jda;
@@ -40,23 +42,29 @@ public final class JdaDailyStatusMessageGateway implements DailyStatusMessageGat
 
     @Override
     public long publishOrEdit(long channelId, Optional<Long> existing, DailyStatus status, boolean contentChanged) {
+        return publishOrEdit(channelId, existing, DailyStatusView.versionOne(status), contentChanged);
+    }
+
+    @Override
+    public long publishOrEdit(long channelId, Optional<Long> existing, DailyStatusView view, boolean contentChanged) {
         try {
+            DailyStatus status = view.status();
             TextChannel channel = channel(channelId);
             var embeds = renderer.render(channelId, status);
+            var components = componentRenderer.render(view);
             Optional<Message> target = existing.flatMap(id -> retrieve(channel, id));
             if (target.isEmpty()) {
                 target = findStatusByTitle(channel, DailyStatusEmbedRenderer.statusTitle(status));
             }
             if (target.isPresent()) {
                 if (contentChanged || existing.isEmpty() || existing.get() != target.get().getIdLong()) {
-                    target.get().editMessageEmbeds(embeds).setAllowedMentions(Collections.emptyList()).complete();
+                    target.get().editMessageEmbeds(embeds).setComponents(components)
+                            .setAllowedMentions(Collections.emptyList()).complete();
                 }
                 return target.get().getIdLong();
             }
-            return channel.sendMessageEmbeds(embeds)
-                    .setAllowedMentions(Collections.emptyList())
-                    .complete()
-                    .getIdLong();
+            return channel.sendMessageEmbeds(embeds).setComponents(components)
+                    .setAllowedMentions(Collections.emptyList()).complete().getIdLong();
         } catch (DiscordDeliveryException exception) {
             throw exception;
         } catch (ErrorResponseException exception) {
@@ -65,7 +73,6 @@ public final class JdaDailyStatusMessageGateway implements DailyStatusMessageGat
             throw DiscordDeliveryException.retryable("daily status Discord request failed", exception);
         }
     }
-
     @Override
     public long send(long channelId, LocalDate gameDate, int stage,
             List<ReminderCandidateStore.ReminderCandidate> candidates, Set<Long> allowed) {
