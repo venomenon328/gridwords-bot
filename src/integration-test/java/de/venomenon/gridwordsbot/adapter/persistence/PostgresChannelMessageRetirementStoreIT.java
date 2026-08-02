@@ -148,8 +148,9 @@ class PostgresChannelMessageRetirementStoreIT {
 
         GameResultStore.PublicationClaim publication = persistence
                 .claimCanonicalPublication(resultId, NOW.plusSeconds(120)).orElseThrow();
-        assertThat(transactions.execute(status ->
-                store.claimResultMessage(resultId, NOW.plusSeconds(120)))).isEmpty();
+        Optional<ChannelMessageRetirementStore.ResultRetirementClaim> blockedRetirement = transactions.execute(status ->
+                store.claimResultMessage(resultId, NOW.plusSeconds(120)));
+        assertThat(blockedRetirement).isEmpty();
 
         persistence.releaseCanonicalPublicationClaim(resultId, publication.token());
         ChannelMessageRetirementStore.ResultRetirementClaim retirement = transactions.execute(status ->
