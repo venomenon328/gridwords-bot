@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.UUID;
 
 /** Durable retirement intent for visible channel messages; business results remain untouched. */
@@ -32,18 +33,42 @@ public interface ChannelMessageRetirementStore extends CanonicalPublicationRetir
     /** A non-active retirement row is a durable fence against canonical recovery. */
     boolean isCanonicalPublicationAllowed(long resultId);
 
-    record ResultMessage(long resultId, long channelId, long messageId, LocalDate gameDate) {
+    record ResultMessage(
+            long resultId,
+            long channelId,
+            OptionalLong messageId,
+            LocalDate gameDate,
+            String publicationKey) {
         public ResultMessage {
-            if (resultId <= 0 || channelId <= 0 || messageId <= 0) {
-                throw new IllegalArgumentException("result, channel and message IDs must be positive");
+            if (resultId <= 0 || channelId <= 0) {
+                throw new IllegalArgumentException("result and channel IDs must be positive");
+            }
+            java.util.Objects.requireNonNull(messageId, "messageId");
+            java.util.Objects.requireNonNull(gameDate, "gameDate");
+            java.util.Objects.requireNonNull(publicationKey, "publicationKey");
+            if (messageId.isPresent() && messageId.getAsLong() <= 0) {
+                throw new IllegalArgumentException("messageId must be positive when present");
+            }
+            if (publicationKey.isBlank()) {
+                throw new IllegalArgumentException("publicationKey must not be blank");
             }
         }
     }
 
-    record ReminderMessage(long guildId, long channelId, LocalDate gameDate, int stage, long messageId) {
+    record ReminderMessage(
+            long guildId,
+            long channelId,
+            LocalDate gameDate,
+            int stage,
+            OptionalLong messageId) {
         public ReminderMessage {
-            if (guildId <= 0 || channelId <= 0 || messageId <= 0 || (stage != 1 && stage != 2)) {
+            if (guildId <= 0 || channelId <= 0 || (stage != 1 && stage != 2)) {
                 throw new IllegalArgumentException("invalid reminder message key");
+            }
+            java.util.Objects.requireNonNull(gameDate, "gameDate");
+            java.util.Objects.requireNonNull(messageId, "messageId");
+            if (messageId.isPresent() && messageId.getAsLong() <= 0) {
+                throw new IllegalArgumentException("messageId must be positive when present");
             }
         }
     }
