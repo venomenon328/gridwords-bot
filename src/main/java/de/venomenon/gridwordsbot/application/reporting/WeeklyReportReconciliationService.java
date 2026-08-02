@@ -4,10 +4,10 @@ import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryExpirati
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryKey;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryMetadata;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryScope;
+import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportReconciliationAction;
+import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportReconciliationCandidate;
+import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportReconciliationPlanner;
 import de.venomenon.gridwordsbot.domain.reporting.ReportType;
-import de.venomenon.gridwordsbot.domain.reporting.WeeklyReportReconciliationAction;
-import de.venomenon.gridwordsbot.domain.reporting.WeeklyReportReconciliationCandidate;
-import de.venomenon.gridwordsbot.domain.reporting.WeeklyReportReconciliationPlanner;
 import de.venomenon.gridwordsbot.port.out.PeriodicReportDeliveryStore;
 import java.time.Clock;
 import java.time.Instant;
@@ -18,7 +18,7 @@ import java.util.Objects;
 /** Reconciles the planned weekly report deliveries for one guild and channel without scheduler concerns. */
 public final class WeeklyReportReconciliationService {
     private final PeriodicReportDeliveryStore store;
-    private final WeeklyReportReconciliationPlanner planner;
+    private final PeriodicReportReconciliationPlanner planner;
     private final PeriodicReportUseCase reportUseCase;
     private final PeriodicReportDeliveryService deliveryService;
     private final Clock clock;
@@ -27,7 +27,7 @@ public final class WeeklyReportReconciliationService {
 
     public WeeklyReportReconciliationService(
             PeriodicReportDeliveryStore store,
-            WeeklyReportReconciliationPlanner planner,
+            PeriodicReportReconciliationPlanner planner,
             PeriodicReportUseCase reportUseCase,
             PeriodicReportDeliveryService deliveryService,
             Clock clock,
@@ -46,14 +46,14 @@ public final class WeeklyReportReconciliationService {
     public void reconcile(long guildId, long channelId) {
         Instant now = clock.instant();
         PeriodicReportDeliveryScope scope = new PeriodicReportDeliveryScope(guildId, channelId, ReportType.WEEKLY);
-        var plan = planner.plan(now, weeklyReportTime, zone, store.findLatestPeriodStart(scope));
+        var plan = planner.plan(ReportType.WEEKLY, now, weeklyReportTime, zone, store.findLatestPeriodStart(scope));
 
-        for (WeeklyReportReconciliationCandidate candidate : plan.candidates()) {
+        for (PeriodicReportReconciliationCandidate candidate : plan.candidates()) {
             PeriodicReportDeliveryKey key = new PeriodicReportDeliveryKey(
                     guildId, channelId, ReportType.WEEKLY, candidate.period().startDate());
             PeriodicReportDeliveryMetadata metadata = new PeriodicReportDeliveryMetadata(
                     candidate.period(), candidate.dueAt(), candidate.catchUpEndsAt());
-            if (candidate.action() == WeeklyReportReconciliationAction.EXPIRE) {
+            if (candidate.action() == PeriodicReportReconciliationAction.EXPIRE) {
                 store.expire(new PeriodicReportDeliveryExpiration(key, metadata), now);
             } else {
                 deliveryService.deliver(key, metadata, reportUseCase.generate(ReportType.WEEKLY, candidate.period()));

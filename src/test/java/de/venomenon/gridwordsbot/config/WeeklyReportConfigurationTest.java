@@ -9,7 +9,7 @@ import de.venomenon.gridwordsbot.application.reporting.ReportDayAndStreakProject
 import de.venomenon.gridwordsbot.application.reporting.ReportGameStatisticsProjector;
 import de.venomenon.gridwordsbot.application.reporting.ReportParticipantProjector;
 import de.venomenon.gridwordsbot.application.reporting.WeeklyReportReconciliationService;
-import de.venomenon.gridwordsbot.domain.reporting.WeeklyReportReconciliationPlanner;
+import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportReconciliationPlanner;
 import de.venomenon.gridwordsbot.port.out.PeriodicReportMessageGateway;
 import de.venomenon.gridwordsbot.port.out.ReportGameResultQuery;
 import de.venomenon.gridwordsbot.port.out.ReportParticipantQuery;
@@ -31,7 +31,7 @@ class WeeklyReportConfigurationTest {
             assertThat(context.getBeansOfType(ReportGameStatisticsProjector.class)).hasSize(1);
             assertThat(context.getBeansOfType(ReportDayAndStreakProjector.class)).hasSize(1);
             assertThat(context.getBeansOfType(PeriodicReportUseCase.class)).hasSize(1);
-            assertThat(context.getBeansOfType(WeeklyReportReconciliationPlanner.class)).hasSize(1);
+            assertThat(context.getBeansOfType(PeriodicReportReconciliationPlanner.class)).hasSize(1);
             assertThat(context.getBeansOfType(PeriodicReportDeliveryService.class)).hasSize(1);
             assertThat(context.getBeansOfType(WeeklyReportReconciliationService.class)).hasSize(1);
             assertThat(context.getBeansOfType(WeeklyReportScheduler.class)).hasSize(1);

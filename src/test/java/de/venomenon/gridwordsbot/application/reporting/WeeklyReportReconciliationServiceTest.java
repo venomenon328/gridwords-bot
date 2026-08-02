@@ -18,8 +18,8 @@ import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryScope;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportNoOp;
 import de.venomenon.gridwordsbot.domain.reporting.ReportPeriod;
 import de.venomenon.gridwordsbot.domain.reporting.ReportType;
-import de.venomenon.gridwordsbot.domain.reporting.WeeklyReportReconciliationCandidate;
-import de.venomenon.gridwordsbot.domain.reporting.WeeklyReportReconciliationPlanner;
+import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportReconciliationCandidate;
+import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportReconciliationPlanner;
 import de.venomenon.gridwordsbot.port.out.PeriodicReportDeliveryStore;
 import java.time.Clock;
 import java.time.Instant;
@@ -46,7 +46,7 @@ class WeeklyReportReconciliationServiceTest {
     @Test
     void generatesAndDeliversTheOnlyOpenCandidateWithoutAnAnchor() {
         Fixture fixture = fixture(OPEN_NOW, Optional.empty());
-        WeeklyReportReconciliationCandidate candidate = onlyCandidate(OPEN_NOW, Optional.empty());
+        PeriodicReportReconciliationCandidate candidate = onlyCandidate(OPEN_NOW, Optional.empty());
         PeriodicReportNoOp result = new PeriodicReportNoOp(ReportType.WEEKLY, candidate.period());
         when(fixture.reportUseCase.generate(ReportType.WEEKLY, candidate.period())).thenReturn(result);
 
@@ -60,7 +60,7 @@ class WeeklyReportReconciliationServiceTest {
     @Test
     void expiresTheOnlyCandidateAtTheExactCatchUpBoundaryWithoutGenerationOrDelivery() {
         Fixture fixture = fixture(CLOSED_NOW, Optional.empty());
-        WeeklyReportReconciliationCandidate candidate = onlyCandidate(CLOSED_NOW, Optional.empty());
+        PeriodicReportReconciliationCandidate candidate = onlyCandidate(CLOSED_NOW, Optional.empty());
 
         fixture.service.reconcile(GUILD_ID, CHANNEL_ID);
 
@@ -73,15 +73,15 @@ class WeeklyReportReconciliationServiceTest {
     void expiresOlderCandidatesChronologicallyThenGeneratesAndDeliversTheLatestOpenOne() {
         Optional<LocalDate> anchor = Optional.of(LocalDate.of(2026, 7, 6));
         Fixture fixture = fixture(OPEN_NOW, anchor);
-        List<WeeklyReportReconciliationCandidate> candidates = candidates(OPEN_NOW, anchor);
-        WeeklyReportReconciliationCandidate latest = candidates.getLast();
+        List<PeriodicReportReconciliationCandidate> candidates = candidates(OPEN_NOW, anchor);
+        PeriodicReportReconciliationCandidate latest = candidates.getLast();
         PeriodicReportNoOp result = new PeriodicReportNoOp(ReportType.WEEKLY, latest.period());
         when(fixture.reportUseCase.generate(ReportType.WEEKLY, latest.period())).thenReturn(result);
 
         fixture.service.reconcile(GUILD_ID, CHANNEL_ID);
 
         InOrder order = inOrder(fixture.store, fixture.reportUseCase, fixture.deliveryService);
-        for (WeeklyReportReconciliationCandidate candidate : candidates.subList(0, candidates.size() - 1)) {
+        for (PeriodicReportReconciliationCandidate candidate : candidates.subList(0, candidates.size() - 1)) {
             order.verify(fixture.store).expire(new PeriodicReportDeliveryExpiration(key(candidate), metadata(candidate)), OPEN_NOW);
         }
         order.verify(fixture.reportUseCase).generate(ReportType.WEEKLY, latest.period());
@@ -93,11 +93,11 @@ class WeeklyReportReconciliationServiceTest {
     void expiresEveryCandidateWhenAllAreOutsideTheCatchUpWindow() {
         Optional<LocalDate> anchor = Optional.of(LocalDate.of(2026, 7, 6));
         Fixture fixture = fixture(CLOSED_NOW, anchor);
-        List<WeeklyReportReconciliationCandidate> candidates = candidates(CLOSED_NOW, anchor);
+        List<PeriodicReportReconciliationCandidate> candidates = candidates(CLOSED_NOW, anchor);
 
         fixture.service.reconcile(GUILD_ID, CHANNEL_ID);
 
-        for (WeeklyReportReconciliationCandidate candidate : candidates) {
+        for (PeriodicReportReconciliationCandidate candidate : candidates) {
             verify(fixture.store).expire(new PeriodicReportDeliveryExpiration(key(candidate), metadata(candidate)), CLOSED_NOW);
         }
         verify(fixture.reportUseCase, never()).generate(any(), any());
@@ -108,7 +108,7 @@ class WeeklyReportReconciliationServiceTest {
     void reconcilesTheLatestPersistedPeriodAgainWhileItsCatchUpWindowIsOpen() {
         Optional<LocalDate> anchor = Optional.of(LocalDate.of(2026, 7, 27));
         Fixture fixture = fixture(OPEN_NOW, anchor);
-        WeeklyReportReconciliationCandidate candidate = onlyCandidate(OPEN_NOW, anchor);
+        PeriodicReportReconciliationCandidate candidate = onlyCandidate(OPEN_NOW, anchor);
         PeriodicReportNoOp result = new PeriodicReportNoOp(ReportType.WEEKLY, candidate.period());
         when(fixture.reportUseCase.generate(ReportType.WEEKLY, candidate.period())).thenReturn(result);
 
@@ -122,7 +122,7 @@ class WeeklyReportReconciliationServiceTest {
     @Test
     void repeatedRunsDoNotInventOlderHistoryAndKeepOneDeliveryCandidatePerRun() {
         Fixture fixture = fixture(OPEN_NOW, Optional.empty());
-        WeeklyReportReconciliationCandidate candidate = onlyCandidate(OPEN_NOW, Optional.empty());
+        PeriodicReportReconciliationCandidate candidate = onlyCandidate(OPEN_NOW, Optional.empty());
         PeriodicReportNoOp result = new PeriodicReportNoOp(ReportType.WEEKLY, candidate.period());
         when(fixture.store.findLatestPeriodStart(SCOPE))
                 .thenReturn(Optional.empty(), Optional.of(candidate.period().startDate()));
@@ -139,7 +139,7 @@ class WeeklyReportReconciliationServiceTest {
     @Test
     void forwardsTheExactScopeAndPlannedDeliveryFacts() {
         Fixture fixture = fixture(OPEN_NOW, Optional.empty());
-        WeeklyReportReconciliationCandidate candidate = onlyCandidate(OPEN_NOW, Optional.empty());
+        PeriodicReportReconciliationCandidate candidate = onlyCandidate(OPEN_NOW, Optional.empty());
         PeriodicReportNoOp result = new PeriodicReportNoOp(ReportType.WEEKLY, candidate.period());
         when(fixture.reportUseCase.generate(ReportType.WEEKLY, candidate.period())).thenReturn(result);
 
@@ -159,7 +159,7 @@ class WeeklyReportReconciliationServiceTest {
     @Test
     void forwardsANoOpResultUnchangedToTheDeliveryService() {
         Fixture fixture = fixture(OPEN_NOW, Optional.empty());
-        WeeklyReportReconciliationCandidate candidate = onlyCandidate(OPEN_NOW, Optional.empty());
+        PeriodicReportReconciliationCandidate candidate = onlyCandidate(OPEN_NOW, Optional.empty());
         PeriodicReportNoOp noOp = new PeriodicReportNoOp(ReportType.WEEKLY, candidate.period());
         when(fixture.reportUseCase.generate(ReportType.WEEKLY, candidate.period())).thenReturn(noOp);
 
@@ -196,7 +196,7 @@ class WeeklyReportReconciliationServiceTest {
     @Test
     void propagatesGenerationErrorsWithoutCallingDelivery() {
         Fixture fixture = fixture(OPEN_NOW, Optional.empty());
-        WeeklyReportReconciliationCandidate candidate = onlyCandidate(OPEN_NOW, Optional.empty());
+        PeriodicReportReconciliationCandidate candidate = onlyCandidate(OPEN_NOW, Optional.empty());
         when(fixture.reportUseCase.generate(ReportType.WEEKLY, candidate.period()))
                 .thenThrow(new IllegalStateException("generation unavailable"));
 
@@ -232,7 +232,7 @@ class WeeklyReportReconciliationServiceTest {
         PeriodicReportDeliveryService deliveryService = mock(PeriodicReportDeliveryService.class);
         WeeklyReportReconciliationService service = new WeeklyReportReconciliationService(
                 store,
-                new WeeklyReportReconciliationPlanner(),
+                new PeriodicReportReconciliationPlanner(),
                 reportUseCase,
                 deliveryService,
                 clock,
@@ -241,21 +241,21 @@ class WeeklyReportReconciliationServiceTest {
         return new Fixture(service, store, reportUseCase, deliveryService);
     }
 
-    private static List<WeeklyReportReconciliationCandidate> candidates(Instant now, Optional<LocalDate> anchor) {
-        return new WeeklyReportReconciliationPlanner().plan(now, REPORT_TIME, BERLIN, anchor).candidates();
+    private static List<PeriodicReportReconciliationCandidate> candidates(Instant now, Optional<LocalDate> anchor) {
+        return new PeriodicReportReconciliationPlanner().plan(ReportType.WEEKLY, now, REPORT_TIME, BERLIN, anchor).candidates();
     }
 
-    private static WeeklyReportReconciliationCandidate onlyCandidate(Instant now, Optional<LocalDate> anchor) {
-        List<WeeklyReportReconciliationCandidate> candidates = candidates(now, anchor);
+    private static PeriodicReportReconciliationCandidate onlyCandidate(Instant now, Optional<LocalDate> anchor) {
+        List<PeriodicReportReconciliationCandidate> candidates = candidates(now, anchor);
         assertThat(candidates).hasSize(1);
         return candidates.getFirst();
     }
 
-    private static PeriodicReportDeliveryKey key(WeeklyReportReconciliationCandidate candidate) {
+    private static PeriodicReportDeliveryKey key(PeriodicReportReconciliationCandidate candidate) {
         return new PeriodicReportDeliveryKey(GUILD_ID, CHANNEL_ID, ReportType.WEEKLY, candidate.period().startDate());
     }
 
-    private static PeriodicReportDeliveryMetadata metadata(WeeklyReportReconciliationCandidate candidate) {
+    private static PeriodicReportDeliveryMetadata metadata(PeriodicReportReconciliationCandidate candidate) {
         return new PeriodicReportDeliveryMetadata(candidate.period(), candidate.dueAt(), candidate.catchUpEndsAt());
     }
 

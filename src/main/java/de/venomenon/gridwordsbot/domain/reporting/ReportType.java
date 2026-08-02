@@ -49,6 +49,32 @@ public enum ReportType {
         return new ReportCatchUpWindow(dueAt, catchUpDuration);
     }
 
+    public ReportPeriod periodStartingOn(LocalDate startDate) {
+        Objects.requireNonNull(startDate, "startDate");
+        return switch (this) {
+            case WEEKLY -> {
+                if (startDate.getDayOfWeek() != DayOfWeek.MONDAY) {
+                    throw new IllegalArgumentException("weekly period start must be a Monday");
+                }
+                yield new ReportPeriod(startDate, startDate.plusDays(6));
+            }
+            case MONTHLY -> {
+                if (startDate.getDayOfMonth() != 1) {
+                    throw new IllegalArgumentException("monthly period start must be the first calendar day");
+                }
+                yield new ReportPeriod(startDate, startDate.with(TemporalAdjusters.lastDayOfMonth()));
+            }
+        };
+    }
+
+    public LocalDate nextPeriodStartAfter(LocalDate periodStart) {
+        periodStartingOn(periodStart);
+        return switch (this) {
+            case WEEKLY -> periodStart.plusWeeks(1);
+            case MONTHLY -> periodStart.plusMonths(1);
+        };
+    }
+
     private static ReportPeriod previousWeek(LocalDate localDate) {
         LocalDate currentWeekStart = localDate.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
         return new ReportPeriod(currentWeekStart.minusWeeks(1), currentWeekStart.minusDays(1));

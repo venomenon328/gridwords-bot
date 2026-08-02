@@ -17,7 +17,7 @@ import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportDeliveryState;
 import de.venomenon.gridwordsbot.domain.reporting.ReportDueAt;
 import de.venomenon.gridwordsbot.domain.reporting.ReportPeriod;
 import de.venomenon.gridwordsbot.domain.reporting.ReportType;
-import de.venomenon.gridwordsbot.domain.reporting.WeeklyReportReconciliationPlanner;
+import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportReconciliationPlanner;
 import de.venomenon.gridwordsbot.port.out.PeriodicReportDeliveryStore;
 import de.venomenon.gridwordsbot.port.out.PeriodicReportMessageGateway;
 import java.time.Clock;
@@ -102,7 +102,7 @@ class WeeklyReportSchedulerSpringIT {
             assertThat(context.getBeansOfType(ReportGameStatisticsProjector.class)).hasSize(1);
             assertThat(context.getBeansOfType(ReportDayAndStreakProjector.class)).hasSize(1);
             assertThat(context.getBeansOfType(PeriodicReportUseCase.class)).hasSize(1);
-            assertThat(context.getBeansOfType(WeeklyReportReconciliationPlanner.class)).hasSize(1);
+            assertThat(context.getBeansOfType(PeriodicReportReconciliationPlanner.class)).hasSize(1);
             assertThat(context.getBeansOfType(WeeklyReportReconciliationService.class)).hasSize(1);
             assertThat(context.getBeansOfType(WeeklyReportScheduler.class)).hasSize(1);
             assertThat(store.find(key()).orElseThrow().state()).isEqualTo(PeriodicReportDeliveryState.SUCCEEDED);
@@ -302,7 +302,7 @@ class WeeklyReportSchedulerSpringIT {
         @Bean
         WeeklyReportReconciliationService testWeeklyReportReconciliationService(
                 PeriodicReportDeliveryStore store,
-                WeeklyReportReconciliationPlanner planner,
+                PeriodicReportReconciliationPlanner planner,
                 PeriodicReportUseCase reports,
                 PeriodicReportDeliveryService delivery,
                 Clock clock,

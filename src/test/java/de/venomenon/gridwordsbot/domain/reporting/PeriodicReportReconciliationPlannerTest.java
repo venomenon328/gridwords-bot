@@ -12,52 +12,52 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
-class WeeklyReportReconciliationPlannerTest {
+class PeriodicReportReconciliationPlannerTest {
     private static final ZoneId BERLIN = ZoneId.of("Europe/Berlin");
     private static final LocalTime REPORT_TIME = LocalTime.of(8, 0);
-    private final WeeklyReportReconciliationPlanner planner = new WeeklyReportReconciliationPlanner();
+    private final PeriodicReportReconciliationPlanner planner = new PeriodicReportReconciliationPlanner();
 
     @Test
     void choosesTheWeekBeforeLastOnMondayBeforeTheConfiguredDueTime() {
-        WeeklyReportReconciliationCandidate candidate = onlyCandidate(plan("2026-08-03T05:59:59Z"));
+        PeriodicReportReconciliationCandidate candidate = onlyCandidate(plan("2026-08-03T05:59:59Z"));
 
         assertThat(candidate.period()).isEqualTo(period("2026-07-20"));
-        assertThat(candidate.action()).isEqualTo(WeeklyReportReconciliationAction.EXPIRE);
+        assertThat(candidate.action()).isEqualTo(PeriodicReportReconciliationAction.EXPIRE);
     }
 
     @Test
     void choosesTheJustCompletedWeekExactlyAtTheConfiguredDueTime() {
-        WeeklyReportReconciliationCandidate candidate = onlyCandidate(plan("2026-08-03T06:00:00Z"));
+        PeriodicReportReconciliationCandidate candidate = onlyCandidate(plan("2026-08-03T06:00:00Z"));
 
         assertThat(candidate.period()).isEqualTo(period("2026-07-27"));
         assertThat(candidate.dueAt().instant()).isEqualTo(Instant.parse("2026-08-03T06:00:00Z"));
-        assertThat(candidate.action()).isEqualTo(WeeklyReportReconciliationAction.DELIVER_OR_RECONCILE);
+        assertThat(candidate.action()).isEqualTo(PeriodicReportReconciliationAction.DELIVER_OR_RECONCILE);
     }
 
     @Test
     void deliversInsideTheSeventyTwoHourCatchUpWindow() {
         assertThat(onlyCandidate(plan("2026-08-04T12:00:00Z")).action())
-                .isEqualTo(WeeklyReportReconciliationAction.DELIVER_OR_RECONCILE);
+                .isEqualTo(PeriodicReportReconciliationAction.DELIVER_OR_RECONCILE);
     }
 
     @Test
     void deliversImmediatelyBeforeTheCatchUpWindowEnds() {
         assertThat(onlyCandidate(plan("2026-08-06T05:59:59.999999999Z")).action())
-                .isEqualTo(WeeklyReportReconciliationAction.DELIVER_OR_RECONCILE);
+                .isEqualTo(PeriodicReportReconciliationAction.DELIVER_OR_RECONCILE);
     }
 
     @Test
     void expiresExactlyAtTheCatchUpWindowEnd() {
-        WeeklyReportReconciliationCandidate candidate = onlyCandidate(plan("2026-08-06T06:00:00Z"));
+        PeriodicReportReconciliationCandidate candidate = onlyCandidate(plan("2026-08-06T06:00:00Z"));
 
-        assertThat(candidate.action()).isEqualTo(WeeklyReportReconciliationAction.EXPIRE);
+        assertThat(candidate.action()).isEqualTo(PeriodicReportReconciliationAction.EXPIRE);
         assertThat(candidate.catchUpEndsAt()).isEqualTo(Instant.parse("2026-08-06T06:00:00Z"));
     }
 
     @Test
     void hasNoDeliveryCandidateAfterTheCatchUpWindowEnd() {
         assertThat(plan("2026-08-06T06:00:01Z").candidates())
-                .allMatch(candidate -> candidate.action() == WeeklyReportReconciliationAction.EXPIRE);
+                .allMatch(candidate -> candidate.action() == PeriodicReportReconciliationAction.EXPIRE);
     }
 
     @Test
@@ -74,7 +74,7 @@ class WeeklyReportReconciliationPlannerTest {
 
     @Test
     void usesTheSummerTimeOffsetOnTheMondayAfterTheSpringTransition() {
-        WeeklyReportReconciliationCandidate candidate = onlyCandidate(plan("2026-03-30T06:00:00Z"));
+        PeriodicReportReconciliationCandidate candidate = onlyCandidate(plan("2026-03-30T06:00:00Z"));
 
         assertThat(candidate.dueAt().localDate()).isEqualTo(LocalDate.of(2026, 3, 30));
         assertThat(candidate.dueAt().instant()).isEqualTo(Instant.parse("2026-03-30T06:00:00Z"));
@@ -83,7 +83,7 @@ class WeeklyReportReconciliationPlannerTest {
 
     @Test
     void usesTheStandardTimeOffsetOnTheMondayAfterTheFallTransition() {
-        WeeklyReportReconciliationCandidate candidate = onlyCandidate(plan("2026-10-26T07:00:00Z"));
+        PeriodicReportReconciliationCandidate candidate = onlyCandidate(plan("2026-10-26T07:00:00Z"));
 
         assertThat(candidate.dueAt().localDate()).isEqualTo(LocalDate.of(2026, 10, 26));
         assertThat(candidate.dueAt().instant()).isEqualTo(Instant.parse("2026-10-26T07:00:00Z"));
@@ -92,7 +92,7 @@ class WeeklyReportReconciliationPlannerTest {
 
     @Test
     void plansOnlyTheLatestDuePeriodWithoutAnAnchor() {
-        WeeklyReportReconciliationPlan plan = plan("2026-08-03T06:00:00Z");
+        PeriodicReportReconciliationPlan plan = plan("2026-08-03T06:00:00Z");
 
         assertThat(plan.candidates()).extracting(candidate -> candidate.period().startDate())
                 .containsExactly(LocalDate.of(2026, 7, 27));
@@ -100,30 +100,30 @@ class WeeklyReportReconciliationPlannerTest {
 
     @Test
     void keepsTheLatestPeriodAsTheReconciliationTargetWhenItEqualsTheAnchor() {
-        WeeklyReportReconciliationPlan plan = plan("2026-08-03T06:00:00Z", "2026-07-27");
+        PeriodicReportReconciliationPlan plan = plan("2026-08-03T06:00:00Z", "2026-07-27");
 
         assertThat(plan.candidates()).hasSize(1);
-        assertThat(onlyCandidate(plan).action()).isEqualTo(WeeklyReportReconciliationAction.DELIVER_OR_RECONCILE);
+        assertThat(onlyCandidate(plan).action()).isEqualTo(PeriodicReportReconciliationAction.DELIVER_OR_RECONCILE);
     }
 
     @Test
     void plansMissingWeeksInAscendingOrderAndOnlyDeliversTheLatestOne() {
-        WeeklyReportReconciliationPlan plan = plan("2026-08-03T06:00:00Z", "2026-07-06");
+        PeriodicReportReconciliationPlan plan = plan("2026-08-03T06:00:00Z", "2026-07-06");
 
         assertThat(plan.candidates()).extracting(candidate -> candidate.period().startDate())
                 .containsExactly(LocalDate.of(2026, 7, 13), LocalDate.of(2026, 7, 20), LocalDate.of(2026, 7, 27));
-        assertThat(plan.candidates()).extracting(WeeklyReportReconciliationCandidate::action)
-                .containsExactly(WeeklyReportReconciliationAction.EXPIRE,
-                        WeeklyReportReconciliationAction.EXPIRE,
-                        WeeklyReportReconciliationAction.DELIVER_OR_RECONCILE);
+        assertThat(plan.candidates()).extracting(PeriodicReportReconciliationCandidate::action)
+                .containsExactly(PeriodicReportReconciliationAction.EXPIRE,
+                        PeriodicReportReconciliationAction.EXPIRE,
+                        PeriodicReportReconciliationAction.DELIVER_OR_RECONCILE);
     }
 
     @Test
     void plansOnlyExpirationActionsWhenEveryCandidateIsOutsideTheCatchUpWindow() {
-        WeeklyReportReconciliationPlan plan = plan("2026-08-06T06:00:00Z", "2026-07-06");
+        PeriodicReportReconciliationPlan plan = plan("2026-08-06T06:00:00Z", "2026-07-06");
 
-        assertThat(plan.candidates()).extracting(WeeklyReportReconciliationCandidate::action)
-                .containsOnly(WeeklyReportReconciliationAction.EXPIRE);
+        assertThat(plan.candidates()).extracting(PeriodicReportReconciliationCandidate::action)
+                .containsOnly(PeriodicReportReconciliationAction.EXPIRE);
     }
 
     @Test
@@ -141,23 +141,23 @@ class WeeklyReportReconciliationPlannerTest {
         Instant now = Instant.parse("2026-08-03T06:00:00Z");
         Optional<LocalDate> anchor = Optional.of(LocalDate.of(2026, 7, 6));
 
-        assertThat(planner.plan(now, REPORT_TIME, BERLIN, anchor))
-                .isEqualTo(planner.plan(now, REPORT_TIME, BERLIN, anchor));
+        assertThat(planner.plan(ReportType.WEEKLY, now, REPORT_TIME, BERLIN, anchor))
+                .isEqualTo(planner.plan(ReportType.WEEKLY, now, REPORT_TIME, BERLIN, anchor));
     }
 
-    private WeeklyReportReconciliationPlan plan(String now) {
-        return planner.plan(Instant.parse(now), REPORT_TIME, BERLIN, Optional.empty());
+    private PeriodicReportReconciliationPlan plan(String now) {
+        return planner.plan(ReportType.WEEKLY, Instant.parse(now), REPORT_TIME, BERLIN, Optional.empty());
     }
 
-    private WeeklyReportReconciliationPlan plan(String now, String anchor) {
-        return planner.plan(Instant.parse(now), REPORT_TIME, BERLIN, Optional.of(LocalDate.parse(anchor)));
+    private PeriodicReportReconciliationPlan plan(String now, String anchor) {
+        return planner.plan(ReportType.WEEKLY, Instant.parse(now), REPORT_TIME, BERLIN, Optional.of(LocalDate.parse(anchor)));
     }
 
-    private static WeeklyReportReconciliationCandidate onlyCandidate(WeeklyReportReconciliationPlan plan) {
+    private static PeriodicReportReconciliationCandidate onlyCandidate(PeriodicReportReconciliationPlan plan) {
         return onlyCandidate(plan.candidates());
     }
 
-    private static WeeklyReportReconciliationCandidate onlyCandidate(List<WeeklyReportReconciliationCandidate> candidates) {
+    private static PeriodicReportReconciliationCandidate onlyCandidate(List<PeriodicReportReconciliationCandidate> candidates) {
         assertThat(candidates).hasSize(1);
         return candidates.getFirst();
     }

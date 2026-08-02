@@ -9,7 +9,7 @@ import de.venomenon.gridwordsbot.application.reporting.ReportDayAndStreakProject
 import de.venomenon.gridwordsbot.application.reporting.ReportGameStatisticsProjector;
 import de.venomenon.gridwordsbot.application.reporting.ReportParticipantProjector;
 import de.venomenon.gridwordsbot.application.reporting.WeeklyReportReconciliationService;
-import de.venomenon.gridwordsbot.domain.reporting.WeeklyReportReconciliationPlanner;
+import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportReconciliationPlanner;
 import de.venomenon.gridwordsbot.port.out.PeriodicReportDeliveryStore;
 import de.venomenon.gridwordsbot.port.out.PeriodicReportMessageGateway;
 import de.venomenon.gridwordsbot.port.out.ReportGameResultQuery;
@@ -80,15 +80,15 @@ class PeriodicReportDeliveryConfiguration {
     }
 
     @Bean
-    WeeklyReportReconciliationPlanner weeklyReportReconciliationPlanner() {
-        return new WeeklyReportReconciliationPlanner();
+    PeriodicReportReconciliationPlanner periodicReportReconciliationPlanner() {
+        return new PeriodicReportReconciliationPlanner();
     }
 
     @Bean
     @ConditionalOnBean({PeriodicReportDeliveryService.class, GridwordsBotProperties.class})
     WeeklyReportReconciliationService weeklyReportReconciliationService(
             PeriodicReportDeliveryStore store,
-            WeeklyReportReconciliationPlanner planner,
+            PeriodicReportReconciliationPlanner planner,
             PeriodicReportUseCase reports,
             PeriodicReportDeliveryService delivery,
             Clock clock,
