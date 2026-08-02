@@ -42,9 +42,11 @@ class PostgresSchemaIT {
     @Test void canonicalDeliveryAttemptRequiresExistingResultAndSource() {
         assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(
                 "insert into canonical_delivery_attempt(claim_token,game_result_id,source_message_id,refresh_generation,created_at) values ('00000000-0000-0000-0000-000000000208',999,999,1,?)", now));
-    }    @Test void submissionPrimaryKeyIsUnique() { insertPlayer(206); insertSubmission(206,206); assertThrows(DataIntegrityViolationException.class, () -> insertSubmission(206,206)); }
+    }
+    @Test void submissionPrimaryKeyIsUnique() { insertPlayer(206); insertSubmission(206,206); assertThrows(DataIntegrityViolationException.class, () -> insertSubmission(206,206)); }
+
     @Test
-    void migrationAddsFourMandatoryQuadWordsBoardColumnsInCanonicalOrder() {
+    void migrationAllowsZeroOrFourQuadWordsBoardColumnsInCanonicalOrder() {
         List<String> columns = jdbc.queryForList("""
                 SELECT column_name
                 FROM information_schema.columns
@@ -59,17 +61,26 @@ class PostgresSchemaIT {
                 "quadwords_top_right_board"), columns);
 
         insertPlayer(209);
-        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("""
+        jdbc.update("""
                 insert into game_result(player_id,game_type,game_date,solved,max_attempts,duration_seconds,
                     raw_share_text,parser_version,created_at,updated_at)
-                values (209,'QUADWORDS',current_date,false,9,0,'x','v',?,?)
+                values (209,'QUADWORDS',current_date,false,9,0,'boardless','quadwords-share-v2',?,?)
+                """, now, now);
+
+        insertPlayer(210);
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("""
+                insert into game_result(player_id,game_type,game_date,solved,max_attempts,duration_seconds,
+                    quadwords_top_left_board,raw_share_text,parser_version,created_at,updated_at)
+                values (210,'QUADWORDS',current_date,false,9,0,'top-left','partial','v',?,?)
                 """, now, now));
+
+        insertPlayer(211);
         jdbc.update("""
                 insert into game_result(player_id,game_type,game_date,solved,max_attempts,duration_seconds,
                     quadwords_top_left_board,quadwords_top_right_board,quadwords_bottom_left_board,
                     quadwords_bottom_right_board,raw_share_text,parser_version,created_at,updated_at)
-                values (209,'QUADWORDS',current_date,false,9,0,'top-left','top-right','bottom-left',
-                    'bottom-right','x','v',?,?)
+                values (211,'QUADWORDS',current_date,false,9,0,'top-left','top-right','bottom-left',
+                    'bottom-right','complete','v',?,?)
                 """, now, now);
     }
 

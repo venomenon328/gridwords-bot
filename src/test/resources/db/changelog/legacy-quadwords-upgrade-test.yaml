@@ -45,3 +45,6 @@ databaseChangeLog:
   - include:
       file: db/changelog/009-quadwords-boards.sql
       relativeToChangelogFile: false
+  - include:
+      file: db/changelog/013-boardless-quadwords.sql
+      relativeToChangelogFile: false

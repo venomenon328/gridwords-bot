@@ -24,14 +24,21 @@ final class CanonicalEmbedRenderer {
 
     MessageEmbed render(CanonicalResultMessage message) {
         String outcome = outcome(message);
-        String duration = String.format("%d:%02d", message.duration().toMinutes(), message.duration().toSecondsPart());
+        String duration = String.format("%d:%02d", message.duration().toMinutes(),
+                message.duration().toSecondsPart());
         String title = gameTitle(message) + " · "
                 + message.gameDate().format(DateTimeFormatter.ofPattern("d. MMMM uuuu", Locale.GERMAN));
+        StringBuilder description = new StringBuilder()
+                .append(message.playerDisplayName())
+                .append(" · ")
+                .append(outcome)
+                .append(" · ")
+                .append(duration);
+        boardText(message).ifPresent(board -> description.append("\n\n").append(board));
+        description.append("\n\n").append(series(message));
         return new EmbedBuilder()
                 .setTitle(title)
-                .setDescription(message.playerDisplayName() + " · " + outcome + " · " + duration
-                        + "\n\n" + boardText(message)
-                        + "\n\n" + series(message))
+                .setDescription(description.toString())
                 .setFooter(DiscordPublicationKey.encode(message.publicationKey()))
                 .build();
     }
@@ -85,13 +92,13 @@ final class CanonicalEmbedRenderer {
                 ? "🟩 GridWords" : "🟦 QuadWords";
     }
 
-    private static String boardText(CanonicalResultMessage message) {
+    private static Optional<String> boardText(CanonicalResultMessage message) {
         if (message.gameType() == de.venomenon.gridwordsbot.domain.model.GameType.GRIDWORDS) {
-            return codeBlock(message.board().canonicalText());
+            return Optional.of(codeBlock(message.board().canonicalText()));
         }
-        var boards = message.quadWordsBoards().orElseThrow();
-        return codeBlock(boardPair(boards.topLeft(), boards.topRight())
-                + "\n\n" + boardPair(boards.bottomLeft(), boards.bottomRight()));
+        return message.quadWordsBoards().map(boards -> codeBlock(
+                boardPair(boards.topLeft(), boards.topRight())
+                        + "\n\n" + boardPair(boards.bottomLeft(), boards.bottomRight())));
     }
 
     private static String codeBlock(String content) {
@@ -121,10 +128,12 @@ final class CanonicalEmbedRenderer {
         StringBuilder series = new StringBuilder()
                 .append("🔥 Aktivität: ").append(days(message.streaks().personalActivity()))
                 .append("\n🟩 ")
-                .append(message.gameType() == de.venomenon.gridwordsbot.domain.model.GameType.GRIDWORDS ? "GridWords" : "QuadWords")
+                .append(message.gameType() == de.venomenon.gridwordsbot.domain.model.GameType.GRIDWORDS
+                        ? "GridWords" : "QuadWords")
                 .append(" gelöst: ")
                 .append(daysOrNone(message.gameType() == de.venomenon.gridwordsbot.domain.model.GameType.GRIDWORDS
-                        ? message.streaks().personalGridWordsSolved() : message.streaks().personalQuadWordsSolved()));
+                        ? message.streaks().personalGridWordsSolved()
+                        : message.streaks().personalQuadWordsSolved()));
         appendOptional(series, PERSONAL_COMPLETE, message.personalComplete());
         appendOptional(series, PERSONAL_PERFECT, message.personalPerfect());
         appendOptional(series, SHARED_COMPLETE, message.sharedComplete());
