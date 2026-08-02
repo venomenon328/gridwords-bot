@@ -1,7 +1,7 @@
 # Verbindliches Modell für Tagesstatus und Erinnerungen
 
 **Status:** fachlich abgenommen  
-**Stand:** 31. Juli 2026  
+**Stand:** 2. August 2026
 **Gültig ab:** Inkrement 8
 
 Dieses Dokument ergänzt die Anforderungsspezifikation, das Serienmodell und das dynamische Spielermodell. Bei widersprüchlichen älteren Formulierungen zu genau zwei Spielern, statischen Spielerlisten, Tagesstatus oder Reminder-Auslieferung gilt dieses Dokument.
@@ -117,8 +117,9 @@ Damit bleibt die Übersicht vollständig, ohne einen Opt-out-Nutzer aktiv zu ben
 Standardmäßig täglich:
 
 ```text
-Stufe 1: 18:00
-Stufe 2: 23:00
+Stufe 1: 16:00
+Stufe 2: 22:00
+Tagesabschluss: 06:00
 Zeitzone: Europe/Berlin
 ```
 
@@ -138,7 +139,8 @@ QuadWords: <alle Spieler, denen QuadWords fehlt>
 
 Dabei gelten folgende Regeln:
 
-- `GridWords` und `QuadWords` sind jeweils als Link zum entsprechenden Spiel formatiert.
+- `GridWords` und `QuadWords` sind jeweils fett als Link zum entsprechenden Spiel formatiert.
+- Discord-Linkvorschauen werden fuer Reminder unterdrueckt.
 - Eine Spielzeile entfällt, wenn niemandem dieses Spiel fehlt.
 - Aktive Opt-ins werden mit `<@DISCORD_USER_ID>` adressiert.
 - Aktive Opt-outs werden nur als serverbezogener Klartextname angezeigt.
@@ -237,3 +239,13 @@ Aktiviert ein gültiges Ergebnis einen unbekannten oder inaktiven Spieler, werde
 - automatische Deaktivierung beim Serveraustritt,
 - Änderungen an Share-Parsern oder QuadWords-Bildparser,
 - fachliche Änderung der kanonischen Ergebnisdarstellung.
+
+## Zwischeninkrement 10.4: Retention und Tagesabschluss
+
+Diese Regelungen ersetzen ab Zwischeninkrement 10.4 entgegenstehende Aussagen dieses Dokuments.
+
+- Eine sichtbare Stufe 1 wird erst nach dem dauerhaft gespeicherten Abschluss von Stufe 2 als `SENT` oder `NO_CANDIDATES` pensioniert; `RETRYABLE` und `PERMANENT` erhalten sie.
+- Reminder vergangener Tage werden ab 06:00 Uhr nicht nur abgelaufen markiert, sondern getrennt persistent pensioniert und geloescht.
+- Der Cleanup finalisiert zuerst den gestrigen Status, entfernt danach alte kanonische Ergebnisnachrichten, dann alte Reminder, und erstellt anschliessend den heutigen Statusanker.
+- Ergebnis- und Reminder-Retirement haben getrennte Claims, Leases, Backoff, `RETIRED` und `PERMANENT`; Discord-I/O liegt ausserhalb von Transaktionen.
+- Eine unbekannte Discord-Nachricht ist beim Retirement ein idempotenter Erfolg, und ein nicht aktiver Ergebnis-Retirement-Zustand sperrt Publication und Recovery.
