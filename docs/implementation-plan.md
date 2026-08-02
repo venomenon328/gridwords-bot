@@ -332,7 +332,7 @@ Die gemeinsamen GridWords- und QuadWords-Lösungsserien sind neben der gemeinsam
 
 ### Zwischeninkrement 10.3 – Eigenständiger persönlicher Status-Command
 
-**Status:** in Umsetzung; Issue #29 und Draft-PR #33 auf `feature/personal-status-command`.
+**Status:** automatisiert abgeschlossen; Issue #29 und Draft-PR #33 auf `feature/personal-status-command`. Der reale Discord-Smoke-Test bleibt als offene Abnahme dokumentiert.
 
 Der parameterlose Root-Command `/status` trennt die persönliche Statusanzeige von `/participation`, zeigt ausschließlich die Daten des aufrufenden Nutzers und verbindet Teilnahmestatus sowie Reminder-Opt-in mit den jeweils letzten gültigen Einreichungen.
 
