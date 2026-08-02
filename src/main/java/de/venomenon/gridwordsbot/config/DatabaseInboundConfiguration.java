@@ -4,10 +4,12 @@ import de.venomenon.gridwordsbot.adapter.discord.canonical.JdaCanonicalMessageGa
 import de.venomenon.gridwordsbot.adapter.discord.canonical.JdaSourceMessageDeletionGateway;
 import de.venomenon.gridwordsbot.adapter.discord.inbound.DiscordInboundListener;
 import de.venomenon.gridwordsbot.adapter.discord.inbound.DiscordParticipationCommandListener;
+import de.venomenon.gridwordsbot.adapter.discord.status.PersonalStatusEmbedRenderer;
 import de.venomenon.gridwordsbot.adapter.discord.inbound.JdaAttachmentContentLoader;
 import de.venomenon.gridwordsbot.application.canonical.CanonicalGridWordsPublicationService;
 import de.venomenon.gridwordsbot.application.canonical.GridWordsSourceDeletionService;
 import de.venomenon.gridwordsbot.application.player.PlayerParticipationService;
+import de.venomenon.gridwordsbot.application.player.PersonalStatusService;
 import de.venomenon.gridwordsbot.application.status.DailyStatusRefreshService;
 import de.venomenon.gridwordsbot.application.submission.ProcessSharedResultService;
 import de.venomenon.gridwordsbot.parser.gridwords.GridWordsShareParser;
@@ -15,11 +17,13 @@ import de.venomenon.gridwordsbot.parser.quadwords.QuadWordsImageParser;
 import de.venomenon.gridwordsbot.parser.quadwords.QuadWordsShareParser;
 import de.venomenon.gridwordsbot.port.in.ProcessSharedResultUseCase;
 import de.venomenon.gridwordsbot.port.in.PlayerParticipationUseCase;
+import de.venomenon.gridwordsbot.port.in.PersonalStatusUseCase;
 import de.venomenon.gridwordsbot.port.out.AttachmentContentLoader;
 import de.venomenon.gridwordsbot.port.out.CanonicalMessageGateway;
 import de.venomenon.gridwordsbot.port.out.CanonicalPublicationContextStore;
 import de.venomenon.gridwordsbot.port.out.GameResultStore;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
+import de.venomenon.gridwordsbot.port.out.LatestValidSubmissionQuery;
 import de.venomenon.gridwordsbot.port.out.PublicationRetryScheduler;
 import de.venomenon.gridwordsbot.port.out.SourceDeletionRecoveryStore;
 import de.venomenon.gridwordsbot.port.out.SourceMessageDeletionGateway;
@@ -67,8 +71,18 @@ class DatabaseInboundConfiguration {
                 });
     }
     @Bean ZoneId businessZone(GridwordsBotProperties properties) { return properties.schedule().timeZone(); }
-    @Bean @ConditionalOnBean(JDA.class) DiscordParticipationCommandListener discordParticipationCommandListener(GridwordsBotProperties properties, PlayerParticipationUseCase commands) {
-        return new DiscordParticipationCommandListener(properties, commands);
+    @Bean PersonalStatusUseCase personalStatusUseCase(Clock clock, GridwordsBotProperties properties,
+            PlayerStore players, LatestValidSubmissionQuery submissions) {
+        return new PersonalStatusService(players, submissions, clock, properties.schedule().timeZone(),
+                Set.copyOf(properties.discord().adminUserIds()));
+    }
+    @Bean PersonalStatusEmbedRenderer personalStatusEmbedRenderer(GridwordsBotProperties properties) {
+        return new PersonalStatusEmbedRenderer(properties.schedule().timeZone());
+    }
+    @Bean @ConditionalOnBean(JDA.class) DiscordParticipationCommandListener discordParticipationCommandListener(
+            GridwordsBotProperties properties, PlayerParticipationUseCase commands, PersonalStatusUseCase personalStatus,
+            PersonalStatusEmbedRenderer personalStatusRenderer) {
+        return new DiscordParticipationCommandListener(properties, commands, personalStatus, personalStatusRenderer);
     }
     @Bean @ConditionalOnBean(JDA.class) AttachmentContentLoader attachmentContentLoader(JDA jda) { return new JdaAttachmentContentLoader(jda); }
     @Bean @ConditionalOnBean(JDA.class) CanonicalMessageGateway canonicalMessageGateway(JDA jda, ObjectProvider<CanonicalPublicationContextStore> contexts) { return new JdaCanonicalMessageGateway(jda, contexts.getIfAvailable(CanonicalPublicationContextStore::none)); }

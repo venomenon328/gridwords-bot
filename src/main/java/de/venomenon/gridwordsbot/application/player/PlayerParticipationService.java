@@ -48,7 +48,6 @@ public final class PlayerParticipationService implements PlayerParticipationUseC
         return changed(players.deactivate(change(actor, today().plusDays(1))), "Teilnahme endet ab morgen.");
     }
 
-    @Override public PlayerStatus status(PlayerIdentity actor) { return statusFor(actor); }
 
     @Override
     public PlayerStatus activate(PlayerIdentity actor, PlayerIdentity target) {

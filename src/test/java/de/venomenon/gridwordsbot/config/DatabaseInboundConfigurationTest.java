@@ -12,6 +12,7 @@ import de.venomenon.gridwordsbot.port.out.PublicationRetryScheduler;
 import de.venomenon.gridwordsbot.port.out.SourceMessageDeletionGateway;
 import de.venomenon.gridwordsbot.port.out.SubmissionStore;
 import java.time.Clock;
+import de.venomenon.gridwordsbot.port.out.LatestValidSubmissionQuery;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.List;
@@ -29,6 +30,7 @@ class DatabaseInboundConfigurationTest {
             context.registerBean(Clock.class, Clock::systemUTC);
             context.registerBean(JDA.class, () -> mock(JDA.class));
             context.registerBean(GameResultStore.class, () -> mock(GameResultStore.class));
+            context.registerBean(LatestValidSubmissionQuery.class, () -> mock(LatestValidSubmissionQuery.class));
             context.registerBean(PlayerStore.class, () -> mock(PlayerStore.class));
             context.registerBean(SubmissionStore.class, () -> mock(SubmissionStore.class));
             context.registerBean(GridwordsBotProperties.class, DatabaseInboundConfigurationTest::properties);

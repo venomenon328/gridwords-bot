@@ -68,7 +68,7 @@ class PlayerParticipationServiceTest {
         when(store.findParticipationPeriod(PLAYER, LocalDate.of(2026, 7, 29)))
                 .thenReturn(Optional.of(new ParticipationPeriod(PLAYER, LocalDate.of(2026, 7, 27), null)));
 
-        var status = service(store).status(identity(PLAYER));
+        var status = service(store).status(identity(ADMIN), identity(PLAYER));
 
         assertThat(status.known()).isTrue();
         assertThat(status.message()).isEqualTo("Teilnahme: aktiv seit 2026-07-27; Reminder: an.");
@@ -98,7 +98,7 @@ class PlayerParticipationServiceTest {
         when(store.synchronizeProfile(any())).thenReturn(new PlayerStore.StoredPlayer(
                 ADMIN, "Player", false, true, false, Instant.EPOCH, Instant.EPOCH));
 
-        service(store).status(identity(ADMIN));
+        service(store).status(identity(ADMIN), identity(PLAYER));
 
         verify(store).synchronizeProfile(new PlayerStore.ProfileUpdate(ADMIN, "Player", true));
     }
