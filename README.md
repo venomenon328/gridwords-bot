@@ -8,75 +8,86 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 - [`docs/requirements/series-model.md`](docs/requirements/series-model.md) – verbindliche Seriensemantik
 - [`docs/requirements/dynamic-player-model.md`](docs/requirements/dynamic-player-model.md) – dynamische Spieler, Teilnahmezeiträume und Reminder-Opt-out
 - [`docs/requirements/daily-status-reminders.md`](docs/requirements/daily-status-reminders.md) – Tagesstatus, Scheduler und persistente Reminder-Auslieferung
-- [`docs/requirements/production-deployment.md`](docs/requirements/production-deployment.md) – verbindlicher Produktions-, Deployment-, Secret- und Backupweg
+- [`docs/requirements/periodic-reports.md`](docs/requirements/periodic-reports.md) – verbindliche Wochen-/Monatsbericht- und Report-Delivery-Semantik
+- [`docs/requirements/production-deployment.md`](docs/requirements/production-deployment.md) – Produktions-, Deployment-, Secret- und Backupweg
 - [`docs/architecture.md`](docs/architecture.md) – Architektur und Modulgrenzen
 - [`docs/implementation-plan.md`](docs/implementation-plan.md) – Inkremente und Reihenfolge
 - [`docs/development-guide.md`](docs/development-guide.md) – lokaler Build, Docker und Tests
 - [`docs/increments/09-production-deployment-hardening.md`](docs/increments/09-production-deployment-hardening.md) – Umsetzung und Abnahme von Inkrement 9
+- [`docs/increments/10-periodic-reports.md`](docs/increments/10-periodic-reports.md) – paketweiser Plan für Inkrement 10
 - [`docs/adr/`](docs/adr/) – Architekturentscheidungen
 - [`AGENTS.md`](AGENTS.md) – Arbeitsregeln für Codex/Terra
 
 ## Aktueller Stand
 
-Die Inkremente 0 bis 8 sowie die Zwischeninkremente 7.1 und 7.2 sind abgeschlossen. Das dynamische Spielermodell, historisch stabile Teilnahmezeiträume, Tagesstatus, vollständige persönliche und gemeinsame Serien sowie persistente Reminder wurden automatisiert und in realen Discord-/PostgreSQL-Smoke-Tests abgenommen.
+Die Inkremente 0 bis 9 sowie die Zwischeninkremente 7.1 und 7.2 sind abgeschlossen.
 
-Inkrement 8 umfasst persistente Tagesstatusnachrichten, alle persönlichen und gemeinsamen Serien, historische Finalisierung, DST-sicheres Scheduling sowie idempotente Reminder um 18:00 und 23:00 Uhr. Die aus dem ersten realen Smoke-Test abgeleiteten UX-Korrekturen wurden umgesetzt und am 31. Juli 2026 erfolgreich nachgetestet.
+Der Bot läuft produktiv auf einem gehärteten Debian-13-VPS mit:
 
-Inkrement 9 ist mit Issue #23, Branch `feature/production-deployment-hardening` und Draft-PR #24 vorbereitet. Ziel ist ein reproduzierbarer und gehärteter Produktionsbetrieb auf einem Netcup VPS 500 G12 mit Debian 13, privatem GHCR-Image, Docker Compose, frischer PostgreSQL-Datenbank, lokaler SSH-Auslösung des Deployments sowie 14 täglichen und 8 wöchentlichen lokalen Backups.
+- privatem GHCR-Image,
+- Docker Engine und Docker Compose,
+- getrennten Bot- und PostgreSQL-Containern,
+- internem Datenbanknetz ohne PostgreSQL- oder Actuator-Hostport,
+- frischer PostgreSQL-16-Datenbank und Liquibase,
+- separater Discord-Produktionsanwendung,
+- unveränderlichen SHA-Image-Tags,
+- Deploy-, Verify-, Backup-, Restore- und App-Rollback-Skripten,
+- 14 täglichen und 8 wöchentlichen lokalen Backupgenerationen,
+- öffentlich ausschließlich erreichbarem SSH.
+
+Inkrement 9 wurde über Issue #23 und PR #24 am 1. August 2026 abgeschlossen. Der produktive RC läuft weiterhin, weil er denselben funktionalen Quellstand wie das nach dem Merge veröffentlichte `main`-Image enthält. Weitere Restart-, Reminder-, Restore- und Rollbackbeobachtungen erfolgen bei realen Betriebsanlässen statt durch künstliche Eingriffe in die laufende Produktion.
+
+Inkrement 10 ist über Issue #25, Branch `feature/periodic-reporting` und Draft-PR #26 vorbereitet. Es ergänzt vollständig abgeleitete, idempotente Wochen- und Monatsberichte. Die Umsetzung erfolgt in kleinen, einzeln reviewbaren Terra-Paketen.
+
+## Fachlicher Funktionsumfang
 
 Der Projektstand umfasst:
 
-- Java 21, Spring Boot, Maven, JDA, PostgreSQL und Liquibase
-- deterministische GridWords- und QuadWords-Textparser
-- dynamische Spielerprofile mit serverbezogenem Anzeigenamen und extern bestimmtem Administratorstatus
-- historisch stabile, nicht überlappende Teilnahmezeiträume
-- Self-Service- und Admin-Slash-Commands für Teilnahme und Reminderstatus
-- Reminder-Opt-out bei neuer beziehungsweise erneuter Aktivierung
-- transportneutrale Reminder-Audience mit konkret fehlenden Spielen und getrenntem Mentionstatus
-- reine Text-Reminder mit verlinkten Spielnamen, Klartextnamen für Opt-outs und ausschließlich ID-basierten Mentions für Opt-ins
-- persistente Tagesstatusnachrichten mit allen fünf persönlichen und beiden gemeinsamen Serien
-- endgültige historische Serienprojektion und ausschließlich heute vorläufige Semantik
-- keine sichtbaren technischen Delivery-Schlüssel im Tagesstatus oder als Reminder-Footer
-- idempotente Reminder-Delivery mit No-op, Supersession, Ablauf, Backoff und Recovery
-- nicht sichtbare Discord-Delivery-Schlüssel, Status-Fingerprints und kontrollierter Ersatz extern gelöschter Nachrichten
-- idempotente Spieler-, Ergebnis- und Submission-Persistenz
-- kanonische GridWords- und QuadWords-Embeds mit sicherer Quelllöschung nach persistierter Veröffentlichung
-- kompaktes QuadWords-2×2-Raster und Monospace-Codeblöcke für beide Spiele
-- Retry-, Claim-, Recovery-, Supersession- und Duplikatschutz
-- transportneutrale Referenzen auf Discord-Anhänge
-- verzögerten Download genau des ausgewählten QuadWords-Anhangs außerhalb des JDA-Event-Threads
-- Download der originalen signierten Discord-CDN-Datei statt einer möglicherweise transformierten Medienproxy-Variante
-- reinen QuadWords-Bildparser ohne OCR, ML, Netzwerk, Spring oder Datenbank
-- vier normalisierte Boards in der Reihenfolge `Oben links`, `Oben rechts`, `Unten links`, `Unten rechts`
-- Persistenz aller vier Boards und der Parser-Version `quadwords-image-v2`
-- kontrollierte Wiederaufnahme technischer Attachment-Fehler
-- Schutz gegen ein Zurückstufen parallel bereits gespeicherter Ergebnisse
-- Korrekturen beider Spieltypen durch Edit derselben kanonischen Bot-Message-ID
-- spieltypbezogene Publication-Keys sowie gemeinsame Claims, Delivery-Fence, Retry, Recovery, Supersession und Duplikatbereinigung
-- PublicationContext für persönliche und gemeinsame Komplett-/Perfektübergänge über die je Spieltag aktive Teilnehmermenge
-- sichere Lesbarkeit bereits gespeicherter QuadWords-Ergebnisse aus `quadwords-share-v1`, ohne Publish, Delete-Handoff oder Refresh-Schleife bei fehlenden Boards
-- permanente Löschfehler ohne Scheduler- oder Hot-Loop sowie kontrollierte Wiederaufnahme bei Neustart oder nach einer späteren bestätigten Veröffentlichung desselben Ergebnisses
+- deterministische GridWords- und QuadWords-Textparser,
+- reinen QuadWords-Bildparser ohne OCR oder ML,
+- vier normalisierte QuadWords-Boards,
+- dynamische Spielerprofile,
+- historisch stabile Teilnahmezeiträume,
+- Self-Service- und Admin-Slash-Commands für Teilnahme und Reminderstatus,
+- Reminder-Opt-out bei neuer beziehungsweise erneuter Aktivierung,
+- kanonische GridWords- und QuadWords-Nachrichten,
+- sichere Quelllöschung erst nach persistierter Bot-Veröffentlichung,
+- Korrektur durch Edit derselben kanonischen Message-ID,
+- persistente Tagesstatusnachrichten,
+- fünf persönliche und zwei gemeinsame Serien,
+- ausschließlich heute vorläufige und historisch endgültige Seriensemantik,
+- Reminder um standardmäßig 18:00 und 23:00 Uhr,
+- echte ID-basierte Mentions nur für Opt-ins,
+- Klartextnamen für Opt-outs,
+- Claim-, Lease-, Retry-, Recovery-, Supersession- und Duplikatschutz,
+- keine Discord-I/O innerhalb von Datenbanktransaktionen.
 
-Ein sicher geparstes und gespeichertes QuadWords-Ergebnis wird ohne zusätzliche `✅`-Reaktion als genau eine kanonische Bot-Nachricht veröffentlicht; erst nach persistierter Veröffentlichung wird die menschliche Quelle gelöscht. Eine stabile fachliche Bildablehnung bleibt mit `⚠️` sichtbar. Technische Downloadfehler sowie boardlose Legacy-Ergebnisse erhalten weder ein Erfolgssignal noch einen Discord-Publish-/Delete-Aufruf.
-
-## Produktionsziel für Inkrement 9
+## Inkrement 10: Wochen- und Monatsberichte
 
 Verbindlich beschlossen:
 
 ```text
-Host:             Netcup VPS 500 G12, x86-64
-Betriebssystem:   Debian 13
-Runtime:          Docker Engine und Docker Compose
-Image:            privat in GHCR
-Deployment:       bewusst lokal per SSH ausgelöst
-Discord:          separate Produktionsanwendung
-Datenbank:        frische PostgreSQL-16-Datenbank
-Backups:          14 tägliche + 8 wöchentliche lokale Stände
-Netzwerk:         nur SSH öffentlich; kein PostgreSQL-/Actuator-Hostport
-Domain:           zunächst keine
+Wochenbericht:  Montag 08:00 über die abgeschlossene Vorwoche
+Monatsbericht:  Monatserster 08:15 über den abgeschlossenen Vormonat
+Zeitzone:       Europe/Berlin
+Wochen-Catch-up: 72 Stunden
+Monats-Catch-up: 7 Tage
 ```
 
-Der Serverzugang, Discord-Token, Datenbankpasswörter und GHCR-Token werden niemals im Repository oder Image gespeichert. Der Pull Request von Inkrement 9 bleibt bis zur realen Netcup-/Discord-/PostgreSQL-Abnahme Draft und ungemergt.
+Die Berichte:
+
+- verwenden alle Spieler mit mindestens einem Teilnahmetag in der Periode,
+- berechnen individuelle Nenner ausschließlich aus historischen Teilnahmetagen,
+- berechnen gemeinsame Kennzahlen nur an Tagen mit mindestens zwei aktiven Spielern,
+- enthalten persönliche Spiel-, Tages- und Serienwerte,
+- enthalten beide gemeinsamen Serien,
+- verwenden ausschließlich Daten bis zum Periodenende,
+- bleiben nach erfolgreicher Veröffentlichung Snapshots,
+- speichern keine berechneten Statistikwerte als zweite fachliche Wahrheit,
+- enthalten keine Mentions, Gewinnerlogik, Rankings oder Leaderboards,
+- dürfen wegen Discord-Grenzen deterministisch auf mehrere Seiten verteilt werden.
+
+Maßgeblich sind [`docs/requirements/periodic-reports.md`](docs/requirements/periodic-reports.md) und ADR 0014.
 
 ## QuadWords-Bildparser
 
@@ -85,7 +96,7 @@ Unterstützte Bildformate:
 - PNG
 - JPEG
 
-WebP und andere Formate werden stabil als nicht unterstützt abgelehnt; es wird keine zusätzliche Decoderbibliothek verwendet.
+WebP und andere Formate werden stabil als nicht unterstützt abgelehnt. Es wird keine zusätzliche Decoderbibliothek verwendet.
 
 Zentrale Schutzgrenzen:
 
@@ -96,9 +107,7 @@ Maximale Höhe:                    4096 Pixel
 Maximale Gesamtfläche:            12.000.000 Pixel
 ```
 
-Der Parser erkennt eine 2×2-Anordnung mit genau fünf Spalten je Board. Er klassifiziert Zellen anhand mehrerer Flächenstichproben in `⬜`, `🟨` und `🟩`. Unsichere Geometrie, Farben, Struktur oder widersprüchliche aktive Zeilen führen zu einer kontrollierten Ablehnung. Klar fehlende nachlaufende Zeilen eines bereits früher abgeschlossenen Teilboards werden als kanonische Leerzellen normalisiert; mindestens ein Teilboard muss die in der Kopfzeile gemeldete Versuchszahl erreichen.
-
-Die freigegebenen realen PNG-Fixtures besitzen jeweils eine eingecheckte erwartete kanonische Ausgabe. Zusätzlich decken synthetische Dateien Skalierung, Ränder, beschädigte und abgeschnittene Bilder, unsichere Farben sowie Ressourcenlimits ab. JPEG wird programmatisch in einem Unit-Test erzeugt und geprüft.
+Der Parser erkennt eine 2×2-Anordnung mit genau fünf Spalten je Board. Er klassifiziert Zellen anhand mehrerer Flächenstichproben in `⬜`, `🟨` und `🟩`. Unsichere Geometrie, Farben, Struktur oder widersprüchliche aktive Zeilen führen zu einer kontrollierten Ablehnung.
 
 ## Lokale Voraussetzungen
 
@@ -109,7 +118,7 @@ Für den schnellen Standardbuild:
 - Maven 3.9 oder neuer
 - eine geeignete IDE
 
-Für Persistenz-, Integrations- und Smoke-Tests steht Docker Desktop mit Docker Compose zur Verfügung und darf vorausgesetzt werden. `compose.yaml` ist die bevorzugte lokale PostgreSQL-Umgebung. Der Standardbuild bleibt bewusst ohne Docker, PostgreSQL, Discord-Verbindung und Token ausführbar. Maßgeblich ist [`docs/adr/0010-docker-available-local-development.md`](docs/adr/0010-docker-available-local-development.md).
+Für Persistenz-, Integrations-, Container- und Smoke-Tests steht Docker Desktop mit Docker Compose zur Verfügung und darf vorausgesetzt werden. `compose.yaml` ist die bevorzugte lokale PostgreSQL-Umgebung. Der Standardbuild bleibt bewusst ohne Docker, PostgreSQL, Discord-Verbindung und Token ausführbar.
 
 ## Lokale Konfiguration
 
@@ -184,6 +193,8 @@ Liquibase verwendet dieselben Migrationen wie die Integrationstests und GitHub A
 
 ## Datenbankzugriff mit DBeaver
 
+Lokale Entwicklung:
+
 ```text
 Host: localhost
 Port: 5432
@@ -198,7 +209,9 @@ JDBC-URL:
 jdbc:postgresql://localhost:5432/gridwords
 ```
 
-Relevante Tabellen sind insbesondere `player`, `player_participation_period`, `submission`, `game_result`, `daily_status_message`, `reminder_delivery` und `canonical_delivery_attempt`. Die vier QuadWords-Raster stehen in den Spalten `quadwords_top_left_board`, `quadwords_top_right_board`, `quadwords_bottom_left_board` und `quadwords_bottom_right_board`. `player.reminder_opt_in` ist technisch unabhängig vom aktuellen Teilnahmezustand; eine neue beziehungsweise erneute Aktivierung setzt den Wert fachlich standardmäßig auf `true`.
+Die Produktionsdatenbank besitzt bewusst keinen öffentlichen Hostport. Ein administrativer Zugriff erfolgt ausschließlich über einen SSH-Tunnel.
+
+Relevante Tabellen sind insbesondere `player`, `player_participation_period`, `submission`, `game_result`, `daily_status_message`, `reminder_delivery` und `canonical_delivery_attempt`. Report-Deliverytabellen werden erst in Paket 7 von Inkrement 10 ergänzt.
 
 ## Teststrategie
 
@@ -206,12 +219,13 @@ Relevante Tabellen sind insbesondere `player`, `player_participation_period`, `s
 - PostgreSQL-Integration: echtes PostgreSQL über `database-integration`
 - Discord-Adaptertests: JDA-Grenze ohne echte Verbindung
 - Bildparser-Fixtures: reale PNGs mit Golden-Ausgabe plus synthetische Fehler- und Layoutvarianten
-- JPEG-Kompatibilität: programmatisch erzeugtes Bild im Unit-Test
+- zeitabhängige Tests: feste injizierte `Clock`
 - manuelle Smoke-Tests: echte Discord-Verbindung und Compose-PostgreSQL
+- Produktionscontainer: separater vollständiger Container-/Betriebsworkflow
 - H2 ersetzt keine PostgreSQL-Integrationstests
 
-Finaler Stand von Inkrement 8: **249 Standardtests und 76 PostgreSQL-Integrationstests** sind grün. Abgedeckt sind insbesondere historische Finalisierung, Vortagsnachträge, Status-Create/Edit/Recreate, unsichtbare Status-Reconciliation, Reminder-Opt-out bei implizitem Join und Reaktivierung, bewahrte aktive Opt-outs, reine Text-Reminder, Spiellinks, Klartextnamen, JDA-Mention-Sicherheit, beide Reminderstufen, Startup/DST, Konkurrenz, Retry/Permanentfehler, Liquibase und vollständige Ergebnisregression. Weder automatisierte Tests noch der Build verwenden einen Discord-Token. Die reale Discord-/PostgreSQL-Abnahme einschließlich des gezielten UX-Nachtests ist erfolgreich abgeschlossen.
+Finaler automatisierter Stand von Inkrement 9: **253 Standardtests und 76 PostgreSQL-Integrationstests** sowie der vollständige Container-, Backup-, Restore-, Upgrade- und Rollback-Vollpfad sind grün.
 
 ## Geheimnisse
 
-Der Discord-Bot-Token gehört ausschließlich in eine lokale, nicht versionierte Konfiguration beziehungsweise später in die serverseitige `runtime.env`. Automatisierte Tests und Entwicklungsaufträge dürfen keinen echten Token anfordern oder verwenden. Gleiches gilt für produktive Datenbankpasswörter, GHCR-Tokens und private SSH-Schlüssel.
+Discord-Bot-Token, Datenbankpasswörter, GHCR-Tokens und private SSH-Schlüssel gehören ausschließlich in lokale beziehungsweise serverseitige, nicht versionierte Konfigurationen. Automatisierte Tests und Entwicklungsaufträge dürfen keine echten Secrets anfordern oder verwenden.

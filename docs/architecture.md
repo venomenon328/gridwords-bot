@@ -41,23 +41,29 @@ de.venomenon.gridwordsbot
 ├── domain
 │   ├── model
 │   ├── parsing
+│   ├── reporting
 │   └── streak
 ├── parser
 │   ├── gridwords
 │   └── quadwords
 ├── application
 │   ├── submission
-│   └── canonical
+│   ├── canonical
+│   └── reporting
 ├── port
 │   ├── in
 │   └── out
 ├── adapter
 │   ├── discord
 │   │   ├── inbound
-│   │   └── canonical
-│   └── persistence
+│   │   ├── canonical
+│   │   └── reporting
+│   ├── persistence
+│   └── scheduling
 └── config
 ```
+
+Die neuen Reporting-Pakete sind eine Zielrichtung und dürfen paketweise entstehen. Es werden keine leeren Schichten oder vorauseilenden Abstraktionen nur zur Anpassung an diese Übersicht angelegt.
 
 ## 4. Inbound-Verarbeitung
 
@@ -193,6 +199,22 @@ Sie wird gemeinsam mit dem Ergebnis persistiert.
 
 Ein GridWords-Ergebnis kann kein QuadWords-Board enthalten. Ein neues bildgestütztes QuadWords-Ergebnis kann kein GridWords-Board enthalten und benötigt vier Boards mit der zur Kopfzeile passenden kanonischen Zeilenzahl.
 
+### 8.1 Reporting-Domäne
+
+Inkrement 10 ergänzt reine, transportneutrale Typen für:
+
+- Berichtstyp,
+- inklusive Berichtsperiode,
+- Fälligkeit und Catch-up-Regel,
+- individuelle Teilnahme-, Spiel-, Tages- und Serienzusammenfassung,
+- gemeinsame Zusammenfassung,
+- vollständigen Periodenbericht,
+- deterministische gerenderte Seiten ohne JDA-Typen.
+
+Der Reporting-Kern verwendet `LocalDate`, `ZoneId` und eine injizierte `Clock`. Er kennt weder Discord-Message-IDs noch Persistenzentitäten.
+
+Durchschnittswerte werden im fachlichen Kern nicht früh gerundet. Summen, Anzahlen und Minima bleiben transportneutral; die sichtbare Rundung ist Aufgabe des Renderers.
+
 ## 9. Fehler- und Reaktionssemantik für QuadWords
 
 ### Fachlich stabil ungültig
@@ -251,7 +273,21 @@ Vor Inkrement 6 gespeicherte QuadWords-Ergebnisse verwenden `quadwords-share-v1`
 
 Liquibase bleibt die einzige Quelle für Schemaänderungen. Hibernate erzeugt oder aktualisiert das Schema nicht.
 
-## 11. Sichere GridWords-Ersetzung
+### 10.1 Report-Delivery-Persistenz
+
+Inkrement 10 ergänzt ausschließlich Delivery-Metadaten. Berechnete Spieler-, Statistik- und Serienwerte werden nicht als Report-Snapshot persistiert.
+
+Der fachliche Unique Key enthält mindestens:
+
+```text
+Guild-ID + Channel-ID + Berichtstyp + Periodenbeginn
+```
+
+Persistiert werden Periodenende, Fälligkeit, Zustand, Claim/Lease, Retryinformationen, Fehlerkategorie, Inhalts-Fingerprint, geordnete Discord-Message-IDs, Veröffentlichungszeitpunkt sowie NO_OP- und Ablaufzustände.
+
+Mehrseitenberichte bilden eine logische Delivery. Die Reihenfolge der persistierten Message-IDs entspricht der sichtbaren Seitenreihenfolge.
+
+## 11. Sichere Ergebnisersetzung
 
 Der bestehende GridWords-Ablauf bleibt unverändert:
 
@@ -282,6 +318,41 @@ Status und Reminder verwenden persistente Delivery-Zustände mit fachlichen Uniq
 
 Der Scheduler ist lediglich ein wiederholter Trigger. Startup und Minutentakt rufen dieselben idempotenten Status- und Reminder-Use-Cases auf. Kandidaten werden unmittelbar vor jedem Reminder-Versuch neu gelesen; No-op, Supersession, Ablauf, retryfähige und permanente Fehler sind persistente terminale beziehungsweise kontrolliert wiederaufnehmbare Zustände. Details regelt ADR 0012.
 
+## 12.2 Periodische Reporting- und Delivery-Grenze
+
+Der Reporting-Use-Case liest:
+
+- Spieler und historische Teilnahmezeiträume,
+- gültige Ergebnisse bis einschließlich Periodenende,
+- Serienprojektionen und Rekorde bis einschließlich Periodenende.
+
+Er erzeugt einen vollständigen transportneutralen Periodenbericht. Wochen- und Monatsbericht verwenden denselben Kern und unterscheiden sich nur durch Periodenregel, Fälligkeit, Catch-up-Dauer und Titelkontext.
+
+Ein erfolgreich veröffentlichter Bericht wird als Snapshot abgeschlossen. Spätere Ergebnisse, Korrekturen oder Namensänderungen lösen keinen Edit aus.
+
+Der Discord-Renderer erzeugt eine deterministische geordnete Seitenausgabe. Er verwendet keine Mentions oder Allowed Mentions und erzeugt keine Rankings.
+
+Die persistente Report-Delivery verwendet:
+
+- fachlichen Unique Key,
+- tokengebundene Claims und Leases,
+- Retry mit Backoff,
+- permanente Fehler,
+- Fingerprint,
+- geordnete Message-IDs,
+- NO_OP und Ablauf,
+- Reconciliation teilweise erfolgreicher beziehungsweise unklarer Mehrseiten-Ausgänge.
+
+Discord-I/O liegt außerhalb von Datenbanktransaktionen. PostgreSQL bleibt die Quelle der Wahrheit; Scheduler und Startup sind nur wiederholte Trigger.
+
+Catch-up ist begrenzt:
+
+- Wochenbericht 72 Stunden,
+- Monatsbericht sieben Tage,
+- pro Typ höchstens die jüngste noch relevante Periode.
+
+Eine externe Löschung wird nur innerhalb des Catch-up-Fensters automatisch repariert. Details regeln `docs/requirements/periodic-reports.md` und ADR 0014.
+
 ## 13. Tests
 
 ### Standardbuild
@@ -295,6 +366,8 @@ Ohne Netzwerk, Token, Datenbank und Container:
 - Application-Retry, Replay und Korrektur,
 - JDA-Adapter mit gemockter Grenze,
 - Tagesstatusprojektion, Scheduler, DST, Reminder und Discord-Limits,
+- Wochen-/Monatsperioden, Teilnahmetage, Statistiken und Serien-Stichtage,
+- Report-Renderer, Pagination, Fingerprint, Delivery, Catch-up und Recovery mit Testdoubles,
 - ArchUnit-Regeln.
 
 ### PostgreSQL-Integration
@@ -308,20 +381,32 @@ Mit echtem PostgreSQL:
 - persistierter Pre-Result-Retry,
 - Migration und In-place-Upgrade eines `quadwords-share-v1`-Datensatzes,
 - Start des vollständigen Spring-Kontexts,
-- Tagesstatus-/Reminder-Migration, Constraints, Claims, Leases, Backoff, Recovery und Konkurrenz.
+- Tagesstatus-/Reminder-Migration, Constraints, Claims, Leases, Backoff, Recovery und Konkurrenz,
+- Reportteilnehmer- und Statistikabfragen,
+- Report-Delivery-Migration, Unique Constraints, Claims, Leases, geordnete Message-IDs, NO_OP, Ablauf, Retry und Konkurrenz.
 
 ### Manuelle Abnahme
 
 Der reale Discord-/PostgreSQL-Smoke-Test prüft echte gelöste und nicht gelöste Bilder, Zellfarben, Boardreihenfolge, Reaktionen, Korrektur, Neustart sowie unverändertes GridWords-Verhalten.
 
+Für Inkrement 10 werden zusätzlich ein realer Wochen- und Monatsbericht, visuelle Pagination, persistierte Message-IDs und Duplikatschutz geprüft.
+
 ## 14. Lokale Infrastruktur
 
 Der schnelle Standardbuild bleibt infrastrukturunabhängig. Für Persistenz- und Smoke-Tests ist Docker Compose die bevorzugte lokale PostgreSQL-Umgebung. Maßgeblich ist ADR 0010.
 
-## 15. Verwandte ADRs
+## 15. Produktionsbetrieb
+
+Der produktive Bot läuft als private Containeranwendung auf einem gehärteten Debian-13-VPS gemäß `docs/requirements/production-deployment.md` und ADR 0013.
+
+Neue Reportfunktionalität wird erst nach vollständigem Build, PostgreSQL-Integration, Containerprüfung und realem Discord-Smoke-Test über einen unveränderlichen Image-Tag kontrolliert deployt. GitHub Actions erhält keinen automatischen SSH-Zugang zur Produktion.
+
+## 16. Verwandte ADRs
 
 - ADR 0002: idempotente Nachrichtenersetzung
 - ADR 0006 bis 0009: kanonische Veröffentlichung, Recovery und Quelllöschung
 - ADR 0010: Docker-verfügbare lokale Entwicklung
 - ADR 0011: transportneutrale QuadWords-Bildanalyse
 - ADR 0012: persistente Tagesstatus- und Reminder-Auslieferung
+- ADR 0013: Produktionsdeployment und Betriebshärtung
+- ADR 0014: persistente periodische Report-Delivery
