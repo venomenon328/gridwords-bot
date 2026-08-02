@@ -3,6 +3,7 @@ package de.venomenon.gridwordsbot.config;
 import de.venomenon.gridwordsbot.adapter.discord.canonical.JdaCanonicalMessageGateway;
 import de.venomenon.gridwordsbot.adapter.discord.canonical.JdaSourceMessageDeletionGateway;
 import de.venomenon.gridwordsbot.adapter.discord.inbound.DiscordInboundListener;
+import de.venomenon.gridwordsbot.adapter.discord.inbound.DailyResultDetailsInteractionListener;
 import de.venomenon.gridwordsbot.adapter.discord.inbound.DiscordParticipationCommandListener;
 import de.venomenon.gridwordsbot.adapter.discord.status.PersonalStatusEmbedRenderer;
 import de.venomenon.gridwordsbot.adapter.discord.inbound.JdaAttachmentContentLoader;
@@ -37,6 +38,7 @@ import de.venomenon.gridwordsbot.port.out.SubmissionStore;
 import java.time.Clock;
 import java.time.ZoneId;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
 import net.dv8tion.jda.api.JDA;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.ApplicationRunner;
@@ -93,6 +95,9 @@ class DatabaseInboundConfiguration {
             PersonalStatusEmbedRenderer personalStatusRenderer) {
         return new DiscordParticipationCommandListener(properties, commands, personalStatus, personalStatusRenderer);
     }
+    @Bean @ConditionalOnBean(JDA.class) DailyResultDetailsInteractionListener dailyResultDetailsInteractionListener(GridwordsBotProperties properties, ExecutorService discordInboundExecutor, DailyResultDetailsUseCase details) {
+        return new DailyResultDetailsInteractionListener(properties, discordInboundExecutor, details);
+    }
     @Bean @ConditionalOnBean(JDA.class) AttachmentContentLoader attachmentContentLoader(JDA jda) { return new JdaAttachmentContentLoader(jda); }
     @Bean @ConditionalOnBean(JDA.class) CanonicalMessageGateway canonicalMessageGateway(JDA jda, ObjectProvider<CanonicalPublicationContextStore> contexts) { return new JdaCanonicalMessageGateway(jda, contexts.getIfAvailable(CanonicalPublicationContextStore::none)); }
     @Bean @ConditionalOnBean(JDA.class) SourceMessageDeletionGateway sourceMessageDeletionGateway(JDA jda) { return new JdaSourceMessageDeletionGateway(jda); }
@@ -103,5 +108,5 @@ class DatabaseInboundConfiguration {
                 .withRetirementFence(retirement);
     }
     @Bean @ConditionalOnBean(SourceMessageDeletionGateway.class) GridWordsSourceDeletionService gridWordsSourceDeletionService(SubmissionStore submissions, SourceMessageDeletionGateway deletionGateway, Clock clock, PublicationRetryScheduler retries, ObjectProvider<SourceDeletionRecoveryStore> recovery) { return new GridWordsSourceDeletionService(submissions, deletionGateway, clock, retries, recovery.getIfAvailable(() -> ignored -> 0)); }
-    @Bean @DependsOn("liquibase") ApplicationRunner databaseInboundStartup(ObjectProvider<JDA> jda, ObjectProvider<DiscordInboundListener> listener, ObjectProvider<DiscordParticipationCommandListener> commands, ObjectProvider<CanonicalGridWordsPublicationService> canonical, ObjectProvider<GridWordsSourceDeletionService> deletion, ObjectProvider<DailyChannelCleanupService> cleanup) { return new DatabaseInboundStartup(jda, listener, commands, canonical, deletion, cleanup); }
+    @Bean @DependsOn("liquibase") ApplicationRunner databaseInboundStartup(ObjectProvider<JDA> jda, ObjectProvider<DiscordInboundListener> listener, ObjectProvider<DiscordParticipationCommandListener> commands, ObjectProvider<DailyResultDetailsInteractionListener> resultDetails, ObjectProvider<CanonicalGridWordsPublicationService> canonical, ObjectProvider<GridWordsSourceDeletionService> deletion, ObjectProvider<DailyChannelCleanupService> cleanup) { return new DatabaseInboundStartup(jda, listener, commands, resultDetails, canonical, deletion, cleanup); }
 }
