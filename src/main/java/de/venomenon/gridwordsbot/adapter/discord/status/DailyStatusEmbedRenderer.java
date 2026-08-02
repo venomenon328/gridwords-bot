@@ -41,8 +41,10 @@ final class DailyStatusEmbedRenderer {
             current.addField(player.displayName(), value, false);
             fields++;
         }
-        String shared = "Gemeinsam komplett: " + status.sharedComplete()
-                + " · Gemeinsam perfekt: " + status.sharedPerfect();
+        String shared = "GridWords gelöst: " + status.sharedGridWordsSolved()
+                + " · QuadWords gelöst: " + status.sharedQuadWordsSolved()
+                + "\nKomplett: " + status.sharedComplete()
+                + " · Perfekt: " + status.sharedPerfect();
         if (fields == MAX_FIELDS) {
             embeds.add(current.build());
             if (embeds.size() == MAX_EMBEDS) {
