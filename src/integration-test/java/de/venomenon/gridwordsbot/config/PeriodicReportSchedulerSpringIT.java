@@ -37,6 +37,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -223,8 +224,8 @@ class PeriodicReportSchedulerSpringIT {
 
     private static ConfigurableApplicationContext start(Class<?> testConfiguration) {
         return new SpringApplicationBuilder(testConfiguration, GridwordsBotApplication.class)
-                .initializers(context -> context.getBeanFactory()
-                        .registerSingleton("testPeriodicReportMessageGateway", GATEWAY))
+                .initializers(context -> ((GenericApplicationContext) context).registerBean(
+                        "testPeriodicReportMessageGateway", PeriodicReportMessageGateway.class, () -> GATEWAY))
                 .web(WebApplicationType.NONE)
                 .profiles("database")
                 .run(properties());
