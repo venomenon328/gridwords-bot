@@ -86,7 +86,7 @@ class PeriodicReportDeliveryConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean({PeriodicReportDeliveryService.class, GridwordsBotProperties.class})
+    @ConditionalOnBean(PeriodicReportDeliveryService.class)
     WeeklyReportReconciliationService weeklyReportReconciliationService(
             PeriodicReportDeliveryStore store,
             PeriodicReportReconciliationPlanner planner,
@@ -105,7 +105,7 @@ class PeriodicReportDeliveryConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean({PeriodicReportDeliveryService.class, GridwordsBotProperties.class})
+    @ConditionalOnBean(PeriodicReportDeliveryService.class)
     MonthlyReportReconciliationService monthlyReportReconciliationService(
             PeriodicReportDeliveryStore store,
             PeriodicReportReconciliationPlanner planner,

@@ -397,19 +397,6 @@ class WeeklyReportSchedulerSpringIT {
         }
 
         @Bean
-        WeeklyReportReconciliationService testWeeklyReportReconciliationService(
-                PeriodicReportDeliveryStore store,
-                PeriodicReportReconciliationPlanner planner,
-                PeriodicReportUseCase reports,
-                PeriodicReportDeliveryService delivery,
-                Clock clock,
-                GridwordsBotProperties properties) {
-            return new WeeklyReportReconciliationService(
-                    store, planner, reports, delivery, clock,
-                    properties.schedule().weeklyReport(), properties.schedule().timeZone());
-        }
-
-        @Bean
         @Primary
         MonthlyReportReconciliationService testMonthlyReportReconciliationService() {
             return org.mockito.Mockito.mock(MonthlyReportReconciliationService.class);

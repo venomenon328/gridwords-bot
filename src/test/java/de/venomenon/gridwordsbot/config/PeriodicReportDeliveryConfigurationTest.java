@@ -12,6 +12,9 @@ import de.venomenon.gridwordsbot.port.out.ReportGameResultQuery;
 import de.venomenon.gridwordsbot.port.out.ReportParticipantQuery;
 import de.venomenon.gridwordsbot.port.out.ReportStreakHistoryQuery;
 import java.time.Clock;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.util.List;
 import net.dv8tion.jda.api.JDA;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
@@ -23,6 +26,7 @@ class PeriodicReportDeliveryConfigurationTest {
     void databaseProfileWiresDeliveryCoreWithAnInjectedTransportGatewayWithoutStartingJda() {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
             context.getEnvironment().setActiveProfiles("database");
+            registerProperties(context);
             context.registerBean(Clock.class, Clock::systemUTC);
             context.registerBean(JdbcTemplate.class, () -> mock(JdbcTemplate.class));
             context.registerBean(PeriodicReportMessageGateway.class, () -> mock(PeriodicReportMessageGateway.class));
@@ -41,6 +45,7 @@ class PeriodicReportDeliveryConfigurationTest {
     void databaseProfileWiresTheJdaGatewayAndDeliveryServiceWhenJdaIsProvided() {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
             context.getEnvironment().setActiveProfiles("database");
+            registerProperties(context);
             context.registerBean(Clock.class, Clock::systemUTC);
             context.registerBean(JdbcTemplate.class, () -> mock(JdbcTemplate.class));
             context.registerBean(JDA.class, () -> mock(JDA.class));
@@ -51,6 +56,20 @@ class PeriodicReportDeliveryConfigurationTest {
             assertThat(context.getBean(PeriodicReportMessageGateway.class)).isInstanceOf(JdaPeriodicReportMessageGateway.class);
             assertThat(context.getBean(PeriodicReportDeliveryService.class)).isNotNull();
         }
+    }
+
+    private static void registerProperties(AnnotationConfigApplicationContext context) {
+        context.registerBean(
+                GridwordsBotProperties.class,
+                () -> new GridwordsBotProperties(
+                        new GridwordsBotProperties.Discord(false, "", 1L, 2L, List.of()),
+                        new GridwordsBotProperties.Schedule(
+                                LocalTime.of(18, 0),
+                                LocalTime.of(23, 0),
+                                LocalTime.of(8, 0),
+                                LocalTime.of(8, 15),
+                                ZoneId.of("Europe/Berlin")),
+                        new GridwordsBotProperties.Storage(0)));
     }
 
     private static void registerReportQueries(AnnotationConfigApplicationContext context) {
