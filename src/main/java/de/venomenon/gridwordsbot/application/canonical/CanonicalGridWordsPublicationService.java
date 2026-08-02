@@ -26,6 +26,7 @@ public final class CanonicalGridWordsPublicationService {
 
     private static final long LEASE_SECONDS = 60;
     private static final long REFRESH_DELAY_SECONDS = 1;
+    private static final String CURRENT_BOARDLESS_QUADWORDS_VERSION = "quadwords-share-v2";
 
     private final GameResultStore results;
     private final PlayerStore players;
@@ -79,6 +80,7 @@ public final class CanonicalGridWordsPublicationService {
         this.retryScheduler = Objects.requireNonNull(retryScheduler);
         this.postPublication = Objects.requireNonNull(postPublication);
     }
+
     /** @return true only after the canonical ID and the submission state were persisted together. */
     public boolean publish(long sourceMessageId) {
         return publishAndHandOff(sourceMessageId) == PublicationOutcome.PUBLISHED;
@@ -86,22 +88,25 @@ public final class CanonicalGridWordsPublicationService {
 
     /** Replays open publications and persisted refresh work after startup. */
     public void resumeOpenPublications() {
-        for (SubmissionStore.StoredSubmission submission : submissions.findGridWordsAwaitingCanonicalPublication())
+        for (SubmissionStore.StoredSubmission submission : submissions.findGridWordsAwaitingCanonicalPublication()) {
             publishAndHandOff(submission.sourceMessageId());
-        for (SubmissionStore.StoredSubmission submission : submissions.findAwaitingCanonicalPublication(GameType.QUADWORDS))
+        }
+        for (SubmissionStore.StoredSubmission submission : submissions.findAwaitingCanonicalPublication(GameType.QUADWORDS)) {
             publishAndHandOff(submission.sourceMessageId());
+        }
         for (SubmissionStore.CanonicalRefreshCandidate refresh : submissions.findCanonicalRefreshCandidates()) {
             resumeCurrentRefresh(refresh.submission().gameResultId().orElseThrow());
         }
     }
 
-private PublicationOutcome publishAndHandOff(long sourceMessageId) {
+    private PublicationOutcome publishAndHandOff(long sourceMessageId) {
         PublicationOutcome outcome = publishOutcome(sourceMessageId);
         if (outcome == PublicationOutcome.PUBLISHED) {
             postPublication.accept(sourceMessageId);
         }
         return outcome;
     }
+
     private PublicationOutcome publishOutcome(long sourceMessageId) {
         long resultId = 0;
         UUID claimToken = null;
@@ -183,9 +188,10 @@ private PublicationOutcome publishAndHandOff(long sourceMessageId) {
             return;
         }
         try {
-            retryScheduler.schedule(clock.instant().plusSeconds(LEASE_SECONDS + 1), () -> retryPublication(sourceMessageId));
+            retryScheduler.schedule(
+                    clock.instant().plusSeconds(LEASE_SECONDS + 1),
+                    () -> retryPublication(sourceMessageId));
         } catch (RejectedExecutionException ignored) {
-            // Recovery on a subsequent startup remains available if scheduling is unavailable during shutdown.
             scheduledRetries.remove(sourceMessageId);
         }
     }
@@ -199,11 +205,9 @@ private PublicationOutcome publishAndHandOff(long sourceMessageId) {
         }
         if (outcome == PublicationOutcome.RETRY_SCHEDULED) {
             scheduleRetry(sourceMessageId);
-            return;
         }
-
     }
-    /** Persists and schedules the reconciliation needed after a late stale Discord side effect. */
+
     private void requestCurrentRefresh(long resultId, long delaySeconds) {
         submissions.requestCanonicalRefresh(resultId);
         scheduleCurrentRefresh(resultId, delaySeconds);
@@ -216,7 +220,6 @@ private PublicationOutcome publishAndHandOff(long sourceMessageId) {
         }
     }
 
-    /** Coalesces wake-ups without dropping a request that arrives while a refresh is running. */
     private void scheduleCurrentRefresh(long resultId, long delaySeconds) {
         RefreshSchedule schedule = startRefresh(resultId);
         if (schedule != null) {
@@ -242,9 +245,10 @@ private PublicationOutcome publishAndHandOff(long sourceMessageId) {
 
     private void scheduleRefresh(long resultId, RefreshSchedule schedule, long delaySeconds) {
         try {
-            retryScheduler.schedule(clock.instant().plusSeconds(delaySeconds), () -> retryCurrentRefresh(resultId, schedule));
+            retryScheduler.schedule(
+                    clock.instant().plusSeconds(delaySeconds),
+                    () -> retryCurrentRefresh(resultId, schedule));
         } catch (RejectedExecutionException ignored) {
-            // The durable refresh request remains available to a later startup reconciliation.
             scheduledRefreshes.remove(resultId, schedule);
         }
     }
@@ -305,7 +309,9 @@ private PublicationOutcome publishAndHandOff(long sourceMessageId) {
             }
 
             GameResultStore.StoredGameResult result = results.findById(resultId).orElseThrow();
-            if (!isPublishable(result)) return RefreshOutcome.COMPLETED;
+            if (!isPublishable(result)) {
+                return RefreshOutcome.COMPLETED;
+            }
             GameResultStore.PublicationClaim claim = results.claimCanonicalPublication(
                     resultId,
                     clock.instant().plusSeconds(LEASE_SECONDS)).orElse(null);
@@ -320,8 +326,11 @@ private PublicationOutcome publishAndHandOff(long sourceMessageId) {
                     result,
                     canonicalMessage(result, current.authorPlayerId(), current.publicationContext()));
             SubmissionStore.CanonicalRefreshCompletion completion = submissions.completeCanonicalRefresh(
-                    current.sourceMessageId(), resultId, canonicalMessageId, claimToken, deliveryAttempt.refreshGeneration());
-            return completion.refreshStillRequired() ? RefreshOutcome.RETRY_SCHEDULED : RefreshOutcome.COMPLETED;
+                    current.sourceMessageId(), resultId, canonicalMessageId, claimToken,
+                    deliveryAttempt.refreshGeneration());
+            return completion.refreshStillRequired()
+                    ? RefreshOutcome.RETRY_SCHEDULED
+                    : RefreshOutcome.COMPLETED;
         } catch (RuntimeException exception) {
             if (claimToken != null) {
                 try {
@@ -366,7 +375,6 @@ private PublicationOutcome publishAndHandOff(long sourceMessageId) {
         return discord.create(channelId, message);
     }
 
-    /** The persisted canonical ID wins; without one, the oldest Discord snowflake is the deterministic winner. */
     private void removeDuplicateCanonicalMessages(long channelId, String publicationKey, long canonicalMessageId) {
         for (Long messageId : discord.findAllByPublicationKey(channelId, publicationKey)) {
             if (messageId != canonicalMessageId) {
@@ -374,6 +382,7 @@ private PublicationOutcome publishAndHandOff(long sourceMessageId) {
             }
         }
     }
+
     private CanonicalResultMessage canonicalMessage(
             GameResultStore.StoredGameResult result,
             long playerId,
@@ -401,11 +410,16 @@ private PublicationOutcome publishAndHandOff(long sourceMessageId) {
                 contextual(streaks.sharedComplete(), publicationContext.sharedCompleteEstablished()),
                 contextual(streaks.sharedPerfect(), publicationContext.sharedPerfectEstablished()),
                 result.parsedResult().quadWordsBoards(),
-                result.parsedResult().gameType().name().toLowerCase(java.util.Locale.ROOT) + "-result-" + result.id());
+                result.parsedResult().gameType().name().toLowerCase(java.util.Locale.ROOT)
+                        + "-result-" + result.id());
     }
 
     private static boolean isPublishable(GameResultStore.StoredGameResult result) {
-        return result.parsedResult().gameType() == GameType.GRIDWORDS || result.parsedResult().quadWordsBoards().isPresent();
+        if (result.parsedResult().gameType() == GameType.GRIDWORDS) {
+            return true;
+        }
+        return result.parsedResult().quadWordsBoards().isPresent()
+                || CURRENT_BOARDLESS_QUADWORDS_VERSION.equals(result.parserVersion());
     }
 
     private static OptionalInt contextual(int streak, boolean establishedByThisSubmission) {
@@ -423,6 +437,7 @@ private PublicationOutcome publishAndHandOff(long sourceMessageId) {
         COMPLETED,
         RETRY_SCHEDULED
     }
+
     private static final class RefreshSchedule {
         private boolean scheduledOrRunning;
         private boolean rerunRequested;

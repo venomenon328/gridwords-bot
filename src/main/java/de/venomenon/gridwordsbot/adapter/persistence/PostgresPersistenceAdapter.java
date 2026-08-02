@@ -37,6 +37,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @Profile("database")
 public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore, SubmissionStore {
 
+    private static final String CURRENT_BOARDLESS_QUADWORDS_VERSION = "quadwords-share-v2";
+
     private final JdbcTemplate jdbc;
     private final Clock clock;
     private final ZoneId businessZone;
@@ -149,7 +151,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                 || existing.state() == SubmissionState.SUPERSEDED) {
             StoredGameResult storedResult = findResultById(existing.gameResultId().orElseThrow(
                     () -> new IllegalStateException("stored submission has no linked game result")));
-            if (equivalent(storedResult, request.result())) {
+            if (equivalent(storedResult, retainStoredQuadWordsBoards(request, storedResult).result())) {
                 return existing;
             }
             throw new SubmissionConflictException("source message ID is already linked to a different result");
@@ -164,14 +166,16 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         List<ParticipationPeriod> periods = participationEnabled() ? findParticipationPeriods() : List.of();
         Optional<StoredGameResult> existingResult = findResultForUpdate(request.result());
         if (existingResult.isPresent()) {
-            return storeAgainstExistingResult(request, existingResult.get(), before, periods);
+            return storeAgainstExistingResult(retainStoredQuadWordsBoards(request, existingResult.get()),
+                    existingResult.get(), before, periods);
         }
 
         Optional<StoredGameResult> insertedResult = insertResultIfAbsent(request.result(), clock.instant());
         if (insertedResult.isEmpty()) {
             StoredGameResult concurrentResult = findResultForUpdate(request.result())
                     .orElseThrow(() -> new IllegalStateException("concurrently inserted game result was not found"));
-            return storeAgainstExistingResult(request, concurrentResult, before, periods);
+            return storeAgainstExistingResult(retainStoredQuadWordsBoards(request, concurrentResult),
+                    concurrentResult, before, periods);
         }
 
         StoredGameResult result = insertedResult.get();
@@ -199,6 +203,24 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         updatePublicationContext(request.sourceMessageId(), result.id(), publicationContext);
         return findRequired(request.sourceMessageId());
     }
+    /**
+     * A later text-only QuadWords share cannot erase boards recovered from an earlier image-backed share.
+     */
+    private static ResultStorage retainStoredQuadWordsBoards(ResultStorage request, StoredGameResult storedResult) {
+        ParsedGameResult incoming = request.result().parsedResult();
+        Optional<QuadWordsBoards> storedBoards = storedResult.parsedResult().quadWordsBoards();
+        if (incoming.gameType() != GameType.QUADWORDS || incoming.quadWordsBoards().isPresent()
+                || storedBoards.isEmpty() || !CURRENT_BOARDLESS_QUADWORDS_VERSION.equals(request.result().parserVersion())) {
+            return request;
+        }
+        ParsedGameResult retained = new ParsedGameResult(
+                incoming.gameType(), incoming.gameDate(), incoming.outcome(), incoming.duration(),
+                incoming.gridgamesStreak(), incoming.board(), storedBoards);
+        GameResultUpsert result = new GameResultUpsert(
+                request.result().playerId(), retained, request.result().rawShareText(), storedResult.parserVersion());
+        return new ResultStorage(request.sourceMessageId(), result, request.playerRegistration());
+    }
+
     private void linkStoredResult(long sourceMessageId, long resultId, PublicationContext publicationContext) {
         int changed = jdbc.update("""
                 UPDATE submission SET game_result_id = ?, processing_state = 'RESULT_STORED',
@@ -495,6 +517,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                         AND r.quadwords_bottom_left_board IS NOT NULL
                         AND r.quadwords_bottom_right_board IS NOT NULL
                     )
+                    OR r.parser_version = 'quadwords-share-v2'
                   )
                 ORDER BY r.id
                 """, this::refreshCandidate);
@@ -645,7 +668,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                 SET processing_state = 'FAILED_RETRYABLE', technical_error_message = ?,
                     updated_at = ?, version = version + 1
                 WHERE source_message_id = ?
-                  AND processing_state IN ('RESULT_STORED', 'FAILED_RETRYABLE')
+                  AND processing_state IN ('RECEIVED', 'VALIDATED', 'RESULT_STORED', 'FAILED_RETRYABLE')
                 """, detail, databaseTime(clock.instant()), sourceMessageId);
     }
 
@@ -663,6 +686,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                         AND r.quadwords_bottom_left_board IS NOT NULL
                         AND r.quadwords_bottom_right_board IS NOT NULL
                     )
+                    OR r.parser_version = 'quadwords-share-v2'
                   )
                 """, SUBMISSION, gameType.name());
     }
@@ -766,6 +790,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                         AND r.quadwords_bottom_left_board IS NOT NULL
                         AND r.quadwords_bottom_right_board IS NOT NULL
                     )
+                    OR r.parser_version = 'quadwords-share-v2'
                   )
                   AND (
                     s.processing_state = 'ORIGINAL_MESSAGE_DELETED'
@@ -818,6 +843,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                         AND r.quadwords_bottom_left_board IS NOT NULL
                         AND r.quadwords_bottom_right_board IS NOT NULL
                     )
+                    OR r.parser_version = 'quadwords-share-v2'
                   )
                 """, Long.class, resultId, submission.sourceMessageId()).size() == 1
                 && (submission.state() == SubmissionState.CANONICAL_MESSAGE_PUBLISHED
@@ -965,11 +991,42 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                     attempts_used = EXCLUDED.attempts_used, max_attempts = EXCLUDED.max_attempts,
                     duration_seconds = EXCLUDED.duration_seconds, gridgames_streak = EXCLUDED.gridgames_streak,
                     normalized_board = EXCLUDED.normalized_board,
-                    quadwords_top_left_board = EXCLUDED.quadwords_top_left_board,
-                    quadwords_top_right_board = EXCLUDED.quadwords_top_right_board,
-                    quadwords_bottom_left_board = EXCLUDED.quadwords_bottom_left_board,
-                    quadwords_bottom_right_board = EXCLUDED.quadwords_bottom_right_board,
-                    raw_share_text = EXCLUDED.raw_share_text, parser_version = EXCLUDED.parser_version,
+                    quadwords_top_left_board = CASE
+                        WHEN EXCLUDED.parser_version = 'quadwords-share-v2'
+                            AND EXCLUDED.quadwords_top_left_board IS NULL
+                            AND game_result.quadwords_top_left_board IS NOT NULL
+                        THEN game_result.quadwords_top_left_board
+                        ELSE EXCLUDED.quadwords_top_left_board
+                    END,
+                    quadwords_top_right_board = CASE
+                        WHEN EXCLUDED.parser_version = 'quadwords-share-v2'
+                            AND EXCLUDED.quadwords_top_right_board IS NULL
+                            AND game_result.quadwords_top_right_board IS NOT NULL
+                        THEN game_result.quadwords_top_right_board
+                        ELSE EXCLUDED.quadwords_top_right_board
+                    END,
+                    quadwords_bottom_left_board = CASE
+                        WHEN EXCLUDED.parser_version = 'quadwords-share-v2'
+                            AND EXCLUDED.quadwords_bottom_left_board IS NULL
+                            AND game_result.quadwords_bottom_left_board IS NOT NULL
+                        THEN game_result.quadwords_bottom_left_board
+                        ELSE EXCLUDED.quadwords_bottom_left_board
+                    END,
+                    quadwords_bottom_right_board = CASE
+                        WHEN EXCLUDED.parser_version = 'quadwords-share-v2'
+                            AND EXCLUDED.quadwords_bottom_right_board IS NULL
+                            AND game_result.quadwords_bottom_right_board IS NOT NULL
+                        THEN game_result.quadwords_bottom_right_board
+                        ELSE EXCLUDED.quadwords_bottom_right_board
+                    END,
+                    raw_share_text = EXCLUDED.raw_share_text,
+                    parser_version = CASE
+                        WHEN EXCLUDED.parser_version = 'quadwords-share-v2'
+                            AND EXCLUDED.quadwords_top_left_board IS NULL
+                            AND game_result.quadwords_top_left_board IS NOT NULL
+                        THEN game_result.parser_version
+                        ELSE EXCLUDED.parser_version
+                    END,
                     updated_at = EXCLUDED.updated_at, version = game_result.version + 1
                 RETURNING *
                 """, RESULT, request.playerId(), parsed.gameType().name(), parsed.gameDate(), solved, attempts,
@@ -983,13 +1040,12 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         if (parsed.gameType() == GameType.GRIDWORDS) {
             return new BoardColumns(parsed.board().orElseThrow().canonicalText(), null, null, null, null);
         }
-        QuadWordsBoards quadWords = parsed.quadWordsBoards()
-                .orElseThrow(() -> new IllegalArgumentException("a persisted QuadWords result requires four boards"));
-        return new BoardColumns(null,
-                quadWords.topLeft().canonicalText(),
-                quadWords.topRight().canonicalText(),
-                quadWords.bottomLeft().canonicalText(),
-                quadWords.bottomRight().canonicalText());
+        return parsed.quadWordsBoards().map(quadWords -> new BoardColumns(null,
+                        quadWords.topLeft().canonicalText(),
+                        quadWords.topRight().canonicalText(),
+                        quadWords.bottomLeft().canonicalText(),
+                        quadWords.bottomRight().canonicalText()))
+                .orElseGet(() -> new BoardColumns(null, null, null, null, null));
     }
 
     private record BoardColumns(

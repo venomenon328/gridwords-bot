@@ -33,16 +33,17 @@ public record CanonicalResultMessage(
         if (gameType == GameType.GRIDWORDS && (board == null || quadWordsBoards.isPresent())) {
             throw new IllegalArgumentException("a GridWords message requires only its board");
         }
-        if (gameType == GameType.QUADWORDS && (board != null || quadWordsBoards.isEmpty())) {
-            throw new IllegalArgumentException("a QuadWords message requires exactly four boards");
+        if (gameType == GameType.QUADWORDS && board != null) {
+            throw new IllegalArgumentException("a QuadWords message must not contain a GridWords board");
         }
         Objects.requireNonNull(publicationKey);
     }
 
     /** Compatibility constructor for existing GridWords publication callers. */
-    public CanonicalResultMessage(String playerDisplayName, GameType gameType, LocalDate gameDate, ShareOutcome outcome,
-            Duration duration, NormalizedBoard board, StreakSummary streaks, OptionalInt personalComplete,
-            OptionalInt personalPerfect, OptionalInt sharedComplete, OptionalInt sharedPerfect, String publicationKey) {
+    public CanonicalResultMessage(String playerDisplayName, GameType gameType, LocalDate gameDate,
+            ShareOutcome outcome, Duration duration, NormalizedBoard board, StreakSummary streaks,
+            OptionalInt personalComplete, OptionalInt personalPerfect, OptionalInt sharedComplete,
+            OptionalInt sharedPerfect, String publicationKey) {
         this(playerDisplayName, gameType, gameDate, outcome, duration, board, streaks, personalComplete,
                 personalPerfect, sharedComplete, sharedPerfect, Optional.empty(), publicationKey);
     }

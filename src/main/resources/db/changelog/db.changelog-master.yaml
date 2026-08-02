@@ -45,3 +45,7 @@ databaseChangeLog:
   - include:
       file: 012-periodic-report-delivery.sql
       relativeToChangelogFile: true
+
+  - include:
+      file: 013-boardless-quadwords.sql
+      relativeToChangelogFile: true
