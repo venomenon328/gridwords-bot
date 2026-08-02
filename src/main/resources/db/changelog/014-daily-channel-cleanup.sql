@@ -49,4 +49,3 @@ CREATE INDEX ix_canonical_result_retirement_open
     ON canonical_result_retirement (retirement_state, retry_after, claim_until);
 CREATE INDEX ix_reminder_message_retirement_open
     ON reminder_message_retirement (retirement_state, retry_after, claim_until);
-

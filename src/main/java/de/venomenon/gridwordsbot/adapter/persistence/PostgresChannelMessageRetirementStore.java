@@ -233,4 +233,3 @@ public class PostgresChannelMessageRetirementStore implements ChannelMessageReti
         return OffsetDateTime.ofInstant(instant, ZoneOffset.UTC);
     }
 }
-
