@@ -12,6 +12,10 @@ import de.venomenon.gridwordsbot.application.cleanup.DailyChannelCleanupService;
 import de.venomenon.gridwordsbot.application.player.PlayerParticipationService;
 import de.venomenon.gridwordsbot.application.player.PersonalStatusService;
 import de.venomenon.gridwordsbot.application.status.DailyStatusRefreshService;
+import de.venomenon.gridwordsbot.application.status.DailyResultDetailsService;
+import de.venomenon.gridwordsbot.port.in.DailyResultDetailsUseCase;
+import de.venomenon.gridwordsbot.port.out.DailyResultDetailsQuery;
+import de.venomenon.gridwordsbot.port.out.DailyStatusInteractionContextQuery;
 import de.venomenon.gridwordsbot.application.submission.ProcessSharedResultService;
 import de.venomenon.gridwordsbot.parser.gridwords.GridWordsShareParser;
 import de.venomenon.gridwordsbot.parser.quadwords.QuadWordsImageParser;
@@ -73,6 +77,9 @@ class DatabaseInboundConfiguration {
                 });
     }
     @Bean ZoneId businessZone(GridwordsBotProperties properties) { return properties.schedule().timeZone(); }
+    @Bean DailyResultDetailsUseCase dailyResultDetailsUseCase(DailyStatusInteractionContextQuery contexts, DailyResultDetailsQuery results) {
+        return new DailyResultDetailsService(contexts, results);
+    }
     @Bean PersonalStatusUseCase personalStatusUseCase(Clock clock, GridwordsBotProperties properties,
             PlayerStore players, LatestValidSubmissionQuery submissions) {
         return new PersonalStatusService(players, submissions, clock, properties.schedule().timeZone(),
