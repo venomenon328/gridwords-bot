@@ -276,7 +276,7 @@ Verbindlich: `docs/requirements/production-deployment.md`, `docs/increments/09-p
 
 ## Inkrement 10 – Abgeleitete Wochen- und Monatsberichte
 
-**Status:** vorbereitet; Issue #25, Branch `feature/periodic-reporting` und Draft-PR #26.
+**Status:** implementiert; Issue #25 geschlossen und PR #26 gemergt. Der reale Discord-Smoke-Test für Wochen- und Monatsberichte bleibt als separate offene Abnahme dokumentiert.
 
 **Ziel:** Der produktive Bot veröffentlicht idempotente Berichte über die vollständig abgeschlossene Vorwoche und den vollständig abgeschlossenen Vormonat. Alle Kennzahlen bleiben aus Ergebnissen und historischen Teilnahmezeiträumen abgeleitet.
 
@@ -315,6 +315,27 @@ Umsetzungspakete:
 Jedes Paket endet mit einem kompilierenden Commit und den einschlägigen Tests. Terra erhält immer nur den nächsten Paketauftrag.
 
 Verbindlich: `docs/requirements/periodic-reports.md`, `docs/increments/10-periodic-reports.md`, ADR 0014 und Issue #25.
+
+## Zwischeninkremente zu Inkrement 10
+
+### Zwischeninkrement 10.1 – QuadWords ohne Bild
+
+**Status:** abgeschlossen; Issue #27 geschlossen und PR #31 gemergt.
+
+Ein gültiger QuadWords-Share ohne Bild ist ein vollständiges Ergebnis; der reale Desktop-Share-Smoke-Test ist auf die produktive Erstverwendung verschoben.
+
+### Zwischeninkrement 10.2 – Gemeinsame spielbezogene Lösungsserien
+
+**Status:** abgeschlossen; Issue #28 geschlossen und PR #32 gemergt.
+
+Die gemeinsamen GridWords- und QuadWords-Lösungsserien sind neben der gemeinsamen Komplett- und Perfektserie transportneutral berechnet und im Tagesstatus dargestellt. Der reale Discord-Smoke-Test ist auf die produktive Erstverwendung verschoben.
+
+### Zwischeninkrement 10.3 – Eigenständiger persönlicher Status-Command
+
+**Status:** in Umsetzung; Issue #29 und Draft-PR #33 auf `feature/personal-status-command`.
+
+Der parameterlose Root-Command `/status` trennt die persönliche Statusanzeige von `/participation`, zeigt ausschließlich die Daten des aufrufenden Nutzers und verbindet Teilnahmestatus sowie Reminder-Opt-in mit den jeweils letzten gültigen Einreichungen.
+
 
 ## Inkrement 11 – Statistik- und Konfigurations-Commands
 
