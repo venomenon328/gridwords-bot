@@ -129,21 +129,19 @@ public class PostgresChannelMessageRetirementStore implements ChannelMessageReti
         UUID token = UUID.randomUUID();
         Instant now = clock.instant();
 
-        // Publication claims update this same row. Locking it first makes the two intents mutually exclusive.
-        List<Long> locked = jdbc.queryForList("""
-                SELECT id
-                FROM game_result
-                WHERE id = ? AND canonical_publish_claim_token IS NULL
-                FOR UPDATE
-                """, Long.class, resultId);
-        if (locked.isEmpty()) {
-            return Optional.empty();
-        }
-
+        // The CTE locks the same game_result row that publication updates and inserts the durable retirement intent
+        // in the same statement. Therefore publication and retirement cannot both win the same race.
         return jdbc.query("""
+                WITH locked_result AS (
+                    SELECT id
+                    FROM game_result
+                    WHERE id = ? AND canonical_publish_claim_token IS NULL
+                    FOR UPDATE
+                )
                 INSERT INTO canonical_result_retirement
                     (game_result_id, retirement_state, claim_token, claim_until, created_at, updated_at)
-                VALUES (?, 'CLAIMED', ?, ?, ?, ?)
+                SELECT id, 'CLAIMED', ?, ?, ?, ?
+                FROM locked_result
                 ON CONFLICT (game_result_id) DO UPDATE
                 SET retirement_state = 'CLAIMED', claim_token = EXCLUDED.claim_token,
                     claim_until = EXCLUDED.claim_until, updated_at = EXCLUDED.updated_at
