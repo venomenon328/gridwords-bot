@@ -100,13 +100,15 @@ Ein vollständig gültiges Share aktiviert den Spieler ab dessen fachlichem `gam
 ```text
 /participation join
 /participation leave
-/participation status
+/status
 ```
 
 - `join` aktiviert ab dem aktuellen Kalendertag in `Europe/Berlin` und schaltet bei einer neuen oder erneuten Aktivierung Reminder ein.
 - `leave` beendet die Teilnahme prospektiv ab dem folgenden Kalendertag; der laufende heutige Tag wird nicht rückwirkend aus gemeinsamen Serien entfernt.
-- `status` antwortet ephemer mit Aktivstatus, Wirksamkeitsdatum und Reminderstatus.
-- unbekannte Nutzer werden bei Bedarf mit aktuellem serverbezogenem Anzeigenamen angelegt.
+- `/participation` dient damit ausschließlich der Teilnahmeänderung.
+- Der parameterlose Root-Command `/status` antwortet ephemer ausschließlich für den aufrufenden Nutzer mit dessen aktuellem Teilnahmestatus, wirksamem Teilnahmezeitraum, Reminderstatus und den letzten gültigen, nicht supersedierten Einreichungen für GridWords und QuadWords.
+- `/status` synchronisiert das Profil des aufrufenden Nutzers mit dessen aktuellem serverbezogenem Anzeigenamen. Er wählt keine fremde Zielperson und zeigt weder Boards, Rohtexte noch Attachmentdaten.
+- Unbekannte Nutzer werden bei Bedarf mit aktuellem serverbezogenem Anzeigenamen als inaktive Profile angelegt; dies gilt für `/status` ebenso wie für die übrigen Self-Service-Commands.
 
 ### 4.3 Admin-Commands
 

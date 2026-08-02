@@ -4,7 +4,6 @@ package de.venomenon.gridwordsbot.port.in;
 public interface PlayerParticipationUseCase {
     PlayerStatus join(PlayerIdentity actor);
     PlayerStatus leave(PlayerIdentity actor);
-    PlayerStatus status(PlayerIdentity actor);
     PlayerStatus activate(PlayerIdentity actor, PlayerIdentity target);
     PlayerStatus deactivate(PlayerIdentity actor, PlayerIdentity target);
     PlayerStatus status(PlayerIdentity actor, PlayerIdentity target);

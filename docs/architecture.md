@@ -49,6 +49,7 @@ de.venomenon.gridwordsbot
 ├── application
 │   ├── submission
 │   ├── canonical
+│   ├── player
 │   └── reporting
 ├── port
 │   ├── in
@@ -352,6 +353,23 @@ Catch-up ist begrenzt:
 - pro Typ höchstens die jüngste noch relevante Periode.
 
 Eine externe Löschung wird nur innerhalb des Catch-up-Fensters automatisch repariert. Details regeln `docs/requirements/periodic-reports.md` und ADR 0014.
+
+## 12.3 Persönlicher Status
+
+`PersonalStatusUseCase` liefert für einen aufrufenden Nutzer eine strukturierte, transportneutrale Projektion. Sie enthält den für den aktuellen Berlin-Tag wirksamen Teilnahmezeitraum, den Reminder-Opt-in sowie optional je Spieltyp die letzte gültige Einreichung. Das Modell führt `LocalDate gameDate` und `Instant receivedAt`, aber weder fertigen Discord-Text noch JDA- oder Persistenztypen und keine Boards, Rohtexte oder Attachments.
+
+`PersonalStatusService` synchronisiert das Profil der Actor-ID über `PlayerStore`, bestimmt den heutigen fachlichen Kalendertag über injizierte `Clock` und konfigurierte `ZoneId` und kombiniert diese Daten mit genau einem Aufruf eines schmalen `LatestValidSubmissionQuery`-Ports.
+
+Der PostgreSQL-Adapter verbindet die nicht supersedierten, mit einem Ergebnis verknüpften Submissions mit dem aktuellen `game_result`. Er liefert höchstens eine explizit gemappte Projektion je Spieltyp und ordnet deterministisch nach:
+
+```text
+game_type,
+received_at DESC,
+source_message_id DESC
+```
+
+Die Abfrage lädt keine Board-, Rohtext- oder Attachmentspalten. Der Discord-Adapter übergibt ausschließlich Actor-ID und aktuellen Anzeigenamen, formatiert erst dort den Einreichungszeitpunkt in der konfigurierten Zone und beantwortet `/status` stets ephemer. Die Registrierung bleibt in einem zentralen `guild.updateCommands()`-Pfad; `/participation` enthält nur die teilnahmeändernden Subcommands.
+
 
 ## 13. Tests
 
