@@ -7,6 +7,7 @@ import de.venomenon.gridwordsbot.port.out.ReminderMessageGateway;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.util.LinkedHashSet;
 import java.util.Optional;
 
 /** Executes token-owned visible-message retirement outside database transactions. */
@@ -70,10 +71,17 @@ public final class ChannelMessageRetirementService {
             return false;
         }
         try {
-            canonicalMessages.delete(message.channelId(), message.messageId());
-            store.completeResultRetirement(claimed.get());
-            return true;
-        } catch (CanonicalMessageGateway.UnknownMessageException ignored) {
+            LinkedHashSet<Long> messageIds = new LinkedHashSet<>();
+            message.messageId().ifPresent(messageIds::add);
+            messageIds.addAll(canonicalMessages.findAllByPublicationKey(
+                    message.channelId(), message.publicationKey()));
+            for (long messageId : messageIds) {
+                try {
+                    canonicalMessages.delete(message.channelId(), messageId);
+                } catch (CanonicalMessageGateway.UnknownMessageException ignored) {
+                    // Delete succeeded previously or the message was removed externally.
+                }
+            }
             store.completeResultRetirement(claimed.get());
             return true;
         } catch (DiscordDeliveryException exception) {
@@ -94,7 +102,8 @@ public final class ChannelMessageRetirementService {
             return false;
         }
         try {
-            reminderMessages.delete(message.channelId(), message.messageId());
+            reminderMessages.delete(
+                    message.channelId(), message.gameDate(), message.stage(), message.messageId());
             store.completeReminderRetirement(claimed.get());
             return true;
         } catch (DiscordDeliveryException exception) {
