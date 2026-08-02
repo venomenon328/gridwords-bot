@@ -9,6 +9,7 @@ import de.venomenon.gridwordsbot.domain.model.ParticipationPeriod;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
@@ -22,35 +23,44 @@ class StreakCalculatorTest {
     private final StreakCalculator calculator = new StreakCalculator();
 
     @Test
-    void calculatesAllSevenIndependentStreaksAndKeepsAnIncompleteTodayOpen() {
+    void calculatesAllNineIndependentStreaksAndKeepsAnIncompleteTodayOpen() {
         List<StreakCalculator.PlayerResult> results = List.of(
                 result(TOBIAS, TODAY.minusDays(1), GameType.GRIDWORDS, true),
                 result(TOBIAS, TODAY.minusDays(1), GameType.QUADWORDS, true),
                 result(GEORGIA, TODAY.minusDays(1), GameType.GRIDWORDS, true),
                 result(GEORGIA, TODAY.minusDays(1), GameType.QUADWORDS, true),
                 result(TOBIAS, TODAY, GameType.GRIDWORDS, true));
+
         StreakSummary streaks = calculator.calculate(results, List.of(TOBIAS, GEORGIA), TOBIAS, TODAY);
+
         assertThat(streaks.personalActivity()).isEqualTo(2);
         assertThat(streaks.personalComplete()).isEqualTo(1);
         assertThat(streaks.personalGridWordsSolved()).isEqualTo(2);
         assertThat(streaks.personalQuadWordsSolved()).isEqualTo(1);
         assertThat(streaks.personalPerfect()).isEqualTo(1);
+        assertThat(streaks.sharedGridWordsSolved()).isEqualTo(1);
+        assertThat(streaks.sharedQuadWordsSolved()).isEqualTo(1);
         assertThat(streaks.sharedComplete()).isEqualTo(1);
         assertThat(streaks.sharedPerfect()).isEqualTo(1);
     }
 
     @Test
-    void unsolvedTodayEndsRelevantSolvedAndPerfectStreakImmediately() {
+    void unsolvedTodayEndsOnlyTheAffectedSolvedStreaksImmediately() {
         List<StreakCalculator.PlayerResult> results = List.of(
                 result(TOBIAS, TODAY.minusDays(1), GameType.GRIDWORDS, true),
                 result(TOBIAS, TODAY.minusDays(1), GameType.QUADWORDS, true),
                 result(GEORGIA, TODAY.minusDays(1), GameType.GRIDWORDS, true),
                 result(GEORGIA, TODAY.minusDays(1), GameType.QUADWORDS, true),
                 result(TOBIAS, TODAY, GameType.GRIDWORDS, false));
+
         StreakSummary streaks = calculator.calculate(results, List.of(TOBIAS, GEORGIA), TOBIAS, TODAY);
+
         assertThat(streaks.personalActivity()).isEqualTo(2);
         assertThat(streaks.personalGridWordsSolved()).isZero();
+        assertThat(streaks.personalQuadWordsSolved()).isEqualTo(1);
         assertThat(streaks.personalPerfect()).isZero();
+        assertThat(streaks.sharedGridWordsSolved()).isZero();
+        assertThat(streaks.sharedQuadWordsSolved()).isEqualTo(1);
     }
 
     @Test
@@ -66,15 +76,21 @@ class StreakCalculatorTest {
         assertThat(streaks.personalQuadWordsSolved()).isZero();
         assertThat(streaks.personalComplete()).isZero();
         assertThat(streaks.personalPerfect()).isZero();
+        assertThat(streaks.sharedGridWordsSolved()).isZero();
+        assertThat(streaks.sharedQuadWordsSolved()).isZero();
     }
 
     @Test
-    void unsolvedQuadWordsDoesNotBreakTheIndependentGridWordsSolvedStreak() {
+    void unsolvedQuadWordsDoesNotBreakIndependentGridWordsSolvedStreaks() {
         List<StreakCalculator.PlayerResult> results = List.of(
                 result(TOBIAS, TODAY, GameType.GRIDWORDS, true),
                 result(TOBIAS, TODAY, GameType.QUADWORDS, false),
+                result(GEORGIA, TODAY, GameType.GRIDWORDS, true),
+                result(GEORGIA, TODAY, GameType.QUADWORDS, true),
                 result(TOBIAS, TODAY.minusDays(1), GameType.GRIDWORDS, true),
-                result(TOBIAS, TODAY.minusDays(1), GameType.QUADWORDS, true));
+                result(TOBIAS, TODAY.minusDays(1), GameType.QUADWORDS, true),
+                result(GEORGIA, TODAY.minusDays(1), GameType.GRIDWORDS, true),
+                result(GEORGIA, TODAY.minusDays(1), GameType.QUADWORDS, true));
 
         StreakSummary streaks = calculator.calculate(results, List.of(TOBIAS, GEORGIA), TOBIAS, TODAY);
 
@@ -83,24 +99,67 @@ class StreakCalculatorTest {
         assertThat(streaks.personalGridWordsSolved()).isEqualTo(2);
         assertThat(streaks.personalQuadWordsSolved()).isZero();
         assertThat(streaks.personalPerfect()).isZero();
+        assertThat(streaks.sharedGridWordsSolved()).isEqualTo(2);
+        assertThat(streaks.sharedQuadWordsSolved()).isZero();
+        assertThat(streaks.sharedComplete()).isEqualTo(2);
+        assertThat(streaks.sharedPerfect()).isZero();
     }
 
     @Test
-    void yesterdayBackfillRecalculatesCompleteAndPerfectStreaks() {
-        List<StreakCalculator.PlayerResult> beforeBackfill = List.of(
-                result(TOBIAS, TODAY, GameType.GRIDWORDS, true),
-                result(TOBIAS, TODAY, GameType.QUADWORDS, true),
-                result(TOBIAS, TODAY.minusDays(1), GameType.GRIDWORDS, true));
-        List<StreakCalculator.PlayerResult> afterBackfill = new java.util.ArrayList<>(beforeBackfill);
-        afterBackfill.add(result(TOBIAS, TODAY.minusDays(1), GameType.QUADWORDS, true));
+    void currentMissingSharedResultIsProvisionalButHistoricalMissingResultEndsTheStreak() {
+        List<StreakCalculator.PlayerResult> results = completeResults(TOBIAS, GEORGIA, TODAY.minusDays(1));
+        results = new ArrayList<>(results);
+        results.add(result(TOBIAS, TODAY, GameType.GRIDWORDS, true));
+
+        StreakSummary provisional = calculator.calculateWithParticipation(
+                results, alwaysActive(TOBIAS, GEORGIA), TOBIAS, TODAY, true);
+        StreakSummary historical = calculator.calculateWithParticipation(
+                results, alwaysActive(TOBIAS, GEORGIA), TOBIAS, TODAY, false);
+
+        assertThat(provisional.sharedGridWordsSolved()).isEqualTo(1);
+        assertThat(provisional.sharedQuadWordsSolved()).isEqualTo(1);
+        assertThat(historical.sharedGridWordsSolved()).isZero();
+        assertThat(historical.sharedQuadWordsSolved()).isZero();
+    }
+
+    @Test
+    void everyActivePlayerMustSolveTheSelectedGame() {
+        List<StreakCalculator.PlayerResult> results = new ArrayList<>(
+                completeResults(TOBIAS, GEORGIA, THIRD, TODAY.minusDays(1)));
+        results.add(result(TOBIAS, TODAY, GameType.GRIDWORDS, true));
+        results.add(result(GEORGIA, TODAY, GameType.GRIDWORDS, true));
+        results.add(result(THIRD, TODAY, GameType.GRIDWORDS, false));
+        results.add(result(TOBIAS, TODAY, GameType.QUADWORDS, true));
+        results.add(result(GEORGIA, TODAY, GameType.QUADWORDS, true));
+        results.add(result(THIRD, TODAY, GameType.QUADWORDS, true));
+
+        StreakSummary streaks = calculator.calculateWithParticipation(
+                results, alwaysActive(TOBIAS, GEORGIA, THIRD), TOBIAS, TODAY);
+
+        assertThat(streaks.sharedGridWordsSolved()).isZero();
+        assertThat(streaks.sharedQuadWordsSolved()).isEqualTo(2);
+    }
+
+    @Test
+    void yesterdayBackfillRestoresPersonalAndSharedSolvedStreaks() {
+        List<StreakCalculator.PlayerResult> beforeBackfill = new ArrayList<>(
+                completeResults(TOBIAS, GEORGIA, TODAY));
+        beforeBackfill.add(result(TOBIAS, TODAY.minusDays(1), GameType.GRIDWORDS, true));
+        beforeBackfill.add(result(TOBIAS, TODAY.minusDays(1), GameType.QUADWORDS, true));
+        beforeBackfill.add(result(GEORGIA, TODAY.minusDays(1), GameType.QUADWORDS, true));
+
+        List<StreakCalculator.PlayerResult> afterBackfill = new ArrayList<>(beforeBackfill);
+        afterBackfill.add(result(GEORGIA, TODAY.minusDays(1), GameType.GRIDWORDS, true));
 
         StreakSummary before = calculator.calculate(beforeBackfill, List.of(TOBIAS, GEORGIA), TOBIAS, TODAY);
         StreakSummary after = calculator.calculate(afterBackfill, List.of(TOBIAS, GEORGIA), TOBIAS, TODAY);
 
-        assertThat(before.personalComplete()).isEqualTo(1);
-        assertThat(before.personalPerfect()).isEqualTo(1);
-        assertThat(after.personalComplete()).isEqualTo(2);
-        assertThat(after.personalPerfect()).isEqualTo(2);
+        assertThat(before.sharedGridWordsSolved()).isEqualTo(1);
+        assertThat(before.sharedQuadWordsSolved()).isEqualTo(2);
+        assertThat(after.sharedGridWordsSolved()).isEqualTo(2);
+        assertThat(after.sharedQuadWordsSolved()).isEqualTo(2);
+        assertThat(after.sharedComplete()).isEqualTo(2);
+        assertThat(after.sharedPerfect()).isEqualTo(2);
     }
 
     @Test
@@ -117,51 +176,51 @@ class StreakCalculatorTest {
 
         StreakSummary streaks = calculator.calculate(results, List.of(TOBIAS, GEORGIA), TOBIAS, TODAY);
 
+        assertThat(streaks.sharedGridWordsSolved()).isZero();
+        assertThat(streaks.sharedQuadWordsSolved()).isEqualTo(2);
         assertThat(streaks.sharedComplete()).isEqualTo(2);
         assertThat(streaks.sharedPerfect()).isZero();
     }
 
     @Test
-    void thirdPlayerJoiningTodayDoesNotChangeYesterdaySharedStreak() {
-        List<StreakCalculator.PlayerResult> results = completeResults(TOBIAS, GEORGIA, TODAY.minusDays(1));
-        results = new java.util.ArrayList<>(results);
-        ((java.util.ArrayList<StreakCalculator.PlayerResult>) results).addAll(completeResults(TOBIAS, GEORGIA, THIRD, TODAY));
+    void joiningLeavingAndRejoiningUseTheHistoricalDailyPopulation() {
+        List<StreakCalculator.PlayerResult> results = new ArrayList<>();
+        results.addAll(completeResults(TOBIAS, GEORGIA, TODAY.minusDays(3)));
+        results.addAll(completeResults(TOBIAS, GEORGIA, THIRD, TODAY.minusDays(2)));
+        results.addAll(completeResults(TOBIAS, GEORGIA, TODAY.minusDays(1)));
+        results.addAll(completeResults(TOBIAS, GEORGIA, THIRD, TODAY));
         List<ParticipationPeriod> periods = List.of(
                 new ParticipationPeriod(TOBIAS, TODAY.minusDays(10), null),
                 new ParticipationPeriod(GEORGIA, TODAY.minusDays(10), null),
+                new ParticipationPeriod(THIRD, TODAY.minusDays(2), TODAY.minusDays(1)),
                 new ParticipationPeriod(THIRD, TODAY, null));
 
         StreakSummary streaks = calculator.calculateWithParticipation(results, periods, TOBIAS, TODAY);
 
-        assertThat(streaks.sharedComplete()).isEqualTo(2);
-        assertThat(streaks.sharedPerfect()).isEqualTo(2);
+        assertThat(streaks.sharedGridWordsSolved()).isEqualTo(4);
+        assertThat(streaks.sharedQuadWordsSolved()).isEqualTo(4);
+        assertThat(streaks.sharedComplete()).isEqualTo(4);
+        assertThat(streaks.sharedPerfect()).isEqualTo(4);
     }
 
     @Test
-    void thirdPlayerLeavingTodayDoesNotChangeEarlierSharedDays() {
-        List<StreakCalculator.PlayerResult> results = new java.util.ArrayList<>(completeResults(TOBIAS, GEORGIA, TODAY));
-        ((java.util.ArrayList<StreakCalculator.PlayerResult>) results)
-                .addAll(completeResults(TOBIAS, GEORGIA, THIRD, TODAY.minusDays(1)));
+    void fewerThanTwoParticipantsNeverCreatesAnySharedDay() {
         List<ParticipationPeriod> periods = List.of(
-                new ParticipationPeriod(TOBIAS, TODAY.minusDays(10), null),
-                new ParticipationPeriod(GEORGIA, TODAY.minusDays(10), null),
-                new ParticipationPeriod(THIRD, TODAY.minusDays(10), TODAY));
-
-        StreakSummary streaks = calculator.calculateWithParticipation(results, periods, TOBIAS, TODAY);
-
-        assertThat(streaks.sharedComplete()).isEqualTo(2);
-        assertThat(streaks.sharedPerfect()).isEqualTo(2);
-    }
-
-    @Test
-    void fewerThanTwoParticipantsNeverCreatesASharedDay() {
-        List<ParticipationPeriod> periods = List.of(new ParticipationPeriod(TOBIAS, TODAY.minusDays(10), null));
+                new ParticipationPeriod(TOBIAS, TODAY.minusDays(10), null));
 
         StreakSummary streaks = calculator.calculateWithParticipation(
                 completeResults(TOBIAS, TODAY), periods, TOBIAS, TODAY);
 
+        assertThat(streaks.sharedGridWordsSolved()).isZero();
+        assertThat(streaks.sharedQuadWordsSolved()).isZero();
         assertThat(streaks.sharedComplete()).isZero();
         assertThat(streaks.sharedPerfect()).isZero();
+    }
+
+    private static List<ParticipationPeriod> alwaysActive(long... players) {
+        return java.util.Arrays.stream(players)
+                .mapToObj(player -> new ParticipationPeriod(player, TODAY.minusDays(100), null))
+                .toList();
     }
 
     private static List<StreakCalculator.PlayerResult> completeResults(long first, long second, LocalDate date) {
@@ -178,7 +237,7 @@ class StreakCalculatorTest {
     }
 
     private static List<StreakCalculator.PlayerResult> completeResults(long[] players, LocalDate date) {
-        java.util.ArrayList<StreakCalculator.PlayerResult> results = new java.util.ArrayList<>();
+        ArrayList<StreakCalculator.PlayerResult> results = new ArrayList<>();
         for (long player : players) {
             results.add(result(player, date, GameType.GRIDWORDS, true));
             results.add(result(player, date, GameType.QUADWORDS, true));
@@ -189,12 +248,21 @@ class StreakCalculatorTest {
     private static StreakCalculator.PlayerResult result(
             long player, LocalDate date, GameType type, boolean solved) {
         int maximum = type == GameType.GRIDWORDS ? 6 : 9;
-        ShareOutcome outcome = solved ? new ShareOutcome.Solved(1, maximum) : new ShareOutcome.Unsolved(maximum);
+        ShareOutcome outcome = solved
+                ? new ShareOutcome.Solved(1, maximum)
+                : new ShareOutcome.Unsolved(maximum);
         Optional<NormalizedBoard> board = type == GameType.GRIDWORDS
-                ? Optional.of(new NormalizedBoard(java.util.Collections.nCopies(solved ? 1 : 6, "⬜⬜⬜⬜⬜")))
+                ? Optional.of(new NormalizedBoard(
+                        java.util.Collections.nCopies(solved ? 1 : 6, "⬜⬜⬜⬜⬜")))
                 : Optional.empty();
         return new StreakCalculator.PlayerResult(
                 player,
-                new ParsedGameResult(type, date, outcome, Duration.ofSeconds(1), OptionalInt.empty(), board));
+                new ParsedGameResult(
+                        type,
+                        date,
+                        outcome,
+                        Duration.ofSeconds(1),
+                        OptionalInt.empty(),
+                        board));
     }
 }
