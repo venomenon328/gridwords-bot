@@ -44,7 +44,7 @@ class DailyStatusReminderSchedulerTest {
     void afterSecondStageSupersedesFirstAndSendsOnlyLatestCatchUp() {
         Fixture fixture = fixture("2026-07-30T21:30:00Z");
         fixture.scheduler.reconcile();
-        verify(fixture.store).supersedeReminder(11L, 12L, DATE, 1, LocalTime.of(18, 0));
+        verify(fixture.store, never()).supersedeReminder(11L, 12L, DATE, 1, LocalTime.of(18, 0));
         verify(fixture.reminders).deliver(DATE, 2, LocalTime.of(23, 0));
         verify(fixture.reminders, never()).deliver(DATE, 1, LocalTime.of(18, 0));
     }

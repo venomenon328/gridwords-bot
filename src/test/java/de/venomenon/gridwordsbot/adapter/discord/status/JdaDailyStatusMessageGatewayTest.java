@@ -138,13 +138,14 @@ class JdaDailyStatusMessageGatewayTest {
                         43L, "@everyone_Role", List.of(GameType.GRIDWORDS, GameType.QUADWORDS), false));
 
         assertThat(fixture.gateway.send(12L, DATE, 1, candidates, Set.of(42L))).isEqualTo(77L);
+        verify(sent).suppressEmbeds(true);
 
         ArgumentCaptor<String> content = ArgumentCaptor.forClass(String.class);
         verify(fixture.channel).sendMessage(content.capture());
         assertThat(content.getValue())
                 .contains("**Denkt bitte noch an eure Wortspiele:**")
-                .contains("[GridWords](https://gridgames.app/gridwords#gridwords-reminder:12:2026-07-30:1):")
-                .contains("[QuadWords](https://gridgames.app/quadwords#gridwords-reminder:12:2026-07-30:1):")
+                .contains("**[GridWords](https://gridgames.app/gridwords#gridwords-reminder:12:2026-07-30:1)**:")
+                .contains("**[QuadWords](https://gridgames.app/quadwords#gridwords-reminder:12:2026-07-30:1)**:")
                 .contains("<@42>", "@\u200Beveryone\\_Role")
                 .doesNotContain("Erinnerung ·", "gridwords-reminder:12:2026-07-30:1\n");
         verify(create, never()).addEmbeds(any(MessageEmbed.class));

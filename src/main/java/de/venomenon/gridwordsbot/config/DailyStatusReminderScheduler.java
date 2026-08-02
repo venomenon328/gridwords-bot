@@ -1,5 +1,6 @@
 package de.venomenon.gridwordsbot.config;
 
+import de.venomenon.gridwordsbot.application.cleanup.ChannelMessageRetirementService;
 import de.venomenon.gridwordsbot.application.reminder.ReminderDeliveryService;
 import de.venomenon.gridwordsbot.application.status.DailyStatusRefreshService;
 import de.venomenon.gridwordsbot.port.out.DailyStatusStore;
@@ -25,16 +26,24 @@ final class DailyStatusReminderScheduler {
     private final DailyStatusRefreshService status;
     private final ReminderDeliveryService reminders;
     private final DailyStatusStore deliveries;
+    private final ChannelMessageRetirementService retirement;
     private final Clock clock;
     private final GridwordsBotProperties properties;
 
     DailyStatusReminderScheduler(DailyStatusRefreshService status, ReminderDeliveryService reminders,
-            DailyStatusStore deliveries, Clock clock, GridwordsBotProperties properties) {
+            DailyStatusStore deliveries, ChannelMessageRetirementService retirement, Clock clock,
+            GridwordsBotProperties properties) {
         this.status = status;
         this.reminders = reminders;
         this.deliveries = deliveries;
+        this.retirement = retirement;
         this.clock = clock;
         this.properties = properties;
+    }
+
+    DailyStatusReminderScheduler(DailyStatusRefreshService status, ReminderDeliveryService reminders,
+            DailyStatusStore deliveries, Clock clock, GridwordsBotProperties properties) {
+        this(status, reminders, deliveries, null, clock, properties);
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -60,8 +69,10 @@ final class DailyStatusReminderScheduler {
         status.reconcile(today, firstDue);
 
         if (secondDue) {
-            deliveries.supersedeReminder(guildId, channelId, today, 1, first);
             reminders.deliver(today, 2, second);
+            if (retirement != null) {
+                retirement.reconcileFirstReminderRetention(today);
+            }
         } else if (firstDue) {
             reminders.deliver(today, 1, first);
         }

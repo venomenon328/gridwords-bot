@@ -85,6 +85,7 @@ public final class JdaDailyStatusMessageGateway implements DailyStatusMessageGat
             TextChannel channel = channel(channelId);
             Optional<Message> existing = findReminderByKey(channel, key);
             if (existing.isPresent()) {
+                suppressEmbeds(existing.get());
                 return existing.get().getIdLong();
             }
 
@@ -95,7 +96,9 @@ public final class JdaDailyStatusMessageGateway implements DailyStatusMessageGat
                 create.setAllowedMentions(List.of(Message.MentionType.USER))
                         .mentionUsers(allowed.stream().map(String::valueOf).toList());
             }
-            return create.complete().getIdLong();
+            Message sent = create.complete();
+            suppressEmbeds(sent);
+            return sent.getIdLong();
         } catch (DiscordDeliveryException exception) {
             throw exception;
         } catch (ErrorResponseException exception) {
@@ -103,6 +106,24 @@ public final class JdaDailyStatusMessageGateway implements DailyStatusMessageGat
         } catch (RuntimeException exception) {
             throw DiscordDeliveryException.retryable("reminder Discord request failed", exception);
         }
+    }
+
+    @Override
+    public void delete(long channelId, long messageId) {
+        try {
+            channel(channelId).deleteMessageById(messageId).complete();
+        } catch (ErrorResponseException exception) {
+            if (exception.getErrorResponse() != ErrorResponse.UNKNOWN_MESSAGE) {
+                throw classified("reminder deletion failed", exception);
+            }
+        } catch (RuntimeException exception) {
+            throw DiscordDeliveryException.retryable("reminder deletion failed", exception);
+        }
+    }
+
+    private static void suppressEmbeds(Message message) {
+        var action = message.suppressEmbeds(true);
+        if (action != null) action.complete();
     }
 
     private static String reminderContent(
@@ -129,7 +150,7 @@ public final class JdaDailyStatusMessageGateway implements DailyStatusMessageGat
         if (!players.isEmpty()) {
             // The fragment is not rendered by Discord but keeps stage-specific crash reconciliation possible without
             // exposing an implementation key as message text or an embed footer.
-            lines.add("[" + label + "](" + url + "#" + key + "): " + players);
+            lines.add("**[" + label + "](" + url + "#" + key + ")**: " + players);
         }
     }
 

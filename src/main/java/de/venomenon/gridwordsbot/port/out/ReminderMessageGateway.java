@@ -8,4 +8,9 @@ import java.util.Set;
 public interface ReminderMessageGateway {
     long send(long channelId, LocalDate gameDate, int stage,
               List<ReminderCandidateStore.ReminderCandidate> candidates, Set<Long> allowedUserIds);
+
+    /** Deletes one visible reminder. Missing Discord messages are an idempotent success. */
+    default void delete(long channelId, long messageId) {
+        throw new UnsupportedOperationException("reminder deletion is not available");
+    }
 }

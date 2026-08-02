@@ -2,6 +2,7 @@ package de.venomenon.gridwordsbot.adapter.discord.canonical;
 
 import de.venomenon.gridwordsbot.application.canonical.CanonicalResultMessage;
 import de.venomenon.gridwordsbot.port.out.CanonicalMessageGateway;
+import de.venomenon.gridwordsbot.port.out.DiscordDeliveryException;
 import de.venomenon.gridwordsbot.port.out.CanonicalPublicationContextStore;
 import java.util.List;
 import java.util.OptionalInt;
@@ -86,7 +87,9 @@ public final class JdaCanonicalMessageGateway implements CanonicalMessageGateway
             if (isUnknownMessage(exception)) {
                 return;
             }
-            throw exception;
+            throw classifiedDeletion(exception);
+        } catch (RuntimeException exception) {
+            throw DiscordDeliveryException.retryable("canonical deletion failed", exception);
         }
     }
 
@@ -94,6 +97,16 @@ public final class JdaCanonicalMessageGateway implements CanonicalMessageGateway
         return exception.getErrorResponse() == ErrorResponse.UNKNOWN_MESSAGE;
     }
 
+
+    private static DiscordDeliveryException classifiedDeletion(ErrorResponseException exception) {
+        ErrorResponse response = exception.getErrorResponse();
+        boolean permanent = response == ErrorResponse.MISSING_ACCESS
+                || response == ErrorResponse.MISSING_PERMISSIONS
+                || response == ErrorResponse.UNKNOWN_CHANNEL;
+        return permanent
+                ? DiscordDeliveryException.permanent("canonical deletion failed", exception)
+                : DiscordDeliveryException.retryable("canonical deletion failed", exception);
+    }
     private CanonicalResultMessage withHistoricalContext(CanonicalResultMessage message) {
         OptionalLong resultId = resultId(message.publicationKey());
         if (resultId.isEmpty()) {
