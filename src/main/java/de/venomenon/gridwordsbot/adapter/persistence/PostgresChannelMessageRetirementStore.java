@@ -44,7 +44,7 @@ public class PostgresChannelMessageRetirementStore implements ChannelMessageReti
                     OR (retirement.retirement_state = 'RETRYABLE'
                         AND (retirement.retry_after IS NULL OR retirement.retry_after <= ?))
                     OR (retirement.retirement_state = 'CLAIMED'
-                        AND retirement.claim_until < ?))
+                        AND retirement.claim_until < ?)
                     OR retirement.retirement_state = 'PERMANENT')
                 GROUP BY r.id, r.canonical_message_id, r.game_date, r.game_type
                 ORDER BY r.game_date, r.game_type, r.id
@@ -72,7 +72,7 @@ public class PostgresChannelMessageRetirementStore implements ChannelMessageReti
                     OR (retirement.retirement_state = 'RETRYABLE'
                         AND (retirement.retry_after IS NULL OR retirement.retry_after <= ?))
                     OR (retirement.retirement_state = 'CLAIMED'
-                        AND retirement.claim_until < ?))
+                        AND retirement.claim_until < ?)
                     OR retirement.retirement_state = 'PERMANENT')
                 ORDER BY delivery.game_date, delivery.reminder_stage
                 """, (rs, row) -> new ReminderMessage(guildId, channelId,
@@ -108,7 +108,7 @@ public class PostgresChannelMessageRetirementStore implements ChannelMessageReti
                     OR (retirement.retirement_state = 'RETRYABLE'
                         AND (retirement.retry_after IS NULL OR retirement.retry_after <= ?))
                     OR (retirement.retirement_state = 'CLAIMED'
-                        AND retirement.claim_until < ?))
+                        AND retirement.claim_until < ?)
                     OR retirement.retirement_state = 'PERMANENT')
                 """, (rs, row) -> new ReminderMessage(guildId, channelId, date, 1,
                         rs.getLong("discord_message_id")),

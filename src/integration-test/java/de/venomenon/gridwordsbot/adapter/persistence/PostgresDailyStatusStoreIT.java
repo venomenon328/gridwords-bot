@@ -123,8 +123,6 @@ class PostgresDailyStatusStoreIT {
         store.completeReminder(noCandidates, DailyStatusStore.ReminderState.NO_CANDIDATES, Optional.empty());
         assertThat(store.claimReminder(1, 2, DATE, 1, LocalTime.of(18, 0), NOW.plusSeconds(60))).isEmpty();
 
-        store.supersedeReminder(1, 2, DATE, 2, LocalTime.of(23, 0));
-        assertThat(store.claimReminder(1, 2, DATE, 2, LocalTime.of(23, 0), NOW.plusSeconds(60))).isEmpty();
 
         DailyStatusStore.ReminderDelivery old = store.claimReminder(1, 2, DATE.minusDays(1), 1,
                 LocalTime.of(18, 0), NOW.minusSeconds(1)).orElseThrow();
@@ -189,8 +187,8 @@ class PostgresDailyStatusStoreIT {
                     (guild_id, channel_id, game_date, reminder_stage, scheduled_time, delivery_state, created_at, updated_at)
                 VALUES (-1, 2, ?, 1, '18:00', 'PENDING', now(), now())
                 """, DATE)).isInstanceOf(Exception.class);
-        store.supersedeReminder(1, 2, DATE, 1, LocalTime.of(18, 0));
-        store.supersedeReminder(1, 2, DATE, 1, LocalTime.of(18, 0));
+        DailyStatusStore.ReminderDelivery terminal = store.claimReminder(1, 2, DATE, 1, LocalTime.of(18, 0), NOW.plusSeconds(60)).orElseThrow();
+        store.completeReminder(terminal, DailyStatusStore.ReminderState.NO_CANDIDATES, Optional.empty());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM reminder_delivery", Integer.class)).isOne();
     }
 }

@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import de.venomenon.gridwordsbot.application.canonical.CanonicalGridWordsPublicationService;
 import de.venomenon.gridwordsbot.application.canonical.GridWordsSourceDeletionService;
 import de.venomenon.gridwordsbot.port.out.CanonicalMessageGateway;
+import de.venomenon.gridwordsbot.port.out.ChannelMessageRetirementStore;
 import de.venomenon.gridwordsbot.port.out.GameResultStore;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
 import de.venomenon.gridwordsbot.port.out.PublicationRetryScheduler;
@@ -33,6 +34,7 @@ class DatabaseInboundConfigurationTest {
             context.registerBean(LatestValidSubmissionQuery.class, () -> mock(LatestValidSubmissionQuery.class));
             context.registerBean(PlayerStore.class, () -> mock(PlayerStore.class));
             context.registerBean(SubmissionStore.class, () -> mock(SubmissionStore.class));
+            context.registerBean(ChannelMessageRetirementStore.class, () -> mock(ChannelMessageRetirementStore.class));
             context.registerBean(GridwordsBotProperties.class, DatabaseInboundConfigurationTest::properties);
             context.register(DatabaseInboundConfiguration.class);
             context.refresh();

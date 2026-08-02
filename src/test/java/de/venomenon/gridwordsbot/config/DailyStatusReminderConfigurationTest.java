@@ -7,6 +7,8 @@ import de.venomenon.gridwordsbot.adapter.discord.status.JdaDailyStatusMessageGat
 import de.venomenon.gridwordsbot.application.reminder.ReminderDeliveryService;
 import de.venomenon.gridwordsbot.application.status.DailyStatusProjector;
 import de.venomenon.gridwordsbot.application.status.DailyStatusRefreshService;
+import de.venomenon.gridwordsbot.port.out.CanonicalMessageGateway;
+import de.venomenon.gridwordsbot.port.out.ChannelMessageRetirementStore;
 import de.venomenon.gridwordsbot.port.out.DailyStatusStore;
 import de.venomenon.gridwordsbot.port.out.GameResultStore;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
@@ -28,6 +30,8 @@ class DailyStatusReminderConfigurationTest {
             context.registerBean(GameResultStore.class, () -> mock(GameResultStore.class));
             context.registerBean(PlayerStore.class, () -> mock(PlayerStore.class));
             context.registerBean(DailyStatusStore.class, () -> mock(DailyStatusStore.class));
+            context.registerBean(CanonicalMessageGateway.class, () -> mock(CanonicalMessageGateway.class));
+            context.registerBean(ChannelMessageRetirementStore.class, () -> mock(ChannelMessageRetirementStore.class));
             context.registerBean(GridwordsBotProperties.class, DailyStatusReminderConfigurationTest::properties);
             context.register(DailyStatusReminderConfiguration.class, SchedulingConfiguration.class,
                     DailyStatusReminderScheduler.class);
