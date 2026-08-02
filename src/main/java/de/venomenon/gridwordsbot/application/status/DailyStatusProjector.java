@@ -34,28 +34,56 @@ public final class DailyStatusProjector {
         Map<Long, PlayerStore.StoredPlayer> profiles = players.findAllPlayers().stream()
                 .collect(Collectors.toMap(PlayerStore.StoredPlayer::discordUserId, player -> player));
         List<StreakCalculator.PlayerResult> streakResults = all.stream()
-                .map(result -> new StreakCalculator.PlayerResult(result.playerId(), result.parsedResult())).toList();
-        List<DailyStatus.PlayerLine> lines = periods.stream().filter(period -> period.contains(date))
-                .map(ParticipationPeriod::playerId).distinct()
+                .map(result -> new StreakCalculator.PlayerResult(result.playerId(), result.parsedResult()))
+                .toList();
+        List<DailyStatus.PlayerLine> lines = periods.stream()
+                .filter(period -> period.contains(date))
+                .map(ParticipationPeriod::playerId)
+                .distinct()
                 .map(id -> line(id, date, date.equals(today), all, periods, profiles, streakResults))
-                .sorted(Comparator.comparing((DailyStatus.PlayerLine line) -> line.displayName().toLowerCase(Locale.ROOT))
-                        .thenComparingLong(DailyStatus.PlayerLine::discordUserId)).toList();
-        int sharedComplete = lines.isEmpty() ? 0 : lines.getFirst().streaks().sharedComplete();
-        int sharedPerfect = lines.isEmpty() ? 0 : lines.getFirst().streaks().sharedPerfect();
-        return new DailyStatus(date, lines, sharedComplete, sharedPerfect);
+                .sorted(Comparator
+                        .comparing((DailyStatus.PlayerLine line) -> line.displayName().toLowerCase(Locale.ROOT))
+                        .thenComparingLong(DailyStatus.PlayerLine::discordUserId))
+                .toList();
+        StreakSummary shared = lines.isEmpty() ? null : lines.getFirst().streaks();
+        return new DailyStatus(
+                date,
+                lines,
+                shared == null ? 0 : shared.sharedGridWordsSolved(),
+                shared == null ? 0 : shared.sharedQuadWordsSolved(),
+                shared == null ? 0 : shared.sharedComplete(),
+                shared == null ? 0 : shared.sharedPerfect());
     }
 
-    private DailyStatus.PlayerLine line(long id, LocalDate date, boolean provisionalCurrentDay,
-            List<GameResultStore.StoredGameResult> all, List<ParticipationPeriod> periods,
-            Map<Long, PlayerStore.StoredPlayer> profiles, List<StreakCalculator.PlayerResult> streakResults) {
+    private DailyStatus.PlayerLine line(
+            long id,
+            LocalDate date,
+            boolean provisionalCurrentDay,
+            List<GameResultStore.StoredGameResult> all,
+            List<ParticipationPeriod> periods,
+            Map<Long, PlayerStore.StoredPlayer> profiles,
+            List<StreakCalculator.PlayerResult> streakResults) {
         PlayerStore.StoredPlayer profile = profiles.get(id);
-        if (profile == null) throw new IllegalStateException("participation period without profile: " + id);
+        if (profile == null) {
+            throw new IllegalStateException("participation period without profile: " + id);
+        }
         StreakSummary summary = calculator.calculateWithParticipation(
                 streakResults, periods, id, date, provisionalCurrentDay);
-        return new DailyStatus.PlayerLine(id, profile.displayName(),
-                all.stream().filter(r -> r.playerId() == id && r.parsedResult().gameType() == GameType.GRIDWORDS
-                        && r.parsedResult().gameDate().equals(date)).findFirst().map(GameResultStore.StoredGameResult::parsedResult),
-                all.stream().filter(r -> r.playerId() == id && r.parsedResult().gameType() == GameType.QUADWORDS
-                        && r.parsedResult().gameDate().equals(date)).findFirst().map(GameResultStore.StoredGameResult::parsedResult), summary);
+        return new DailyStatus.PlayerLine(
+                id,
+                profile.displayName(),
+                all.stream()
+                        .filter(result -> result.playerId() == id
+                                && result.parsedResult().gameType() == GameType.GRIDWORDS
+                                && result.parsedResult().gameDate().equals(date))
+                        .findFirst()
+                        .map(GameResultStore.StoredGameResult::parsedResult),
+                all.stream()
+                        .filter(result -> result.playerId() == id
+                                && result.parsedResult().gameType() == GameType.QUADWORDS
+                                && result.parsedResult().gameDate().equals(date))
+                        .findFirst()
+                        .map(GameResultStore.StoredGameResult::parsedResult),
+                summary);
     }
 }

@@ -85,10 +85,11 @@ Jeder Schritt muss nach einem Absturz oder erneut zugestellten Event gefahrlos f
 
 - Serien werden aus den persistierten Spielergebnissen und den historisch wirksamen Teilnahmezeiträumen abgeleitet und eindeutig benannt.
 - Persönlich zu berechnen sind Aktivitätsserie, Komplettserie, GridWords-Lösungsserie, QuadWords-Lösungsserie und Perfektserie.
-- Gemeinsam zu berechnen sind gemeinsame Komplettserie und gemeinsame Perfektserie.
+- Gemeinsam zu berechnen sind GridWords-Lösungsserie, QuadWords-Lösungsserie, Komplettserie und Perfektserie.
+- Gemeinsame Serien setzen pro Tag mindestens zwei aktive Spieler voraus; alle an diesem Tag aktiven Spieler müssen die jeweilige Bedingung erfüllen.
+- GridWords- und QuadWords-Lösungsserien werden persönlich und gemeinsam vollständig unabhängig berechnet.
 - Es gibt keine gemeinsame Aktivitätsserie.
-- GridWords- und QuadWords-Lösungen dürfen nicht zu einer unspezifischen persönlichen Lösungsserie zusammengefasst werden.
-- Maßgeblich sind die Definitionen und Testfälle in `docs/requirements/series-model.md`.
+- Maßgeblich sind die neun Serienarten, Definitionen und Testfälle in `docs/requirements/series-model.md`.
 
 ### Periodische Berichte
 
@@ -103,6 +104,7 @@ Jeder Schritt muss nach einem Absturz oder erneut zugestellten Event gefahrlos f
 - Mehrseitenberichte bilden eine logische Delivery mit geordnet persistierten Message-IDs.
 - Der Scheduler ist nur Trigger; Fälligkeit, Claims, Retry, NO_OP und Ablauf werden in PostgreSQL nachvollziehbar persistiert.
 - Pro Berichtstyp wird höchstens die jüngste noch relevante versäumte Periode nachgeholt.
+- Die gemeinsamen spielbezogenen Lösungsserien aus 10.2 erweitern Berichte nicht ohne gesonderte fachliche Entscheidung.
 - Keine vorauseilende manuelle Report- oder Konfigurations-Command-Oberfläche in Inkrement 10.
 
 ### Datenbank und lokale Infrastruktur
@@ -141,7 +143,7 @@ Jeder Schritt muss nach einem Absturz oder erneut zugestellten Event gefahrlos f
 - Logs dürfen niemals Tokens, Passwörter, vollständige `.env`-Inhalte oder unnötige fremde Nachrichteninhalte enthalten.
 - Neue fachliche Logik benötigt Tests.
 - Parseränderungen benötigen Fixture-basierte Tests für Erfolg, Nicht-gelöst-Format und Fehlerfälle.
-- Serienänderungen benötigen getrennte Tests für alle sieben definierten Serien und die Regel für den unvollständigen aktuellen Tag.
+- Serienänderungen benötigen getrennte Tests für alle neun definierten Serien, historische Teilnahmezeiträume und die Regel für den unvollständigen aktuellen Tag.
 - Reportänderungen benötigen getrennte Tests für Wochen-/Monatsperioden, Teilnahmetage, alle persönlichen und gemeinsamen Kennzahlen, Periodenend-Stichtag, Catch-up, NO_OP und Pagination.
 - Tests dürfen keine echte Discord-Verbindung öffnen.
 - Zeitabhängige Tests verwenden eine feste `Clock`.
@@ -217,7 +219,7 @@ Für lokale manuelle Ausführung gelten die Befehle aus `README.md`, `docs/devel
 - Docker darf in Issues, Codex-/Terra-Aufträgen und lokalen Prüfungen vorausgesetzt werden, wenn der Aufgabenbereich Persistenz, Container oder Integration betrifft. Der infrastrukturlose Standardbuild bleibt dennoch verpflichtend.
 - PRs für Produktionsbetrieb bleiben Draft, bis automatisierte und reale Serverabnahme vollständig sind.
 - PRs für Wochen-/Monatsberichte bleiben Draft, bis beide Berichtstypen real in Discord dargestellt und duplikatsicher geprüft wurden.
-- Inkrement 10 wird paketweise umgesetzt; Terra erhält immer nur den nächsten in `docs/increments/10-periodic-reports.md` definierten Umfang.
+- Paketweise Inkremente verwenden den jeweils aktuellen Plan unter `docs/increments/`; keine späteren Pakete oder Folge-Issues vorziehen.
 
 ## 9. Abschlussbericht für Codex-Aufgaben
 

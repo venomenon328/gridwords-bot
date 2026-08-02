@@ -27,7 +27,7 @@ class DailyStatusProjectorTest {
     private static final LocalDate DATE = LocalDate.of(2026, 7, 30);
 
     @Test
-    void currentDayKeepsPendingStreakButHistoricalFinalizationEndsIt() {
+    void currentDayKeepsPendingSharedStreaksButHistoricalFinalizationEndsThem() {
         Fixtures fixtures = fixtures(List.of(1L, 2L), DATE.minusDays(10));
         fixtures.complete(1L, DATE.minusDays(1), true);
         fixtures.complete(2L, DATE.minusDays(1), true);
@@ -36,12 +36,17 @@ class DailyStatusProjectorTest {
         DailyStatus historical = fixtures.projector().project(DATE, DATE.plusDays(1));
 
         assertThat(provisional.players().getFirst().streaks().personalComplete()).isEqualTo(1);
+        assertThat(provisional.sharedGridWordsSolved()).isEqualTo(1);
+        assertThat(provisional.sharedQuadWordsSolved()).isEqualTo(1);
         assertThat(provisional.sharedComplete()).isEqualTo(1);
+        assertThat(provisional.sharedPerfect()).isEqualTo(1);
         assertThat(historical.players().getFirst().streaks().personalActivity()).isZero();
         assertThat(historical.players().getFirst().streaks().personalComplete()).isZero();
         assertThat(historical.players().getFirst().streaks().personalGridWordsSolved()).isZero();
         assertThat(historical.players().getFirst().streaks().personalQuadWordsSolved()).isZero();
         assertThat(historical.players().getFirst().streaks().personalPerfect()).isZero();
+        assertThat(historical.sharedGridWordsSolved()).isZero();
+        assertThat(historical.sharedQuadWordsSolved()).isZero();
         assertThat(historical.sharedComplete()).isZero();
         assertThat(historical.sharedPerfect()).isZero();
     }
@@ -57,6 +62,8 @@ class DailyStatusProjectorTest {
 
         assertThat(status.players().getFirst().streaks().personalComplete()).isEqualTo(1);
         assertThat(status.players().getFirst().streaks().personalPerfect()).isEqualTo(1);
+        assertThat(status.sharedGridWordsSolved()).isEqualTo(1);
+        assertThat(status.sharedQuadWordsSolved()).isEqualTo(1);
         assertThat(status.sharedComplete()).isEqualTo(1);
         assertThat(status.sharedPerfect()).isEqualTo(1);
     }
@@ -71,12 +78,13 @@ class DailyStatusProjectorTest {
 
         DailyStatus status = fixtures.projector().project(DATE, DATE);
 
-        assertThat(status.players()).extracting(DailyStatus.PlayerLine::discordUserId)
+        assertThat(status.players())
+                .extracting(DailyStatus.PlayerLine::discordUserId)
                 .containsExactly(3L, 1L, 2L);
     }
 
     @Test
-    void yesterdayBackfillReconstructsPersonalAndSharedStreaks() {
+    void yesterdayBackfillReconstructsPersonalAndAllSharedStreaks() {
         Fixtures fixtures = fixtures(List.of(1L, 2L, 3L), DATE.minusDays(20));
         for (long player : List.of(1L, 2L, 3L)) {
             fixtures.complete(player, DATE.minusDays(1), true);
@@ -92,8 +100,38 @@ class DailyStatusProjectorTest {
             assertThat(player.streaks().personalQuadWordsSolved()).isEqualTo(2);
             assertThat(player.streaks().personalPerfect()).isEqualTo(2);
         });
+        assertThat(status.sharedGridWordsSolved()).isEqualTo(2);
+        assertThat(status.sharedQuadWordsSolved()).isEqualTo(2);
         assertThat(status.sharedComplete()).isEqualTo(2);
         assertThat(status.sharedPerfect()).isEqualTo(2);
+    }
+
+    @Test
+    void oneGamesUnsolvedResultChangesOnlyItsSharedSolvedStreakAndSharedPerfect() {
+        Fixtures fixtures = fixtures(List.of(1L, 2L), DATE.minusDays(10));
+        fixtures.complete(1L, DATE.minusDays(1), true);
+        fixtures.complete(2L, DATE.minusDays(1), true);
+        fixtures.complete(1L, DATE, true);
+        fixtures.add(2L, DATE, GameType.GRIDWORDS, false);
+        fixtures.add(2L, DATE, GameType.QUADWORDS, true);
+
+        DailyStatus status = fixtures.projector().project(DATE, DATE);
+
+        assertThat(status.sharedGridWordsSolved()).isZero();
+        assertThat(status.sharedQuadWordsSolved()).isEqualTo(2);
+        assertThat(status.sharedComplete()).isEqualTo(2);
+        assertThat(status.sharedPerfect()).isZero();
+    }
+
+    @Test
+    void emptyParticipantProjectionUsesZeroForEverySharedStreak() {
+        DailyStatus status = fixtures(List.of(), DATE).projector().project(DATE, DATE);
+
+        assertThat(status.players()).isEmpty();
+        assertThat(status.sharedGridWordsSolved()).isZero();
+        assertThat(status.sharedQuadWordsSolved()).isZero();
+        assertThat(status.sharedComplete()).isZero();
+        assertThat(status.sharedPerfect()).isZero();
     }
 
     private static Fixtures fixtures(List<Long> ids, LocalDate activeFrom) {
@@ -108,7 +146,8 @@ class DailyStatusProjectorTest {
         private final List<ParticipationPeriod> periods = new ArrayList<>();
 
         void player(long id, String name, ParticipationPeriod period) {
-            players.add(new PlayerStore.StoredPlayer(id, name, true, false, false, Instant.EPOCH, Instant.EPOCH));
+            players.add(new PlayerStore.StoredPlayer(
+                    id, name, true, false, false, Instant.EPOCH, Instant.EPOCH));
             periods.add(period);
         }
 
@@ -119,14 +158,24 @@ class DailyStatusProjectorTest {
 
         void add(long id, LocalDate date, GameType type, boolean solved) {
             int maximum = type == GameType.GRIDWORDS ? 6 : 9;
-            ShareOutcome outcome = solved ? new ShareOutcome.Solved(1, maximum) : new ShareOutcome.Unsolved(maximum);
+            ShareOutcome outcome = solved
+                    ? new ShareOutcome.Solved(1, maximum)
+                    : new ShareOutcome.Unsolved(maximum);
             Optional<NormalizedBoard> board = type == GameType.GRIDWORDS
-                    ? Optional.of(new NormalizedBoard(Collections.nCopies(solved ? 1 : 6, "⬜⬜⬜⬜⬜")))
+                    ? Optional.of(new NormalizedBoard(
+                            Collections.nCopies(solved ? 1 : 6, "⬜⬜⬜⬜⬜")))
                     : Optional.empty();
-            ParsedGameResult parsed = new ParsedGameResult(type, date, outcome, Duration.ofSeconds(61),
-                    OptionalInt.empty(), board);
-            results.add(new GameResultStore.StoredGameResult(results.size() + 1L, id, parsed, "share", "parser",
-                    OptionalLong.empty(), Instant.EPOCH, Instant.EPOCH));
+            ParsedGameResult parsed = new ParsedGameResult(
+                    type, date, outcome, Duration.ofSeconds(61), OptionalInt.empty(), board);
+            results.add(new GameResultStore.StoredGameResult(
+                    results.size() + 1L,
+                    id,
+                    parsed,
+                    "share",
+                    "parser",
+                    OptionalLong.empty(),
+                    Instant.EPOCH,
+                    Instant.EPOCH));
         }
 
         DailyStatusProjector projector() {
