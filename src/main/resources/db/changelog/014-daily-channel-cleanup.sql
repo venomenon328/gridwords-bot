@@ -49,3 +49,28 @@ CREATE INDEX ix_canonical_result_retirement_open
     ON canonical_result_retirement (retirement_state, retry_after, claim_until);
 CREATE INDEX ix_reminder_message_retirement_open
     ON reminder_message_retirement (retirement_state, retry_after, claim_until);
+
+-- Publication claims and retirement claims serialize on the same game_result row. A retirement intent that won
+-- that lock prevents the publication UPDATE from changing the row; JdbcTemplate then observes zero updated rows.
+CREATE FUNCTION guard_canonical_publication_against_retirement()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NEW.canonical_publish_claim_token IS NOT NULL
+       AND EXISTS (
+           SELECT 1
+           FROM canonical_result_retirement retirement
+           WHERE retirement.game_result_id = NEW.id
+             AND retirement.retirement_state <> 'ACTIVE'
+       ) THEN
+        RETURN NULL;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_guard_canonical_publication_against_retirement
+BEFORE UPDATE OF canonical_publish_claim_token ON game_result
+FOR EACH ROW
+EXECUTE FUNCTION guard_canonical_publication_against_retirement();
