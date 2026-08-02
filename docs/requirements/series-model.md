@@ -1,12 +1,12 @@
 # Verbindliches Serienmodell
 
 **Status:** fachlich abgenommen  
-**Stand:** 28. Juli 2026  
-**Gültig ab:** Version 1
+**Stand:** 2. August 2026  
+**Gültig ab:** Version 1 einschließlich Zwischeninkrement 10.2
 
 Dieses Dokument ergänzt und präzisiert die Anforderungsspezifikation. Bei widersprüchlichen älteren Formulierungen zu „Spielserie“, „Lösungsserie“, „gespieltem Tag“ oder „gelöstem Tag“ gilt dieses Dokument.
 
-Betroffen sind insbesondere die Serien-, Ausgabe-, Tagesstatus-, Berichts- und Testanforderungen der Anforderungsspezifikation sowie die entsprechenden Beispiele in `docs/architecture.md` und `docs/implementation-plan.md`.
+Betroffen sind insbesondere Serien, Tagesstatus, kanonische Ergebnisnachrichten, Statistik-Commands, Berichte und Tests. Die zwei gemeinsamen spielbezogenen Lösungsserien aus Zwischeninkrement 10.2 erweitern das bestehende Modell, ohne Definitionen der bisherigen sieben Serien zu verändern.
 
 ## 1. Grundzustand eines einzelnen Spiels
 
@@ -22,224 +22,96 @@ Für jeden Spieler, Spieltyp und Spieltag existiert genau einer dieser fachliche
 
 ### 2.1 Aktivitätstag
 
-Ein Spieltag ist für einen Spieler ein **Aktivitätstag**, wenn mindestens eines der beiden Spiele gültig eingereicht wurde.
-
-Beispiele:
-
-- nur GridWords eingereicht: Aktivitätstag,
-- nur QuadWords eingereicht: Aktivitätstag,
-- beide eingereicht: Aktivitätstag,
-- kein Ergebnis: kein Aktivitätstag.
+Ein Spieltag ist für einen Spieler ein Aktivitätstag, wenn mindestens eines der beiden Spiele gültig eingereicht wurde.
 
 ### 2.2 Kompletter Tag
 
-Ein Spieltag ist für einen Spieler ein **kompletter Tag**, wenn GridWords und QuadWords gültig eingereicht wurden. Der Lösungsstatus ist dafür unerheblich.
+Ein Spieltag ist für einen Spieler komplett, wenn GridWords und QuadWords gültig eingereicht wurden. Der Lösungsstatus ist dafür unerheblich.
 
 ### 2.3 Perfekter Tag
 
-Ein Spieltag ist für einen Spieler ein **perfekter Tag**, wenn GridWords und QuadWords eingereicht und beide gelöst wurden.
+Ein Spieltag ist für einen Spieler perfekt, wenn GridWords und QuadWords eingereicht und beide gelöst wurden.
 
-Jeder perfekte Tag ist zugleich ein kompletter Tag und ein Aktivitätstag. Ein kompletter Tag muss nicht perfekt sein.
+Jeder perfekte Tag ist zugleich komplett und aktiv. Ein kompletter Tag muss nicht perfekt sein.
 
 ## 3. Persönliche Serien
 
-Für jeden Spieler werden diese fünf Serien unabhängig berechnet:
+Für jeden Spieler werden fünf Serien unabhängig berechnet:
 
 ### 3.1 Aktivitätsserie
 
-Anzahl aufeinanderfolgender Kalendertage, die Aktivitätstage sind.
-
-Die Aktivitätsserie ist bewusst großzügig. Sie zeigt, ob der Spieler täglich wenigstens eines der beiden Spiele gespielt hat. Sie darf nicht als vollständige Erledigung beider Spiele dargestellt werden.
+Aufeinanderfolgende Kalendertage, an denen mindestens eines der beiden Spiele eingereicht wurde.
 
 ### 3.2 Komplettserie
 
-Anzahl aufeinanderfolgender Kalendertage, an denen beide Spiele eingereicht wurden.
-
-Die Komplettserie bildet die tägliche vollständige Spielroutine ab und ist die zentrale persönliche Routine-Serie.
+Aufeinanderfolgende Kalendertage, an denen beide Spiele eingereicht wurden.
 
 ### 3.3 GridWords-Lösungsserie
 
-Anzahl aufeinanderfolgender Kalendertage, an denen GridWords gelöst wurde.
-
-Sie endet durch:
-
-- ein nicht gelöstes GridWords-Ergebnis oder
-- ein fehlendes GridWords-Ergebnis.
-
-QuadWords hat keinen Einfluss auf diese Serie.
+Aufeinanderfolgende Kalendertage, an denen GridWords gelöst wurde. Ein fehlendes oder nicht gelöstes GridWords-Ergebnis beendet die Serie. QuadWords hat keinen Einfluss.
 
 ### 3.4 QuadWords-Lösungsserie
 
-Anzahl aufeinanderfolgender Kalendertage, an denen QuadWords gelöst wurde.
-
-Sie endet durch:
-
-- ein nicht gelöstes QuadWords-Ergebnis oder
-- ein fehlendes QuadWords-Ergebnis.
-
-GridWords hat keinen Einfluss auf diese Serie.
+Analog zur GridWords-Lösungsserie. GridWords hat keinen Einfluss.
 
 ### 3.5 Perfektserie
 
-Anzahl aufeinanderfolgender perfekter Tage.
-
-Die Perfektserie ist eine ergänzende, strenge Kennzahl. Sie wird berechnet und kann in Tagesstatus, Statistiken, Berichten und Rekordmeldungen verwendet werden, muss aber nicht in jeder einzelnen Ergebnisnachricht prominent erscheinen.
+Aufeinanderfolgende perfekte Tage.
 
 ## 4. Gemeinsame Tagesmerkmale und Serien
 
-### 4.1 Gemeinsam kompletter Tag
+Die aktive Teilnehmermenge wird für jeden Kalendertag ausschließlich aus den historisch wirksamen Teilnahmezeiträumen bestimmt. Beitritt, Austritt und Wiedereintritt verändern keine davor liegenden Tage.
 
-Ein Spieltag ist **gemeinsam komplett**, wenn beide Spieler jeweils GridWords und QuadWords eingereicht haben.
+Ein gemeinsamer Tag kann nur entstehen, wenn an diesem Tag mindestens zwei Spieler aktiv waren. Bei weniger als zwei aktiven Spielern sind alle gemeinsamen Tagesbedingungen verletzt.
 
-### 4.2 Gemeinsam perfekter Tag
+### 4.1 Gemeinsam GridWords gelöst
 
-Ein Spieltag ist **gemeinsam perfekt**, wenn beide Spieler jeweils beide Spiele gelöst haben.
+Ein Tag erfüllt die gemeinsame GridWords-Bedingung, wenn jeder an diesem Tag aktive Spieler GridWords gelöst hat.
 
-### 4.3 Gemeinsame Komplettserie
+- Ein GridWords-`X` eines aktiven Spielers verletzt die Bedingung sofort.
+- Ein fehlendes GridWords-Ergebnis ist am laufenden Tag zunächst vorläufig und historisch endgültig verletzend.
+- QuadWords hat keinen Einfluss.
 
-Anzahl aufeinanderfolgender gemeinsam kompletter Tage.
+### 4.2 Gemeinsam QuadWords gelöst
 
-Sie ist die zentrale gemeinsame Paarserie.
+Analog für QuadWords. GridWords hat keinen Einfluss.
 
-### 4.4 Gemeinsame Perfektserie
+### 4.3 Gemeinsam kompletter Tag
 
-Anzahl aufeinanderfolgender gemeinsam perfekter Tage.
+Ein Tag ist gemeinsam komplett, wenn jeder aktive Spieler GridWords und QuadWords eingereicht hat.
 
-Sie ist eine zusätzliche, strengere Paarserie.
+### 4.4 Gemeinsam perfekter Tag
 
-### 4.5 Keine gemeinsame Aktivitätsserie
+Ein Tag ist gemeinsam perfekt, wenn jeder aktive Spieler beide Spiele gelöst hat.
 
-Eine gemeinsame Aktivitätsserie wird nicht berechnet. Die Aussage wäre zu schwach und missverständlich, weil beide Spieler an einem Tag unterschiedliche einzelne Spiele spielen könnten, ohne den gemeinsamen Tagesumfang zu erfüllen.
+### 4.5 Gemeinsame Serien
+
+Es werden vier gemeinsame Serien unabhängig berechnet:
+
+1. **gemeinsame GridWords-Lösungsserie**,
+2. **gemeinsame QuadWords-Lösungsserie**,
+3. **gemeinsame Komplettserie**,
+4. **gemeinsame Perfektserie**.
+
+Es gibt weiterhin keine gemeinsame Aktivitätsserie. Die Aussage wäre zu schwach und missverständlich, weil verschiedene Spieler unterschiedliche einzelne Spiele spielen könnten.
 
 ## 5. Laufende Serien am aktuellen Tag
 
-Ein am aktuellen Tag noch fehlendes Ergebnis beendet eine bis gestern laufende Serie nicht vor Ablauf des Spieltags.
+Ein am aktuellen Tag noch fehlendes Ergebnis beendet eine bis gestern laufende Serie nicht vor Ablauf des Spieltags. Die Regel wird für jede Serie separat angewendet.
 
-Die Regel wird für jede Serie separat angewendet:
-
-- Eine GridWords-Lösungsserie bleibt tagsüber vorläufig bestehen, solange GridWords heute noch nicht eingereicht wurde. Ein heutiges `X/6` beendet sie sofort.
-- Eine QuadWords-Lösungsserie verhält sich entsprechend unabhängig.
+- Eine persönliche oder gemeinsame GridWords-Lösungsserie bleibt vorläufig bestehen, solange das erforderliche heutige GridWords-Ergebnis fehlt. Ein heutiges `X/6` beendet sie sofort.
+- Für QuadWords gilt dieselbe Regel unabhängig.
 - Eine Aktivitätsserie wird heute verlängert, sobald mindestens ein Spiel eingereicht wurde.
-- Eine Komplettserie wird heute erst verlängert, sobald beide Spiele eingereicht wurden; vorher bleibt die bis gestern laufende Serie vorläufig bestehen.
-- Eine Perfektserie wird heute erst verlängert, sobald beide Spiele gelöst vorliegen. Ein nicht gelöstes Ergebnis beendet sie sofort.
-- Gemeinsame Serien werden analog über die Ergebnisse beider Spieler berechnet.
+- Eine persönliche oder gemeinsame Komplettserie wird erst verlängert, sobald alle erforderlichen Einreichungen vorliegen. Bis dahin bleibt der gestrige Stand vorläufig bestehen.
+- Eine persönliche oder gemeinsame Perfektserie wird erst verlängert, sobald alle erforderlichen Lösungen vorliegen. Ein nicht gelöstes Ergebnis beendet sie sofort.
 
-Nach Ablauf des Spieltags ist eine nicht erfüllte Bedingung eine echte Lücke und beendet die betroffene Serie.
+Nach Ablauf des Spieltags ist eine fehlende Bedingung eine echte Lücke und beendet die betroffene Serie.
 
-Nachträge für den zulässigen Vortag lösen eine vollständige Neuberechnung aller betroffenen Serien aus.
+Zulässige Vortagsnachträge lösen eine vollständige Neuberechnung aller betroffenen persönlichen und gemeinsamen Serien aus.
 
-## 6. Anzeige in kanonischen Ergebnisnachrichten
+## 6. Eindeutige Seriennamen
 
-Eine einzelne Ergebnisnachricht soll nicht alle Serienwerte ungefiltert anzeigen.
-
-Verbindliche Mindestwerte:
-
-- **Aktivitätsserie** des Spielers,
-- die **Lösungsserie des gerade geposteten Spiels**.
-
-Zusätzliche kontextabhängige Werte:
-
-- Wird mit dem Ergebnis der Tag komplett, darf die **Komplettserie** ergänzt werden.
-- Wird mit dem Ergebnis der Tag perfekt, darf die **Perfektserie** ergänzt werden.
-- Die Lösungsserie des jeweils anderen Spiels wird in der einzelnen Ergebnisnachricht nicht benötigt.
-
-Beispiel GridWords:
-
-```text
-Tobias · GridWords · 27. Juli 2026
-Gelöst in 5/6 · 1:25
-
-…
-
-🔥 Aktivität: 12 Tage · GridWords gelöst: 9 Tage
-```
-
-Beispiel eines Ergebnisses, das den Tag komplettiert:
-
-```text
-🔥 Aktivität: 12 · Komplett: 8 · QuadWords gelöst: 4
-```
-
-## 7. Tagesstatus
-
-Der Tagesstatus zeigt pro Spieler:
-
-- Status von GridWords,
-- Status von QuadWords,
-- Aktivitätsserie,
-- Komplettserie,
-- GridWords-Lösungsserie,
-- QuadWords-Lösungsserie,
-- Perfektserie.
-
-Gemeinsam werden angezeigt:
-
-- gemeinsame Komplettserie,
-- gemeinsame Perfektserie.
-
-Beispiel:
-
-```text
-Wortspiele · 27. Juli 2026
-
-Tobias
-✅ GridWords · gelöst · 5/6 · 1:25
-⬜ QuadWords
-Aktivität: 11 · Komplett: 7
-GridWords gelöst: 8 · QuadWords gelöst: 3 · Perfekt: 2
-
-Georgia
-✅ GridWords · gelöst · 4/6 · 1:47
-✅ QuadWords · gelöst · 8/9 · 3:51
-Aktivität: 12 · Komplett: 12
-GridWords gelöst: 10 · QuadWords gelöst: 6 · Perfekt: 5
-
-Gemeinsam komplett: 7 Tage
-Gemeinsam perfekt: 2 Tage
-```
-
-Die genaue visuelle Verdichtung darf der Discord-Ausgabeadapter bestimmen, solange die Bezeichnungen eindeutig bleiben und Aktivität nicht mit vollständiger Erledigung verwechselt wird.
-
-## 8. Wochen- und Monatsberichte
-
-Berichte verwenden die neue Terminologie.
-
-Mindestens auszuweisen sind:
-
-### Pro Spieler
-
-- Anzahl Aktivitätstage,
-- Anzahl kompletter Tage,
-- Anzahl perfekter Tage,
-- aktuelle und längste Aktivitätsserie,
-- aktuelle und längste Komplettserie,
-- aktuelle und längste GridWords-Lösungsserie,
-- aktuelle und längste QuadWords-Lösungsserie,
-- aktuelle und längste Perfektserie,
-- bisher bereits vorgesehene spielbezogene Einreichungs-, Lösungs-, Versuchs- und Zeitstatistiken.
-
-### Gemeinsam
-
-- Anzahl gemeinsam kompletter Tage,
-- Anzahl gemeinsam perfekter Tage,
-- aktuelle und längste gemeinsame Komplettserie,
-- aktuelle und längste gemeinsame Perfektserie.
-
-Die früheren unspezifischen Begriffe „persönlich gespielt“, „persönlich gelöst“, „gemeinsam gespielt“, „gemeinsam gelöst“, „Spielserie“ und „Lösungsserie“ sollen in neuen Ausgaben nicht ohne präzisierenden Zusatz verwendet werden.
-
-## 9. Kommentare und Statistik-Commands ab Version 3
-
-Regelbasierte Kommentare dürfen insbesondere ausgelöst werden durch:
-
-- Verlängerung oder neuen Rekord einer Aktivitätsserie,
-- Verlängerung oder neuen Rekord einer Komplettserie,
-- Verlängerung oder neuen Rekord der jeweiligen spielbezogenen Lösungsserie,
-- einen perfekten Tag,
-- Verlängerung oder neuen Rekord einer Perfektserie,
-- einen gemeinsam kompletten oder gemeinsam perfekten Tag,
-- Verlängerung oder neuen Rekord der beiden gemeinsamen Serien.
-
-Statistik-Commands müssen die Serien eindeutig benennen. Ein Parameter für den Serientyp darf beispielsweise diese Werte anbieten:
+Damit existieren neun Serienarten:
 
 ```text
 activity
@@ -247,17 +119,97 @@ complete
 gridwords-solved
 quadwords-solved
 perfect
+shared-gridwords-solved
+shared-quadwords-solved
+shared-complete
+shared-perfect
+```
+
+Neue Ausgaben, APIs und Commands dürfen nicht auf unspezifische Namen wie `playStreak`, `solveStreak`, „Spielserie“ oder „Lösungsserie“ zurückfallen.
+
+## 7. Kanonische Ergebnisnachrichten
+
+Eine einzelne Ergebnisnachricht soll nicht alle Serienwerte ungefiltert anzeigen.
+
+Verbindliche Mindestwerte:
+
+- Aktivitätsserie des Spielers,
+- Lösungsserie des gerade geposteten Spiels.
+
+Wird mit dem Ergebnis der Tag komplett oder perfekt, dürfen die entsprechenden persönlichen Werte ergänzt werden. Die gemeinsamen spielbezogenen Serien müssen in einzelnen kanonischen Ergebnisnachrichten nicht angezeigt werden.
+
+## 8. Tagesstatus
+
+Der Tagesstatus zeigt pro Spieler:
+
+- Status von GridWords und QuadWords,
+- Aktivitätsserie,
+- Komplettserie,
+- GridWords-Lösungsserie,
+- QuadWords-Lösungsserie,
+- Perfektserie.
+
+Gemeinsam werden eindeutig angezeigt:
+
+- GridWords gelöst,
+- QuadWords gelöst,
+- komplett,
+- perfekt.
+
+Beispiel:
+
+```text
+Gemeinsame Serien
+GridWords gelöst: 8 · QuadWords gelöst: 5
+Komplett: 7 · Perfekt: 4
+```
+
+Die genaue visuelle Verdichtung darf der Discord-Adapter bestimmen, solange alle vier Werte unterscheidbar bleiben und Discord-Grenzen eingehalten werden.
+
+## 9. Wochen- und Monatsberichte
+
+Zwischeninkrement 10.2 erweitert die bereits implementierten Wochen- und Monatsberichte nicht automatisch.
+
+Berichte weisen weiterhin mindestens aus:
+
+### Pro Spieler
+
+- Aktivitäts-, Komplett- und perfekte Tage,
+- aktuelle und längste Werte aller fünf persönlichen Serien,
+- die vorgesehenen spielbezogenen Einreichungs-, Lösungs-, Versuchs- und Zeitstatistiken.
+
+### Gemeinsam
+
+- gemeinsam komplette und perfekte Tage,
+- aktuelle und längste gemeinsame Komplett- und Perfektserie.
+
+Eine spätere Aufnahme der gemeinsamen GridWords- und QuadWords-Lösungsserien in Berichte benötigt eine gesonderte fachliche Entscheidung. Der Tagesstatus und die allgemeine Serienprojektion enthalten sie bereits.
+
+## 10. Kommentare und Statistik-Commands ab Version 3
+
+Regelbasierte Kommentare dürfen insbesondere durch Verlängerungen oder Rekorde jeder der neun eindeutig benannten Serien ausgelöst werden.
+
+Ein Parameter für den Serientyp muss künftig diese Werte unterstützen:
+
+```text
+activity
+complete
+gridwords-solved
+quadwords-solved
+perfect
+shared-gridwords-solved
+shared-quadwords-solved
 shared-complete
 shared-perfect
 ```
 
 Die konkrete Command-Syntax wird in Version 3 festgelegt.
 
-## 10. Domänenmodell und Persistenz
+## 11. Domänenmodell und Persistenz
 
-Serien sind abgeleitete Werte aus den persistierten `game_result`-Datensätzen. Sie müssen nicht als fortlaufend mutierte Zähler gespeichert werden.
+Serien sind abgeleitete Werte aus `game_result` und den historischen Teilnahmezeiträumen. Sie werden nicht als fortlaufend mutierte Zähler oder zweite fachliche Wahrheit persistiert.
 
-Ein fachliches `StreakSummary` beziehungsweise entsprechendes Ergebnisobjekt enthält mindestens:
+Ein aktuelles `StreakSummary` enthält mindestens:
 
 ```text
 personalActivity
@@ -265,42 +217,46 @@ personalComplete
 personalGridWordsSolved
 personalQuadWordsSolved
 personalPerfect
+sharedGridWordsSolved
+sharedQuadWordsSolved
 sharedComplete
 sharedPerfect
 ```
 
-Je nach Use Case kann zwischen aktuellen und längsten Serien unterschieden werden.
+Die Berechnung erfolgt über klar benannte Tagesbedingungen. GridWords und QuadWords dürfen weder persönlich noch gemeinsam in eine unspezifische Lösungsserie zusammengefasst werden.
 
-Die Berechnung soll über allgemeine, klar benannte Serienbedingungen erfolgen, ohne GridWords und QuadWords in eine einzige unspezifische Lösungsserie zusammenzufassen.
+## 12. Verbindliche Testfälle
 
-## 11. Verbindliche Testfälle
+Mindestens automatisiert abzudecken sind:
 
-Die Serienlogik benötigt mindestens folgende automatisierte Fälle:
-
-1. Nur GridWords gespielt: Aktivitätsserie steigt; Komplettserie nicht; GridWords-Lösungsserie abhängig vom Ergebnis; QuadWords-Lösungsserie nicht.
+1. Nur GridWords gespielt: ausschließlich passende persönliche Bedingungen steigen.
 2. Nur QuadWords gespielt: analog.
-3. Beide gespielt, eines nicht gelöst: Aktivitäts- und Komplettserie steigen; nur die passende Spiel-Lösungsserie steigt; Perfektserie endet.
+3. Beide gespielt, eines nicht gelöst: Aktivitäts- und Komplettserie steigen; nur passende Lösungsserie steigt; Perfektserie endet.
 4. Beide gelöst: alle persönlichen Tagesbedingungen sind erfüllt.
-5. Ein Spiel fehlt am laufenden heutigen Tag: bis gestern laufende Komplett- und Perfektserie werden vor Tagesende nicht vorzeitig als beendet angezeigt.
-6. Ein nicht gelöstes Ergebnis heute beendet die betroffene Spiel-Lösungsserie und die Perfektserie sofort.
-7. Fehlender Vortag beendet nur die Serien, deren Bedingung dadurch verletzt ist.
-8. Zulässiger Vortagsnachtrag stellt betroffene Serien korrekt wieder her.
-9. Beide Spieler komplett, aber nicht beide perfekt: gemeinsame Komplettserie steigt; gemeinsame Perfektserie endet.
-10. Beide Spieler perfekt: beide gemeinsamen Serien steigen.
-11. Unterschiedliche einzelne Aktivitäten beider Spieler erzeugen keine gemeinsame Aktivitätsserie.
-12. Berechnung an Sommer-/Winterzeitgrenzen verwendet weiterhin Kalendertage in `Europe/Berlin`.
+5. Fehlendes Ergebnis am laufenden Tag beendet eine bis gestern laufende Serie nicht vorzeitig.
+6. Ein heutiges `X` beendet die betroffene persönliche und gemeinsame Spiel-Lösungsserie sowie gegebenenfalls Perfektserien sofort.
+7. Fehlende historische Ergebnisse beenden ausschließlich die Bedingungen, für die sie erforderlich sind.
+8. Vortagsnachträge stellen persönliche und gemeinsame Serien korrekt wieder her.
+9. Beide oder alle aktiven Spieler lösen GridWords: gemeinsame GridWords-Lösungsserie steigt unabhängig von QuadWords.
+10. Analog für QuadWords.
+11. Ein `X` für einen Spieltyp beeinflusst die gemeinsame Lösungsserie des anderen Spieltyps nicht.
+12. Bei drei oder mehr aktiven Spielern müssen alle das betreffende Spiel lösen.
+13. Weniger als zwei aktive Spieler erzeugen keine gemeinsame Serie.
+14. Wechselnde tägliche Teilnehmermengen verwenden die jeweilige historische Teilnehmermenge.
+15. Beitritt, Austritt und Wiedereintritt verfälschen keine anderen Tage rückwirkend.
+16. Gemeinsame Komplett- und Perfektserie behalten ihre bisherige Semantik.
+17. Tagesstatus, Fingerprint, Create, Edit, inhaltlicher NO_OP, Recreate und Restart-Reconciliation berücksichtigen beide neuen Werte.
+18. Sommer-/Winterzeitgrenzen verwenden weiterhin Kalendertage in `Europe/Berlin`.
 
-## 12. Auswirkung auf ältere Dokumente
+## 13. Auswirkung auf ältere Dokumente
 
-Folgende ältere Formulierungen werden durch dieses Dokument ersetzt:
+Ältere unspezifische Formulierungen werden wie folgt ersetzt:
 
-- „persönliche Spielserie“ ohne Zusatz → je nach Kontext Aktivitäts- oder Komplettserie; bei vollständiger täglicher Routine ist **Komplettserie** gemeint,
-- „persönliche Lösungsserie“ → getrennte GridWords- und QuadWords-Lösungsserie; optional zusätzlich Perfektserie,
+- „persönliche Spielserie“ → je nach Kontext Aktivitäts- oder Komplettserie,
+- „persönliche Lösungsserie“ → GridWords- oder QuadWords-Lösungsserie, gegebenenfalls Perfektserie,
 - „gemeinsame Spielserie“ → gemeinsame Komplettserie,
-- „gemeinsame Lösungsserie“ → gemeinsame Perfektserie,
-- „persönlich gespielter Tag“ mit beiden Spielen → kompletter Tag,
-- „persönlich gelöster Tag“ → perfekter Tag,
-- „gemeinsam gespielter Tag“ → gemeinsam kompletter Tag,
-- „gemeinsam gelöster Tag“ → gemeinsam perfekter Tag.
+- „gemeinsame Lösungsserie“ → je nach Kontext gemeinsame GridWords-, QuadWords- oder Perfektserie,
+- „gemeinsam gespielt“ → gemeinsam komplett,
+- „gemeinsam gelöst“ ohne Spielbezug → gemeinsam perfekt.
 
 Wo ältere Beispiele nur `playStreak` und `solveStreak` nennen, sind stattdessen die eindeutig benannten Werte dieses Dokuments zu verwenden.
