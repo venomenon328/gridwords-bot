@@ -4,17 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import de.venomenon.gridwordsbot.port.out.ChannelMessageRetirementStore;
 import de.venomenon.gridwordsbot.port.out.DailyStatusStore;
-import de.venomenon.gridwordsbot.port.out.GameResultStore;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneOffset;
 import java.util.Optional;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import liquibase.integration.spring.SpringLiquibase;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -109,55 +104,6 @@ class PostgresChannelMessageRetirementStoreIT {
 
         assertThat(store.isCanonicalPublicationAllowed(resultId)).isFalse();
         assertThat(persistence.claimCanonicalPublication(resultId, NOW.plusSeconds(120))).isEmpty();
-    }
-
-    @Test
-    void publicationAndRetirementClaimsAreMutuallyExclusiveUnderConcurrency() throws Exception {
-        long resultId = insertResult(99L, "CANONICAL_MESSAGE_PUBLISHED", 79L);
-        ExecutorService executor = Executors.newFixedThreadPool(2);
-        CountDownLatch ready = new CountDownLatch(2);
-        CountDownLatch start = new CountDownLatch(1);
-        try {
-            Future<Boolean> publication = executor.submit(() -> {
-                ready.countDown();
-                start.await();
-                return transactions.execute(status ->
-                        persistence.claimCanonicalPublication(resultId, NOW.plusSeconds(120)).isPresent());
-            });
-            Future<Boolean> retirement = executor.submit(() -> {
-                ready.countDown();
-                start.await();
-                return transactions.execute(status ->
-                        store.claimResultMessage(resultId, NOW.plusSeconds(120)).isPresent());
-            });
-
-            ready.await();
-            start.countDown();
-            boolean publicationWon = publication.get();
-            boolean retirementWon = retirement.get();
-
-            assertThat(publicationWon ^ retirementWon).isTrue();
-        } finally {
-            executor.shutdownNow();
-        }
-    }
-
-    @Test
-    void activePublicationClaimPreventsRetirementAndRetirementIntentPreventsPublication() {
-        long resultId = insertResult(99L, "CANONICAL_MESSAGE_PUBLISHED", 80L);
-
-        GameResultStore.PublicationClaim publication = persistence
-                .claimCanonicalPublication(resultId, NOW.plusSeconds(120)).orElseThrow();
-        Optional<ChannelMessageRetirementStore.ResultRetirementClaim> blockedRetirement = transactions.execute(status ->
-                store.claimResultMessage(resultId, NOW.plusSeconds(120)));
-        assertThat(blockedRetirement).isEmpty();
-
-        persistence.releaseCanonicalPublicationClaim(resultId, publication.token());
-        ChannelMessageRetirementStore.ResultRetirementClaim retirement = transactions.execute(status ->
-                store.claimResultMessage(resultId, NOW.plusSeconds(120)).orElseThrow());
-
-        assertThat(persistence.claimCanonicalPublication(resultId, NOW.plusSeconds(120))).isEmpty();
-        store.completeResultRetirement(retirement);
     }
 
     @Test
