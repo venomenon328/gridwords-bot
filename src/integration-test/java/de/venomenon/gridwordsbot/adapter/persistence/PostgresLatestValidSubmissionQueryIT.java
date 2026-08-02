@@ -75,6 +75,32 @@ class PostgresLatestValidSubmissionQueryIT {
         assertThat(latest.get(1).receivedAt()).isEqualTo(NOW.minusMinutes(30).toInstant());
     }
 
+    @Test
+    void usesTheLatestSubmissionTimestampWithTheCurrentCorrectedGameResultState() {
+        long playerId = 803L;
+        insertPlayer(playerId, "Corrected Player");
+        LocalDate gameDate = date(2026, 7, 31);
+        long gameResultId = insertResult(playerId, GameType.GRIDWORDS, gameDate, true, 5, 145);
+        insertSubmission(710L, playerId, gameResultId, "COMPLETED", NOW.minusHours(3));
+
+        jdbc.update("""
+                UPDATE game_result
+                SET solved = TRUE, attempts_used = 2, duration_seconds = 42, updated_at = ?
+                WHERE id = ?
+                """, NOW.minusMinutes(5), gameResultId);
+        insertSubmission(711L, playerId, gameResultId, "RESULT_STORED", NOW.minusMinutes(1));
+
+        List<LatestValidSubmission> latest = query.findLatestValidSubmissions(playerId);
+
+        assertThat(latest).singleElement().satisfies(submission -> {
+            assertThat(submission.gameType()).isEqualTo(GameType.GRIDWORDS);
+            assertThat(submission.gameDate()).isEqualTo(gameDate);
+            assertThat(submission.outcome()).isEqualTo(new ShareOutcome.Solved(2, 6));
+            assertThat(submission.duration().getSeconds()).isEqualTo(42);
+            assertThat(submission.receivedAt()).isEqualTo(NOW.minusMinutes(1).toInstant());
+        });
+    }
+
     private void insertPlayer(long id, String name) {
         jdbc.update("""
                 INSERT INTO player (
