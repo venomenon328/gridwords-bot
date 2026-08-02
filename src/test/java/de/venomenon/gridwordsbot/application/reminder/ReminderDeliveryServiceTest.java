@@ -141,7 +141,6 @@ class ReminderDeliveryServiceTest {
         @Override public void failReminder(ReminderDelivery claim, String error, boolean permanent) {
             failedError = error; failedPermanent = permanent;
         }
-        @Override public void supersedeReminder(long a, long b, LocalDate c, int d, LocalTime e) { }
         @Override public void expireOpenRemindersBefore(long a, long b, LocalDate c) { }
     }
 

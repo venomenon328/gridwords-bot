@@ -2,6 +2,7 @@ package de.venomenon.gridwordsbot.config;
 
 import de.venomenon.gridwordsbot.adapter.discord.status.JdaDailyStatusMessageGateway;
 import de.venomenon.gridwordsbot.application.cleanup.ChannelMessageRetirementService;
+import de.venomenon.gridwordsbot.application.cleanup.DailyChannelCleanupService;
 import de.venomenon.gridwordsbot.application.reminder.ReminderDeliveryService;
 import de.venomenon.gridwordsbot.application.status.DailyStatusProjector;
 import de.venomenon.gridwordsbot.application.status.DailyStatusRefreshService;
@@ -27,5 +28,6 @@ class DailyStatusReminderConfiguration {
     ChannelMessageRetirementService channelMessageRetirementService(ChannelMessageRetirementStore store,
             CanonicalMessageGateway canonical, JdaDailyStatusMessageGateway reminders, Clock clock,
             GridwordsBotProperties properties) { return new ChannelMessageRetirementService(store, canonical, reminders, clock, properties.discord().guildId(), properties.discord().channelId()); }
+    @Bean @ConditionalOnBean(ChannelMessageRetirementService.class) DailyChannelCleanupService dailyChannelCleanupService(DailyStatusRefreshService status, ChannelMessageRetirementService retirement, DailyStatusStore deliveries, Clock clock, GridwordsBotProperties properties) { return new DailyChannelCleanupService(status, retirement, deliveries, clock, properties.schedule().timeZone(), properties.schedule().dailyCleanup(), properties.discord().guildId(), properties.discord().channelId()); }
     @Bean @ConditionalOnBean(JdaDailyStatusMessageGateway.class) ReminderDeliveryService reminderDeliveryService(DailyStatusStore store, PlayerStore players, JdaDailyStatusMessageGateway gateway, Clock clock, GridwordsBotProperties properties) { return new ReminderDeliveryService(store, players, gateway, clock, properties.discord().guildId(), properties.discord().channelId()); }
 }

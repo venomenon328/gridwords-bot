@@ -36,60 +36,73 @@ public final class ChannelMessageRetirementService {
     }
 
     /** Retires a sent stage-1 reminder only after stage 2 has a durable success state. */
-    public void reconcileFirstReminderRetention(LocalDate date) {
+    public boolean reconcileFirstReminderRetention(LocalDate date) {
+        boolean completed = true;
         for (ChannelMessageRetirementStore.ReminderMessage message
                 : store.findFirstReminderMessagesReadyForRetirement(guildId, channelId, date)) {
-            retireReminder(message);
+            completed &= retireReminder(message);
         }
+        return completed;
     }
 
-    public void retireResultMessagesBefore(LocalDate before) {
+    public boolean retireResultMessagesBefore(LocalDate before) {
+        boolean completed = true;
         for (ChannelMessageRetirementStore.ResultMessage message
                 : store.findResultMessagesBefore(guildId, channelId, before)) {
-            retireResult(message);
+            completed &= retireResult(message);
         }
+        return completed;
     }
 
-    public void retireReminderMessagesBefore(LocalDate before) {
+    public boolean retireReminderMessagesBefore(LocalDate before) {
+        boolean completed = true;
         for (ChannelMessageRetirementStore.ReminderMessage message
                 : store.findReminderMessagesBefore(guildId, channelId, before)) {
-            retireReminder(message);
+            completed &= retireReminder(message);
         }
+        return completed;
     }
 
-    private void retireResult(ChannelMessageRetirementStore.ResultMessage message) {
+    private boolean retireResult(ChannelMessageRetirementStore.ResultMessage message) {
         Optional<ChannelMessageRetirementStore.ResultRetirementClaim> claimed =
                 store.claimResultMessage(message.resultId(), clock.instant().plus(LEASE));
         if (claimed.isEmpty()) {
-            return;
+            return false;
         }
         try {
             canonicalMessages.delete(message.channelId(), message.messageId());
             store.completeResultRetirement(claimed.get());
+            return true;
         } catch (CanonicalMessageGateway.UnknownMessageException ignored) {
             store.completeResultRetirement(claimed.get());
+            return true;
         } catch (DiscordDeliveryException exception) {
             store.failResultRetirement(claimed.get(), exception.getMessage(), exception.permanent());
+            return false;
         } catch (RuntimeException exception) {
             store.failResultRetirement(claimed.get(), "unexpected canonical retirement failure", false);
+            return false;
         }
     }
 
-    private void retireReminder(ChannelMessageRetirementStore.ReminderMessage message) {
+    private boolean retireReminder(ChannelMessageRetirementStore.ReminderMessage message) {
         Optional<ChannelMessageRetirementStore.ReminderRetirementClaim> claimed =
                 store.claimReminderMessage(
                         message.guildId(), message.channelId(), message.gameDate(), message.stage(),
                         clock.instant().plus(LEASE));
         if (claimed.isEmpty()) {
-            return;
+            return false;
         }
         try {
             reminderMessages.delete(message.channelId(), message.messageId());
             store.completeReminderRetirement(claimed.get());
+            return true;
         } catch (DiscordDeliveryException exception) {
             store.failReminderRetirement(claimed.get(), exception.getMessage(), exception.permanent());
+            return false;
         } catch (RuntimeException exception) {
             store.failReminderRetirement(claimed.get(), "unexpected reminder retirement failure", false);
+            return false;
         }
     }
 }
