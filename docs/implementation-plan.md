@@ -378,3 +378,9 @@ Der parameterlose Root-Command `/status` trennt die persönliche Statusanzeige v
 - bei Betriebsinkrementen zusätzlich Backup-/Restore-/Upgrade-/Rollback-Weg angemessen geprüft,
 - bei Reportinkrementen beide Berichtstypen real dargestellt und duplikatsicher geprüft,
 - PR reviewbar, Draft-Status erst nach vollständiger Abnahme aufheben.
+
+### Zwischeninkrement 10.4 ? Tagesabschluss, Reminder-Retention und Channel-Bereinigung
+
+**Status:** in Umsetzung; Issue #30 und Draft-PR #35 auf feature/daily-channel-cleanup.
+
+Der tägliche 06:00-Uhr-Cleanup finalisiert den Vortag vor der persistent abgesicherten Entfernung kanonischer Ergebnis- und Reminder-Nachrichten. Reminder laufen standardmäßig um 16:00 und 22:00 Uhr; fachliche Ergebnisdaten, Boards, Rohshares und Reports bleiben erhalten.

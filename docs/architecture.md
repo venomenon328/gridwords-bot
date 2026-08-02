@@ -428,3 +428,9 @@ Neue Reportfunktionalität wird erst nach vollständigem Build, PostgreSQL-Integ
 - ADR 0012: persistente Tagesstatus- und Reminder-Auslieferung
 - ADR 0013: Produktionsdeployment und Betriebshärtung
 - ADR 0014: persistente periodische Report-Delivery
+
+## 17. Channel-Retention und Tagesabschluss
+
+Der idempotente Cleanup-Orchestrator wird von Startup und Scheduler aufgerufen. Ab der konfigurierten 06:00-Grenze finalisiert er gestern vor jeder Nachrichtenbereinigung, pensioniert danach Ergebnis- und Reminder-Nachrichten mit getrennten Claims, Leases und Backoff und erstellt zuletzt den heutigen Statusanker. Retirement-Intent sperrt jede kanonische Publication- und Recovery-Neuerzeugung.
+
+ADR 0015 dokumentiert die persistente Zustands- und Fehlersemantik.

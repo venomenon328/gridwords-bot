@@ -95,6 +95,16 @@ public class PostgresDailyStatusStore implements DailyStatusStore {
     }
 
     @Override
+    public boolean isStatusDelivered(long guildId, long channelId, LocalDate date, String fingerprint) {
+        Integer count = jdbc.queryForObject("""
+                SELECT count(*) FROM daily_status_message
+                WHERE guild_id = ? AND channel_id = ? AND game_date = ?
+                  AND delivery_state = 'DELIVERED' AND content_fingerprint = ?
+                """, Integer.class, guildId, channelId, date, fingerprint);
+        return count != null && count > 0;
+    }
+
+    @Override
     @Transactional
     public Optional<ReminderDelivery> claimReminder(long guildId, long channelId, LocalDate date, int stage,
             LocalTime time, Instant leaseUntil) {
@@ -145,22 +155,6 @@ public class PostgresDailyStatusStore implements DailyStatusStore {
                 """, permanent ? "PERMANENT" : "RETRYABLE",
                 permanent ? null : utc(now.plus(RETRY_DELAY)), safeError, utc(now), claim.guildId(),
                 claim.channelId(), claim.gameDate(), claim.stage(), claim.claimToken());
-    }
-
-    @Override
-    @Transactional
-    public void supersedeReminder(long guildId, long channelId, LocalDate date, int stage, LocalTime scheduledTime) {
-        Instant now = clock.instant();
-        jdbc.update("""
-                INSERT INTO reminder_delivery
-                    (guild_id, channel_id, game_date, reminder_stage, scheduled_time, delivery_state, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, 'SUPERSEDED', ?, ?)
-                ON CONFLICT (guild_id, channel_id, game_date, reminder_stage) DO UPDATE
-                SET delivery_state = 'SUPERSEDED', claim_token = NULL, claim_until = NULL, retry_after = NULL,
-                    last_error = NULL, updated_at = EXCLUDED.updated_at
-                WHERE reminder_delivery.delivery_state IN ('PENDING', 'RETRYABLE')
-                   OR (reminder_delivery.delivery_state = 'CLAIMED' AND reminder_delivery.claim_until < EXCLUDED.updated_at)
-                """, guildId, channelId, date, stage, scheduledTime, utc(now), utc(now));
     }
 
     @Override

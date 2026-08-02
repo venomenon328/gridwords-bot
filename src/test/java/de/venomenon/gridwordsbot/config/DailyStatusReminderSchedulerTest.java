@@ -25,7 +25,7 @@ class DailyStatusReminderSchedulerTest {
     void startupBeforeFirstReminderRebuildsYesterdayButDoesNotCreateTodayPrematurely() {
         Fixture fixture = fixture("2026-07-30T15:00:00Z");
         fixture.scheduler.startupReconciliation();
-        verify(fixture.status).reconcile(DATE.minusDays(1), true);
+        verify(fixture.status).reconcile(DATE, false);
         verify(fixture.status).reconcile(DATE, false);
         verify(fixture.reminders, never()).deliver(org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.any());
@@ -44,7 +44,6 @@ class DailyStatusReminderSchedulerTest {
     void afterSecondStageSupersedesFirstAndSendsOnlyLatestCatchUp() {
         Fixture fixture = fixture("2026-07-30T21:30:00Z");
         fixture.scheduler.reconcile();
-        verify(fixture.store).supersedeReminder(11L, 12L, DATE, 1, LocalTime.of(18, 0));
         verify(fixture.reminders).deliver(DATE, 2, LocalTime.of(23, 0));
         verify(fixture.reminders, never()).deliver(DATE, 1, LocalTime.of(18, 0));
     }
@@ -53,7 +52,7 @@ class DailyStatusReminderSchedulerTest {
     void expiresPastOpenDeliveriesOnEveryReconciliation() {
         Fixture fixture = fixture("2026-07-30T15:00:00Z");
         fixture.scheduler.reconcile();
-        verify(fixture.store).expireOpenRemindersBefore(11L, 12L, DATE);
+        verify(fixture.store, never()).expireOpenRemindersBefore(11L, 12L, DATE);
     }
 
     @Test

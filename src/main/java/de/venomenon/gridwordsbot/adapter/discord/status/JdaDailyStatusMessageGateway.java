@@ -9,8 +9,10 @@ import de.venomenon.gridwordsbot.port.out.ReminderMessageGateway;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -85,6 +87,7 @@ public final class JdaDailyStatusMessageGateway implements DailyStatusMessageGat
             TextChannel channel = channel(channelId);
             Optional<Message> existing = findReminderByKey(channel, key);
             if (existing.isPresent()) {
+                suppressEmbeds(existing.get());
                 return existing.get().getIdLong();
             }
 
@@ -95,7 +98,9 @@ public final class JdaDailyStatusMessageGateway implements DailyStatusMessageGat
                 create.setAllowedMentions(List.of(Message.MentionType.USER))
                         .mentionUsers(allowed.stream().map(String::valueOf).toList());
             }
-            return create.complete().getIdLong();
+            Message sent = create.complete();
+            suppressEmbeds(sent);
+            return sent.getIdLong();
         } catch (DiscordDeliveryException exception) {
             throw exception;
         } catch (ErrorResponseException exception) {
@@ -103,6 +108,43 @@ public final class JdaDailyStatusMessageGateway implements DailyStatusMessageGat
         } catch (RuntimeException exception) {
             throw DiscordDeliveryException.retryable("reminder Discord request failed", exception);
         }
+    }
+
+    @Override
+    public void delete(long channelId, LocalDate gameDate, int stage, OptionalLong persistedMessageId) {
+        try {
+            TextChannel channel = channel(channelId);
+            String key = reminderKey(channelId, gameDate, stage);
+            String marker = "#" + key;
+            LinkedHashSet<Long> messageIds = new LinkedHashSet<>();
+            persistedMessageId.ifPresent(messageIds::add);
+            findMessages(channel, message -> Optional.ofNullable(message.getContentRaw())
+                    .orElse("")
+                    .contains(marker)).stream()
+                    .map(Message::getIdLong)
+                    .forEach(messageIds::add);
+
+            for (long messageId : messageIds) {
+                try {
+                    channel.deleteMessageById(messageId).complete();
+                } catch (ErrorResponseException exception) {
+                    if (exception.getErrorResponse() != ErrorResponse.UNKNOWN_MESSAGE) {
+                        throw exception;
+                    }
+                }
+            }
+        } catch (DiscordDeliveryException exception) {
+            throw exception;
+        } catch (ErrorResponseException exception) {
+            throw classified("reminder deletion failed", exception);
+        } catch (RuntimeException exception) {
+            throw DiscordDeliveryException.retryable("reminder deletion failed", exception);
+        }
+    }
+
+    private static void suppressEmbeds(Message message) {
+        var action = message.suppressEmbeds(true);
+        if (action != null) action.complete();
     }
 
     private static String reminderContent(
@@ -129,7 +171,7 @@ public final class JdaDailyStatusMessageGateway implements DailyStatusMessageGat
         if (!players.isEmpty()) {
             // The fragment is not rendered by Discord but keeps stage-specific crash reconciliation possible without
             // exposing an implementation key as message text or an embed footer.
-            lines.add("[" + label + "](" + url + "#" + key + "): " + players);
+            lines.add("**[" + label + "](" + url + "#" + key + ")**: " + players);
         }
     }
 
@@ -180,19 +222,7 @@ public final class JdaDailyStatusMessageGateway implements DailyStatusMessageGat
     }
 
     private Optional<Message> findAndDeduplicate(TextChannel channel, Predicate<Message> matchesDelivery) {
-        SelfUser self = jda.getSelfUser();
-        MessageHistory history = channel.getHistory();
-        ArrayList<Message> matches = new ArrayList<>();
-        while (true) {
-            List<Message> page = history.retrievePast(PAGE_SIZE).complete();
-            page.stream()
-                    .filter(message -> self.equals(message.getAuthor()))
-                    .filter(matchesDelivery)
-                    .forEach(matches::add);
-            if (page.size() < PAGE_SIZE) {
-                break;
-            }
-        }
+        List<Message> matches = findMessages(channel, matchesDelivery);
         Optional<Message> canonical = matches.stream()
                 .min(java.util.Comparator.comparingLong(Message::getIdLong));
         if (canonical.isPresent()) {
@@ -203,6 +233,22 @@ public final class JdaDailyStatusMessageGateway implements DailyStatusMessageGat
             }
         }
         return canonical;
+    }
+
+    private List<Message> findMessages(TextChannel channel, Predicate<Message> matchesDelivery) {
+        SelfUser self = jda.getSelfUser();
+        MessageHistory history = channel.getHistory();
+        ArrayList<Message> matches = new ArrayList<>();
+        while (true) {
+            List<Message> page = history.retrievePast(PAGE_SIZE).complete();
+            page.stream()
+                    .filter(message -> self.equals(message.getAuthor()))
+                    .filter(matchesDelivery)
+                    .forEach(matches::add);
+            if (page.size() < PAGE_SIZE) {
+                return List.copyOf(matches);
+            }
+        }
     }
 
     private TextChannel channel(long id) {

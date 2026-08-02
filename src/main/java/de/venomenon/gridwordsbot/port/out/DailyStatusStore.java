@@ -13,12 +13,12 @@ public interface DailyStatusStore {
     void completeStatus(StatusDelivery claim, long discordMessageId, String fingerprint);
     void failStatus(StatusDelivery claim, String safeError, boolean permanent);
     boolean statusExists(long guildId, long channelId, LocalDate date);
+    default boolean isStatusDelivered(long guildId, long channelId, LocalDate date, String fingerprint) { return false; }
 
     Optional<ReminderDelivery> claimReminder(long guildId, long channelId, LocalDate date, int stage,
                                              LocalTime scheduledTime, Instant leaseUntil);
     void completeReminder(ReminderDelivery claim, ReminderState state, Optional<Long> discordMessageId);
     void failReminder(ReminderDelivery claim, String safeError, boolean permanent);
-    void supersedeReminder(long guildId, long channelId, LocalDate date, int stage, LocalTime scheduledTime);
     void expireOpenRemindersBefore(long guildId, long channelId, LocalDate today);
 
     record StatusDelivery(long guildId, long channelId, LocalDate gameDate, UUID claimToken,

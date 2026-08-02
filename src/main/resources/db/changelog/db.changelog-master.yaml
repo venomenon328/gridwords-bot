@@ -49,3 +49,7 @@ databaseChangeLog:
   - include:
       file: 013-boardless-quadwords.sql
       relativeToChangelogFile: true
+
+  - include:
+      file: 014-daily-channel-cleanup.sql
+      relativeToChangelogFile: true

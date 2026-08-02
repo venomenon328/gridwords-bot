@@ -165,7 +165,7 @@ Jeder Platzhalter wird ersetzt. Insbesondere müssen Datenbankpasswörter übere
 Konfiguration ohne Ausgabe der Secrets validieren:
 
 ```bash
-grep -E '^(TIME_ZONE|REMINDER_FIRST_TIME|REMINDER_SECOND_TIME|DISCORD_ENABLED)=' runtime.env
+grep -E '^(TIME_ZONE|REMINDER_FIRST_TIME|REMINDER_SECOND_TIME|DAILY_CLEANUP_TIME|DISCORD_ENABLED)=' runtime.env
 stat -c '%a %U:%G %n' runtime.env backups
 ```
 

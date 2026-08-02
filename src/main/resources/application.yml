@@ -28,8 +28,9 @@ gridwords:
     channel-id: ${DISCORD_CHANNEL_ID:1531398793713549494}
     admin-user-ids: ${ADMIN_USER_IDS:255063936410451978,451773931351834634}
   schedule:
-    first-reminder: ${REMINDER_FIRST_TIME:18:00}
-    second-reminder: ${REMINDER_SECOND_TIME:23:00}
+    first-reminder: ${REMINDER_FIRST_TIME:16:00}
+    second-reminder: ${REMINDER_SECOND_TIME:22:00}
+    daily-cleanup: ${DAILY_CLEANUP_TIME:06:00}
     weekly-report: ${WEEKLY_REPORT_TIME:08:00}
     monthly-report: ${MONTHLY_REPORT_TIME:08:15}
     time-zone: ${TIME_ZONE:Europe/Berlin}

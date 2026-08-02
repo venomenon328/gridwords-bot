@@ -47,34 +47,37 @@ public final class DailyStatusRefreshService {
     }
 
     /** Startup/scheduler reconciliation optionally creates a missing status and verifies delivered presence. */
-    public void reconcile(LocalDate date, boolean createIfMissing) {
-        deliver(date, createIfMissing, true);
+    public boolean reconcile(LocalDate date, boolean createIfMissing) {
+        return deliver(date, createIfMissing, true);
     }
 
-    private void deliver(LocalDate date, boolean createIfMissing, boolean reconcileDelivered) {
+    private boolean deliver(LocalDate date, boolean createIfMissing, boolean reconcileDelivered) {
         DailyStatus status = projector.project(date, clock.instant().atZone(zone).toLocalDate());
         if (status.players().isEmpty()) {
-            return;
+            return true;
         }
         boolean hasResult = status.players().stream()
                 .anyMatch(player -> player.gridWords().isPresent() || player.quadWords().isPresent());
         if (!createIfMissing && !hasResult && !store.statusExists(guildId, channelId, date)) {
-            return;
+            return true;
         }
         String fingerprint = fingerprint(status);
         DailyStatusStore.StatusDelivery claim = store.claimStatus(
                 guildId, channelId, date, fingerprint, reconcileDelivered, clock.instant().plus(LEASE)).orElse(null);
         if (claim == null) {
-            return;
+            return store.isStatusDelivered(guildId, channelId, date, fingerprint);
         }
         boolean contentChanged = claim.previousFingerprint().filter(fingerprint::equals).isEmpty();
         try {
             long messageId = messages.publishOrEdit(channelId, claim.discordMessageId(), status, contentChanged);
             store.completeStatus(claim, messageId, fingerprint);
+            return true;
         } catch (DiscordDeliveryException exception) {
             store.failStatus(claim, exception.getMessage(), exception.permanent());
+            return false;
         } catch (RuntimeException exception) {
             store.failStatus(claim, "unexpected status delivery failure", false);
+            return false;
         }
     }
 

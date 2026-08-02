@@ -1,5 +1,7 @@
 package de.venomenon.gridwordsbot.config;
 
+import de.venomenon.gridwordsbot.application.cleanup.ChannelMessageRetirementService;
+import de.venomenon.gridwordsbot.application.cleanup.DailyChannelCleanupService;
 import de.venomenon.gridwordsbot.application.reminder.ReminderDeliveryService;
 import de.venomenon.gridwordsbot.application.status.DailyStatusRefreshService;
 import de.venomenon.gridwordsbot.port.out.DailyStatusStore;
@@ -10,6 +12,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.annotation.Profile;
@@ -25,16 +28,28 @@ final class DailyStatusReminderScheduler {
     private final DailyStatusRefreshService status;
     private final ReminderDeliveryService reminders;
     private final DailyStatusStore deliveries;
+    private final ChannelMessageRetirementService retirement;
+    private final DailyChannelCleanupService cleanup;
     private final Clock clock;
     private final GridwordsBotProperties properties;
 
+    @Autowired
     DailyStatusReminderScheduler(DailyStatusRefreshService status, ReminderDeliveryService reminders,
-            DailyStatusStore deliveries, Clock clock, GridwordsBotProperties properties) {
+            DailyStatusStore deliveries, ChannelMessageRetirementService retirement,
+            DailyChannelCleanupService cleanup, Clock clock,
+            GridwordsBotProperties properties) {
         this.status = status;
         this.reminders = reminders;
         this.deliveries = deliveries;
+        this.retirement = retirement;
+        this.cleanup = cleanup;
         this.clock = clock;
         this.properties = properties;
+    }
+
+    DailyStatusReminderScheduler(DailyStatusRefreshService status, ReminderDeliveryService reminders,
+            DailyStatusStore deliveries, Clock clock, GridwordsBotProperties properties) {
+        this(status, reminders, deliveries, null, null, clock, properties);
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -48,20 +63,21 @@ final class DailyStatusReminderScheduler {
         LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), zone);
         LocalDate today = now.toLocalDate();
         LocalTime localTime = now.toLocalTime();
-        long guildId = properties.discord().guildId();
-        long channelId = properties.discord().channelId();
         LocalTime first = properties.schedule().firstReminder();
         LocalTime second = properties.schedule().secondReminder();
 
-        deliveries.expireOpenRemindersBefore(guildId, channelId, today);
-        status.reconcile(today.minusDays(1), true);
+        if (cleanup != null) {
+            cleanup.reconcile();
+        }
         boolean firstDue = !localTime.isBefore(first);
         boolean secondDue = !localTime.isBefore(second);
         status.reconcile(today, firstDue);
 
         if (secondDue) {
-            deliveries.supersedeReminder(guildId, channelId, today, 1, first);
             reminders.deliver(today, 2, second);
+            if (retirement != null) {
+                retirement.reconcileFirstReminderRetention(today);
+            }
         } else if (firstDue) {
             reminders.deliver(today, 1, first);
         }

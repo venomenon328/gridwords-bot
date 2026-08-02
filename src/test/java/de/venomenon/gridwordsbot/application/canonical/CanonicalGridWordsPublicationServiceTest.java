@@ -107,6 +107,18 @@ class CanonicalGridWordsPublicationServiceTest {
         });
     }
 
+    @Test
+    void retirementFencePreventsRecoveryFromRecreatingACanonicalMessage() {
+        SubmissionStore.StoredSubmission pending = stored(SubmissionStore.SubmissionState.RESULT_STORED);
+        when(submissions.findBySourceMessageId(SOURCE)).thenReturn(Optional.of(pending));
+        service.withRetirementFence(resultId -> false);
+
+        assertThat(service.publish(SOURCE)).isFalse();
+
+        verify(results, never()).findById(RESULT);
+        verifyNoInteractions(discord);
+    }
+
     @ParameterizedTest
     @EnumSource(GameType.class)
     void handsOffSuccessfulScheduledPublicationRetryToTheExactSourceDeletionWithoutAnotherEvent(GameType gameType) {

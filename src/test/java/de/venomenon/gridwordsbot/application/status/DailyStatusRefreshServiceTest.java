@@ -131,7 +131,6 @@ class DailyStatusRefreshServiceTest {
         @Override public Optional<ReminderDelivery> claimReminder(long a, long b, LocalDate c, int d, LocalTime e, Instant f) { return Optional.empty(); }
         @Override public void completeReminder(ReminderDelivery a, ReminderState b, Optional<Long> c) { }
         @Override public void failReminder(ReminderDelivery a, String b, boolean c) { }
-        @Override public void supersedeReminder(long a, long b, LocalDate c, int d, LocalTime e) { }
         @Override public void expireOpenRemindersBefore(long a, long b, LocalDate c) { }
     }
 }
