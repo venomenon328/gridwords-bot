@@ -249,3 +249,8 @@ Diese Regelungen ersetzen ab Zwischeninkrement 10.4 entgegenstehende Aussagen di
 - Der Cleanup finalisiert zuerst den gestrigen Status, entfernt danach alte kanonische Ergebnisnachrichten, dann alte Reminder, und erstellt anschliessend den heutigen Statusanker.
 - Ergebnis- und Reminder-Retirement haben getrennte Claims, Leases, Backoff, `RETIRED` und `PERMANENT`; Discord-I/O liegt ausserhalb von Transaktionen.
 - Eine unbekannte Discord-Nachricht ist beim Retirement ein idempotenter Erfolg, und ein nicht aktiver Ergebnis-Retirement-Zustand sperrt Publication und Recovery.
+## Zwischeninkrement 10.5: Interaktive Ergebnisdetails
+
+Die sichtbare Tagesstatusnachricht enthält zusätzlich zwei spielbezogene String-Select-Gruppen für lesende, ephemere Ergebnisdetails. Ihre Optionsmenge entspricht stets der historisch wirksamen Teilnehmermenge des dargestellten Spieltags, einschließlich Spielern ohne Einreichung. Details sind ausschließlich für den klickenden Nutzer sichtbar und verändern weder Ergebnisse noch Profile, Teilnahmezeiträume oder Delivery-Zustände.
+
+Jede Menüseite enthält höchstens 25 Optionen. Für bis zu 25 Teilnehmer gibt es genau ein Menü je Spieltyp; für 26 bis 50 Teilnehmer je zwei Seiten pro Spieltyp. Bei mehr als 50 Teilnehmern wird der Status vor Discord-I/O kontrolliert als permanenter Darstellungsfehler abgelehnt, ohne Teilnehmer stillschweigend wegzulassen. Der vollständige Contract, die serverseitige Validierung und die Limitregeln sind in `docs/increments/10.5-interactive-result-details.md` verbindlich festgelegt.
