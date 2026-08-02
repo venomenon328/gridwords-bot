@@ -2,6 +2,7 @@ package de.venomenon.gridwordsbot.config;
 
 import de.venomenon.gridwordsbot.adapter.discord.reporting.JdaPeriodicReportMessageGateway;
 import de.venomenon.gridwordsbot.adapter.persistence.PostgresPeriodicReportDeliveryStore;
+import de.venomenon.gridwordsbot.application.reporting.MonthlyReportReconciliationService;
 import de.venomenon.gridwordsbot.application.reporting.PeriodicReportUseCase;
 import de.venomenon.gridwordsbot.application.reporting.PeriodicReportDeliveryService;
 import de.venomenon.gridwordsbot.application.reporting.PeriodicReportRenderer;
@@ -100,6 +101,25 @@ class PeriodicReportDeliveryConfiguration {
                 delivery,
                 clock,
                 properties.schedule().weeklyReport(),
+                properties.schedule().timeZone());
+    }
+
+    @Bean
+    @ConditionalOnBean({PeriodicReportDeliveryService.class, GridwordsBotProperties.class})
+    MonthlyReportReconciliationService monthlyReportReconciliationService(
+            PeriodicReportDeliveryStore store,
+            PeriodicReportReconciliationPlanner planner,
+            PeriodicReportUseCase reports,
+            PeriodicReportDeliveryService delivery,
+            Clock clock,
+            GridwordsBotProperties properties) {
+        return new MonthlyReportReconciliationService(
+                store,
+                planner,
+                reports,
+                delivery,
+                clock,
+                properties.schedule().monthlyReport(),
                 properties.schedule().timeZone());
     }
 }
