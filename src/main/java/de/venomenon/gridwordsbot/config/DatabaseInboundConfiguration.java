@@ -8,6 +8,7 @@ import de.venomenon.gridwordsbot.adapter.discord.status.PersonalStatusEmbedRende
 import de.venomenon.gridwordsbot.adapter.discord.inbound.JdaAttachmentContentLoader;
 import de.venomenon.gridwordsbot.application.canonical.CanonicalGridWordsPublicationService;
 import de.venomenon.gridwordsbot.application.canonical.GridWordsSourceDeletionService;
+import de.venomenon.gridwordsbot.application.cleanup.DailyChannelCleanupService;
 import de.venomenon.gridwordsbot.application.player.PlayerParticipationService;
 import de.venomenon.gridwordsbot.application.player.PersonalStatusService;
 import de.venomenon.gridwordsbot.application.status.DailyStatusRefreshService;
@@ -21,6 +22,7 @@ import de.venomenon.gridwordsbot.port.in.PersonalStatusUseCase;
 import de.venomenon.gridwordsbot.port.out.AttachmentContentLoader;
 import de.venomenon.gridwordsbot.port.out.CanonicalMessageGateway;
 import de.venomenon.gridwordsbot.port.out.CanonicalPublicationContextStore;
+import de.venomenon.gridwordsbot.port.out.ChannelMessageRetirementStore;
 import de.venomenon.gridwordsbot.port.out.GameResultStore;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
 import de.venomenon.gridwordsbot.port.out.LatestValidSubmissionQuery;
@@ -89,9 +91,10 @@ class DatabaseInboundConfiguration {
     @Bean @ConditionalOnBean(JDA.class) SourceMessageDeletionGateway sourceMessageDeletionGateway(JDA jda) { return new JdaSourceMessageDeletionGateway(jda); }
     @Bean(destroyMethod = "shutdown") ThreadPoolTaskScheduler canonicalPublicationTaskScheduler() { ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler(); scheduler.setPoolSize(1); scheduler.setThreadNamePrefix("gridwords-canonical-retry-"); return scheduler; }
     @Bean PublicationRetryScheduler publicationRetryScheduler(ThreadPoolTaskScheduler scheduler) { return (at, action) -> scheduler.schedule(action, at); }
-    @Bean @ConditionalOnBean(CanonicalMessageGateway.class) CanonicalGridWordsPublicationService canonicalGridWordsPublicationService(GameResultStore results, PlayerStore players, SubmissionStore submissions, CanonicalMessageGateway discord, Clock clock, GridwordsBotProperties properties, PublicationRetryScheduler retries, ObjectProvider<GridWordsSourceDeletionService> deletions) {
-        return new CanonicalGridWordsPublicationService(results, players, submissions, discord, clock, properties.schedule().timeZone(), retries, sourceMessageId -> { GridWordsSourceDeletionService deletion = deletions.getIfAvailable(); if (deletion != null) deletion.reconcileAfterCanonicalPublication(sourceMessageId); });
+    @Bean @ConditionalOnBean(CanonicalMessageGateway.class) CanonicalGridWordsPublicationService canonicalGridWordsPublicationService(GameResultStore results, PlayerStore players, SubmissionStore submissions, CanonicalMessageGateway discord, Clock clock, GridwordsBotProperties properties, PublicationRetryScheduler retries, ObjectProvider<GridWordsSourceDeletionService> deletions, ChannelMessageRetirementStore retirement) {
+        return new CanonicalGridWordsPublicationService(results, players, submissions, discord, clock, properties.schedule().timeZone(), retries, sourceMessageId -> { GridWordsSourceDeletionService deletion = deletions.getIfAvailable(); if (deletion != null) deletion.reconcileAfterCanonicalPublication(sourceMessageId); })
+                .withRetirementFence(retirement);
     }
     @Bean @ConditionalOnBean(SourceMessageDeletionGateway.class) GridWordsSourceDeletionService gridWordsSourceDeletionService(SubmissionStore submissions, SourceMessageDeletionGateway deletionGateway, Clock clock, PublicationRetryScheduler retries, ObjectProvider<SourceDeletionRecoveryStore> recovery) { return new GridWordsSourceDeletionService(submissions, deletionGateway, clock, retries, recovery.getIfAvailable(() -> ignored -> 0)); }
-    @Bean @DependsOn("liquibase") ApplicationRunner databaseInboundStartup(ObjectProvider<JDA> jda, ObjectProvider<DiscordInboundListener> listener, ObjectProvider<DiscordParticipationCommandListener> commands, ObjectProvider<CanonicalGridWordsPublicationService> canonical, ObjectProvider<GridWordsSourceDeletionService> deletion) { return new DatabaseInboundStartup(jda, listener, commands, canonical, deletion); }
+    @Bean @DependsOn("liquibase") ApplicationRunner databaseInboundStartup(ObjectProvider<JDA> jda, ObjectProvider<DiscordInboundListener> listener, ObjectProvider<DiscordParticipationCommandListener> commands, ObjectProvider<CanonicalGridWordsPublicationService> canonical, ObjectProvider<GridWordsSourceDeletionService> deletion, ObjectProvider<DailyChannelCleanupService> cleanup) { return new DatabaseInboundStartup(jda, listener, commands, canonical, deletion, cleanup); }
 }

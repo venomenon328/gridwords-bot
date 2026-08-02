@@ -7,7 +7,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /** Durable retirement intent for visible channel messages; business results remain untouched. */
-public interface ChannelMessageRetirementStore {
+public interface ChannelMessageRetirementStore extends CanonicalPublicationRetirementQuery {
 
     List<ResultMessage> findResultMessagesBefore(long guildId, long channelId, LocalDate before);
 

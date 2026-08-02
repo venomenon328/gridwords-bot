@@ -4,6 +4,7 @@ import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.streak.StreakCalculator;
 import de.venomenon.gridwordsbot.domain.streak.StreakSummary;
 import de.venomenon.gridwordsbot.port.out.CanonicalMessageGateway;
+import de.venomenon.gridwordsbot.port.out.CanonicalPublicationRetirementQuery;
 import de.venomenon.gridwordsbot.port.out.GameResultStore;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
 import de.venomenon.gridwordsbot.port.out.PublicationRetryScheduler;
@@ -37,6 +38,7 @@ public final class CanonicalGridWordsPublicationService {
     private final StreakCalculator streakCalculator;
     private final PublicationRetryScheduler retryScheduler;
     private final LongConsumer postPublication;
+    private CanonicalPublicationRetirementQuery retirement = CanonicalPublicationRetirementQuery.allowAll();
     private final Set<Long> scheduledRetries = ConcurrentHashMap.newKeySet();
     private final ConcurrentMap<Long, RefreshSchedule> scheduledRefreshes = new ConcurrentHashMap<>();
 
@@ -81,6 +83,11 @@ public final class CanonicalGridWordsPublicationService {
         this.postPublication = Objects.requireNonNull(postPublication);
     }
 
+    public CanonicalGridWordsPublicationService withRetirementFence(CanonicalPublicationRetirementQuery fence) {
+        retirement = Objects.requireNonNull(fence);
+        return this;
+    }
+
     /** @return true only after the canonical ID and the submission state were persisted together. */
     public boolean publish(long sourceMessageId) {
         return publishAndHandOff(sourceMessageId) == PublicationOutcome.PUBLISHED;
@@ -119,6 +126,9 @@ public final class CanonicalGridWordsPublicationService {
             }
 
             resultId = submission.gameResultId().orElseThrow();
+            if (!retirement.isCanonicalPublicationAllowed(resultId)) {
+                return PublicationOutcome.RETIRED;
+            }
             GameResultStore.StoredGameResult result = results.findById(resultId).orElseThrow();
             if (!isPublishable(result)) {
                 return PublicationOutcome.NOT_PUBLISHABLE;
@@ -290,6 +300,9 @@ public final class CanonicalGridWordsPublicationService {
     }
 
     private RefreshOutcome refreshCurrentPublication(long resultId) {
+        if (!retirement.isCanonicalPublicationAllowed(resultId)) {
+            return RefreshOutcome.COMPLETED;
+        }
         UUID claimToken = null;
         try {
             SubmissionStore.CanonicalRefreshCandidate candidate = submissions
@@ -303,7 +316,7 @@ public final class CanonicalGridWordsPublicationService {
                     && current.state() != SubmissionStore.SubmissionState.ORIGINAL_MESSAGE_DELETED
                     && current.state() != SubmissionStore.SubmissionState.COMPLETED) {
                 return switch (publishAndHandOff(current.sourceMessageId())) {
-                    case NOT_PUBLISHABLE -> RefreshOutcome.COMPLETED;
+                    case NOT_PUBLISHABLE, RETIRED -> RefreshOutcome.COMPLETED;
                     case PUBLISHED, RETRY_SCHEDULED, SUPERSEDED -> RefreshOutcome.RETRY_SCHEDULED;
                 };
             }
@@ -429,6 +442,7 @@ public final class CanonicalGridWordsPublicationService {
     private enum PublicationOutcome {
         PUBLISHED,
         RETRY_SCHEDULED,
+        RETIRED,
         SUPERSEDED,
         NOT_PUBLISHABLE
     }
