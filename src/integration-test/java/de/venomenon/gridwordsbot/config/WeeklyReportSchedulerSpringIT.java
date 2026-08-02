@@ -3,6 +3,7 @@ package de.venomenon.gridwordsbot.config;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import de.venomenon.gridwordsbot.GridwordsBotApplication;
+import de.venomenon.gridwordsbot.application.reporting.MonthlyReportReconciliationService;
 import de.venomenon.gridwordsbot.application.reporting.PeriodicReportDeliveryService;
 import de.venomenon.gridwordsbot.application.reporting.PeriodicReportUseCase;
 import de.venomenon.gridwordsbot.application.reporting.ReportDayAndStreakProjector;
@@ -32,6 +33,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -239,11 +241,101 @@ class WeeklyReportSchedulerSpringIT {
         }
     }
 
+    @Test
+    void concurrentMonthlyAndWeeklyPathsKeepMultiPageSnapshotsAndRecoveryStrictlySeparated() throws Exception {
+        CLOCK.set(Instant.parse("2026-06-29T05:59:00Z"));
+        for (long playerId = 1; playerId <= 26; playerId++) {
+            insertParticipant(playerId, "Player " + playerId, LocalDate.of(2026, 6, 1));
+        }
+        Set<Long> monthlyReplacedIds = Set.of();
+        int visiblePagesAfterReplacement = 0;
+        try (ConfigurableApplicationContext first = start(); ConfigurableApplicationContext second = start()) {
+            CLOCK.set(Instant.parse("2026-07-01T06:16:00Z"));
+            Thread weeklyOne = new Thread(() -> first.getBean(WeeklyReportScheduler.class).reconcile());
+            Thread weeklyTwo = new Thread(() -> second.getBean(WeeklyReportScheduler.class).reconcile());
+            MonthlyReportReconciliationService monthlyFirst = realMonthlyReconciliation(first);
+            MonthlyReportReconciliationService monthlySecond = realMonthlyReconciliation(second);
+            Thread monthlyOne = new Thread(() -> monthlyFirst.reconcile(GUILD_ID, CHANNEL_ID));
+            Thread monthlyTwo = new Thread(() -> monthlySecond.reconcile(GUILD_ID, CHANNEL_ID));
+            weeklyOne.start(); weeklyTwo.start(); monthlyOne.start(); monthlyTwo.start();
+            weeklyOne.join(); weeklyTwo.join(); monthlyOne.join(); monthlyTwo.join();
+
+            PeriodicReportDeliveryStore store = first.getBean(PeriodicReportDeliveryStore.class);
+            PeriodicReportDeliveryKey weeklyKey = new PeriodicReportDeliveryKey(
+                    GUILD_ID, CHANNEL_ID, ReportType.WEEKLY, LocalDate.of(2026, 6, 22));
+            PeriodicReportDeliveryKey monthlyKey = new PeriodicReportDeliveryKey(
+                    GUILD_ID, CHANNEL_ID, ReportType.MONTHLY, LocalDate.of(2026, 6, 1));
+            var weeklyBefore = store.find(weeklyKey).orElseThrow();
+            var monthlyBefore = store.find(monthlyKey).orElseThrow();
+            assertThat(weeklyBefore.state()).isEqualTo(PeriodicReportDeliveryState.SUCCEEDED);
+            assertThat(monthlyBefore.state()).isEqualTo(PeriodicReportDeliveryState.SUCCEEDED);
+            assertThat(monthlyBefore.pageProgress()).hasSizeGreaterThan(1);
+            Set<Long> weeklyIds = weeklyBefore.pageProgress().stream().map(page -> page.messageId()).collect(java.util.stream.Collectors.toSet());
+            Set<Long> monthlyIds = monthlyBefore.pageProgress().stream().map(page -> page.messageId()).collect(java.util.stream.Collectors.toSet());
+            assertThat(weeklyIds).doesNotContainAnyElementsOf(monthlyIds);
+            int visiblePages = GATEWAY.messageCount();
+            assertThat(GATEWAY.createCalls()).isEqualTo(visiblePages);
+
+
+            long deletedPage = monthlyBefore.pageProgress().getFirst().messageId();
+            GATEWAY.deleteExternally(deletedPage);
+            monthlyFirst.reconcile(GUILD_ID, CHANNEL_ID);
+            var monthlyRecovered = store.find(monthlyKey).orElseThrow();
+            assertThat(monthlyRecovered.pageProgress()).hasSize(monthlyBefore.pageProgress().size());
+            Set<Long> recoveredIds = monthlyRecovered.pageProgress().stream()
+                    .map(page -> page.messageId()).collect(java.util.stream.Collectors.toSet());
+            Set<Long> survivingIds = new java.util.HashSet<>(monthlyIds);
+            survivingIds.remove(deletedPage);
+            assertThat(recoveredIds).containsAll(survivingIds).doesNotContain(deletedPage);
+            assertThat(store.find(weeklyKey).orElseThrow().pageProgress()).isEqualTo(weeklyBefore.pageProgress());
+            assertThat(GATEWAY.messageCount()).isEqualTo(visiblePages);
+
+            jdbc.update("UPDATE player SET display_name = 'Changed after publication'");
+            monthlyFirst.reconcile(GUILD_ID, CHANNEL_ID);
+            assertThat(store.find(monthlyKey).orElseThrow().pageProgress()).isEqualTo(monthlyRecovered.pageProgress());
+            assertThat(GATEWAY.messageCount()).isEqualTo(visiblePages);
+
+            GATEWAY.deleteExternally(monthlyRecovered.pageProgress().getFirst().messageId());
+            monthlyFirst.reconcile(GUILD_ID, CHANNEL_ID);
+            var monthlyReplaced = store.find(monthlyKey).orElseThrow();
+            Set<Long> replacedIds = monthlyReplaced.pageProgress().stream()
+                    .map(page -> page.messageId()).collect(java.util.stream.Collectors.toSet());
+            assertThat(replacedIds).doesNotContainAnyElementsOf(recoveredIds);
+            assertThat(monthlyReplaced.pageProgress()).hasSize(monthlyBefore.pageProgress().size());
+            monthlyReplacedIds = replacedIds;
+            visiblePagesAfterReplacement = GATEWAY.messageCount();
+            assertThat(store.find(weeklyKey).orElseThrow().pageProgress()).isEqualTo(weeklyBefore.pageProgress());
+            assertThat(GATEWAY.messageCount()).isEqualTo(visiblePages);
+        }
+        try (ConfigurableApplicationContext restarted = start()) {
+            realMonthlyReconciliation(restarted).reconcile(GUILD_ID, CHANNEL_ID);
+            var restartedMonthly = restarted.getBean(PeriodicReportDeliveryStore.class)
+                    .find(new PeriodicReportDeliveryKey(GUILD_ID, CHANNEL_ID, ReportType.MONTHLY, LocalDate.of(2026, 6, 1)))
+                    .orElseThrow();
+            Set<Long> restartedIds = restartedMonthly.pageProgress().stream()
+                    .map(page -> page.messageId()).collect(java.util.stream.Collectors.toSet());
+            assertThat(restartedIds).isEqualTo(monthlyReplacedIds);
+            assertThat(GATEWAY.messageCount()).isEqualTo(visiblePagesAfterReplacement);
+        }
+    }
+
     private static ConfigurableApplicationContext start() {
         return new SpringApplicationBuilder(WeeklyReportTestConfiguration.class, GridwordsBotApplication.class)
                 .web(WebApplicationType.NONE)
                 .profiles("database")
                 .run(properties());
+    }
+
+    private static MonthlyReportReconciliationService realMonthlyReconciliation(
+            ConfigurableApplicationContext context) {
+        GridwordsBotProperties properties = context.getBean(GridwordsBotProperties.class);
+        return new MonthlyReportReconciliationService(
+                context.getBean(PeriodicReportDeliveryStore.class),
+                context.getBean(PeriodicReportReconciliationPlanner.class),
+                context.getBean(PeriodicReportUseCase.class),
+                context.getBean(PeriodicReportDeliveryService.class),
+                context.getBean(Clock.class),
+                properties.schedule().monthlyReport(), properties.schedule().timeZone());
     }
 
     private static String[] properties() {
@@ -256,6 +348,7 @@ class WeeklyReportSchedulerSpringIT {
                 "--gridwords.discord.channel-id=" + CHANNEL_ID,
                 "--gridwords.discord.admin-user-ids=1",
                 "--gridwords.schedule.weekly-report=08:00",
+                "--gridwords.schedule.monthly-report=08:15",
                 "--gridwords.schedule.time-zone=Europe/Berlin"};
     }
 
@@ -269,6 +362,10 @@ class WeeklyReportSchedulerSpringIT {
     }
 
     private void insertParticipant(long playerId, String name) {
+        insertParticipant(playerId, name, PERIOD.startDate());
+    }
+
+    private void insertParticipant(long playerId, String name, LocalDate activeFrom) {
         OffsetDateTime now = OffsetDateTime.ofInstant(CLOCK.instant(), ZoneOffset.UTC);
         jdbc.update("""
                 INSERT INTO player (discord_user_id, display_name, active, administrator, reminder_opt_in, created_at, updated_at)
@@ -277,7 +374,7 @@ class WeeklyReportSchedulerSpringIT {
         jdbc.update("""
                 INSERT INTO player_participation_period (player_id, active_from, inactive_from, created_at, updated_at)
                 VALUES (?, ?, NULL, ?, ?)
-                """, playerId, PERIOD.startDate(), now, now);
+                """, playerId, activeFrom, now, now);
     }
 
     private static PeriodicReportDeliveryKey key() {
@@ -310,6 +407,12 @@ class WeeklyReportSchedulerSpringIT {
             return new WeeklyReportReconciliationService(
                     store, planner, reports, delivery, clock,
                     properties.schedule().weeklyReport(), properties.schedule().timeZone());
+        }
+
+        @Bean
+        @Primary
+        MonthlyReportReconciliationService testMonthlyReportReconciliationService() {
+            return org.mockito.Mockito.mock(MonthlyReportReconciliationService.class);
         }
 
         @Bean
