@@ -9,8 +9,10 @@ import de.venomenon.gridwordsbot.port.out.ReminderMessageGateway;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -109,13 +111,32 @@ public final class JdaDailyStatusMessageGateway implements DailyStatusMessageGat
     }
 
     @Override
-    public void delete(long channelId, long messageId) {
+    public void delete(long channelId, LocalDate gameDate, int stage, OptionalLong persistedMessageId) {
         try {
-            channel(channelId).deleteMessageById(messageId).complete();
-        } catch (ErrorResponseException exception) {
-            if (exception.getErrorResponse() != ErrorResponse.UNKNOWN_MESSAGE) {
-                throw classified("reminder deletion failed", exception);
+            TextChannel channel = channel(channelId);
+            String key = reminderKey(channelId, gameDate, stage);
+            String marker = "#" + key;
+            LinkedHashSet<Long> messageIds = new LinkedHashSet<>();
+            persistedMessageId.ifPresent(messageIds::add);
+            findMessages(channel, message -> Optional.ofNullable(message.getContentRaw())
+                    .orElse("")
+                    .contains(marker)).stream()
+                    .map(Message::getIdLong)
+                    .forEach(messageIds::add);
+
+            for (long messageId : messageIds) {
+                try {
+                    channel.deleteMessageById(messageId).complete();
+                } catch (ErrorResponseException exception) {
+                    if (exception.getErrorResponse() != ErrorResponse.UNKNOWN_MESSAGE) {
+                        throw exception;
+                    }
+                }
             }
+        } catch (DiscordDeliveryException exception) {
+            throw exception;
+        } catch (ErrorResponseException exception) {
+            throw classified("reminder deletion failed", exception);
         } catch (RuntimeException exception) {
             throw DiscordDeliveryException.retryable("reminder deletion failed", exception);
         }
@@ -201,19 +222,7 @@ public final class JdaDailyStatusMessageGateway implements DailyStatusMessageGat
     }
 
     private Optional<Message> findAndDeduplicate(TextChannel channel, Predicate<Message> matchesDelivery) {
-        SelfUser self = jda.getSelfUser();
-        MessageHistory history = channel.getHistory();
-        ArrayList<Message> matches = new ArrayList<>();
-        while (true) {
-            List<Message> page = history.retrievePast(PAGE_SIZE).complete();
-            page.stream()
-                    .filter(message -> self.equals(message.getAuthor()))
-                    .filter(matchesDelivery)
-                    .forEach(matches::add);
-            if (page.size() < PAGE_SIZE) {
-                break;
-            }
-        }
+        List<Message> matches = findMessages(channel, matchesDelivery);
         Optional<Message> canonical = matches.stream()
                 .min(java.util.Comparator.comparingLong(Message::getIdLong));
         if (canonical.isPresent()) {
@@ -224,6 +233,22 @@ public final class JdaDailyStatusMessageGateway implements DailyStatusMessageGat
             }
         }
         return canonical;
+    }
+
+    private List<Message> findMessages(TextChannel channel, Predicate<Message> matchesDelivery) {
+        SelfUser self = jda.getSelfUser();
+        MessageHistory history = channel.getHistory();
+        ArrayList<Message> matches = new ArrayList<>();
+        while (true) {
+            List<Message> page = history.retrievePast(PAGE_SIZE).complete();
+            page.stream()
+                    .filter(message -> self.equals(message.getAuthor()))
+                    .filter(matchesDelivery)
+                    .forEach(matches::add);
+            if (page.size() < PAGE_SIZE) {
+                return List.copyOf(matches);
+            }
+        }
     }
 
     private TextChannel channel(long id) {
