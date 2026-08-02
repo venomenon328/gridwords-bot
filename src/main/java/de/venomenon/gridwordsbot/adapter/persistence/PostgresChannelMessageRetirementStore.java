@@ -129,31 +129,38 @@ public class PostgresChannelMessageRetirementStore implements ChannelMessageReti
         UUID token = UUID.randomUUID();
         Instant now = clock.instant();
 
-        // The CTE locks the same game_result row that publication updates and inserts the durable retirement intent
-        // in the same statement. Therefore publication and retirement cannot both win the same race.
+        // ON CONFLICT locks the same serialization row as the publication trigger. Its WHERE clause evaluates the
+        // latest locked row, so publication and retirement cannot both win or both lose the same race.
         return jdbc.query("""
-                WITH locked_result AS (
-                    SELECT id
-                    FROM game_result
-                    WHERE id = ? AND canonical_publish_claim_token IS NULL
-                    FOR UPDATE
-                )
-                INSERT INTO canonical_result_retirement
-                    (game_result_id, retirement_state, claim_token, claim_until, created_at, updated_at)
-                SELECT id, 'CLAIMED', ?, ?, ?, ?
-                FROM locked_result
+                INSERT INTO canonical_result_retirement (
+                    game_result_id, retirement_state, claim_token, claim_until,
+                    publication_claim_token, publication_claim_until, created_at, updated_at)
+                SELECT id, 'CLAIMED', ?, ?, NULL, NULL, ?, ?
+                FROM game_result
+                WHERE id = ?
+                  AND (canonical_publish_claim_token IS NULL OR canonical_publish_lease_until < ?)
                 ON CONFLICT (game_result_id) DO UPDATE
-                SET retirement_state = 'CLAIMED', claim_token = EXCLUDED.claim_token,
-                    claim_until = EXCLUDED.claim_until, updated_at = EXCLUDED.updated_at
-                WHERE canonical_result_retirement.retirement_state = 'ACTIVE'
-                   OR (canonical_result_retirement.retirement_state = 'RETRYABLE'
-                       AND (canonical_result_retirement.retry_after IS NULL
-                            OR canonical_result_retirement.retry_after <= EXCLUDED.updated_at))
-                   OR (canonical_result_retirement.retirement_state = 'CLAIMED'
-                       AND canonical_result_retirement.claim_until < EXCLUDED.updated_at)
+                SET retirement_state = 'CLAIMED',
+                    claim_token = EXCLUDED.claim_token,
+                    claim_until = EXCLUDED.claim_until,
+                    publication_claim_token = NULL,
+                    publication_claim_until = NULL,
+                    updated_at = EXCLUDED.updated_at
+                WHERE (
+                        canonical_result_retirement.retirement_state = 'ACTIVE'
+                        OR (canonical_result_retirement.retirement_state = 'RETRYABLE'
+                            AND (canonical_result_retirement.retry_after IS NULL
+                                OR canonical_result_retirement.retry_after <= EXCLUDED.updated_at))
+                        OR (canonical_result_retirement.retirement_state = 'CLAIMED'
+                            AND canonical_result_retirement.claim_until < EXCLUDED.updated_at)
+                    )
+                  AND (
+                        canonical_result_retirement.publication_claim_token IS NULL
+                        OR canonical_result_retirement.publication_claim_until < EXCLUDED.updated_at
+                    )
                 RETURNING game_result_id
                 """, (rs, row) -> new ResultRetirementClaim(rs.getLong("game_result_id"), token, leaseUntil),
-                resultId, token, utc(leaseUntil), utc(now), utc(now)).stream().findFirst();
+                token, utc(leaseUntil), utc(now), utc(now), resultId, utc(now)).stream().findFirst();
     }
 
     @Override
