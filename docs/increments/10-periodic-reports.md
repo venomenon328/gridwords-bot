@@ -341,6 +341,8 @@ Der Wochenbericht wird zur konfigurierten Zeit und innerhalb seines Catch-up-Fen
 
 ## Paket 9 – Monatsbericht und Scheduler
 
+**Status:** abgeschlossen am 2. August 2026.
+
 ### Ziel
 
 Der Monatsbericht verwendet vollständig denselben Reporting- und Deliverykern mit eigener Perioden- und Catch-up-Regel.
