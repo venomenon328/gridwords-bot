@@ -4,19 +4,26 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import de.venomenon.gridwordsbot.port.out.ChannelMessageRetirementStore;
 import de.venomenon.gridwordsbot.port.out.DailyStatusStore;
+import de.venomenon.gridwordsbot.port.out.GameResultStore;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import liquibase.integration.spring.SpringLiquibase;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -29,7 +36,9 @@ class PostgresChannelMessageRetirementStoreIT {
     private static final Instant NOW = Instant.parse("2026-07-31T04:00:00Z");
     private static final LocalDate DATE = LocalDate.of(2026, 7, 30);
     private JdbcTemplate jdbc;
+    private TransactionTemplate transactions;
     private PostgresChannelMessageRetirementStore store;
+    private PostgresPersistenceAdapter persistence;
 
     @BeforeAll
     void migrate() throws Exception {
@@ -40,7 +49,10 @@ class PostgresChannelMessageRetirementStoreIT {
         liquibase.setChangeLog("classpath:db/changelog/db.changelog-master.yaml");
         liquibase.afterPropertiesSet();
         jdbc = new JdbcTemplate(dataSource);
-        store = new PostgresChannelMessageRetirementStore(jdbc, Clock.fixed(NOW, ZoneOffset.UTC));
+        transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+        Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
+        store = new PostgresChannelMessageRetirementStore(jdbc, clock);
+        persistence = new PostgresPersistenceAdapter(jdbc, clock, ZoneOffset.UTC);
     }
 
     @BeforeEach
@@ -55,10 +67,11 @@ class PostgresChannelMessageRetirementStoreIT {
 
     @Test
     void resultClaimsBackoffLeasesAndRetirementFenceArePersistent() {
-        long resultId = insertCanonicalResult();
+        long resultId = insertResult(99L, "CANONICAL_MESSAGE_PUBLISHED", 77L);
 
         assertThat(store.findResultMessagesBefore(11L, 12L, DATE.plusDays(1)))
-                .extracting(ChannelMessageRetirementStore.ResultMessage::resultId).containsExactly(resultId);
+                .extracting(ChannelMessageRetirementStore.ResultMessage::resultId)
+                .containsExactly(resultId);
 
         ChannelMessageRetirementStore.ResultRetirementClaim claim = store.claimResultMessage(
                 resultId, NOW.plusSeconds(60)).orElseThrow();
@@ -74,16 +87,100 @@ class PostgresChannelMessageRetirementStoreIT {
         later.completeResultRetirement(retried);
 
         assertThat(later.isCanonicalPublicationAllowed(resultId)).isFalse();
-        assertThat(jdbc.queryForObject("SELECT retirement_state FROM canonical_result_retirement WHERE game_result_id = ?",
+        assertThat(jdbc.queryForObject(
+                "SELECT retirement_state FROM canonical_result_retirement WHERE game_result_id = ?",
                 String.class, resultId)).isEqualTo("RETIRED");
     }
 
     @Test
-    void firstReminderIsRetirableOnlyAfterDurableSecondStageSuccessOrNoCandidates() {
+    void historicalResultWithoutPersistedMessageIdIsFencedAndRetired() {
+        long resultId = insertResult(null, "RESULT_STORED", 78L);
+
+        ChannelMessageRetirementStore.ResultMessage candidate = store
+                .findResultMessagesBefore(11L, 12L, DATE.plusDays(1)).getFirst();
+
+        assertThat(candidate.resultId()).isEqualTo(resultId);
+        assertThat(candidate.messageId()).isEmpty();
+        assertThat(candidate.publicationKey()).isEqualTo("gridwords-result-" + resultId);
+
+        ChannelMessageRetirementStore.ResultRetirementClaim claim = transactions.execute(status ->
+                store.claimResultMessage(resultId, NOW.plusSeconds(60)).orElseThrow());
+        store.completeResultRetirement(claim);
+
+        assertThat(store.isCanonicalPublicationAllowed(resultId)).isFalse();
+        assertThat(persistence.claimCanonicalPublication(resultId, NOW.plusSeconds(120))).isEmpty();
+    }
+
+    @Test
+    void publicationAndRetirementClaimsAreMutuallyExclusiveUnderConcurrency() throws Exception {
+        long resultId = insertResult(99L, "CANONICAL_MESSAGE_PUBLISHED", 79L);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            Future<Boolean> publication = executor.submit(() -> {
+                ready.countDown();
+                start.await();
+                return transactions.execute(status ->
+                        persistence.claimCanonicalPublication(resultId, NOW.plusSeconds(120)).isPresent());
+            });
+            Future<Boolean> retirement = executor.submit(() -> {
+                ready.countDown();
+                start.await();
+                return transactions.execute(status ->
+                        store.claimResultMessage(resultId, NOW.plusSeconds(120)).isPresent());
+            });
+
+            ready.await();
+            start.countDown();
+            boolean publicationWon = publication.get();
+            boolean retirementWon = retirement.get();
+
+            assertThat(publicationWon ^ retirementWon).isTrue();
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void activePublicationClaimPreventsRetirementAndRetirementIntentPreventsPublication() {
+        long resultId = insertResult(99L, "CANONICAL_MESSAGE_PUBLISHED", 80L);
+
+        GameResultStore.PublicationClaim publication = persistence
+                .claimCanonicalPublication(resultId, NOW.plusSeconds(120)).orElseThrow();
+        assertThat(transactions.execute(status ->
+                store.claimResultMessage(resultId, NOW.plusSeconds(120)))).isEmpty();
+
+        persistence.releaseCanonicalPublicationClaim(resultId, publication.token());
+        ChannelMessageRetirementStore.ResultRetirementClaim retirement = transactions.execute(status ->
+                store.claimResultMessage(resultId, NOW.plusSeconds(120)).orElseThrow());
+
+        assertThat(persistence.claimCanonicalPublication(resultId, NOW.plusSeconds(120))).isEmpty();
+        store.completeResultRetirement(retirement);
+    }
+
+    @Test
+    void permanentRetirementFailuresAreTerminalAndLeaveLaterCleanupWorkUnblocked() {
+        long resultId = insertResult(99L, "CANONICAL_MESSAGE_PUBLISHED", 81L);
+        ChannelMessageRetirementStore.ResultRetirementClaim resultClaim = transactions.execute(status ->
+                store.claimResultMessage(resultId, NOW.plusSeconds(60)).orElseThrow());
+        store.failResultRetirement(resultClaim, "forbidden", true);
+
+        insertReminder(1, "SENT", 91L);
+        ChannelMessageRetirementStore.ReminderRetirementClaim reminderClaim = store.claimReminderMessage(
+                11L, 12L, DATE, 1, NOW.plusSeconds(60)).orElseThrow();
+        store.failReminderRetirement(reminderClaim, "forbidden", true);
+
+        assertThat(store.findResultMessagesBefore(11L, 12L, DATE.plusDays(1))).isEmpty();
+        assertThat(store.findReminderMessagesBefore(11L, 12L, DATE.plusDays(1))).isEmpty();
+    }
+
+    @Test
+    void firstReminderIsRetirableAfterDurableSecondStageSuccessEvenWithoutPersistedFirstMessageId() {
         PostgresDailyStatusStore deliveries = new PostgresDailyStatusStore(jdbc, Clock.fixed(NOW, ZoneOffset.UTC));
         DailyStatusStore.ReminderDelivery first = deliveries.claimReminder(
                 11L, 12L, DATE, 1, LocalTime.of(16, 0), NOW.plusSeconds(60)).orElseThrow();
-        deliveries.completeReminder(first, DailyStatusStore.ReminderState.SENT, Optional.of(91L));
+        deliveries.completeReminder(first, DailyStatusStore.ReminderState.SENT, Optional.empty());
         DailyStatusStore.ReminderDelivery second = deliveries.claimReminder(
                 11L, 12L, DATE, 2, LocalTime.of(22, 0), NOW.plusSeconds(60)).orElseThrow();
         deliveries.failReminder(second, "forbidden", true);
@@ -96,31 +193,56 @@ class PostgresChannelMessageRetirementStoreIT {
 
         ChannelMessageRetirementStore.ReminderMessage candidate = store
                 .findFirstReminderMessagesReadyForRetirement(11L, 12L, DATE).getFirst();
+        assertThat(candidate.messageId()).isEmpty();
+
         ChannelMessageRetirementStore.ReminderRetirementClaim claim = store.claimReminderMessage(
                 11L, 12L, DATE, 1, NOW.plusSeconds(60)).orElseThrow();
         store.completeReminderRetirement(claim);
 
-        assertThat(candidate.messageId()).isEqualTo(91L);
         assertThat(jdbc.queryForObject("SELECT retirement_state FROM reminder_message_retirement"
                 + " WHERE guild_id = 11 AND channel_id = 12 AND game_date = ? AND reminder_stage = 1",
                 String.class, DATE)).isEqualTo("RETIRED");
     }
 
-    private long insertCanonicalResult() {
+    @Test
+    void historicalReminderWithoutPersistedMessageIdRemainsAKeyBasedCleanupCandidate() {
+        insertReminder(1, "EXPIRED", null);
+
+        ChannelMessageRetirementStore.ReminderMessage candidate = store
+                .findReminderMessagesBefore(11L, 12L, DATE.plusDays(1)).getFirst();
+
+        assertThat(candidate.gameDate()).isEqualTo(DATE);
+        assertThat(candidate.stage()).isOne();
+        assertThat(candidate.messageId()).isEmpty();
+    }
+
+    private long insertResult(Long canonicalMessageId, String submissionState, long sourceMessageId) {
         jdbc.update("INSERT INTO player (discord_user_id, display_name, active, administrator, created_at, updated_at)"
                 + " VALUES (1, 'Player', TRUE, FALSE, ?, ?)", java.sql.Timestamp.from(NOW), java.sql.Timestamp.from(NOW));
         Long resultId = jdbc.queryForObject("""
                 INSERT INTO game_result (player_id, game_type, game_date, solved, attempts_used, max_attempts,
                     duration_seconds, normalized_board, raw_share_text, parser_version, canonical_message_id,
                     created_at, updated_at)
-                VALUES (1, 'GRIDWORDS', ?, TRUE, 3, 6, 42, 'board', 'share', 'test', 99, ?, ?)
+                VALUES (1, 'GRIDWORDS', ?, TRUE, 3, 6, 42, 'board', 'share', 'test', ?, ?, ?)
                 RETURNING id
-                """, Long.class, DATE, java.sql.Timestamp.from(NOW), java.sql.Timestamp.from(NOW));
+                """, Long.class, DATE, canonicalMessageId,
+                java.sql.Timestamp.from(NOW), java.sql.Timestamp.from(NOW));
         jdbc.update("""
                 INSERT INTO submission (source_message_id, guild_id, channel_id, author_player_id, raw_message_content,
                     processing_state, game_result_id, received_at, updated_at)
-                VALUES (77, 11, 12, 1, 'share', 'CANONICAL_MESSAGE_PUBLISHED', ?, ?, ?)
-                """, resultId, java.sql.Timestamp.from(NOW), java.sql.Timestamp.from(NOW));
+                VALUES (?, 11, 12, 1, 'share', ?, ?, ?, ?)
+                """, sourceMessageId, submissionState, resultId,
+                java.sql.Timestamp.from(NOW), java.sql.Timestamp.from(NOW));
         return resultId;
+    }
+
+    private void insertReminder(int stage, String state, Long messageId) {
+        jdbc.update("""
+                INSERT INTO reminder_delivery (
+                    guild_id, channel_id, game_date, reminder_stage, scheduled_time, delivery_state,
+                    discord_message_id, created_at, updated_at)
+                VALUES (11, 12, ?, ?, ?, ?, ?, ?, ?)
+                """, DATE, stage, stage == 1 ? LocalTime.of(16, 0) : LocalTime.of(22, 0), state, messageId,
+                java.sql.Timestamp.from(NOW), java.sql.Timestamp.from(NOW));
     }
 }
