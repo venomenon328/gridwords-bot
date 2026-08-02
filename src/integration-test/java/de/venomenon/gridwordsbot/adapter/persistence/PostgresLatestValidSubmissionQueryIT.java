@@ -131,12 +131,16 @@ class PostgresLatestValidSubmissionQueryIT {
 
     private void insertSubmission(
             long sourceMessageId, long playerId, long gameResultId, String state, OffsetDateTime receivedAt) {
+        OffsetDateTime originalDeletedAt = switch (state) {
+            case "ORIGINAL_MESSAGE_DELETED", "COMPLETED" -> receivedAt;
+            default -> null;
+        };
         jdbc.update("""
                 INSERT INTO submission (
                     source_message_id, guild_id, channel_id, author_player_id, raw_message_content,
-                    processing_state, game_result_id, received_at, updated_at)
-                VALUES (?, 1, 1, ?, 'share', ?, ?, ?, ?)
-                """, sourceMessageId, playerId, state, gameResultId, receivedAt, receivedAt);
+                    processing_state, game_result_id, received_at, updated_at, original_deleted_at)
+                VALUES (?, 1, 1, ?, 'share', ?, ?, ?, ?, ?)
+                """, sourceMessageId, playerId, state, gameResultId, receivedAt, receivedAt, originalDeletedAt);
     }
 
     private static LocalDate date(int year, int month, int day) {
