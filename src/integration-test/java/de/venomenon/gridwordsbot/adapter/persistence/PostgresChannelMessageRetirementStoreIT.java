@@ -33,7 +33,6 @@ class PostgresChannelMessageRetirementStoreIT {
     private JdbcTemplate jdbc;
     private TransactionTemplate transactions;
     private PostgresChannelMessageRetirementStore store;
-    private PostgresPersistenceAdapter persistence;
 
     @BeforeAll
     void migrate() throws Exception {
@@ -47,7 +46,6 @@ class PostgresChannelMessageRetirementStoreIT {
         transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
         store = new PostgresChannelMessageRetirementStore(jdbc, clock);
-        persistence = new PostgresPersistenceAdapter(jdbc, clock, ZoneOffset.UTC);
     }
 
     @BeforeEach
@@ -103,7 +101,9 @@ class PostgresChannelMessageRetirementStoreIT {
         store.completeResultRetirement(claim);
 
         assertThat(store.isCanonicalPublicationAllowed(resultId)).isFalse();
-        assertThat(persistence.claimCanonicalPublication(resultId, NOW.plusSeconds(120))).isEmpty();
+        assertThat(jdbc.queryForObject(
+                "SELECT retirement_state FROM canonical_result_retirement WHERE game_result_id = ?",
+                String.class, resultId)).isEqualTo("RETIRED");
     }
 
     @Test
