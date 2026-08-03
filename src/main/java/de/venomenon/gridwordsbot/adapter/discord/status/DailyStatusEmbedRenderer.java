@@ -1,5 +1,6 @@
 package de.venomenon.gridwordsbot.adapter.discord.status;
 
+import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.model.ParsedGameResult;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
 import de.venomenon.gridwordsbot.domain.status.DailyStatus;
@@ -8,7 +9,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.MessageEmbed;
 
@@ -66,23 +66,39 @@ final class DailyStatusEmbedRenderer {
     }
 
     private static String playerValue(DailyStatus.PlayerLine player) {
-        return "GridWords: " + result(player.gridWords())
-                + "\nQuadWords: " + result(player.quadWords())
+        return "GridWords: " + result(player.gridWordsState())
+                + "\nQuadWords: " + result(player.quadWordsState())
                 + "\n🔥 Aktivität: " + player.streaks().personalActivity()
-                + " · Komplett: " + player.streaks().personalComplete()
-                + "\nGridWords gelöst: " + player.streaks().personalGridWordsSolved()
-                + " · QuadWords gelöst: " + player.streaks().personalQuadWordsSolved()
-                + " · Perfekt: " + player.streaks().personalPerfect();
+                + " · Komplett: " + applicable(player, GameType.GRIDWORDS, GameType.QUADWORDS,
+                        player.streaks().personalComplete())
+                + "\nGridWords gelöst: " + applicable(player, GameType.GRIDWORDS,
+                        player.streaks().personalGridWordsSolved())
+                + " · QuadWords gelöst: " + applicable(player, GameType.QUADWORDS,
+                        player.streaks().personalQuadWordsSolved())
+                + " · Perfekt: " + applicable(player, GameType.GRIDWORDS, GameType.QUADWORDS,
+                        player.streaks().personalPerfect());
     }
 
-    private static String result(Optional<ParsedGameResult> result) {
-        if (result.isEmpty()) {
+    private static String result(DailyStatus.GameState state) {
+        if (!state.participating()) {
+            return "— nimmt nicht teil";
+        }
+        if (state.result().isEmpty()) {
             return "⬜ noch nicht eingereicht";
         }
-        ParsedGameResult value = result.get();
+        ParsedGameResult value = state.result().get();
         String symbol = value.outcome() instanceof ShareOutcome.Solved ? "✅" : "❌";
         return symbol + " " + outcome(value.outcome()) + " · "
                 + value.duration().toMinutes() + ":" + String.format("%02d", value.duration().toSecondsPart());
+    }
+
+    private static String applicable(DailyStatus.PlayerLine player, GameType gameType, int value) {
+        return player.participates(gameType) ? String.valueOf(value) : "—";
+    }
+
+    private static String applicable(
+            DailyStatus.PlayerLine player, GameType firstGame, GameType secondGame, int value) {
+        return player.participates(firstGame) && player.participates(secondGame) ? String.valueOf(value) : "—";
     }
 
     private static String outcome(ShareOutcome outcome) {
