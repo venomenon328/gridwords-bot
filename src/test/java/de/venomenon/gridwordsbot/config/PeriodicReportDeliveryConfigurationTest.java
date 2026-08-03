@@ -25,10 +25,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 class PeriodicReportDeliveryConfigurationTest {
 
     @Test
-    void databaseProfileWiresDeliveryCoreWithAnInjectedTransportGatewayWithoutStartingJda() {
+    void databaseProfileWiresDeliveryCoreWithAnInjectedTransportGatewayWhileDiscordIsDisabled() {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
-            enableDiscord(context);
-            registerProperties(context);
+            configureDiscord(context, false);
+            registerProperties(context, false);
             context.registerBean(Clock.class, Clock::systemUTC);
             context.registerBean(JdbcTemplate.class, () -> mock(JdbcTemplate.class));
             context.registerBean(PeriodicReportMessageGateway.class,
@@ -47,8 +47,8 @@ class PeriodicReportDeliveryConfigurationTest {
     @Test
     void databaseProfileWiresTheJdaGatewayAndDeliveryServiceWhenJdaIsProvided() {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
-            enableDiscord(context);
-            registerProperties(context);
+            configureDiscord(context, true);
+            registerProperties(context, true);
             context.registerBean(Clock.class, Clock::systemUTC);
             context.registerBean(JdbcTemplate.class, () -> mock(JdbcTemplate.class));
             context.registerBean(JDA.class, () -> mock(JDA.class));
@@ -62,18 +62,22 @@ class PeriodicReportDeliveryConfigurationTest {
         }
     }
 
-    private static void enableDiscord(AnnotationConfigApplicationContext context) {
+    private static void configureDiscord(
+            AnnotationConfigApplicationContext context,
+            boolean enabled) {
         context.getEnvironment().setActiveProfiles("database");
         context.getEnvironment().getPropertySources().addFirst(new MapPropertySource(
                 "test-discord",
-                Map.of("gridwords.discord.enabled", "true")));
+                Map.of("gridwords.discord.enabled", Boolean.toString(enabled))));
     }
 
-    private static void registerProperties(AnnotationConfigApplicationContext context) {
+    private static void registerProperties(
+            AnnotationConfigApplicationContext context,
+            boolean discordEnabled) {
         context.registerBean(
                 GridwordsBotProperties.class,
                 () -> new GridwordsBotProperties(
-                        new GridwordsBotProperties.Discord(true, "", 1L, 2L, List.of()),
+                        new GridwordsBotProperties.Discord(discordEnabled, "", 1L, 2L, List.of()),
                         new GridwordsBotProperties.Schedule(
                                 LocalTime.of(18, 0),
                                 LocalTime.of(23, 0),
