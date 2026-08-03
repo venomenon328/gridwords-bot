@@ -13,17 +13,45 @@ import java.util.Set;
 public record ReportParticipantBasis(
         ReportPeriod period,
         List<ReportParticipant> participants,
-        Map<LocalDate, Set<Long>> activeParticipantIdsByDay,
-        Set<LocalDate> sharedPossibleDays) {
+        Map<LocalDate, Set<Long>> unionParticipantIdsByDay,
+        Map<LocalDate, Set<Long>> gridWordsParticipantIdsByDay,
+        Map<LocalDate, Set<Long>> quadWordsParticipantIdsByDay,
+        Map<LocalDate, Set<Long>> bothGamesParticipantIdsByDay) {
     public ReportParticipantBasis {
         Objects.requireNonNull(period, "period");
         participants = List.copyOf(Objects.requireNonNull(participants, "participants"));
-        activeParticipantIdsByDay = immutableDailyParticipants(activeParticipantIdsByDay);
-        sharedPossibleDays = Collections.unmodifiableSet(new LinkedHashSet<>(Objects.requireNonNull(sharedPossibleDays, "sharedPossibleDays")));
+        unionParticipantIdsByDay = immutableDailyParticipants(unionParticipantIdsByDay, "unionParticipantIdsByDay");
+        gridWordsParticipantIdsByDay = immutableDailyParticipants(gridWordsParticipantIdsByDay, "gridWordsParticipantIdsByDay");
+        quadWordsParticipantIdsByDay = immutableDailyParticipants(quadWordsParticipantIdsByDay, "quadWordsParticipantIdsByDay");
+        bothGamesParticipantIdsByDay = immutableDailyParticipants(bothGamesParticipantIdsByDay, "bothGamesParticipantIdsByDay");
+        if (!unionParticipantIdsByDay.keySet().equals(gridWordsParticipantIdsByDay.keySet())
+                || !unionParticipantIdsByDay.keySet().equals(quadWordsParticipantIdsByDay.keySet())
+                || !unionParticipantIdsByDay.keySet().equals(bothGamesParticipantIdsByDay.keySet())) {
+            throw new IllegalArgumentException("daily participation maps must cover the same dates");
+        }
+        for (LocalDate day : unionParticipantIdsByDay.keySet()) {
+            Set<Long> expectedUnion = new LinkedHashSet<>(gridWordsParticipantIdsByDay.get(day));
+            expectedUnion.addAll(quadWordsParticipantIdsByDay.get(day));
+            Set<Long> expectedBoth = new LinkedHashSet<>(gridWordsParticipantIdsByDay.get(day));
+            expectedBoth.retainAll(quadWordsParticipantIdsByDay.get(day));
+            if (!unionParticipantIdsByDay.get(day).equals(expectedUnion)
+                    || !bothGamesParticipantIdsByDay.get(day).equals(expectedBoth)) {
+                throw new IllegalArgumentException("daily union and both-games participation must match game histories");
+            }
+        }
     }
 
-    private static Map<LocalDate, Set<Long>> immutableDailyParticipants(Map<LocalDate, Set<Long>> dailyParticipants) {
-        Objects.requireNonNull(dailyParticipants, "activeParticipantIdsByDay");
+    public Set<LocalDate> sharedPossibleDays() {
+        Set<LocalDate> days = new LinkedHashSet<>();
+        bothGamesParticipantIdsByDay.forEach((day, ids) -> {
+            if (ids.size() >= 2) days.add(day);
+        });
+        return Collections.unmodifiableSet(days);
+    }
+
+    private static Map<LocalDate, Set<Long>> immutableDailyParticipants(
+            Map<LocalDate, Set<Long>> dailyParticipants, String name) {
+        Objects.requireNonNull(dailyParticipants, name);
         Map<LocalDate, Set<Long>> copy = new LinkedHashMap<>();
         dailyParticipants.forEach((date, ids) -> copy.put(
                 Objects.requireNonNull(date, "active participant date"),

@@ -46,28 +46,41 @@ class PostgresReportStreakHistoryQueryIT {
         insertPlayer(10L, "Returning");
         insertPlayer(20L, "Leaving");
         insertPlayer(30L, "Future");
+        insertPlayer(40L, "Grid only");
         insertPeriod(10L, date(2026, 7, 1), date(2026, 7, 25));
         insertPeriod(10L, date(2026, 7, 27), null);
         insertPeriod(20L, date(2026, 7, 1), date(2026, 8, 1));
         insertPeriod(30L, date(2026, 7, 30), null);
+        insertGamePeriod(40L, GameType.GRIDWORDS, date(2026, 7, 28), null);
         insertResult(10L, "GRIDWORDS", date(2026, 7, 1), true, 3, 6, "gridwords-share-v1");
         insertResult(10L, "QUADWORDS", date(2026, 7, 27), false, null, 9, "quadwords-share-v1");
         insertResult(20L, "QUADWORDS", date(2026, 7, 29), true, 7, 9, "quadwords-share-v1");
         insertResult(10L, "GRIDWORDS", date(2026, 7, 30), true, 2, 6, "gridwords-share-v1");
         insertResult(30L, "QUADWORDS", date(2026, 7, 30), true, 5, 9, "quadwords-share-v1");
+        insertResult(40L, "GRIDWORDS", date(2026, 7, 28), true, 4, 6, "gridwords-share-v1");
 
         ReportStreakHistory history = query.findThrough(CUTOFF);
 
         assertThat(history.participationPeriods()).extracting(period -> period.playerId())
-                .containsExactly(10L, 10L, 20L);
+                .containsExactly(10L, 10L, 10L, 10L, 20L, 20L, 40L);
+        assertThat(history.participationPeriods()).extracting(period -> period.gameType())
+                .containsExactly(
+                        GameType.GRIDWORDS, GameType.GRIDWORDS,
+                        GameType.QUADWORDS, GameType.QUADWORDS,
+                        GameType.GRIDWORDS, GameType.QUADWORDS,
+                        GameType.GRIDWORDS);
         assertThat(history.participationPeriods()).extracting(period -> period.activeFrom())
-                .containsExactly(date(2026, 7, 1), date(2026, 7, 27), date(2026, 7, 1));
+                .containsExactly(
+                        date(2026, 7, 1), date(2026, 7, 27),
+                        date(2026, 7, 1), date(2026, 7, 27),
+                        date(2026, 7, 1), date(2026, 7, 1),
+                        date(2026, 7, 28));
         assertThat(history.results()).extracting(result -> result.playerId())
-                .containsExactly(10L, 10L, 20L);
+                .containsExactly(10L, 10L, 20L, 40L);
         assertThat(history.results()).extracting(result -> result.gameDate())
-                .containsExactly(date(2026, 7, 1), date(2026, 7, 27), date(2026, 7, 29));
+                .containsExactly(date(2026, 7, 1), date(2026, 7, 27), date(2026, 7, 29), date(2026, 7, 28));
         assertThat(history.results()).extracting(result -> result.gameType())
-                .containsExactly(GameType.GRIDWORDS, GameType.QUADWORDS, GameType.QUADWORDS);
+                .containsExactly(GameType.GRIDWORDS, GameType.QUADWORDS, GameType.QUADWORDS, GameType.GRIDWORDS);
         assertThat(history.results().get(1).outcome()).isInstanceOf(de.venomenon.gridwordsbot.domain.model.ShareOutcome.Unsolved.class);
     }
 
@@ -82,9 +95,19 @@ class PostgresReportStreakHistoryQueryIT {
     private void insertPeriod(long playerId, LocalDate activeFrom, LocalDate inactiveFrom) {
         jdbc.update("""
                 INSERT INTO player_participation_period (
-                    player_id, active_from, inactive_from, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?)
+                    player_id, game_type, active_from, inactive_from, created_at, updated_at)
+                SELECT ?, game.game_type, ?, ?, ?, ?
+                FROM (VALUES ('GRIDWORDS'), ('QUADWORDS')) AS game(game_type)
                 """, playerId, activeFrom, inactiveFrom, NOW, NOW);
+    }
+
+    private void insertGamePeriod(
+            long playerId, GameType gameType, LocalDate activeFrom, LocalDate inactiveFrom) {
+        jdbc.update("""
+                INSERT INTO player_participation_period (
+                    player_id, game_type, active_from, inactive_from, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """, playerId, gameType.name(), activeFrom, inactiveFrom, NOW, NOW);
     }
 
     private void insertResult(long playerId, String gameType, LocalDate gameDate,

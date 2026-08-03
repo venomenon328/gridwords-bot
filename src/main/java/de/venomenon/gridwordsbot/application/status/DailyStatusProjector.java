@@ -1,10 +1,11 @@
 package de.venomenon.gridwordsbot.application.status;
 
+import de.venomenon.gridwordsbot.domain.model.DailyGameParticipation;
+import de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod;
 import de.venomenon.gridwordsbot.domain.model.GameType;
-import de.venomenon.gridwordsbot.domain.model.ParticipationPeriod;
+import de.venomenon.gridwordsbot.domain.status.DailyStatus;
 import de.venomenon.gridwordsbot.domain.streak.StreakCalculator;
 import de.venomenon.gridwordsbot.domain.streak.StreakSummary;
-import de.venomenon.gridwordsbot.domain.status.DailyStatus;
 import de.venomenon.gridwordsbot.port.out.GameResultStore;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
 import java.time.LocalDate;
@@ -30,17 +31,15 @@ public final class DailyStatusProjector {
             throw new IllegalArgumentException("status date must not be in the future");
         }
         List<GameResultStore.StoredGameResult> all = results.findAll();
-        List<ParticipationPeriod> periods = players.findParticipationPeriods();
+        List<GameParticipationPeriod> periods = players.findGameParticipationPeriods();
+        DailyGameParticipation participation = DailyGameParticipation.fromPeriods(date, periods);
         Map<Long, PlayerStore.StoredPlayer> profiles = players.findAllPlayers().stream()
                 .collect(Collectors.toMap(PlayerStore.StoredPlayer::discordUserId, player -> player));
         List<StreakCalculator.PlayerResult> streakResults = all.stream()
                 .map(result -> new StreakCalculator.PlayerResult(result.playerId(), result.parsedResult()))
                 .toList();
-        List<DailyStatus.PlayerLine> lines = periods.stream()
-                .filter(period -> period.contains(date))
-                .map(ParticipationPeriod::playerId)
-                .distinct()
-                .map(id -> line(id, date, date.equals(today), all, periods, profiles, streakResults))
+        List<DailyStatus.PlayerLine> lines = participation.participatingPlayers().stream()
+                .map(id -> line(id, date, date.equals(today), all, periods, participation, profiles, streakResults))
                 .sorted(Comparator
                         .comparing((DailyStatus.PlayerLine line) -> line.displayName().toLowerCase(Locale.ROOT))
                         .thenComparingLong(DailyStatus.PlayerLine::discordUserId))
@@ -60,30 +59,38 @@ public final class DailyStatusProjector {
             LocalDate date,
             boolean provisionalCurrentDay,
             List<GameResultStore.StoredGameResult> all,
-            List<ParticipationPeriod> periods,
+            List<GameParticipationPeriod> periods,
+            DailyGameParticipation participation,
             Map<Long, PlayerStore.StoredPlayer> profiles,
             List<StreakCalculator.PlayerResult> streakResults) {
         PlayerStore.StoredPlayer profile = profiles.get(id);
         if (profile == null) {
             throw new IllegalStateException("participation period without profile: " + id);
         }
-        StreakSummary summary = calculator.calculateWithParticipation(
+        StreakSummary summary = calculator.calculateWithGameParticipation(
                 streakResults, periods, id, date, provisionalCurrentDay);
         return new DailyStatus.PlayerLine(
                 id,
                 profile.displayName(),
-                all.stream()
-                        .filter(result -> result.playerId() == id
-                                && result.parsedResult().gameType() == GameType.GRIDWORDS
-                                && result.parsedResult().gameDate().equals(date))
-                        .findFirst()
-                        .map(GameResultStore.StoredGameResult::parsedResult),
-                all.stream()
-                        .filter(result -> result.playerId() == id
-                                && result.parsedResult().gameType() == GameType.QUADWORDS
-                                && result.parsedResult().gameDate().equals(date))
-                        .findFirst()
-                        .map(GameResultStore.StoredGameResult::parsedResult),
+                state(GameType.GRIDWORDS, id, date, participation, all),
+                state(GameType.QUADWORDS, id, date, participation, all),
                 summary);
+    }
+
+    private static DailyStatus.GameState state(
+            GameType gameType,
+            long playerId,
+            LocalDate date,
+            DailyGameParticipation participation,
+            List<GameResultStore.StoredGameResult> all) {
+        return new DailyStatus.GameState(
+                gameType,
+                participation.playersFor(gameType).contains(playerId),
+                all.stream()
+                        .filter(result -> result.playerId() == playerId
+                                && result.parsedResult().gameType() == gameType
+                                && result.parsedResult().gameDate().equals(date))
+                        .findFirst()
+                        .map(GameResultStore.StoredGameResult::parsedResult));
     }
 }

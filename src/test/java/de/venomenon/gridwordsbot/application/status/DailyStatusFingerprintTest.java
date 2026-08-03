@@ -90,4 +90,22 @@ class DailyStatusFingerprintTest {
                 .toList();
         return new DailyStatus(DATE, players, 0, 0);
     }
+    @Test
+    void fingerprintChangesWhenOnlyOneGameParticipationChanges() {
+        DailyStatus.PlayerLine gridOnly = new DailyStatus.PlayerLine(
+                42L,
+                "Player",
+                new DailyStatus.GameState(GameType.GRIDWORDS, true, Optional.empty()),
+                new DailyStatus.GameState(GameType.QUADWORDS, false, Optional.empty()),
+                new StreakSummary(1, 0, 1, 0, 0, 0, 0));
+        DailyStatus.PlayerLine both = new DailyStatus.PlayerLine(
+                42L,
+                "Player",
+                new DailyStatus.GameState(GameType.GRIDWORDS, true, Optional.empty()),
+                new DailyStatus.GameState(GameType.QUADWORDS, true, Optional.empty()),
+                new StreakSummary(1, 0, 1, 0, 0, 0, 0));
+
+        assertThat(DailyStatusRefreshService.fingerprint(new DailyStatus(DATE, List.of(gridOnly), 0, 0)))
+                .isNotEqualTo(DailyStatusRefreshService.fingerprint(new DailyStatus(DATE, List.of(both), 0, 0)));
+    }
 }

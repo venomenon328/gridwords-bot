@@ -687,6 +687,40 @@ class PostgresPersistenceAdapterIT {
     }
 
     @Test
+    void publicationContextRequiresTwoGameMembershipAndTwoPlayersInTheIntersection() {
+        jdbc.update("DELETE FROM player_participation_period");
+        long bothPlayer = 132L;
+        long gridOnlyPlayer = 133L;
+        adapter.upsert(new PlayerStore.PlayerUpsert(bothPlayer, "Only member of B", false, false));
+        adapter.upsert(new PlayerStore.PlayerUpsert(gridOnlyPlayer, "Grid only", false, false));
+
+        registerSubmission(935L, bothPlayer);
+        store(935L, quadResultFor(bothPlayer, true, "both player quad"));
+        registerSubmission(936L, bothPlayer);
+        SubmissionStore.StoredSubmission oneInIntersection = store(
+                936L, resultFor(bothPlayer, 3, "both player grid"));
+
+        assertTrue(oneInIntersection.publicationContext().personalCompleteEstablished());
+        assertTrue(oneInIntersection.publicationContext().personalPerfectEstablished());
+        assertFalse(oneInIntersection.publicationContext().sharedCompleteEstablished());
+        assertFalse(oneInIntersection.publicationContext().sharedPerfectEstablished());
+
+        SubmissionStore.StoredSubmission replay = store(
+                936L, resultFor(bothPlayer, 3, "both player grid"));
+        assertEquals(oneInIntersection.publicationContext(), replay.publicationContext());
+
+        adapter.upsert(quadResultFor(gridOnlyPlayer, true, "stored without quad participation"));
+        registerSubmission(937L, gridOnlyPlayer);
+        SubmissionStore.StoredSubmission singleGame = store(
+                937L, resultFor(gridOnlyPlayer, 3, "grid-only trigger"));
+
+        assertFalse(singleGame.publicationContext().personalCompleteEstablished());
+        assertFalse(singleGame.publicationContext().personalPerfectEstablished());
+        assertFalse(singleGame.publicationContext().sharedCompleteEstablished());
+        assertFalse(singleGame.publicationContext().sharedPerfectEstablished());
+    }
+
+    @Test
     void publishesImageBackedQuadWordsToCompletedAndKeepsTransitionContextOnlyOnTheFirstSubmission() {
         jdbc.update("DELETE FROM player_participation_period");
         long tobias = 180L;

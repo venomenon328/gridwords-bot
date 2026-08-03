@@ -2,7 +2,8 @@ package de.venomenon.gridwordsbot.application.reporting;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import de.venomenon.gridwordsbot.domain.model.ParticipationPeriod;
+import de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod;
+import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.reporting.ReportParticipant;
 import de.venomenon.gridwordsbot.domain.reporting.ReportParticipantBasis;
 import de.venomenon.gridwordsbot.domain.reporting.ReportPeriod;
@@ -19,7 +20,7 @@ class ReportParticipantProjectorTest {
         ReportParticipantBasis basis = project(WEEK, player(1, "Joined", date(2026, 7, 30),
                 participation(1, date(2026, 7, 30), null)));
 
-        assertThat(basis.participants().getFirst().participationDays())
+        assertThat(basis.participants().getFirst().unionParticipationDays())
                 .containsExactly(date(2026, 7, 30), date(2026, 7, 31), date(2026, 8, 1), date(2026, 8, 2));
     }
 
@@ -30,7 +31,7 @@ class ReportParticipantProjectorTest {
                 player(2, "Last", date(2026, 8, 2), participation(2, date(2026, 8, 2), null)));
 
         assertThat(basis.participants()).extracting(ReportParticipant::discordUserId).containsExactly(1L, 2L);
-        assertThat(basis.participants().get(1).participationDays()).containsExactly(date(2026, 8, 2));
+        assertThat(basis.participants().get(1).unionParticipationDays()).containsExactly(date(2026, 8, 2));
     }
 
     @Test
@@ -40,7 +41,7 @@ class ReportParticipantProjectorTest {
                 player(2, "Before", date(2026, 7, 20), participation(2, date(2026, 7, 20), date(2026, 7, 27))));
 
         assertThat(basis.participants()).extracting(ReportParticipant::discordUserId).containsExactly(1L);
-        assertThat(basis.participants().getFirst().participationDays())
+        assertThat(basis.participants().getFirst().unionParticipationDays())
                 .containsExactly(date(2026, 7, 27), date(2026, 7, 28), date(2026, 7, 29));
     }
 
@@ -50,7 +51,7 @@ class ReportParticipantProjectorTest {
                 player(1, "Future leave", date(2026, 7, 1), participation(1, date(2026, 7, 1), date(2026, 8, 10))),
                 player(2, "Open", date(2026, 7, 1), participation(2, date(2026, 7, 1), null)));
 
-        assertThat(basis.participants()).allSatisfy(player -> assertThat(player.participationDays()).hasSize(7));
+        assertThat(basis.participants()).allSatisfy(player -> assertThat(player.unionParticipationDays()).hasSize(7));
     }
 
     @Test
@@ -60,20 +61,20 @@ class ReportParticipantProjectorTest {
                 participation(1, date(2026, 8, 1), null),
                 participation(1, date(2026, 8, 1), null)));
 
-        assertThat(basis.participants().getFirst().participationDays()).containsExactly(
+        assertThat(basis.participants().getFirst().unionParticipationDays()).containsExactly(
                 date(2026, 7, 27), date(2026, 7, 28), date(2026, 7, 29), date(2026, 8, 1), date(2026, 8, 2));
     }
 
     @Test
     void projectsChangingDailyParticipantsAndSharedPossibleDays() {
         ReportParticipantBasis basis = project(WEEK,
-                player(1, "One", date(2026, 7, 1), participation(1, date(2026, 7, 1), null)),
-                player(2, "Two", date(2026, 7, 28), participation(2, date(2026, 7, 28), date(2026, 8, 1))),
-                player(3, "Three", date(2026, 8, 1), participation(3, date(2026, 8, 1), null)));
+                player(1, "One", date(2026, 7, 1), both(1, date(2026, 7, 1), null)),
+                player(2, "Two", date(2026, 7, 28), both(2, date(2026, 7, 28), date(2026, 8, 1))),
+                player(3, "Three", date(2026, 8, 1), both(3, date(2026, 8, 1), null)));
 
-        assertThat(basis.activeParticipantIdsByDay().get(date(2026, 7, 27))).containsExactly(1L);
-        assertThat(basis.activeParticipantIdsByDay().get(date(2026, 7, 28))).containsExactly(1L, 2L);
-        assertThat(basis.activeParticipantIdsByDay().get(date(2026, 8, 1))).containsExactly(1L, 3L);
+        assertThat(basis.unionParticipantIdsByDay().get(date(2026, 7, 27))).containsExactly(1L);
+        assertThat(basis.unionParticipantIdsByDay().get(date(2026, 7, 28))).containsExactly(1L, 2L);
+        assertThat(basis.unionParticipantIdsByDay().get(date(2026, 8, 1))).containsExactly(1L, 3L);
         assertThat(basis.sharedPossibleDays()).containsExactly(date(2026, 7, 28), date(2026, 7, 29), date(2026, 7, 30), date(2026, 7, 31), date(2026, 8, 1), date(2026, 8, 2));
     }
 
@@ -102,7 +103,7 @@ class ReportParticipantProjectorTest {
                 participation(1, date(2026, 7, 1), date(2026, 7, 27))));
 
         assertThat(basis.participants()).isEmpty();
-        assertThat(basis.activeParticipantIdsByDay().values()).allSatisfy(ids -> assertThat(ids).isEmpty());
+        assertThat(basis.unionParticipantIdsByDay().values()).allSatisfy(ids -> assertThat(ids).isEmpty());
     }
 
     @Test
@@ -111,9 +112,9 @@ class ReportParticipantProjectorTest {
         ReportParticipantBasis basis = project(month, player(1, "Mid-month", date(2026, 7, 15),
                 participation(1, date(2026, 7, 15), null)));
 
-        assertThat(basis.participants().getFirst().participationDays()).startsWith(date(2026, 7, 15));
-        assertThat(basis.participants().getFirst().participationDays()).endsWith(date(2026, 7, 31));
-        assertThat(basis.participants().getFirst().participationDays()).hasSize(17);
+        assertThat(basis.participants().getFirst().unionParticipationDays()).startsWith(date(2026, 7, 15));
+        assertThat(basis.participants().getFirst().unionParticipationDays()).endsWith(date(2026, 7, 31));
+        assertThat(basis.participants().getFirst().unionParticipationDays()).hasSize(17);
     }
 
     @Test
@@ -122,20 +123,49 @@ class ReportParticipantProjectorTest {
                 participation(1, date(2026, 7, 1), date(2026, 7, 30)),
                 participation(1, date(2026, 7, 30), null)));
 
-        assertThat(basis.participants().getFirst().participationDays()).hasSize(7);
-        assertThat(basis.activeParticipantIdsByDay().values()).allSatisfy(ids -> assertThat(ids).containsExactly(1L));
+        assertThat(basis.participants().getFirst().unionParticipationDays()).hasSize(7);
+        assertThat(basis.unionParticipantIdsByDay().values()).allSatisfy(ids -> assertThat(ids).containsExactly(1L));
+    }
+
+    @Test
+    void projectsUnionGameAndBothDaysAcrossAnInPeriodGameSwitch() {
+        ReportParticipantBasis basis = project(WEEK, player(1, "Switching", date(2026, 7, 27),
+                participation(1, GameType.GRIDWORDS, date(2026, 7, 27), date(2026, 7, 31)),
+                participation(1, GameType.QUADWORDS, date(2026, 7, 29), null)));
+
+        ReportParticipant participant = basis.participants().getFirst();
+        assertThat(participant.unionParticipationDays()).hasSize(7);
+        assertThat(participant.gridWordsParticipationDays()).containsExactly(
+                date(2026, 7, 27), date(2026, 7, 28), date(2026, 7, 29), date(2026, 7, 30));
+        assertThat(participant.quadWordsParticipationDays()).containsExactly(
+                date(2026, 7, 29), date(2026, 7, 30), date(2026, 7, 31), date(2026, 8, 1), date(2026, 8, 2));
+        assertThat(participant.bothGamesParticipationDays()).containsExactly(date(2026, 7, 29), date(2026, 7, 30));
+        assertThat(basis.bothGamesParticipantIdsByDay().get(date(2026, 7, 28))).isEmpty();
+        assertThat(basis.bothGamesParticipantIdsByDay().get(date(2026, 7, 29))).containsExactly(1L);
     }
     private static ReportParticipantBasis project(ReportPeriod period, ReportParticipantQuery.ParticipantProfile... profiles) {
         return new ReportParticipantProjector(ignored -> List.of(profiles)).project(period);
     }
 
     private static ReportParticipantQuery.ParticipantProfile player(
-            long id, String name, LocalDate firstParticipation, ParticipationPeriod... periods) {
+            long id, String name, LocalDate firstParticipation, GameParticipationPeriod... periods) {
         return new ReportParticipantQuery.ParticipantProfile(id, name, firstParticipation, List.of(periods));
     }
 
-    private static ParticipationPeriod participation(long playerId, LocalDate activeFrom, LocalDate inactiveFrom) {
-        return new ParticipationPeriod(playerId, activeFrom, inactiveFrom);
+    private static GameParticipationPeriod participation(long playerId, LocalDate activeFrom, LocalDate inactiveFrom) {
+        return participation(playerId, GameType.GRIDWORDS, activeFrom, inactiveFrom);
+    }
+
+    private static GameParticipationPeriod participation(
+            long playerId, GameType gameType, LocalDate activeFrom, LocalDate inactiveFrom) {
+        return new GameParticipationPeriod(playerId, gameType, activeFrom, inactiveFrom);
+    }
+
+    private static GameParticipationPeriod[] both(long playerId, LocalDate activeFrom, LocalDate inactiveFrom) {
+        return new GameParticipationPeriod[] {
+                participation(playerId, GameType.GRIDWORDS, activeFrom, inactiveFrom),
+                participation(playerId, GameType.QUADWORDS, activeFrom, inactiveFrom)
+        };
     }
 
     private static ReportPeriod period(int startYear, int startMonth, int startDay, int endYear, int endMonth, int endDay) {

@@ -9,7 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.venomenon.gridwordsbot.domain.model.GameType;
-import de.venomenon.gridwordsbot.domain.model.ParticipationPeriod;
+import de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReport;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportNoOp;
@@ -112,6 +112,34 @@ class PeriodicReportUseCaseTest {
                 .containsExactly(0, 3, Optional.empty(), Optional.empty());
         assertThat(personal.gameStatistics().quadWords().solutionRate()).isEmpty();
         assertThat(personal.streaks()).isEqualTo(zeroPersonalStreaks());
+    }
+
+    @Test
+    void assemblesSingleGameParticipationWithoutMissingOrCompleteValuesForTheOtherGame() {
+        GameParticipationPeriod gridPeriod = new GameParticipationPeriod(
+                1L, GameType.GRIDWORDS, date(2026, 7, 27), null);
+        ReportParticipantQuery.ParticipantProfile gridOnly = new ReportParticipantQuery.ParticipantProfile(
+                1L, "Grid only", date(2026, 7, 27), List.of(gridPeriod));
+        ReportGameResult gridResult = result(1L, GameType.GRIDWORDS, 27, true);
+
+        PeriodicReport report = complete(generateWithResults(
+                ReportType.WEEKLY,
+                PERIOD,
+                List.of(gridOnly),
+                List.of(gridResult),
+                new ReportStreakHistory(List.of(gridPeriod), List.of(gridResult))));
+
+        var personal = report.participants().getFirst();
+        assertThat(personal.gameStatistics().gridWords()).extracting("possibleDays", "submitted", "missing")
+                .containsExactly(3, 1, 2);
+        assertThat(personal.gameStatistics().quadWords()).extracting("possibleDays", "submitted", "missing")
+                .containsExactly(0, 0, 0);
+        assertThat(personal.dayCounts()).extracting(
+                        "participationDays", "activityDays", "completeDays", "perfectDays")
+                .containsExactly(3, 1, 0, 0);
+        assertThat(personal.streaks().complete()).isEqualTo(new ReportStreakSnapshot(0, 0));
+        assertThat(personal.streaks().quadWordsSolved()).isEqualTo(new ReportStreakSnapshot(0, 0));
+        assertThat(report.shared().dayCounts()).isEqualTo(new ReportSharedDayCounts(0, 0, 0));
     }
 
     @Test
@@ -234,11 +262,15 @@ class PeriodicReportUseCaseTest {
 
     private static ReportParticipantQuery.ParticipantProfile profile(long id, String name, int startDay, Integer inactiveDay) {
         return new ReportParticipantQuery.ParticipantProfile(id, name, date(2026, 7, startDay),
-                List.of(participation(id, startDay, inactiveDay)));
+                participation(id, startDay, inactiveDay));
     }
 
-    private static ParticipationPeriod participation(long id, int startDay, Integer inactiveDay) {
-        return new ParticipationPeriod(id, date(2026, 7, startDay), inactiveDay == null ? null : date(2026, 7, inactiveDay));
+    private static List<GameParticipationPeriod> participation(long id, int startDay, Integer inactiveDay) {
+        LocalDate start = date(2026, 7, startDay);
+        LocalDate inactive = inactiveDay == null ? null : date(2026, 7, inactiveDay);
+        return List.of(
+                new GameParticipationPeriod(id, GameType.GRIDWORDS, start, inactive),
+                new GameParticipationPeriod(id, GameType.QUADWORDS, start, inactive));
     }
 
     private static List<ReportGameResult> perfect(long id, int day) {
@@ -256,11 +288,15 @@ class PeriodicReportUseCaseTest {
     }
 
     private static ReportStreakHistory history(Object... facts) {
-        List<ParticipationPeriod> periods = new java.util.ArrayList<>();
+        List<GameParticipationPeriod> periods = new java.util.ArrayList<>();
         List<ReportGameResult> results = new java.util.ArrayList<>();
         for (Object fact : facts) {
-            if (fact instanceof ParticipationPeriod period) periods.add(period);
-            else results.addAll((List<ReportGameResult>) fact);
+            List<?> values = (List<?>) fact;
+            if (values.getFirst() instanceof GameParticipationPeriod) {
+                periods.addAll((List<GameParticipationPeriod>) values);
+            } else {
+                results.addAll((List<ReportGameResult>) values);
+            }
         }
         return new ReportStreakHistory(periods, results);
     }
@@ -270,17 +306,16 @@ class PeriodicReportUseCaseTest {
         for (LocalDate day = PERIOD.startDate(); !day.isAfter(PERIOD.endDate()); day = day.plusDays(1)) {
             java.util.LinkedHashSet<Long> ids = new java.util.LinkedHashSet<>();
             for (ReportParticipant participant : participants) {
-                if (participant.participationDays().contains(day)) ids.add(participant.discordUserId());
+                if (participant.unionParticipationDays().contains(day)) ids.add(participant.discordUserId());
             }
             active.put(day, ids);
         }
-        Set<LocalDate> shared = active.entrySet().stream().filter(entry -> entry.getValue().size() >= 2)
-                .map(Map.Entry::getKey).collect(java.util.stream.Collectors.toSet());
-        return new ReportParticipantBasis(PERIOD, List.of(participants), active, shared);
+        return new ReportParticipantBasis(PERIOD, List.of(participants), active, active, active, active);
     }
 
     private static ReportParticipant participant(long id, String name) {
-        return new ReportParticipant(id, name, PERIOD.startDate(), List.of(PERIOD.startDate()));
+        List<LocalDate> days = List.of(PERIOD.startDate());
+        return new ReportParticipant(id, name, PERIOD.startDate(), days, days, days, days);
     }
 
     private static ReportPlayerGameStatistics playerStatistics(long id) {

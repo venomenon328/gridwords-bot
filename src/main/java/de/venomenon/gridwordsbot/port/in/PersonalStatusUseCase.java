@@ -24,18 +24,25 @@ public interface PersonalStatusUseCase {
     }
 
     record PersonalStatus(
-            ParticipationStatus participation,
+            ParticipationStatus gridWordsParticipation,
+            ParticipationStatus quadWordsParticipation,
             boolean reminderOptIn,
             Optional<LatestSubmission> latestGridWordsSubmission,
             Optional<LatestSubmission> latestQuadWordsSubmission) {
         public PersonalStatus {
-            Objects.requireNonNull(participation, "participation");
+            Objects.requireNonNull(gridWordsParticipation, "gridWordsParticipation");
+            Objects.requireNonNull(quadWordsParticipation, "quadWordsParticipation");
             latestGridWordsSubmission = requiredSubmission(
                     latestGridWordsSubmission, GameType.GRIDWORDS, "latestGridWordsSubmission");
             latestQuadWordsSubmission = requiredSubmission(
                     latestQuadWordsSubmission, GameType.QUADWORDS, "latestQuadWordsSubmission");
         }
-
+        public PersonalStatus(ParticipationStatus participation, boolean reminderOptIn,
+                Optional<LatestSubmission> latestGridWordsSubmission, Optional<LatestSubmission> latestQuadWordsSubmission) {
+            this(participation, participation, reminderOptIn, latestGridWordsSubmission, latestQuadWordsSubmission);
+        }
+        /** Compatibility view until package 3 renders both game-specific participations. */
+        public ParticipationStatus participation() { return gridWordsParticipation.active() ? gridWordsParticipation : quadWordsParticipation; }
         private static Optional<LatestSubmission> requiredSubmission(
                 Optional<LatestSubmission> submission, GameType expectedType, String name) {
             Objects.requireNonNull(submission, name);

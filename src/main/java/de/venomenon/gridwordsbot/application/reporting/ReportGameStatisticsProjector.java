@@ -38,10 +38,9 @@ public final class ReportGameStatisticsProjector {
     }
 
     private static ReportPlayerGameStatistics projectParticipant(ReportParticipant participant, List<ReportGameResult> results) {
-        Set<LocalDate> participationDays = Set.copyOf(participant.participationDays());
         return new ReportPlayerGameStatistics(participant.discordUserId(),
-                gameStatistics(GameType.GRIDWORDS, participationDays, results),
-                gameStatistics(GameType.QUADWORDS, participationDays, results));
+                gameStatistics(GameType.GRIDWORDS, Set.copyOf(participant.gridWordsParticipationDays()), results),
+                gameStatistics(GameType.QUADWORDS, Set.copyOf(participant.quadWordsParticipationDays()), results));
     }
 
     private static ReportGameStatistics gameStatistics(

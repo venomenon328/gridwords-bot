@@ -137,10 +137,14 @@ public interface SubmissionStore {
     }
 
     /** Couples a fully validated player registration to result persistence in one transaction. */
-    record ResultStorage(long sourceMessageId, GameResultStore.GameResultUpsert result, PlayerStore.ParticipationChange playerRegistration) {
+    record ResultStorage(long sourceMessageId, GameResultStore.GameResultUpsert result,
+            PlayerStore.GameParticipationChange playerRegistration) {
         public ResultStorage(long sourceMessageId, GameResultStore.GameResultUpsert result) {
-            this(sourceMessageId, result, new PlayerStore.ParticipationChange(
-                    new PlayerStore.ProfileUpdate(result.playerId(), "Player", false), result.parsedResult().gameDate()));
+            this(sourceMessageId, result, new PlayerStore.GameParticipationChange(
+                    new PlayerStore.ProfileUpdate(result.playerId(), "Player", false),
+                    de.venomenon.gridwordsbot.domain.model.GameParticipationSelection.forGameType(
+                            result.parsedResult().gameType()),
+                    result.parsedResult().gameDate()));
         }
         public ResultStorage {
             if (sourceMessageId <= 0) throw new IllegalArgumentException("sourceMessageId must be positive");
@@ -148,6 +152,9 @@ public interface SubmissionStore {
             Objects.requireNonNull(playerRegistration, "playerRegistration");
             if (result.playerId() != playerRegistration.profile().discordUserId()) {
                 throw new IllegalArgumentException("result and player registration must refer to the same player");
+            }
+            if (!playerRegistration.selection().gameTypes().equals(List.of(result.parsedResult().gameType()))) {
+                throw new IllegalArgumentException("player registration must activate exactly the result game type");
             }
         }
     }

@@ -76,6 +76,8 @@ class ProcessSharedResultServiceTest {
 
         assertThat(store.lastResultStorage.playerRegistration().profile().discordUserId())
                 .isEqualTo(TOBIAS);
+        assertThat(store.lastResultStorage.playerRegistration().selection())
+                .isEqualTo(de.venomenon.gridwordsbot.domain.model.GameParticipationSelection.GRIDWORDS);
     }
 
     @Test

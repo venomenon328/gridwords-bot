@@ -25,10 +25,11 @@ public final class PersonalStatusEmbedRenderer {
         Objects.requireNonNull(status, "status");
         return new EmbedBuilder()
                 .setTitle("Dein Status")
-                .addField("Teilnahme", participation(status.participation()), false)
-                .addField("Reminder", status.reminderOptIn() ? "An" : "Aus", true)
-                .addField("GridWords", submission(status.latestGridWordsSubmission()), false)
-                .addField("QuadWords", submission(status.latestQuadWordsSubmission()), false)
+                .addField("GridWords-Teilnahme", participation(status.gridWordsParticipation()), true)
+                .addField("QuadWords-Teilnahme", participation(status.quadWordsParticipation()), true)
+                .addField("Reminder für aktive Spiele", status.reminderOptIn() ? "An" : "Aus", false)
+                .addField("Letzte GridWords-Einreichung", submission(status.latestGridWordsSubmission()), false)
+                .addField("Letzte QuadWords-Einreichung", submission(status.latestQuadWordsSubmission()), false)
                 .build();
     }
 

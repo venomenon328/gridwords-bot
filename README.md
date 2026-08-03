@@ -4,17 +4,18 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 ## Aktueller Stand
 
-Der funktionale Umfang bis einschließlich Inkrement 10 sowie der Zwischeninkremente 10.4 und 10.5 ist implementiert. Der Quellstand trägt die Projektversion `1.0.0` und wird vor dem produktiven Release als lokaler Release Candidate auf einem separaten Discord-Testserver abgenommen.
+Der funktionale Umfang bis einschließlich Inkrement 10 sowie der Zwischeninkremente 10.4, 10.5 und 10.6 ist implementiert, automatisiert geprüft und auf einem separaten Discord-Testserver real abgenommen. Der vollständige Produktionscontainer-, Compose-, Backup-, Restore-, Resume- und Rollback-Pfad wird auf dem finalen Commit durch das Ereignis **Ready for review** geprüft.
 
-Der bestehende Produktivbetrieb bleibt bis zur erfolgreichen RC-Abnahme unverändert. Ein produktiver Rollout und die manuelle Veröffentlichung nach GHCR erfolgen separat.
+Der Quellstand trägt die Projektversion `1.0.0`. Der bestehende Produktivbetrieb bleibt bis zur bewussten Veröffentlichung nach GHCR und zum anschließenden manuellen Deployment unverändert.
 
-Der letzte vollständig automatisiert geprüfte Funktionsstand umfasste:
+Der final abgenommene Stand umfasst:
 
-- 468 Standardtests ohne externe Infrastruktur,
-- 129 PostgreSQL-Integrationstests mit echtem PostgreSQL,
-- den vollständigen Container-, Compose-, Backup-, Restore-, Resume- und Rollback-Pfad.
+- 502 Standardtests ohne externe Infrastruktur,
+- eine grüne PostgreSQL-Integrationsmatrix mit echtem PostgreSQL,
+- grüne normale GitHub-CI für Standardbuild und Datenbankintegration,
+- eine bestandene reale Discord-Abnahme für Commands, Single-Game-Teilnahme, Tagesstatus, Menüs, Reminder, Recovery und Reports.
 
-Die abschließende manuelle Abnahme umfasst die reale Discord-Verbindung sowie die interaktiven Tagesstatus-Menüs und ihre ephemeren Ergebnisdetails.
+Das Abnahmeprotokoll steht unter [`docs/operations/10.6-game-specific-participation-acceptance.md`](docs/operations/10.6-game-specific-participation-acceptance.md).
 
 ## Fachlicher Funktionsumfang
 
@@ -23,31 +24,32 @@ Der Bot unterstützt insbesondere:
 - deterministische GridWords- und QuadWords-Textparser,
 - einen reinen QuadWords-Bildparser ohne OCR oder ML,
 - vier normalisierte QuadWords-Boards sowie boardlose QuadWords-Ergebnisse,
-- dynamische Spielerprofile und historisch stabile Teilnahmezeiträume,
-- Self-Service- und Admin-Slash-Commands für Teilnahme und Reminderstatus,
+- dynamische Spielerprofile und historisch stabile Teilnahmezeiträume je Spieltyp,
+- unabhängige Teilnahme an GridWords, QuadWords, beiden oder keinem Spiel,
+- Self-Service- und Admin-Slash-Commands mit optionaler Spielauswahl,
+- einen globalen Reminderstatus mit spielbezogener Audience,
 - kanonische Ergebnisnachrichten mit sicherer Quelllöschung,
 - Korrekturen durch Edit derselben kanonischen Nachricht,
-- persistente Tagesstatusnachrichten,
-- fünf persönliche und zwei gemeinsame Serien,
+- persistente Tagesstatusnachrichten mit eindeutiger Nichtteilnahme-Darstellung,
+- fünf persönliche und vier gemeinsame Serien,
 - Reminder um standardmäßig 16:00 und 22:00 Uhr,
 - täglichen Tagesabschluss und Channel-Bereinigung um 06:00 Uhr,
 - Wochenberichte montags um 08:00 Uhr,
 - Monatsberichte am Monatsersten um 08:15 Uhr,
-- interaktive Auswahlmenüs in Tagesstatusnachrichten,
+- getrennte GridWords-/QuadWords-Nenner in Wochen- und Monatsberichten,
+- interaktive, je Spiel getrennte Auswahlmenüs in Tagesstatusnachrichten,
 - ausschließlich ephemere, lesende Ergebnisdetails,
 - Claim-, Lease-, Retry-, Recovery-, Supersession- und Duplikatschutz,
 - keine Discord-I/O innerhalb von Datenbanktransaktionen.
 
 Standardzeitzone ist `Europe/Berlin`.
 
-Die nächste fachlich vorbereitete Erweiterung ist Zwischeninkrement 10.6 aus Issue #39: historische Teilnahme pro Spieltyp mit getrennten Reminder-, Serien-, Status- und Berichtsnennern. Diese Funktion ist auf dem aktuellen Produktionsstand noch nicht implementiert.
-
 ## Projektdokumentation
 
 - [`docs/anforderungsspezifikation.md`](docs/anforderungsspezifikation.md) – fachliche Grundanforderungen
 - [`docs/requirements/series-model.md`](docs/requirements/series-model.md) – Seriensemantik
-- [`docs/requirements/dynamic-player-model.md`](docs/requirements/dynamic-player-model.md) – dynamische Spieler und bisherige globale Teilnahmezeiträume
-- [`docs/requirements/game-specific-participation.md`](docs/requirements/game-specific-participation.md) – geplante spielbezogene Teilnahme ab Zwischeninkrement 10.6
+- [`docs/requirements/dynamic-player-model.md`](docs/requirements/dynamic-player-model.md) – dynamische Spieler und historisches Ausgangsmodell
+- [`docs/requirements/game-specific-participation.md`](docs/requirements/game-specific-participation.md) – verbindliche spielbezogene Teilnahme ab Zwischeninkrement 10.6
 - [`docs/requirements/daily-status-reminders.md`](docs/requirements/daily-status-reminders.md) – Tagesstatus, Reminder und Cleanup
 - [`docs/requirements/periodic-reports.md`](docs/requirements/periodic-reports.md) – Wochen- und Monatsberichte
 - [`docs/requirements/production-deployment.md`](docs/requirements/production-deployment.md) – Produktions- und Deploymentweg
@@ -58,6 +60,7 @@ Die nächste fachlich vorbereitete Erweiterung ist Zwischeninkrement 10.6 aus Is
 - [`docs/increments/10.4-day-close-reminder-retention-cleanup.md`](docs/increments/10.4-day-close-reminder-retention-cleanup.md) – Tagesabschluss und Bereinigung
 - [`docs/increments/10.5-interactive-result-details.md`](docs/increments/10.5-interactive-result-details.md) – interaktive Ergebnisdetails
 - [`docs/increments/10.6-game-specific-participation.md`](docs/increments/10.6-game-specific-participation.md) – Entwicklungspakete für unabhängige Spielteilnahme
+- [`docs/operations/10.6-game-specific-participation-acceptance.md`](docs/operations/10.6-game-specific-participation-acceptance.md) – automatisierte und reale Abschlussabnahme
 - [`docs/operations/`](docs/operations/) – Betrieb, Deployment, Backup und Fehlerdiagnose
 - [`docs/adr/`](docs/adr/) – Architekturentscheidungen
 - [`AGENTS.md`](AGENTS.md) – Arbeitsregeln für Codex und Reviews
@@ -158,9 +161,11 @@ Liquibase verwendet dieselben Migrationen wie die Integrationstests und der Prod
 
 Der Produktionscontainer wird aus dem versionierten `Dockerfile` gebaut und läuft als Nicht-Root-Benutzer mit Java 21.
 
-Normale Pull Requests und Pushes auf `main` führen den vollständigen Container- und Betriebscheck aus, veröffentlichen aber kein Image. Eine Veröffentlichung nach `ghcr.io/venomenon328/gridwords-bot` erfolgt ausschließlich durch den bewusst manuell gestarteten Workflow `Container image` auf `main` mit einem neuen SemVer-Tag.
+Die normale GitHub-CI führt bei jedem relevanten Feature-Push und Pull Request Standardbuild und PostgreSQL-Integration aus. Der separate Workflow `Container image` bleibt bei Draft-Pull-Requests übersprungen und wird auf dem finalen Commit durch **Ready for review** ausgelöst. Pushes auf `main` und manuelle Runs prüfen den vollständigen Container- und Betriebsweg weiterhin.
 
-Release Candidates werden lokal gebaut und zunächst ausschließlich gegen den Discord-Testserver geprüft. Nach erfolgreicher Abnahme wird ausschließlich derselbe freigegebene Commit im separaten Produktionsschritt veröffentlicht und ausgerollt. Ein erneuter Workflow-Build ist ein neuer Build desselben Commits; eine byte-identische Promotion setzt voraus, dass das lokal getestete Image erhalten und direkt veröffentlicht wird.
+Eine Veröffentlichung nach `ghcr.io/venomenon328/gridwords-bot` erfolgt ausschließlich durch den bewusst manuell gestarteten Workflow `Container image` auf `main` mit einem neuen SemVer-Tag. Pull Requests veröffentlichen niemals ein Image.
+
+Release Candidates werden gegen den Discord-Testserver geprüft. Nach erfolgreicher Abnahme wird ausschließlich derselbe freigegebene Commit im separaten Produktionsschritt veröffentlicht und ausgerollt. Ein erneuter Workflow-Build ist ein neuer Build desselben Commits; eine byte-identische Promotion setzt voraus, dass das lokal getestete Image erhalten und direkt veröffentlicht wird.
 
 ## Datenbankzugriff mit DBeaver
 
@@ -186,6 +191,7 @@ Die Produktionsdatenbank besitzt keinen öffentlichen Hostport. Administrativer 
 
 - Standardtests ohne Netzwerk, Token, Datenbank oder Container,
 - PostgreSQL-Integration mit echtem PostgreSQL über das Profil `database-integration`,
+- vollständiger Liquibase-Neuaufbau und Upgrade eines Schemas vor Zwischeninkrement 10.6,
 - Discord-Adaptertests an der JDA-Grenze ohne echte Verbindung,
 - reale PNG-Fixtures für den QuadWords-Bildparser,
 - feste injizierte `Clock` für zeitabhängige Tests,

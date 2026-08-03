@@ -402,11 +402,11 @@ public final class CanonicalGridWordsPublicationService {
             SubmissionStore.PublicationContext publicationContext) {
         List<GameResultStore.StoredGameResult> allResults = results.findAll();
         LocalDate date = result.parsedResult().gameDate();
-        StreakSummary streaks = streakCalculator.calculateWithParticipation(
+        StreakSummary streaks = streakCalculator.calculateWithGameParticipation(
                 allResults.stream()
                         .map(stored -> new StreakCalculator.PlayerResult(stored.playerId(), stored.parsedResult()))
                         .toList(),
-                java.util.Optional.ofNullable(players.findParticipationPeriods()).orElse(List.of()),
+                java.util.Optional.ofNullable(players.findGameParticipationPeriods()).orElse(List.of()),
                 playerId,
                 clock.instant().atZone(zoneId).toLocalDate());
 

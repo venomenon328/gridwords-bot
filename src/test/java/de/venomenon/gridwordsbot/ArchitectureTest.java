@@ -4,11 +4,11 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 import com.tngtech.archunit.core.importer.ImportOption;
-import jakarta.persistence.Entity;
-import org.springframework.data.repository.Repository;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
+import jakarta.persistence.Entity;
+import org.springframework.data.repository.Repository;
 
 @AnalyzeClasses(
         packages = "de.venomenon.gridwordsbot",
@@ -62,6 +62,13 @@ class ArchitectureTest {
             .should().dependOnClassesThat().resideInAnyPackage(
                     "net.dv8tion.jda..", "org.springframework.jdbc..", "org.springframework.data..",
                     "jakarta.persistence..", "javax.persistence..", "org.hibernate..");
+
+    @ArchTest
+    static final ArchRule productionProjectionsDoNotUseGlobalParticipationPeriods = noClasses()
+            .that().resideInAnyPackage("..application..", "..domain.reporting..", "..domain.status..")
+            .should().dependOnClassesThat().haveFullyQualifiedName(
+                    "de.venomenon.gridwordsbot.domain.model.ParticipationPeriod");
+
     @ArchTest
     static final ArchRule entitiesOnlyExistInPersistenceAdapters = classes()
             .that().areAnnotatedWith(Entity.class)

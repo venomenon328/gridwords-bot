@@ -106,6 +106,32 @@ class PeriodicReportRendererTest {
     }
 
     @Test
+    void rendersZeroGameParticipationAsNeutralNonParticipation() {
+        LocalDate day = date(2026, 7, 27);
+        ReportParticipant participant = new ReportParticipant(
+                1L, "Grid only", day, List.of(day), List.of(day), List.of(), List.of());
+        ReportGameStatistics gridWords = new ReportGameStatistics(
+                GameType.GRIDWORDS, 1, 0, 0, 0, 1, Optional.empty(),
+                0, 0, Duration.ZERO, 0, Optional.empty());
+        ReportGameStatistics quadWords = new ReportGameStatistics(
+                GameType.QUADWORDS, 0, 0, 0, 0, 0, Optional.empty(),
+                0, 0, Duration.ZERO, 0, Optional.empty());
+        PeriodicReportParticipantSection section = new PeriodicReportParticipantSection(
+                participant,
+                new ReportPlayerGameStatistics(1L, gridWords, quadWords),
+                new ReportPersonalDayCounts(1, 0, 0, 0),
+                new ReportPersonalStreaks(zero(), zero(), zero(), zero(), zero()));
+
+        String value = renderer.render(report(
+                ReportType.WEEKLY,
+                new ReportPeriod(day, day),
+                section)).pages().getFirst().fields().getFirst().value();
+
+        assertThat(value).contains("GridWords\nEingereicht: 0/1", "QuadWords\nNicht teilgenommen");
+        assertThat(value).doesNotContain("QuadWords\nEingereicht", "QuadWords\nNicht teilgenommen\nQuote");
+    }
+
+    @Test
     void usesDeterministicHalfUpRoundingAtMeaningfulBoundariesIncludingDurationsAboveOneHour() {
         var rendered = renderer.render(report(ReportType.WEEKLY, new ReportPeriod(date(2026, 7, 27), date(2026, 8, 2)),
                 player(1, "Anna", 3, 3, 2, 1, 3, 2, 1, 5, 2, 7_321, 3_660)));
@@ -278,7 +304,8 @@ class PeriodicReportRendererTest {
                 submitted == 0 ? Optional.empty() : Optional.of(new ReportRatio(solved, submitted)), attempts, solvedCount,
                 Duration.ofSeconds(durationSeconds), solvedCount,
                 solvedCount == 0 ? Optional.empty() : Optional.of(Duration.ofSeconds(bestSeconds)));
-        return new PeriodicReportParticipantSection(new ReportParticipant(id, name, date(2026, 7, 1), days),
+        return new PeriodicReportParticipantSection(new ReportParticipant(
+                        id, name, date(2026, 7, 1), days, days, days, days),
                 new ReportPlayerGameStatistics(id, game, quad), new ReportPersonalDayCounts(possible, activity, complete, perfect),
                 new ReportPersonalStreaks(new ReportStreakSnapshot(2, 8), new ReportStreakSnapshot(1, 7),
                         new ReportStreakSnapshot(3, 6), new ReportStreakSnapshot(4, 5), new ReportStreakSnapshot(1, 4)));
@@ -286,5 +313,9 @@ class PeriodicReportRendererTest {
 
     private static LocalDate date(int year, int month, int day) {
         return LocalDate.of(year, month, day);
+    }
+
+    private static ReportStreakSnapshot zero() {
+        return new ReportStreakSnapshot(0, 0);
     }
 }

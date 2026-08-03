@@ -1,17 +1,12 @@
 package de.venomenon.gridwordsbot.adapter.persistence;
 
 import de.venomenon.gridwordsbot.domain.model.GameType;
-import de.venomenon.gridwordsbot.port.out.PlayerStore.ParticipationChange;
-import de.venomenon.gridwordsbot.port.out.PlayerStore.ProfileUpdate;
-import de.venomenon.gridwordsbot.port.out.PlayerStore.StoredPlayer;
 import de.venomenon.gridwordsbot.port.out.ReminderCandidateStore.ReminderCandidate;
 import de.venomenon.gridwordsbot.port.out.SubmissionStore.ResultStorage;
 import de.venomenon.gridwordsbot.port.out.SubmissionStore.StoredSubmission;
 import java.time.Clock;
 import java.time.LocalDate;
-import java.time.OffsetDateTime;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.List;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
@@ -34,12 +29,10 @@ public class DynamicPlayerPostgresPersistenceAdapter extends PostgresPersistence
     private static final long PARTICIPATION_CONTEXT_LOCK = 7_320_019L;
 
     private final JdbcTemplate jdbc;
-    private final Clock clock;
 
     public DynamicPlayerPostgresPersistenceAdapter(JdbcTemplate jdbc, Clock clock, ZoneId businessZone) {
         super(jdbc, clock, businessZone);
         this.jdbc = jdbc;
-        this.clock = clock;
     }
 
     @Override
@@ -52,72 +45,41 @@ public class DynamicPlayerPostgresPersistenceAdapter extends PostgresPersistence
     }
 
     @Override
-    @Transactional
-    public StoredPlayer synchronizeProfile(ProfileUpdate request) {
-        OffsetDateTime now = OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
-        jdbc.update("""
-                INSERT INTO player (
-                    discord_user_id, display_name, active, administrator, reminder_opt_in, created_at, updated_at)
-                VALUES (?, ?, FALSE, ?, FALSE, ?, ?)
-                ON CONFLICT (discord_user_id) DO UPDATE SET
-                    display_name = EXCLUDED.display_name,
-                    administrator = EXCLUDED.administrator,
-                    updated_at = EXCLUDED.updated_at
-                """, request.discordUserId(), request.displayName(), request.administrator(), now, now);
-        return findByDiscordUserId(request.discordUserId())
-                .orElseThrow(() -> new IllegalStateException("player profile was not stored"));
-    }
-
-    @Override
-    @Transactional
-    public StoredPlayer activate(ParticipationChange request) {
-        boolean wasActive = findByDiscordUserId(request.profile().discordUserId())
-                .map(StoredPlayer::active)
-                .orElse(false);
-        synchronizeProfile(request.profile());
-        StoredPlayer activated = super.activate(request);
-        if (!wasActive && !activated.reminderOptIn()) {
-            // Joining is opt-out: a new or reactivated participant receives reminders until explicitly disabling
-            // them. A valid result from an already active opt-out player must not silently undo that preference.
-            return super.setReminderOptIn(request.profile(), true);
-        }
-        return activated;
-    }
-
-    @Override
-    @Transactional
-    public StoredPlayer deactivate(ParticipationChange request) {
-        synchronizeProfile(request.profile());
-        return super.deactivate(request);
-    }
-
-    @Override
-    @Transactional
-    public StoredPlayer setReminderOptIn(ProfileUpdate request, boolean reminderOptIn) {
-        synchronizeProfile(request);
-        return super.setReminderOptIn(request, reminderOptIn);
-    }
-
-    @Override
     public List<ReminderCandidate> findReminderCandidates(LocalDate gameDate) {
         return jdbc.query("""
                 SELECT p.discord_user_id, p.display_name, p.reminder_opt_in,
-                    NOT EXISTS (
+                    EXISTS (
+                        SELECT 1 FROM player_participation_period pp
+                        WHERE pp.player_id = p.discord_user_id
+                          AND pp.game_type = 'GRIDWORDS'
+                          AND pp.active_from <= ?
+                          AND (pp.inactive_from IS NULL OR ? < pp.inactive_from)
+                    ) AND NOT EXISTS (
                         SELECT 1 FROM game_result r
                         WHERE r.player_id = p.discord_user_id
                           AND r.game_type = 'GRIDWORDS'
                           AND r.game_date = ?
                     ) AS missing_gridwords,
-                    NOT EXISTS (
+                    EXISTS (
+                        SELECT 1 FROM player_participation_period pp
+                        WHERE pp.player_id = p.discord_user_id
+                          AND pp.game_type = 'QUADWORDS'
+                          AND pp.active_from <= ?
+                          AND (pp.inactive_from IS NULL OR ? < pp.inactive_from)
+                    ) AND NOT EXISTS (
                         SELECT 1 FROM game_result r
                         WHERE r.player_id = p.discord_user_id
                           AND r.game_type = 'QUADWORDS'
                           AND r.game_date = ?
                     ) AS missing_quadwords
                 FROM player p
-                JOIN player_participation_period pp ON pp.player_id = p.discord_user_id
-                WHERE pp.active_from <= ?
-                  AND (pp.inactive_from IS NULL OR ? < pp.inactive_from)
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM player_participation_period pp
+                    WHERE pp.player_id = p.discord_user_id
+                      AND pp.active_from <= ?
+                      AND (pp.inactive_from IS NULL OR ? < pp.inactive_from)
+                )
                 ORDER BY LOWER(p.display_name), p.discord_user_id
                 """, (rs, row) -> {
                     List<GameType> missing = new java.util.ArrayList<>();
@@ -128,7 +90,7 @@ public class DynamicPlayerPostgresPersistenceAdapter extends PostgresPersistence
                             rs.getString("display_name"),
                             missing,
                             rs.getBoolean("reminder_opt_in"));
-                }, gameDate, gameDate, gameDate, gameDate).stream()
+                }, gameDate, gameDate, gameDate, gameDate, gameDate, gameDate, gameDate, gameDate).stream()
                 .filter(java.util.Objects::nonNull)
                 .toList();
     }

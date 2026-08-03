@@ -1,6 +1,6 @@
 package de.venomenon.gridwordsbot.port.out;
 
-import de.venomenon.gridwordsbot.domain.model.ParticipationPeriod;
+import de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod;
 import de.venomenon.gridwordsbot.domain.reporting.ReportPeriod;
 import java.time.LocalDate;
 import java.util.List;
@@ -15,7 +15,7 @@ public interface ReportParticipantQuery {
             long discordUserId,
             String displayName,
             LocalDate firstParticipationStart,
-            List<ParticipationPeriod> participationPeriods) {
+            List<GameParticipationPeriod> participationPeriods) {
         public ParticipantProfile {
             if (discordUserId <= 0) throw new IllegalArgumentException("discordUserId must be positive");
             Objects.requireNonNull(displayName, "displayName");

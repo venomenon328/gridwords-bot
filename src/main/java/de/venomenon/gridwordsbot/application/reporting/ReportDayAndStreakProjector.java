@@ -1,7 +1,7 @@
 package de.venomenon.gridwordsbot.application.reporting;
 
 import de.venomenon.gridwordsbot.domain.model.GameType;
-import de.venomenon.gridwordsbot.domain.model.ParticipationPeriod;
+import de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
 import de.venomenon.gridwordsbot.domain.reporting.ReportDayAndStreakProjection;
 import de.venomenon.gridwordsbot.domain.reporting.ReportGameResult;
@@ -52,16 +52,17 @@ public final class ReportDayAndStreakProjector {
     private ReportParticipantDayAndStreakSnapshot projectParticipant(
             ReportParticipant participant, ReportParticipantBasis basis, HistoricalDays days) {
         long playerId = participant.discordUserId();
-        Set<LocalDate> participationDays = Set.copyOf(participant.participationDays());
-        int activityDays = count(participationDays, day -> days.activity(playerId, day));
-        int completeDays = count(participationDays, day -> days.complete(playerId, day));
-        int perfectDays = count(participationDays, day -> days.perfect(playerId, day));
+        Set<LocalDate> unionParticipationDays = Set.copyOf(participant.unionParticipationDays());
+        Set<LocalDate> bothGamesParticipationDays = Set.copyOf(participant.bothGamesParticipationDays());
+        int activityDays = count(unionParticipationDays, day -> days.activity(playerId, day));
+        int completeDays = count(bothGamesParticipationDays, day -> days.complete(playerId, day));
+        int perfectDays = count(bothGamesParticipationDays, day -> days.perfect(playerId, day));
         LocalDate firstRelevantDay = days.firstParticipationDay(playerId).orElse(participant.firstParticipationStart());
         LocalDate cutoff = basis.period().statisticsAndStreakCutoff();
 
         return new ReportParticipantDayAndStreakSnapshot(
                 playerId,
-                new ReportPersonalDayCounts(participationDays.size(), activityDays, completeDays, perfectDays),
+                new ReportPersonalDayCounts(unionParticipationDays.size(), activityDays, completeDays, perfectDays),
                 new ReportPersonalStreaks(
                         snapshot(firstRelevantDay, cutoff, day -> days.activity(playerId, day)),
                         snapshot(firstRelevantDay, cutoff, day -> days.complete(playerId, day)),
@@ -94,22 +95,24 @@ public final class ReportDayAndStreakProjector {
     }
 
     private static final class HistoricalDays {
-        private final Map<Long, List<ParticipationPeriod>> periodsByPlayer;
+        private final Map<Long, List<GameParticipationPeriod>> periodsByPlayer;
         private final Map<Long, Map<LocalDate, Map<GameType, ReportGameResult>>> resultsByPlayer;
 
         private HistoricalDays(
-                Map<Long, List<ParticipationPeriod>> periodsByPlayer,
+                Map<Long, List<GameParticipationPeriod>> periodsByPlayer,
                 Map<Long, Map<LocalDate, Map<GameType, ReportGameResult>>> resultsByPlayer) {
             this.periodsByPlayer = periodsByPlayer;
             this.resultsByPlayer = resultsByPlayer;
         }
 
         static HistoricalDays from(ReportStreakHistory history, LocalDate cutoff) {
-            Map<Long, List<ParticipationPeriod>> periods = new HashMap<>();
+            Map<Long, List<GameParticipationPeriod>> periods = new HashMap<>();
             history.participationPeriods().stream()
                     .filter(period -> !period.activeFrom().isAfter(cutoff))
                     .forEach(period -> periods.computeIfAbsent(period.playerId(), ignored -> new ArrayList<>()).add(period));
-            periods.values().forEach(playerPeriods -> playerPeriods.sort(Comparator.comparing(ParticipationPeriod::activeFrom)));
+            periods.values().forEach(playerPeriods -> playerPeriods.sort(
+                    Comparator.comparing(GameParticipationPeriod::activeFrom)
+                            .thenComparing(GameParticipationPeriod::gameType)));
 
             Map<Long, Map<LocalDate, Map<GameType, ReportGameResult>>> results = new HashMap<>();
             history.results().stream()
@@ -123,28 +126,34 @@ public final class ReportDayAndStreakProjector {
 
         java.util.Optional<LocalDate> firstParticipationDay(long playerId) {
             return periodsByPlayer.getOrDefault(playerId, List.of()).stream()
-                    .map(ParticipationPeriod::activeFrom)
+                    .map(GameParticipationPeriod::activeFrom)
                     .min(LocalDate::compareTo);
         }
 
         java.util.Optional<LocalDate> firstParticipationDay() {
             return periodsByPlayer.values().stream()
                     .flatMap(List::stream)
-                    .map(ParticipationPeriod::activeFrom)
+                    .map(GameParticipationPeriod::activeFrom)
                     .min(LocalDate::compareTo);
         }
 
         boolean activity(long playerId, LocalDate day) {
-            return active(playerId, day) && !games(playerId, day).isEmpty();
+            return participatesInAnyGame(playerId, day) && games(playerId, day).keySet().stream()
+                    .anyMatch(gameType -> participates(playerId, gameType, day));
         }
 
         boolean complete(long playerId, LocalDate day) {
-            return active(playerId, day) && games(playerId, day).size() == GameType.values().length;
+            Map<GameType, ReportGameResult> games = games(playerId, day);
+            return participatesInBothGames(playerId, day)
+                    && games.containsKey(GameType.GRIDWORDS)
+                    && games.containsKey(GameType.QUADWORDS);
         }
 
         boolean solved(long playerId, LocalDate day, GameType gameType) {
             ReportGameResult result = games(playerId, day).get(gameType);
-            return active(playerId, day) && result != null && result.outcome() instanceof ShareOutcome.Solved;
+            return participates(playerId, gameType, day)
+                    && result != null
+                    && result.outcome() instanceof ShareOutcome.Solved;
         }
 
         boolean perfect(long playerId, LocalDate day) {
@@ -153,22 +162,35 @@ public final class ReportDayAndStreakProjector {
         }
 
         boolean sharedComplete(LocalDate day) {
-            List<Long> activePlayerIds = activePlayerIds(day);
-            return activePlayerIds.size() >= 2 && activePlayerIds.stream().allMatch(playerId -> complete(playerId, day));
+            List<Long> bothGamesPlayerIds = bothGamesPlayerIds(day);
+            return bothGamesPlayerIds.size() >= 2
+                    && bothGamesPlayerIds.stream().allMatch(playerId -> complete(playerId, day));
         }
 
         boolean sharedPerfect(LocalDate day) {
-            List<Long> activePlayerIds = activePlayerIds(day);
-            return activePlayerIds.size() >= 2 && activePlayerIds.stream().allMatch(playerId -> perfect(playerId, day));
+            List<Long> bothGamesPlayerIds = bothGamesPlayerIds(day);
+            return bothGamesPlayerIds.size() >= 2
+                    && bothGamesPlayerIds.stream().allMatch(playerId -> perfect(playerId, day));
         }
 
-        private boolean active(long playerId, LocalDate day) {
-            return periodsByPlayer.getOrDefault(playerId, List.of()).stream().anyMatch(period -> period.contains(day));
+        private boolean participates(long playerId, GameType gameType, LocalDate day) {
+            return periodsByPlayer.getOrDefault(playerId, List.of()).stream()
+                    .anyMatch(period -> period.gameType() == gameType && period.contains(day));
         }
 
-        private List<Long> activePlayerIds(LocalDate day) {
+        private boolean participatesInAnyGame(long playerId, LocalDate day) {
+            return participates(playerId, GameType.GRIDWORDS, day)
+                    || participates(playerId, GameType.QUADWORDS, day);
+        }
+
+        private boolean participatesInBothGames(long playerId, LocalDate day) {
+            return participates(playerId, GameType.GRIDWORDS, day)
+                    && participates(playerId, GameType.QUADWORDS, day);
+        }
+
+        private List<Long> bothGamesPlayerIds(LocalDate day) {
             return periodsByPlayer.entrySet().stream()
-                    .filter(entry -> entry.getValue().stream().anyMatch(period -> period.contains(day)))
+                    .filter(entry -> participatesInBothGames(entry.getKey(), day))
                     .map(Map.Entry::getKey)
                     .toList();
         }

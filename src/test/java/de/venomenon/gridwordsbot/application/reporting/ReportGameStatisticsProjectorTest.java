@@ -121,6 +121,29 @@ class ReportGameStatisticsProjectorTest {
     }
 
     @Test
+    void usesSeparateGameDenominatorsAndKeepsANonParticipatedGameAtZero() {
+        ReportParticipant participant = new ReportParticipant(
+                1L,
+                "Grid only",
+                date(2026, 7, 27),
+                List.of(date(2026, 7, 27), date(2026, 7, 28)),
+                List.of(date(2026, 7, 27), date(2026, 7, 28)),
+                List.of(),
+                List.of());
+
+        ReportPlayerGameStatistics statistics = project(basis(participant), List.of(
+                solved(1, GameType.GRIDWORDS, date(2026, 7, 27), 3, 70))).getFirst();
+
+        assertThat(statistics.gridWords().possibleDays()).isEqualTo(2);
+        assertThat(statistics.gridWords().submitted()).isEqualTo(1);
+        assertThat(statistics.gridWords().missing()).isEqualTo(1);
+        assertThat(statistics.quadWords().possibleDays()).isZero();
+        assertThat(statistics.quadWords().submitted()).isZero();
+        assertThat(statistics.quadWords().missing()).isZero();
+        assertThat(statistics.quadWords().solutionRate()).isEmpty();
+    }
+
+    @Test
     void rejectsInconsistentDerivedStatistics() {
         assertThatIllegalArgumentException().isThrownBy(() -> new ReportGameStatistics(
                 GameType.GRIDWORDS, 2, 1, 1, 0, 1, java.util.Optional.empty(),
@@ -134,18 +157,44 @@ class ReportGameStatisticsProjectorTest {
     private static ReportParticipantBasis basis(ReportParticipant... participants) {
         Map<LocalDate, Set<Long>> activeByDay = new LinkedHashMap<>();
         for (ReportParticipant participant : participants) {
-            participant.participationDays().forEach(day -> activeByDay.merge(
+            participant.unionParticipationDays().forEach(day -> activeByDay.merge(
                     day, Set.of(participant.discordUserId()), (left, right) -> {
                         java.util.LinkedHashSet<Long> ids = new java.util.LinkedHashSet<>(left);
                         ids.addAll(right);
                         return Set.copyOf(ids);
                     }));
         }
-        return new ReportParticipantBasis(PERIOD, List.of(participants), activeByDay, Set.of());
+        activePeriodDays().forEach(day -> activeByDay.putIfAbsent(day, Set.of()));
+        Map<LocalDate, Set<Long>> gridByDay = dailyParticipants(participants, true);
+        Map<LocalDate, Set<Long>> quadByDay = dailyParticipants(participants, false);
+        Map<LocalDate, Set<Long>> bothByDay = dailyParticipants(participants, null);
+        return new ReportParticipantBasis(PERIOD, List.of(participants), activeByDay, gridByDay, quadByDay, bothByDay);
     }
 
     private static ReportParticipant player(long id, LocalDate... participationDays) {
-        return new ReportParticipant(id, "Player " + id, participationDays[0], List.of(participationDays));
+        List<LocalDate> days = List.of(participationDays);
+        return new ReportParticipant(id, "Player " + id, participationDays[0], days, days, days, days);
+    }
+
+    private static Map<LocalDate, Set<Long>> dailyParticipants(
+            ReportParticipant[] participants, Boolean gridWords) {
+        Map<LocalDate, Set<Long>> byDay = new LinkedHashMap<>();
+        for (ReportParticipant participant : participants) {
+            List<LocalDate> days = gridWords == null
+                    ? participant.bothGamesParticipationDays()
+                    : gridWords ? participant.gridWordsParticipationDays() : participant.quadWordsParticipationDays();
+            days.forEach(day -> byDay.merge(day, Set.of(participant.discordUserId()), (left, right) -> {
+                java.util.LinkedHashSet<Long> ids = new java.util.LinkedHashSet<>(left);
+                ids.addAll(right);
+                return Set.copyOf(ids);
+            }));
+        }
+        activePeriodDays().forEach(day -> byDay.putIfAbsent(day, Set.of()));
+        return byDay;
+    }
+
+    private static List<LocalDate> activePeriodDays() {
+        return PERIOD.startDate().datesUntil(PERIOD.endDate().plusDays(1)).toList();
     }
 
     private static ReportGameResult solved(long playerId, GameType type, LocalDate date, int attempts, long seconds) {

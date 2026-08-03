@@ -3,7 +3,7 @@ package de.venomenon.gridwordsbot.application.reporting;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import de.venomenon.gridwordsbot.domain.model.GameType;
-import de.venomenon.gridwordsbot.domain.model.ParticipationPeriod;
+import de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
 import de.venomenon.gridwordsbot.domain.reporting.ReportDayAndStreakProjection;
 import de.venomenon.gridwordsbot.domain.reporting.ReportGameResult;
@@ -107,35 +107,41 @@ class ReportDayAndStreakProjectorTest {
         for (LocalDate day = PERIOD.startDate(); !day.isAfter(PERIOD.endDate()); day = day.plusDays(1)) {
             java.util.LinkedHashSet<Long> active = new java.util.LinkedHashSet<>();
             for (ReportParticipant participant : participants) {
-                if (participant.participationDays().contains(day)) active.add(participant.discordUserId());
+                if (participant.unionParticipationDays().contains(day)) active.add(participant.discordUserId());
             }
             activeByDay.put(day, Set.copyOf(active));
         }
-        Set<LocalDate> sharedDays = activeByDay.entrySet().stream()
-                .filter(entry -> entry.getValue().size() >= 2)
-                .map(Map.Entry::getKey)
-                .collect(java.util.stream.Collectors.toUnmodifiableSet());
-        return new ReportParticipantBasis(PERIOD, List.of(participants), activeByDay, sharedDays);
+        return new ReportParticipantBasis(
+                PERIOD, List.of(participants), activeByDay, activeByDay, activeByDay, activeByDay);
     }
 
     private static ReportParticipant participant(long id, int... days) {
         List<LocalDate> participationDays = java.util.Arrays.stream(days).mapToObj(day -> date(2026, 7, day)).toList();
-        return new ReportParticipant(id, "Player " + id, participationDays.getFirst(), participationDays);
+        return new ReportParticipant(
+                id, "Player " + id, participationDays.getFirst(),
+                participationDays, participationDays, participationDays, participationDays);
     }
 
     private static ReportStreakHistory history(Object... facts) {
-        List<ParticipationPeriod> periods = new java.util.ArrayList<>();
+        List<GameParticipationPeriod> periods = new java.util.ArrayList<>();
         List<ReportGameResult> results = new java.util.ArrayList<>();
         for (Object fact : facts) {
-            if (fact instanceof ParticipationPeriod period) periods.add(period);
-            else results.addAll((List<ReportGameResult>) fact);
+            List<?> values = (List<?>) fact;
+            if (values.getFirst() instanceof GameParticipationPeriod) {
+                periods.addAll((List<GameParticipationPeriod>) values);
+            } else {
+                results.addAll((List<ReportGameResult>) values);
+            }
         }
         return new ReportStreakHistory(periods, results);
     }
 
-    private static ParticipationPeriod participation(long playerId, int startDay, Integer inactiveDay) {
-        return new ParticipationPeriod(playerId, date(2026, 7, startDay),
-                inactiveDay == null ? null : date(2026, 7, inactiveDay));
+    private static List<GameParticipationPeriod> participation(long playerId, int startDay, Integer inactiveDay) {
+        LocalDate start = date(2026, 7, startDay);
+        LocalDate inactive = inactiveDay == null ? null : date(2026, 7, inactiveDay);
+        return List.of(
+                new GameParticipationPeriod(playerId, GameType.GRIDWORDS, start, inactive),
+                new GameParticipationPeriod(playerId, GameType.QUADWORDS, start, inactive));
     }
 
     private static List<ReportGameResult> perfect(long playerId, int day) {

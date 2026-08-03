@@ -1,5 +1,8 @@
 package de.venomenon.gridwordsbot.adapter.persistence;
 
+import de.venomenon.gridwordsbot.domain.model.DailyGameParticipation;
+import de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod;
+import de.venomenon.gridwordsbot.domain.model.GameParticipationSelection;
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.model.NormalizedBoard;
 import de.venomenon.gridwordsbot.domain.model.ParticipationPeriod;
@@ -54,21 +57,29 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
     }
 
     @Override
+    @Transactional
     public StoredPlayer upsert(PlayerUpsert request) {
-        Instant now = clock.instant();
-        StoredPlayer stored = jdbc.queryForObject("""
-                INSERT INTO player (discord_user_id, display_name, active, administrator, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT (discord_user_id) DO UPDATE SET display_name = EXCLUDED.display_name,
-                    active = EXCLUDED.active, administrator = EXCLUDED.administrator, updated_at = EXCLUDED.updated_at
-                RETURNING *
-                """, PLAYER, request.discordUserId(), request.displayName(), request.active(), request.administrator(),
-                databaseTime(now), databaseTime(now));
-        if (!participationEnabled()) return stored;
-        ParticipationChange change = new ParticipationChange(
-                new ProfileUpdate(request.discordUserId(), request.displayName(), request.administrator()),
-                LocalDate.now(clock.withZone(businessZone)));
-        return request.active() ? activate(change) : deactivate(change);
+        ProfileUpdate profile = new ProfileUpdate(
+                request.discordUserId(), request.displayName(), request.administrator());
+        LocalDate today = LocalDate.now(clock.withZone(businessZone));
+        return request.active()
+                ? activateGames(new GameParticipationChange(profile, GameParticipationSelection.BOTH, today))
+                : deactivateGames(new GameParticipationChange(profile, GameParticipationSelection.BOTH, today));
+    }
+
+    @Override
+    @Transactional
+    public StoredPlayer synchronizeProfile(ProfileUpdate request) {
+        OffsetDateTime now = databaseTime(clock.instant());
+        jdbc.update("""
+                INSERT INTO player (discord_user_id, display_name, active, administrator, reminder_opt_in, created_at, updated_at)
+                VALUES (?, ?, FALSE, ?, FALSE, ?, ?)
+                ON CONFLICT (discord_user_id) DO UPDATE SET
+                    display_name = EXCLUDED.display_name,
+                    administrator = EXCLUDED.administrator,
+                    updated_at = EXCLUDED.updated_at
+                """, request.discordUserId(), request.displayName(), request.administrator(), now, now);
+        return findPlayer(request.discordUserId());
     }
     @Override
     public Optional<StoredPlayer> findByDiscordUserId(long discordUserId) {
@@ -160,10 +171,10 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
             throw new SubmissionConflictException("submission state does not allow result storage: " + existing.state());
         }
 
-        if (participationEnabled()) activate(request.playerRegistration());
+        if (participationEnabled()) activateGames(request.playerRegistration());
         lockParticipationTableForPublicationContext();
         List<StoredGameResult> before = findAll();
-        List<ParticipationPeriod> periods = participationEnabled() ? findParticipationPeriods() : List.of();
+        List<GameParticipationPeriod> periods = participationEnabled() ? findGameParticipationPeriods() : List.of();
         Optional<StoredGameResult> existingResult = findResultForUpdate(request.result());
         if (existingResult.isPresent()) {
             return storeAgainstExistingResult(retainStoredQuadWordsBoards(request, existingResult.get()),
@@ -190,7 +201,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
             ResultStorage request,
             StoredGameResult existingResult,
             List<StoredGameResult> before,
-            List<ParticipationPeriod> periods) {
+            List<GameParticipationPeriod> periods) {
         linkStoredResult(request.sourceMessageId(), existingResult.id(), PublicationContext.none());
         CanonicalPublicationPreparation preparation = prepareCanonicalPublication(request.sourceMessageId(), existingResult.id());
         if (preparation == CanonicalPublicationPreparation.SUPERSEDED) return findRequired(request.sourceMessageId());
@@ -295,46 +306,87 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
 
     @Override
     public List<ParticipationPeriod> findParticipationPeriods() {
-        return jdbc.query("SELECT player_id, active_from, inactive_from FROM player_participation_period ORDER BY player_id, active_from",
-                (rs, row) -> new ParticipationPeriod(rs.getLong("player_id"), rs.getObject("active_from", LocalDate.class), rs.getObject("inactive_from", LocalDate.class)));
+        return ParticipationPeriodCompatibility.union(findGameParticipationPeriods());
+    }
+
+    @Override
+    public List<GameParticipationPeriod> findGameParticipationPeriods() {
+        return jdbc.query("""
+                SELECT player_id, game_type, active_from, inactive_from
+                FROM player_participation_period
+                ORDER BY player_id, game_type, active_from
+                """, (rs, row) -> new GameParticipationPeriod(
+                rs.getLong("player_id"), GameType.valueOf(rs.getString("game_type")),
+                rs.getObject("active_from", LocalDate.class), rs.getObject("inactive_from", LocalDate.class)));
+    }
+
+    @Override
+    public Optional<GameParticipationPeriod> findGameParticipationPeriod(
+            long discordUserId, GameType gameType, LocalDate date) {
+        if (discordUserId <= 0) throw new IllegalArgumentException("discordUserId must be positive");
+        java.util.Objects.requireNonNull(gameType, "gameType");
+        java.util.Objects.requireNonNull(date, "date");
+        return jdbc.query("""
+                SELECT player_id, game_type, active_from, inactive_from
+                FROM player_participation_period
+                WHERE player_id = ? AND game_type = ?
+                  AND active_from <= ? AND (inactive_from IS NULL OR ? < inactive_from)
+                """, (rs, row) -> new GameParticipationPeriod(
+                rs.getLong("player_id"), GameType.valueOf(rs.getString("game_type")),
+                rs.getObject("active_from", LocalDate.class), rs.getObject("inactive_from", LocalDate.class)),
+                discordUserId, gameType.name(), date, date).stream().findFirst();
     }
 
     @Override
     @Transactional
     public StoredPlayer activate(ParticipationChange request) {
-        ensureProfile(request.profile());
-        lockPlayer(request.profile().discordUserId());
-        List<ParticipationPeriod> periods = periodsForUpdate(request.profile().discordUserId());
-        LocalDate effectiveDate = request.effectiveDate();
-        if (periods.stream().noneMatch(period -> period.contains(effectiveDate))) {
-            ParticipationPeriod previous = periods.stream().filter(period -> period.inactiveFrom() != null && !period.inactiveFrom().isAfter(effectiveDate)).max(java.util.Comparator.comparing(ParticipationPeriod::activeFrom)).orElse(null);
-            ParticipationPeriod next = periods.stream().filter(period -> period.activeFrom().isAfter(effectiveDate)).min(java.util.Comparator.comparing(ParticipationPeriod::activeFrom)).orElse(null);
-            Instant now = clock.instant();
-            if (previous != null && previous.inactiveFrom().equals(effectiveDate)) {
-                jdbc.update("UPDATE player_participation_period SET inactive_from = ?, updated_at = ? WHERE player_id = ? AND active_from = ?", next == null ? null : next.activeFrom(), databaseTime(now), request.profile().discordUserId(), previous.activeFrom());
-            } else {
-                jdbc.update("INSERT INTO player_participation_period (player_id, active_from, inactive_from, created_at, updated_at) VALUES (?, ?, ?, ?, ?)", request.profile().discordUserId(), effectiveDate, next == null ? null : next.activeFrom(), databaseTime(now), databaseTime(now));
-            }
-        }
-        synchronizeActiveStatus(request.profile().discordUserId());
-        return findPlayer(request.profile().discordUserId());
+        return activateGames(new GameParticipationChange(
+                request.profile(), GameParticipationSelection.BOTH, request.effectiveDate()));
     }
 
     @Override
     @Transactional
     public StoredPlayer deactivate(ParticipationChange request) {
-        ensureProfile(request.profile());
-        lockPlayer(request.profile().discordUserId());
-        jdbc.update("DELETE FROM player_participation_period WHERE player_id = ? AND active_from = ? AND inactive_from IS NULL", request.profile().discordUserId(), request.effectiveDate());
-        jdbc.update("UPDATE player_participation_period SET inactive_from = ?, updated_at = ? WHERE player_id = ? AND inactive_from IS NULL AND active_from < ?", request.effectiveDate(), databaseTime(clock.instant()), request.profile().discordUserId(), request.effectiveDate());
-        synchronizeActiveStatus(request.profile().discordUserId());
-        return findPlayer(request.profile().discordUserId());
+        return deactivateGames(new GameParticipationChange(
+                request.profile(), GameParticipationSelection.BOTH, request.effectiveDate()));
+    }
+
+    @Override
+    @Transactional
+    public StoredPlayer activateGames(GameParticipationChange request) {
+        synchronizeProfile(request.profile());
+        long playerId = request.profile().discordUserId();
+        lockPlayer(playerId);
+        boolean wasGloballyActive = hasParticipationToday(playerId);
+        for (GameType gameType : request.selection().gameTypes()) {
+            activateGame(playerId, gameType, request.effectiveDate());
+        }
+        boolean isGloballyActive = hasParticipationToday(playerId);
+        synchronizeActiveStatus(playerId);
+        if (!wasGloballyActive && isGloballyActive) {
+            jdbc.update("UPDATE player SET reminder_opt_in = TRUE, updated_at = ? WHERE discord_user_id = ?",
+                    databaseTime(clock.instant()), playerId);
+        }
+        return findPlayer(playerId);
+    }
+
+    @Override
+    @Transactional
+    public StoredPlayer deactivateGames(GameParticipationChange request) {
+        synchronizeProfile(request.profile());
+        long playerId = request.profile().discordUserId();
+        lockPlayer(playerId);
+        for (GameType gameType : request.selection().gameTypes()) {
+            deactivateGame(playerId, gameType, request.effectiveDate());
+        }
+        synchronizeActiveStatus(playerId);
+        return findPlayer(playerId);
     }
 
     @Override
     @Transactional
     public StoredPlayer setReminderOptIn(ProfileUpdate request, boolean reminderOptIn) {
-        ensureProfile(request);
+        synchronizeProfile(request);
         lockPlayer(request.discordUserId());
         jdbc.update("UPDATE player SET reminder_opt_in = ?, updated_at = ? WHERE discord_user_id = ?", reminderOptIn, databaseTime(clock.instant()), request.discordUserId());
         synchronizeActiveStatus(request.discordUserId());
@@ -347,8 +399,10 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                 SELECT p.discord_user_id, p.display_name,
                     NOT EXISTS (SELECT 1 FROM game_result r WHERE r.player_id = p.discord_user_id AND r.game_type = 'GRIDWORDS' AND r.game_date = ?) AS missing_gridwords,
                     NOT EXISTS (SELECT 1 FROM game_result r WHERE r.player_id = p.discord_user_id AND r.game_type = 'QUADWORDS' AND r.game_date = ?) AS missing_quadwords
-                FROM player p JOIN player_participation_period pp ON pp.player_id = p.discord_user_id
-                WHERE p.reminder_opt_in = TRUE AND pp.active_from <= ? AND (pp.inactive_from IS NULL OR ? < pp.inactive_from)
+                FROM player p
+                WHERE p.reminder_opt_in = TRUE
+                  AND EXISTS (SELECT 1 FROM player_participation_period pp WHERE pp.player_id = p.discord_user_id
+                      AND pp.active_from <= ? AND (pp.inactive_from IS NULL OR ? < pp.inactive_from))
                 ORDER BY p.discord_user_id
                 """, (rs, row) -> {
                     List<GameType> missing = new java.util.ArrayList<>();
@@ -357,15 +411,6 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                     return missing.isEmpty() ? null : new ReminderCandidate(rs.getLong("discord_user_id"), rs.getString("display_name"), missing);
                 }, gameDate, gameDate, gameDate, gameDate).stream().filter(java.util.Objects::nonNull).toList();
     }
-    private void ensureProfile(ProfileUpdate profile) {
-        Instant now = clock.instant();
-        jdbc.update("""
-                INSERT INTO player (discord_user_id, display_name, active, administrator, reminder_opt_in, created_at, updated_at)
-                VALUES (?, ?, FALSE, ?, FALSE, ?, ?)
-                ON CONFLICT (discord_user_id) DO UPDATE SET display_name = EXCLUDED.display_name, updated_at = EXCLUDED.updated_at
-                """, profile.discordUserId(), profile.displayName(), profile.administrator(), databaseTime(now), databaseTime(now));
-    }
-
     protected boolean participationEnabled() { return true; }
 
     private void lockParticipationTableForPublicationContext() {
@@ -377,8 +422,62 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         jdbc.queryForObject("SELECT discord_user_id FROM player WHERE discord_user_id = ? FOR UPDATE", Long.class, discordUserId);
     }
 
-    private List<ParticipationPeriod> periodsForUpdate(long discordUserId) {
-        return jdbc.query("SELECT player_id, active_from, inactive_from FROM player_participation_period WHERE player_id = ? ORDER BY active_from FOR UPDATE", (rs, row) -> new ParticipationPeriod(rs.getLong("player_id"), rs.getObject("active_from", LocalDate.class), rs.getObject("inactive_from", LocalDate.class)), discordUserId);
+    private List<GameParticipationPeriod> periodsForUpdate(long playerId, GameType gameType) {
+        return jdbc.query("""
+                SELECT player_id, game_type, active_from, inactive_from
+                FROM player_participation_period
+                WHERE player_id = ? AND game_type = ?
+                ORDER BY active_from FOR UPDATE
+                """, (rs, row) -> new GameParticipationPeriod(
+                rs.getLong("player_id"), GameType.valueOf(rs.getString("game_type")),
+                rs.getObject("active_from", LocalDate.class), rs.getObject("inactive_from", LocalDate.class)),
+                playerId, gameType.name());
+    }
+
+    private void activateGame(long playerId, GameType gameType, LocalDate effectiveDate) {
+        List<GameParticipationPeriod> periods = periodsForUpdate(playerId, gameType);
+        if (periods.stream().anyMatch(period -> period.contains(effectiveDate))) {
+            return;
+        }
+        GameParticipationPeriod previous = periods.stream()
+                .filter(period -> period.inactiveFrom() != null && !period.inactiveFrom().isAfter(effectiveDate))
+                .max(java.util.Comparator.comparing(GameParticipationPeriod::activeFrom)).orElse(null);
+        GameParticipationPeriod next = periods.stream()
+                .filter(period -> period.activeFrom().isAfter(effectiveDate))
+                .min(java.util.Comparator.comparing(GameParticipationPeriod::activeFrom)).orElse(null);
+        OffsetDateTime now = databaseTime(clock.instant());
+        if (previous != null && previous.inactiveFrom().equals(effectiveDate)) {
+            jdbc.update("""
+                    UPDATE player_participation_period SET inactive_from = ?, updated_at = ?
+                    WHERE player_id = ? AND game_type = ? AND active_from = ?
+                    """, next == null ? null : next.activeFrom(), now, playerId, gameType.name(), previous.activeFrom());
+        } else {
+            jdbc.update("""
+                    INSERT INTO player_participation_period
+                        (player_id, game_type, active_from, inactive_from, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """, playerId, gameType.name(), effectiveDate, next == null ? null : next.activeFrom(), now, now);
+        }
+    }
+
+    private void deactivateGame(long playerId, GameType gameType, LocalDate effectiveDate) {
+        jdbc.update("""
+                DELETE FROM player_participation_period
+                WHERE player_id = ? AND game_type = ? AND active_from = ? AND inactive_from IS NULL
+                """, playerId, gameType.name(), effectiveDate);
+        jdbc.update("""
+                UPDATE player_participation_period SET inactive_from = ?, updated_at = ?
+                WHERE player_id = ? AND game_type = ? AND inactive_from IS NULL AND active_from < ?
+                """, effectiveDate, databaseTime(clock.instant()), playerId, gameType.name(), effectiveDate);
+    }
+
+    private boolean hasParticipationToday(long playerId) {
+        LocalDate today = LocalDate.now(clock.withZone(businessZone));
+        Boolean active = jdbc.queryForObject("""
+                SELECT EXISTS (SELECT 1 FROM player_participation_period
+                    WHERE player_id = ? AND active_from <= ? AND (inactive_from IS NULL OR ? < inactive_from))
+                """, Boolean.class, playerId, today, today);
+        return Boolean.TRUE.equals(active);
     }
 
     private StoredPlayer findPlayer(long discordUserId) {
@@ -922,15 +1021,18 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         }
     }
     private static PublicationContext publicationContext(List<StoredGameResult> before, List<StoredGameResult> after,
-            long playerId, LocalDate gameDate, List<ParticipationPeriod> periods) {
-        boolean personalCompleteBefore = complete(before, playerId, gameDate);
-        boolean personalPerfectBefore = perfect(before, playerId, gameDate);
-        boolean sharedCompleteBefore = sharedComplete(before, periods, gameDate);
-        boolean sharedPerfectBefore = sharedPerfect(before, periods, gameDate);
-        return new PublicationContext(!personalCompleteBefore && complete(after, playerId, gameDate),
-                !personalPerfectBefore && perfect(after, playerId, gameDate),
-                !sharedCompleteBefore && sharedComplete(after, periods, gameDate),
-                !sharedPerfectBefore && sharedPerfect(after, periods, gameDate));
+            long playerId, LocalDate gameDate, List<GameParticipationPeriod> periods) {
+        DailyGameParticipation participation = DailyGameParticipation.fromPeriods(gameDate, periods);
+        boolean personalApplicable = participation.bothGamesPlayers().contains(playerId);
+        boolean personalCompleteBefore = personalApplicable && complete(before, playerId, gameDate);
+        boolean personalPerfectBefore = personalApplicable && perfect(before, playerId, gameDate);
+        boolean sharedCompleteBefore = sharedComplete(before, participation, gameDate);
+        boolean sharedPerfectBefore = sharedPerfect(before, participation, gameDate);
+        return new PublicationContext(
+                personalApplicable && !personalCompleteBefore && complete(after, playerId, gameDate),
+                personalApplicable && !personalPerfectBefore && perfect(after, playerId, gameDate),
+                !sharedCompleteBefore && sharedComplete(after, participation, gameDate),
+                !sharedPerfectBefore && sharedPerfect(after, participation, gameDate));
     }
 
     private static boolean complete(List<StoredGameResult> results, long playerId, LocalDate gameDate) {
@@ -943,17 +1045,15 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         return complete(results, playerId, gameDate) && games.stream().allMatch(result -> result.parsedResult().outcome() instanceof ShareOutcome.Solved);
     }
 
-    private static List<Long> activePlayers(List<ParticipationPeriod> periods, LocalDate gameDate) {
-        return periods.stream().filter(period -> period.contains(gameDate)).map(ParticipationPeriod::playerId).distinct().toList();
-    }
-
-    private static boolean sharedComplete(List<StoredGameResult> results, List<ParticipationPeriod> periods, LocalDate gameDate) {
-        List<Long> players = activePlayers(periods, gameDate);
+    private static boolean sharedComplete(
+            List<StoredGameResult> results, DailyGameParticipation participation, LocalDate gameDate) {
+        List<Long> players = List.copyOf(participation.bothGamesPlayers());
         return players.size() >= 2 && players.stream().allMatch(playerId -> complete(results, playerId, gameDate));
     }
 
-    private static boolean sharedPerfect(List<StoredGameResult> results, List<ParticipationPeriod> periods, LocalDate gameDate) {
-        List<Long> players = activePlayers(periods, gameDate);
+    private static boolean sharedPerfect(
+            List<StoredGameResult> results, DailyGameParticipation participation, LocalDate gameDate) {
+        List<Long> players = List.copyOf(participation.bothGamesPlayers());
         return players.size() >= 2 && players.stream().allMatch(playerId -> perfect(results, playerId, gameDate));
     }
     private Optional<StoredGameResult> insertResultIfAbsent(GameResultUpsert request, Instant now) {

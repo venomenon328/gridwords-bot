@@ -60,6 +60,7 @@ public final class PeriodicReportRenderer {
     }
 
     private static String gameStatistics(ReportGameStatistics statistics) {
+        if (statistics.possibleDays() == 0) return "Nicht teilgenommen";
         return "Eingereicht: " + statistics.submitted() + "/" + statistics.possibleDays()
                 + " · Gelöst: " + statistics.solved() + " · Nicht gelöst: " + statistics.unsolved()
                 + " · Fehlend: " + statistics.missing()

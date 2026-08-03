@@ -123,4 +123,20 @@ class DailyStatusEmbedRendererTest {
                                 java.util.Collections.nCopies(solved ? 1 : 6, "⬜⬜⬜⬜⬜")))
                         : Optional.empty());
     }
+    @Test
+    void rendersNonParticipationDifferentlyFromAMissingSubmissionAndUsesDashForInapplicableStreaks() {
+        DailyStatus.PlayerLine gridOnly = new DailyStatus.PlayerLine(
+                1L,
+                "Grid only",
+                new DailyStatus.GameState(GameType.GRIDWORDS, true, Optional.empty()),
+                new DailyStatus.GameState(GameType.QUADWORDS, false, Optional.empty()),
+                new StreakSummary(5, 0, 4, 9, 8, 0, 0));
+
+        String rendered = renderer.render(12L, new DailyStatus(DATE, List.of(gridOnly), 0, 0, 0, 0)).getFirst()
+                .getFields().getFirst().getValue();
+
+        assertThat(rendered)
+                .contains("GridWords: ⬜ noch nicht eingereicht", "QuadWords: \u2014 nimmt nicht teil")
+                .contains("GridWords gelöst: 4", "QuadWords gelöst: \u2014", "Komplett: \u2014", "Perfekt: \u2014");
+    }
 }

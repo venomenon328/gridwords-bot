@@ -1,6 +1,7 @@
 package de.venomenon.gridwordsbot.application.reporting;
 
-import de.venomenon.gridwordsbot.domain.model.ParticipationPeriod;
+import de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod;
+import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.reporting.ReportParticipant;
 import de.venomenon.gridwordsbot.domain.reporting.ReportParticipantBasis;
 import de.venomenon.gridwordsbot.domain.reporting.ReportPeriod;
@@ -26,36 +27,66 @@ public final class ReportParticipantProjector {
                 .sorted(Comparator.comparing(ReportParticipantQuery.ParticipantProfile::firstParticipationStart)
                         .thenComparingLong(ReportParticipantQuery.ParticipantProfile::discordUserId))
                 .toList();
-        Map<LocalDate, Set<Long>> activeParticipantIdsByDay = everyDay(period);
+        Map<LocalDate, Set<Long>> gridWordsParticipantIdsByDay = everyDay(period);
+        Map<LocalDate, Set<Long>> quadWordsParticipantIdsByDay = everyDay(period);
         List<ReportParticipant> projectedParticipants = profiles.stream()
-                .map(profile -> projectParticipant(profile, period, activeParticipantIdsByDay))
+                .map(profile -> projectParticipant(
+                        profile, period, gridWordsParticipantIdsByDay, quadWordsParticipantIdsByDay))
                 .filter(java.util.Optional::isPresent)
                 .map(java.util.Optional::orElseThrow)
                 .toList();
-        Set<LocalDate> sharedPossibleDays = activeParticipantIdsByDay.entrySet().stream()
-                .filter(entry -> entry.getValue().size() >= 2)
-                .map(Map.Entry::getKey)
-                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        return new ReportParticipantBasis(period, projectedParticipants, activeParticipantIdsByDay, sharedPossibleDays);
+        Map<LocalDate, Set<Long>> unionParticipantIdsByDay = everyDay(period);
+        Map<LocalDate, Set<Long>> bothGamesParticipantIdsByDay = everyDay(period);
+        for (LocalDate day : unionParticipantIdsByDay.keySet()) {
+            unionParticipantIdsByDay.get(day).addAll(gridWordsParticipantIdsByDay.get(day));
+            unionParticipantIdsByDay.get(day).addAll(quadWordsParticipantIdsByDay.get(day));
+            bothGamesParticipantIdsByDay.get(day).addAll(gridWordsParticipantIdsByDay.get(day));
+            bothGamesParticipantIdsByDay.get(day).retainAll(quadWordsParticipantIdsByDay.get(day));
+        }
+        return new ReportParticipantBasis(
+                period,
+                projectedParticipants,
+                unionParticipantIdsByDay,
+                gridWordsParticipantIdsByDay,
+                quadWordsParticipantIdsByDay,
+                bothGamesParticipantIdsByDay);
     }
 
     private static java.util.Optional<ReportParticipant> projectParticipant(
             ReportParticipantQuery.ParticipantProfile profile,
             ReportPeriod period,
-            Map<LocalDate, Set<Long>> activeParticipantIdsByDay) {
-        Set<LocalDate> participationDays = new LinkedHashSet<>();
+            Map<LocalDate, Set<Long>> gridWordsParticipantIdsByDay,
+            Map<LocalDate, Set<Long>> quadWordsParticipantIdsByDay) {
+        Set<LocalDate> gridWordsParticipationDays = new LinkedHashSet<>();
+        Set<LocalDate> quadWordsParticipationDays = new LinkedHashSet<>();
         profile.participationPeriods().forEach(participationPeriod -> addParticipationDays(
-                participationPeriod, period, participationDays, activeParticipantIdsByDay, profile.discordUserId()));
-        if (participationDays.isEmpty()) return java.util.Optional.empty();
+                participationPeriod,
+                period,
+                participationPeriod.gameType() == GameType.GRIDWORDS
+                        ? gridWordsParticipationDays : quadWordsParticipationDays,
+                participationPeriod.gameType() == GameType.GRIDWORDS
+                        ? gridWordsParticipantIdsByDay : quadWordsParticipantIdsByDay,
+                profile.discordUserId()));
+        Set<LocalDate> unionParticipationDays = new LinkedHashSet<>(gridWordsParticipationDays);
+        unionParticipationDays.addAll(quadWordsParticipationDays);
+        Set<LocalDate> bothGamesParticipationDays = new LinkedHashSet<>(gridWordsParticipationDays);
+        bothGamesParticipationDays.retainAll(quadWordsParticipationDays);
+        if (unionParticipationDays.isEmpty()) return java.util.Optional.empty();
         return java.util.Optional.of(new ReportParticipant(
-                profile.discordUserId(), profile.displayName(), profile.firstParticipationStart(), participationDays.stream().sorted().toList()));
+                profile.discordUserId(),
+                profile.displayName(),
+                profile.firstParticipationStart(),
+                unionParticipationDays.stream().sorted().toList(),
+                gridWordsParticipationDays.stream().sorted().toList(),
+                quadWordsParticipationDays.stream().sorted().toList(),
+                bothGamesParticipationDays.stream().sorted().toList()));
     }
 
     private static void addParticipationDays(
-            ParticipationPeriod participationPeriod,
+            GameParticipationPeriod participationPeriod,
             ReportPeriod period,
             Set<LocalDate> participationDays,
-            Map<LocalDate, Set<Long>> activeParticipantIdsByDay,
+            Map<LocalDate, Set<Long>> gameParticipantIdsByDay,
             long participantId) {
         LocalDate firstDay = participationPeriod.activeFrom().isAfter(period.startDate())
                 ? participationPeriod.activeFrom() : period.startDate();
@@ -63,7 +94,7 @@ public final class ReportParticipantProjector {
                 ? period.endDate() : participationPeriod.inactiveFrom().minusDays(1);
         for (LocalDate day = firstDay; !day.isAfter(lastDay); day = day.plusDays(1)) {
             participationDays.add(day);
-            activeParticipantIdsByDay.get(day).add(participantId);
+            gameParticipantIdsByDay.get(day).add(participantId);
         }
     }
 

@@ -4,10 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod;
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.model.NormalizedBoard;
 import de.venomenon.gridwordsbot.domain.model.ParsedGameResult;
-import de.venomenon.gridwordsbot.domain.model.ParticipationPeriod;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
 import de.venomenon.gridwordsbot.domain.status.DailyStatus;
 import de.venomenon.gridwordsbot.port.out.GameResultStore;
@@ -71,10 +71,10 @@ class DailyStatusProjectorTest {
     @Test
     void showsOnlyDateParticipantsAndSortsUnicodeNamesThenIds() {
         Fixtures fixtures = fixtures(List.of(), DATE);
-        fixtures.player(3L, "zoe", new ParticipationPeriod(3L, DATE, null));
-        fixtures.player(2L, "Änne", new ParticipationPeriod(2L, DATE, null));
-        fixtures.player(1L, "änne", new ParticipationPeriod(1L, DATE, null));
-        fixtures.player(4L, "Inactive", new ParticipationPeriod(4L, DATE.minusDays(4), DATE));
+        fixtures.player(3L, "zoe", both(3L, DATE, null));
+        fixtures.player(2L, "Änne", both(2L, DATE, null));
+        fixtures.player(1L, "änne", both(1L, DATE, null));
+        fixtures.player(4L, "Inactive", both(4L, DATE.minusDays(4), DATE));
 
         DailyStatus status = fixtures.projector().project(DATE, DATE);
 
@@ -124,6 +124,44 @@ class DailyStatusProjectorTest {
     }
 
     @Test
+    void projectsUnionParticipantsAndCalculatesStreaksFromTheirGameSpecificHistory() {
+        Fixtures fixtures = fixtures(List.of(), DATE);
+        fixtures.player(1L, "Grid switcher",
+                new GameParticipationPeriod(1L, GameType.GRIDWORDS, DATE.minusDays(1), null),
+                new GameParticipationPeriod(1L, GameType.QUADWORDS, DATE.minusDays(1), DATE));
+        fixtures.player(2L, "Grid only",
+                new GameParticipationPeriod(2L, GameType.GRIDWORDS, DATE.minusDays(1), null));
+        fixtures.player(3L, "Quad only",
+                new GameParticipationPeriod(3L, GameType.QUADWORDS, DATE, null));
+        fixtures.complete(1L, DATE.minusDays(1), true);
+        fixtures.add(1L, DATE, GameType.GRIDWORDS, true);
+        fixtures.add(2L, DATE, GameType.GRIDWORDS, true);
+        fixtures.add(3L, DATE, GameType.QUADWORDS, true);
+
+        DailyStatus status = fixtures.projector().project(DATE, DATE);
+
+        assertThat(status.players()).extracting(DailyStatus.PlayerLine::discordUserId)
+                .containsExactly(2L, 1L, 3L);
+        DailyStatus.PlayerLine switcher = status.players().stream()
+                .filter(player -> player.discordUserId() == 1L)
+                .findFirst()
+                .orElseThrow();
+        assertThat(switcher.participates(GameType.GRIDWORDS)).isTrue();
+        assertThat(switcher.participates(GameType.QUADWORDS)).isFalse();
+        assertThat(switcher.gridWords()).isPresent();
+        assertThat(switcher.quadWords()).isEmpty();
+        assertThat(switcher.streaks().personalActivity()).isEqualTo(2);
+        assertThat(switcher.streaks().personalGridWordsSolved()).isEqualTo(2);
+        assertThat(switcher.streaks().personalQuadWordsSolved()).isZero();
+        assertThat(switcher.streaks().personalComplete()).isZero();
+        assertThat(switcher.streaks().personalPerfect()).isZero();
+        assertThat(status.sharedGridWordsSolved()).isEqualTo(1);
+        assertThat(status.sharedQuadWordsSolved()).isZero();
+        assertThat(status.sharedComplete()).isZero();
+        assertThat(status.sharedPerfect()).isZero();
+    }
+
+    @Test
     void emptyParticipantProjectionUsesZeroForEverySharedStreak() {
         DailyStatus status = fixtures(List.of(), DATE).projector().project(DATE, DATE);
 
@@ -136,19 +174,26 @@ class DailyStatusProjectorTest {
 
     private static Fixtures fixtures(List<Long> ids, LocalDate activeFrom) {
         Fixtures fixtures = new Fixtures();
-        ids.forEach(id -> fixtures.player(id, "Player " + id, new ParticipationPeriod(id, activeFrom, null)));
+        ids.forEach(id -> fixtures.player(id, "Player " + id, both(id, activeFrom, null)));
         return fixtures;
+    }
+
+    private static GameParticipationPeriod[] both(long id, LocalDate activeFrom, LocalDate inactiveFrom) {
+        return new GameParticipationPeriod[] {
+                new GameParticipationPeriod(id, GameType.GRIDWORDS, activeFrom, inactiveFrom),
+                new GameParticipationPeriod(id, GameType.QUADWORDS, activeFrom, inactiveFrom)
+        };
     }
 
     private static final class Fixtures {
         private final List<GameResultStore.StoredGameResult> results = new ArrayList<>();
         private final List<PlayerStore.StoredPlayer> players = new ArrayList<>();
-        private final List<ParticipationPeriod> periods = new ArrayList<>();
+        private final List<GameParticipationPeriod> periods = new ArrayList<>();
 
-        void player(long id, String name, ParticipationPeriod period) {
+        void player(long id, String name, GameParticipationPeriod... participationPeriods) {
             players.add(new PlayerStore.StoredPlayer(
                     id, name, true, false, false, Instant.EPOCH, Instant.EPOCH));
-            periods.add(period);
+            periods.addAll(List.of(participationPeriods));
         }
 
         void complete(long id, LocalDate date, boolean solved) {
@@ -183,7 +228,7 @@ class DailyStatusProjectorTest {
             PlayerStore playerStore = mock(PlayerStore.class);
             when(resultStore.findAll()).thenReturn(List.copyOf(results));
             when(playerStore.findAllPlayers()).thenReturn(List.copyOf(players));
-            when(playerStore.findParticipationPeriods()).thenReturn(List.copyOf(periods));
+            when(playerStore.findGameParticipationPeriods()).thenReturn(List.copyOf(periods));
             return new DailyStatusProjector(resultStore, playerStore);
         }
     }

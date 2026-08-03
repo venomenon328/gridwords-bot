@@ -1,7 +1,7 @@
 package de.venomenon.gridwordsbot.application.player;
 
+import de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod;
 import de.venomenon.gridwordsbot.domain.model.GameType;
-import de.venomenon.gridwordsbot.domain.model.ParticipationPeriod;
 import de.venomenon.gridwordsbot.port.in.PersonalStatusUseCase;
 import de.venomenon.gridwordsbot.port.out.LatestValidSubmissionQuery;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
@@ -41,23 +41,22 @@ public final class PersonalStatusService implements PersonalStatusUseCase {
         LocalDate today = clock.instant().atZone(zoneId).toLocalDate();
         PlayerStore.StoredPlayer player = players.synchronizeProfile(new PlayerStore.ProfileUpdate(
                 actor.discordUserId(), actor.displayName(), administratorIds.contains(actor.discordUserId())));
-        Optional<ParticipationPeriod> currentPeriod = players.findParticipationPeriod(actor.discordUserId(), today);
         EnumMap<GameType, LatestSubmission> latest = latestByGameType(
                 submissions.findLatestValidSubmissions(actor.discordUserId()));
 
         return new PersonalStatus(
-                participation(player.active(), currentPeriod),
+                participation(players.findGameParticipationPeriod(actor.discordUserId(), GameType.GRIDWORDS, today)),
+                participation(players.findGameParticipationPeriod(actor.discordUserId(), GameType.QUADWORDS, today)),
                 player.reminderOptIn(),
                 Optional.ofNullable(latest.get(GameType.GRIDWORDS)),
                 Optional.ofNullable(latest.get(GameType.QUADWORDS)));
     }
 
-    private static ParticipationStatus participation(
-            boolean active, Optional<ParticipationPeriod> currentPeriod) {
-        if (!active || currentPeriod.isEmpty()) {
+    private static ParticipationStatus participation(Optional<GameParticipationPeriod> currentPeriod) {
+        if (currentPeriod.isEmpty()) {
             return new ParticipationStatus(false, Optional.empty(), Optional.empty());
         }
-        ParticipationPeriod period = currentPeriod.orElseThrow();
+        GameParticipationPeriod period = currentPeriod.orElseThrow();
         return new ParticipationStatus(
                 true,
                 Optional.of(period.activeFrom()),
@@ -71,10 +70,7 @@ public final class PersonalStatusService implements PersonalStatusUseCase {
         for (LatestValidSubmissionQuery.LatestValidSubmission submission : latestSubmissions) {
             Objects.requireNonNull(submission, "latestSubmissions must not contain null");
             LatestSubmission previous = latest.put(submission.gameType(), new LatestSubmission(
-                    submission.gameType(),
-                    submission.outcome(),
-                    submission.duration(),
-                    submission.gameDate(),
+                    submission.gameType(), submission.outcome(), submission.duration(), submission.gameDate(),
                     submission.receivedAt()));
             if (previous != null) {
                 throw new IllegalStateException("latest submission query returned duplicate game type "

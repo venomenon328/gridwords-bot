@@ -1,7 +1,7 @@
 package de.venomenon.gridwordsbot.adapter.persistence;
 
 import de.venomenon.gridwordsbot.domain.model.GameType;
-import de.venomenon.gridwordsbot.domain.model.ParticipationPeriod;
+import de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
 import de.venomenon.gridwordsbot.domain.reporting.ReportGameResult;
 import de.venomenon.gridwordsbot.domain.reporting.ReportStreakHistory;
@@ -28,14 +28,15 @@ public class PostgresReportStreakHistoryQuery implements ReportStreakHistoryQuer
         return new ReportStreakHistory(participationPeriodsThrough(inclusiveCutoff), resultsThrough(inclusiveCutoff));
     }
 
-    private List<ParticipationPeriod> participationPeriodsThrough(LocalDate inclusiveCutoff) {
+    private List<GameParticipationPeriod> participationPeriodsThrough(LocalDate inclusiveCutoff) {
         return jdbc.query("""
-                SELECT player_id, active_from, inactive_from
+                SELECT player_id, game_type, active_from, inactive_from
                 FROM player_participation_period
                 WHERE active_from <= ?
-                ORDER BY player_id, active_from
-                """, (resultSet, row) -> new ParticipationPeriod(
+                ORDER BY player_id, game_type, active_from
+                """, (resultSet, row) -> new GameParticipationPeriod(
                 resultSet.getLong("player_id"),
+                GameType.valueOf(resultSet.getString("game_type")),
                 resultSet.getObject("active_from", LocalDate.class),
                 resultSet.getObject("inactive_from", LocalDate.class)), inclusiveCutoff);
     }
