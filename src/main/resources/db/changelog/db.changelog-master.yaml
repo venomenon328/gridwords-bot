@@ -57,3 +57,7 @@ databaseChangeLog:
   - include:
       file: 015-game-specific-participation.sql
       relativeToChangelogFile: true
+
+  - include:
+      file: 016-excuse-interactions.sql
+      relativeToChangelogFile: true
