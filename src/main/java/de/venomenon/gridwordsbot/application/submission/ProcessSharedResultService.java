@@ -1,6 +1,7 @@
 package de.venomenon.gridwordsbot.application.submission;
 
 import de.venomenon.gridwordsbot.domain.model.GameType;
+import de.venomenon.gridwordsbot.domain.model.GameParticipationSelection;
 import de.venomenon.gridwordsbot.domain.model.ParsedGameResult;
 import de.venomenon.gridwordsbot.domain.parsing.AttachmentMetadata;
 import de.venomenon.gridwordsbot.domain.parsing.ParseErrorCode;
@@ -144,9 +145,10 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
         GameResultStore.GameResultUpsert result = new GameResultStore.GameResultUpsert(
                 message.authorId(), parsed, message.content(), parserVersion(parsed));
         SubmissionStore.StoredSubmission stored = submissionStore.storeResult(
-                new SubmissionStore.ResultStorage(message.messageId(), result, new PlayerStore.ParticipationChange(
+                new SubmissionStore.ResultStorage(message.messageId(), result, new PlayerStore.GameParticipationChange(
                         new PlayerStore.ProfileUpdate(message.authorId(), message.authorDisplayName(),
                                 administrator.test(message.authorId())),
+                        GameParticipationSelection.forGameType(parsed.gameType()),
                         parsed.gameDate())));
         if (stored.state() == SubmissionStore.SubmissionState.SUPERSEDED) {
             return new ProcessingResult.Ignored();

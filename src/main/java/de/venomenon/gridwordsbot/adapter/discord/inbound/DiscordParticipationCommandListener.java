@@ -1,7 +1,8 @@
 package de.venomenon.gridwordsbot.adapter.discord.inbound;
 
-import de.venomenon.gridwordsbot.config.GridwordsBotProperties;
 import de.venomenon.gridwordsbot.adapter.discord.status.PersonalStatusEmbedRenderer;
+import de.venomenon.gridwordsbot.config.GridwordsBotProperties;
+import de.venomenon.gridwordsbot.domain.model.GameParticipationSelection;
 import de.venomenon.gridwordsbot.port.in.PersonalStatusUseCase;
 import de.venomenon.gridwordsbot.port.in.PlayerParticipationUseCase;
 import net.dv8tion.jda.api.JDA;
@@ -35,8 +36,8 @@ public final class DiscordParticipationCommandListener extends ListenerAdapter {
         if (guild == null) return;
         guild.updateCommands().addCommands(
                 Commands.slash("participation", "Teilnahme verwalten")
-                        .addSubcommands(new SubcommandData("join", "Ab heute teilnehmen"),
-                                new SubcommandData("leave", "Ab morgen nicht mehr teilnehmen")),
+                        .addSubcommands(participationCommand("join", "Ab heute teilnehmen"),
+                                participationCommand("leave", "Ab morgen nicht mehr teilnehmen")),
                 Commands.slash("status", "Persönlichen Status anzeigen"),
                 Commands.slash("player", "Teilnahme eines Spielers verwalten")
                         .addSubcommands(playerCommand("activate", "Ab heute aktivieren"),
@@ -59,21 +60,23 @@ public final class DiscordParticipationCommandListener extends ListenerAdapter {
             return;
         }
         PlayerParticipationUseCase.PlayerStatus status = switch (event.getName()) {
-            case "participation" -> participation(event.getSubcommandName(), actor);
+            case "participation" -> participation(event.getSubcommandName(), actor, selection(event.getOption("game")));
             case "reminders" -> reminders(event.getSubcommandName(), actor);
-            case "player" -> player(event.getSubcommandName(), actor, event.getOption("user"));
+            case "player" -> player(event.getSubcommandName(), actor, event.getOption("user"), event.getOption("game"));
             default -> null;
         };
         if (status != null) event.reply(status.message()).setEphemeral(true).queue();
     }
 
-    private PlayerParticipationUseCase.PlayerStatus participation(String subcommand, PlayerParticipationUseCase.PlayerIdentity actor) {
+    private PlayerParticipationUseCase.PlayerStatus participation(
+            String subcommand, PlayerParticipationUseCase.PlayerIdentity actor, GameParticipationSelection selection) {
         return switch (subcommand) {
-            case "join" -> commands.join(actor);
-            case "leave" -> commands.leave(actor);
+            case "join" -> commands.join(actor, selection);
+            case "leave" -> commands.leave(actor, selection);
             default -> null;
         };
     }
+
     private PlayerParticipationUseCase.PlayerStatus reminders(String subcommand, PlayerParticipationUseCase.PlayerIdentity actor) {
         return switch (subcommand) {
             case "on" -> commands.enableReminders(actor);
@@ -82,22 +85,53 @@ public final class DiscordParticipationCommandListener extends ListenerAdapter {
             default -> null;
         };
     }
-    private PlayerParticipationUseCase.PlayerStatus player(String subcommand, PlayerParticipationUseCase.PlayerIdentity actor, OptionMapping option) {
-        if (option == null) return null;
-        User user = option.getAsUser();
+
+    private PlayerParticipationUseCase.PlayerStatus player(
+            String subcommand, PlayerParticipationUseCase.PlayerIdentity actor, OptionMapping userOption,
+            OptionMapping gameOption) {
+        if (userOption == null) return null;
+        User user = userOption.getAsUser();
+        PlayerParticipationUseCase.PlayerIdentity target = identity(user, userOption.getAsMember());
         return switch (subcommand) {
-            case "activate" -> commands.activate(actor, identity(user, option.getAsMember()));
-            case "deactivate" -> commands.deactivate(actor, identity(user, option.getAsMember()));
-            case "status" -> commands.status(actor, identity(user, option.getAsMember()));
+            case "activate" -> commands.activate(actor, target, selection(gameOption));
+            case "deactivate" -> commands.deactivate(actor, target, selection(gameOption));
+            case "status" -> commands.status(actor, target);
             default -> null;
         };
     }
+
+    private static SubcommandData participationCommand(String name, String description) {
+        return new SubcommandData(name, description).addOptions(gameOption());
+    }
+
     private static SubcommandData playerCommand(String name, String description) {
-        return new SubcommandData(name, description).addOptions(new OptionData(OptionType.USER, "user", "Discord-Nutzer", true));
+        SubcommandData command = new SubcommandData(name, description)
+                .addOptions(new OptionData(OptionType.USER, "user", "Discord-Nutzer", true));
+        return name.equals("status") ? command : command.addOptions(gameOption());
     }
+
+    private static OptionData gameOption() {
+        return new OptionData(OptionType.STRING, "game", "Spielauswahl (Standard: beide)", false)
+                .addChoice("GridWords", "gridwords")
+                .addChoice("QuadWords", "quadwords")
+                .addChoice("Beide Spiele", "both");
+    }
+
+    private static GameParticipationSelection selection(OptionMapping option) {
+        if (option == null) return GameParticipationSelection.BOTH;
+        return switch (option.getAsString()) {
+            case "gridwords" -> GameParticipationSelection.GRIDWORDS;
+            case "quadwords" -> GameParticipationSelection.QUADWORDS;
+            case "both" -> GameParticipationSelection.BOTH;
+            default -> GameParticipationSelection.BOTH;
+        };
+    }
+
     private static PlayerParticipationUseCase.PlayerIdentity identity(User user, Member member) {
-        return new PlayerParticipationUseCase.PlayerIdentity(user.getIdLong(), member == null ? user.getName() : member.getEffectiveName());
+        return new PlayerParticipationUseCase.PlayerIdentity(
+                user.getIdLong(), member == null ? user.getName() : member.getEffectiveName());
     }
+
     private static PersonalStatusUseCase.PlayerIdentity personalIdentity(User user, Member member) {
         return new PersonalStatusUseCase.PlayerIdentity(
                 user.getIdLong(), member == null ? user.getName() : member.getEffectiveName());

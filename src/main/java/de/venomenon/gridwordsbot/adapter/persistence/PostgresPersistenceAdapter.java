@@ -170,7 +170,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
             throw new SubmissionConflictException("submission state does not allow result storage: " + existing.state());
         }
 
-        if (participationEnabled()) activate(request.playerRegistration());
+        if (participationEnabled()) activateGames(request.playerRegistration());
         lockParticipationTableForPublicationContext();
         List<StoredGameResult> before = findAll();
         List<ParticipationPeriod> periods = participationEnabled() ? findParticipationPeriods() : List.of();

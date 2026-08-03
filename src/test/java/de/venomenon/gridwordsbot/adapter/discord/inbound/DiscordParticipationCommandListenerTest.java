@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import de.venomenon.gridwordsbot.adapter.discord.status.PersonalStatusEmbedRenderer;
 import de.venomenon.gridwordsbot.config.GridwordsBotProperties;
+import de.venomenon.gridwordsbot.domain.model.GameParticipationSelection;
 import de.venomenon.gridwordsbot.port.in.PersonalStatusUseCase;
 import de.venomenon.gridwordsbot.port.in.PlayerParticipationUseCase;
 import de.venomenon.gridwordsbot.port.in.PlayerParticipationUseCase.PlayerIdentity;
@@ -40,15 +41,32 @@ class DiscordParticipationCommandListenerTest {
         PlayerParticipationUseCase useCase = mock(PlayerParticipationUseCase.class);
         EventFixture fixture = event("participation", "join", GUILD_ID, ACTOR_ID, "Server Actor");
         PlayerStatus status = new PlayerStatus(true, true, true, false, "Teilnahme ist ab heute aktiv.");
-        when(useCase.join(new PlayerIdentity(ACTOR_ID, "Server Actor"))).thenReturn(status);
+        when(useCase.join(new PlayerIdentity(ACTOR_ID, "Server Actor"), GameParticipationSelection.BOTH)).thenReturn(status);
 
         listener(useCase, mock(PersonalStatusUseCase.class))
                 .onSlashCommandInteraction(fixture.event());
 
-        verify(useCase).join(new PlayerIdentity(ACTOR_ID, "Server Actor"));
+        verify(useCase).join(new PlayerIdentity(ACTOR_ID, "Server Actor"), GameParticipationSelection.BOTH);
         verify(fixture.event()).reply(status.message());
         verify(fixture.reply()).setEphemeral(true);
         verify(fixture.reply()).queue();
+    }
+
+    @Test
+    void delegatesAnExplicitSingleGameSelection() {
+        PlayerParticipationUseCase useCase = mock(PlayerParticipationUseCase.class);
+        EventFixture fixture = event("participation", "leave", GUILD_ID, ACTOR_ID, "Server Actor");
+        OptionMapping game = mock(OptionMapping.class);
+        when(fixture.event().getOption("game")).thenReturn(game);
+        when(game.getAsString()).thenReturn("quadwords");
+        PlayerStatus status = new PlayerStatus(true, true, true, false, "Teilnahme endet ab morgen.");
+        when(useCase.leave(new PlayerIdentity(ACTOR_ID, "Server Actor"), GameParticipationSelection.QUADWORDS))
+                .thenReturn(status);
+
+        listener(useCase, mock(PersonalStatusUseCase.class)).onSlashCommandInteraction(fixture.event());
+
+        verify(useCase).leave(new PlayerIdentity(ACTOR_ID, "Server Actor"), GameParticipationSelection.QUADWORDS);
+        verify(fixture.event()).reply(status.message());
     }
 
     @Test
@@ -134,6 +152,11 @@ class DiscordParticipationCommandListenerTest {
                 .orElseThrow();
         assertThat(participation.getSubcommands()).extracting(subcommand -> subcommand.getName())
                 .containsExactly("join", "leave");
+        assertThat(participation.getSubcommands()).allSatisfy(subcommand -> {
+            assertThat(subcommand.getOptions()).extracting(option -> option.getName()).containsExactly("game");
+
+            assertThat(subcommand.getOptions().getFirst().isRequired()).isFalse();
+        });
         SlashCommandData status = (SlashCommandData) commandData.getAllValues().stream()
                 .filter(command -> command.getName().equals("status"))
                 .findFirst()
@@ -146,6 +169,12 @@ class DiscordParticipationCommandListenerTest {
                 .orElseThrow();
         assertThat(player.getSubcommands()).extracting(subcommand -> subcommand.getName())
                 .containsExactly("activate", "deactivate", "status");
+        assertThat(player.getSubcommands().get(0).getOptions()).extracting(option -> option.getName())
+                .containsExactly("user", "game");
+        assertThat(player.getSubcommands().get(1).getOptions()).extracting(option -> option.getName())
+                .containsExactly("user", "game");
+        assertThat(player.getSubcommands().get(2).getOptions()).extracting(option -> option.getName())
+                .containsExactly("user");
         SlashCommandData reminders = (SlashCommandData) commandData.getAllValues().stream()
                 .filter(command -> command.getName().equals("reminders"))
                 .findFirst()

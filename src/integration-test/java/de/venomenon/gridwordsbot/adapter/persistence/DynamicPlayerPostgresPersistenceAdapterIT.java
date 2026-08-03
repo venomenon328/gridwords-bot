@@ -320,7 +320,8 @@ class DynamicPlayerPostgresPersistenceAdapterIT {
         return new SubmissionStore.ResultStorage(
                 sourceMessageId,
                 result(playerId, text),
-                new PlayerStore.ParticipationChange(profile(playerId), GAME_DATE));
+                new PlayerStore.GameParticipationChange(
+                        profile(playerId), GameParticipationSelection.GRIDWORDS, GAME_DATE));
     }
 
     private GameResultStore.GameResultUpsert result(long playerId, String text) {

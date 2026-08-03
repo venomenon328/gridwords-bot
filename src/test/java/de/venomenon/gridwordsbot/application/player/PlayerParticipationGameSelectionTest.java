@@ -6,13 +6,16 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod;
 import de.venomenon.gridwordsbot.domain.model.GameParticipationSelection;
+import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.port.in.PlayerParticipationUseCase.PlayerIdentity;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -26,6 +29,8 @@ class PlayerParticipationGameSelectionTest {
         PlayerStore.StoredPlayer stored = new PlayerStore.StoredPlayer(
                 PLAYER, "Player", true, false, true, Instant.EPOCH, Instant.EPOCH);
         when(store.activateGames(any())).thenReturn(stored);
+        when(store.findGameParticipationPeriod(PLAYER, GameType.GRIDWORDS, TODAY)).thenReturn(Optional.of(
+                new GameParticipationPeriod(PLAYER, GameType.GRIDWORDS, TODAY, null)));
         PlayerParticipationService service = new PlayerParticipationService(
                 store, Clock.fixed(TODAY.atStartOfDay(ZoneId.of("Europe/Berlin")).toInstant(), ZoneId.of("UTC")),
                 ZoneId.of("Europe/Berlin"), Set.of());

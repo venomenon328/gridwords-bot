@@ -7,8 +7,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod;
 import de.venomenon.gridwordsbot.domain.model.GameParticipationSelection;
-import de.venomenon.gridwordsbot.domain.model.ParticipationPeriod;
+import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.port.in.PlayerParticipationUseCase.PlayerIdentity;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
 import java.time.Clock;
@@ -70,13 +71,14 @@ class PlayerParticipationServiceTest {
     void statusSynchronizesAnUnknownProfileAndReportsItsCurrentPeriod() {
         PlayerStore store = mock(PlayerStore.class);
         when(store.synchronizeProfile(any())).thenReturn(player(true, true));
-        when(store.findParticipationPeriod(PLAYER, LocalDate.of(2026, 7, 29)))
-                .thenReturn(Optional.of(new ParticipationPeriod(PLAYER, LocalDate.of(2026, 7, 27), null)));
+        when(store.findGameParticipationPeriod(PLAYER, GameType.GRIDWORDS, LocalDate.of(2026, 7, 29)))
+                .thenReturn(Optional.of(new GameParticipationPeriod(
+                        PLAYER, GameType.GRIDWORDS, LocalDate.of(2026, 7, 27), null)));
 
         var status = service(store).status(identity(ADMIN), identity(PLAYER));
 
         assertThat(status.known()).isTrue();
-        assertThat(status.message()).isEqualTo("Teilnahme: aktiv seit 2026-07-27; Reminder: an.");
+        assertThat(status.message()).isEqualTo("Status GridWords: aktiv; QuadWords: inaktiv; Reminder für aktive Spiele: an.");
         verify(store).synchronizeProfile(new PlayerStore.ProfileUpdate(PLAYER, "Player", false));
     }
 
@@ -92,7 +94,7 @@ class PlayerParticipationServiceTest {
 
         assertThat(status.authorized()).isTrue();
         assertThat(status.active()).isFalse();
-        assertThat(status.message()).isEqualTo("Teilnahme: inaktiv; Reminder: aus.");
+        assertThat(status.message()).isEqualTo("Status GridWords: inaktiv; QuadWords: inaktiv; Reminder für aktive Spiele: aus.");
         verify(store).synchronizeProfile(new PlayerStore.ProfileUpdate(target, "Player", false));
         verify(store, never()).activateGames(any());
     }
@@ -130,10 +132,12 @@ class PlayerParticipationServiceTest {
     void statusRefreshFailureDoesNotRollBackSuccessfulJoin() {
         PlayerStore store = mock(PlayerStore.class);
         when(store.activateGames(any())).thenReturn(player(true, false));
+        when(store.findGameParticipationPeriod(PLAYER, GameType.GRIDWORDS, LocalDate.of(2026, 7, 29)))
+                .thenReturn(Optional.of(new GameParticipationPeriod(PLAYER, GameType.GRIDWORDS, LocalDate.of(2026, 7, 29), null)));
         PlayerParticipationService service = new PlayerParticipationService(store, CLOCK, BERLIN, Set.of(ADMIN),
                 ignored -> { throw new IllegalStateException("status unavailable"); });
 
-        assertThat(service.join(identity(PLAYER)).active()).isTrue();
+        assertThat(service.join(identity(PLAYER), GameParticipationSelection.GRIDWORDS).active()).isTrue();
         verify(store).activateGames(any());
     }
     private static PlayerParticipationService service(PlayerStore store) {

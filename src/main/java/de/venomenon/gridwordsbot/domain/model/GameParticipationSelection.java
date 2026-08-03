@@ -18,4 +18,12 @@ public enum GameParticipationSelection {
     public List<GameType> gameTypes() {
         return gameTypes;
     }
+
+    /** Maps one validated result type to its corresponding single-game participation selection. */
+    public static GameParticipationSelection forGameType(GameType gameType) {
+        return switch (java.util.Objects.requireNonNull(gameType, "gameType")) {
+            case GRIDWORDS -> GRIDWORDS;
+            case QUADWORDS -> QUADWORDS;
+        };
+    }
 }
