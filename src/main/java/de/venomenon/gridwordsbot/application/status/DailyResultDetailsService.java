@@ -19,7 +19,7 @@ public final class DailyResultDetailsService implements DailyResultDetailsUseCas
         var target = participants.stream().filter(player -> player.discordUserId() == request.targetDiscordUserId()).findFirst();
         if (target.isEmpty()) return new Rejected(Reason.TARGET_NOT_PARTICIPATING);
         int pageCount = Math.max(1, (participants.size() + DailyStatusView.OPTIONS_PER_PAGE - 1) / DailyStatusView.OPTIONS_PER_PAGE);
-        if (request.pageIndex() >= pageCount) return new Rejected(Reason.PAGE_NOT_OFFERED);
+        if (pageCount > DailyStatusView.MAX_PAGES_PER_GAME || request.pageIndex() >= pageCount) return new Rejected(Reason.PAGE_NOT_OFFERED);
         int from = request.pageIndex() * DailyStatusView.OPTIONS_PER_PAGE; int to = Math.min(participants.size(), from + DailyStatusView.OPTIONS_PER_PAGE);
         if (participants.subList(from, to).stream().noneMatch(player -> player.discordUserId() == request.targetDiscordUserId())) return new Rejected(Reason.TARGET_NOT_ON_PAGE);
         return results.find(request.targetDiscordUserId(), request.gameType(), request.gameDate()).<Result>map(result -> new Found(target.get().displayName(), result)).orElseGet(() -> new Missing(target.get().displayName(), request.gameType(), request.gameDate()));
