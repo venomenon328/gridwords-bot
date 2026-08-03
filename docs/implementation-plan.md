@@ -136,7 +136,7 @@ Verbindlich: `docs/increments/10.5-interactive-result-details.md`.
 
 Der RC wird lokal aus dem nach vollständiger CI freigegebenen `main` gebaut. Er verwendet eine separate Discord-Testanwendung, einen separaten Testserver/-channel und eine isolierte PostgreSQL-Datenbank. Der produktive Rollout und die manuelle GHCR-Veröffentlichung erfolgen erst nach erfolgreicher Abnahme und werden separat durchgeführt.
 
-Die Projektversion ist `1.0.0`. Die RC-Bezeichnung gehört zum lokalen Image-Tag und zum Abnahmeprotokoll; dadurch kann exakt derselbe getestete Imageinhalt nach erfolgreicher Abnahme als `1.0.0` veröffentlicht werden.
+Die Projektversion ist `1.0.0`. Die RC-Bezeichnung gehört zum lokalen Image-Tag und zum Abnahmeprotokoll. Nach erfolgreicher Abnahme darf nur derselbe freigegebene Commit veröffentlicht werden. Ein erneuter Workflow-Build gilt als neuer Build dieses Commits; byte-identische Promotion ist nur möglich, wenn das lokal getestete Image erhalten und direkt veröffentlicht wird.
 
 ## Geplante Folgeinkremente
 
