@@ -79,7 +79,7 @@ class DatabaseInboundConfiguration {
                 });
     }
     @Bean ZoneId businessZone(GridwordsBotProperties properties) { return properties.schedule().timeZone(); }
-    @Bean DailyResultDetailsUseCase dailyResultDetailsUseCase(DailyStatusInteractionContextQuery contexts, DailyResultDetailsQuery results) {
+    @Bean @ConditionalOnBean({DailyStatusInteractionContextQuery.class, DailyResultDetailsQuery.class}) DailyResultDetailsUseCase dailyResultDetailsUseCase(DailyStatusInteractionContextQuery contexts, DailyResultDetailsQuery results) {
         return new DailyResultDetailsService(contexts, results);
     }
     @Bean PersonalStatusUseCase personalStatusUseCase(Clock clock, GridwordsBotProperties properties,
@@ -95,7 +95,7 @@ class DatabaseInboundConfiguration {
             PersonalStatusEmbedRenderer personalStatusRenderer) {
         return new DiscordParticipationCommandListener(properties, commands, personalStatus, personalStatusRenderer);
     }
-    @Bean @ConditionalOnBean(JDA.class) DailyResultDetailsInteractionListener dailyResultDetailsInteractionListener(GridwordsBotProperties properties, ExecutorService discordInboundExecutor, DailyResultDetailsUseCase details) {
+    @Bean @ConditionalOnBean({JDA.class, DailyResultDetailsUseCase.class}) DailyResultDetailsInteractionListener dailyResultDetailsInteractionListener(GridwordsBotProperties properties, ExecutorService discordInboundExecutor, DailyResultDetailsUseCase details) {
         return new DailyResultDetailsInteractionListener(properties, discordInboundExecutor, details);
     }
     @Bean @ConditionalOnBean(JDA.class) AttachmentContentLoader attachmentContentLoader(JDA jda) { return new JdaAttachmentContentLoader(jda); }

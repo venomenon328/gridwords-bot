@@ -17,7 +17,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository @Profile("database")
-public final class PostgresDailyResultDetailsQuery implements DailyResultDetailsQuery {
+public class PostgresDailyResultDetailsQuery implements DailyResultDetailsQuery {
     private final JdbcTemplate jdbc; public PostgresDailyResultDetailsQuery(JdbcTemplate jdbc) { this.jdbc = jdbc; }
     @Override public Optional<ParsedGameResult> find(long playerId, GameType gameType, LocalDate gameDate) {
         return jdbc.query("SELECT * FROM game_result WHERE player_id = ? AND game_type = ? AND game_date = ?", (rs, row) -> {

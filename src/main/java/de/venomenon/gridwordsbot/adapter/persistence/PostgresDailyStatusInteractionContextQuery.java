@@ -8,7 +8,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository @Profile("database")
-public final class PostgresDailyStatusInteractionContextQuery implements DailyStatusInteractionContextQuery {
+public class PostgresDailyStatusInteractionContextQuery implements DailyStatusInteractionContextQuery {
     private final JdbcTemplate jdbc; public PostgresDailyStatusInteractionContextQuery(JdbcTemplate jdbc) { this.jdbc = jdbc; }
     @Override public Optional<Context> findCurrent(long guildId, long channelId, long messageId, LocalDate gameDate) {
         Boolean matches = jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM daily_status_message WHERE guild_id = ? AND channel_id = ? AND game_date = ? AND bot_message_id = ?)", Boolean.class, guildId, channelId, gameDate, messageId);
