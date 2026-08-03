@@ -142,7 +142,7 @@ Die Projektversion ist `1.0.0`. Die RC-Bezeichnung gehört zum lokalen Image-Tag
 
 ### Zwischeninkrement 10.6 – Spielbezogene Teilnahme
 
-**Status:** fachlich vorbereitet; Issue #39 offen. Paket 0 definiert Fachmodell, ADR und Entwicklungspakete.
+**Status:** in Umsetzung; Issue #39 und der kumulative Draft-PR #41 sind offen. Paket 0 ist gemergt, die Folgepakete werden nacheinander auf dem Feature-Branch umgesetzt.
 
 Spieler können unabhängig an GridWords, QuadWords, beiden Spielen oder keinem Spiel teilnehmen. Historische Teilnahmezeiträume werden pro Spieltyp geführt. Reminder, gemeinsame spielbezogene Serien, Tagesstatusmenüs und Berichtsnenner verwenden jeweils die passende Teilnehmermenge. Komplett und perfekt bleiben Zwei-Spiele-Metriken.
 
@@ -153,9 +153,11 @@ Verbindlich:
 - ADR 0016
 - Issue #39
 
-Die Umsetzung ist in neun aufeinander aufbauende Pakete von Dokumentation und Domänenverträgen über Liquibase, Commands, Serien, Status, Reminder und Reporting bis zur Gesamtintegration gegliedert. Inkrement 11 beginnt erst nach Abschluss von 10.6.
+Die Umsetzung ist in neun aufeinander aufbauende Pakete von Dokumentation und Domänenverträgen über Liquibase, Commands, Serien, Status, Reminder und Reporting bis zur Gesamtintegration gegliedert. Kein Produktionspaket eines späteren Features darf spielunspezifische Compatibility-Logik parallel zu 10.6 einführen. Inkrement 11 beginnt erst nach Abschluss von 10.6.
 
 ### Inkrement 11 – Statistik- und Konfigurations-Commands
+
+**Status:** geplant; beginnt nicht vor Abschluss von 10.6.
 
 - Read-only-Statistik-Slash-Commands auf derselben Reporting-Grundlage,
 - eindeutige Auswahl der Serienarten,
@@ -165,10 +167,28 @@ Die Umsetzung ist in neun aufeinander aufbauende Pakete von Dokumentation und Do
 
 ### Inkrement 12 – Regelbasierte Kommentare
 
-- regelbasierte Kategorien und Textvarianten,
-- Serien-, Komplett- und Perfekt-Auslöser,
-- definierte Nachrichtenlimits,
-- keine generative KI.
+**Status:** als Rahmen geplant; das erste fachlich konkretisierte Teilinkrement ist 12.1.
+
+Regelbasierte Kommentare bleiben deterministisch, redaktionell kontrolliert und Teil vorhandener kanonischer beziehungsweise bewusst definierter Nachrichtenflächen. Es entsteht keine generative KI zur Laufzeit und kein allgemeines Plugin-Framework.
+
+Spätere Teilinkremente können unter anderem Rekord-, Serien-, Komplett- oder Perfektreaktionen konkretisieren. Gemeinsame Nachrichtenlimits und Prioritätsregeln werden erst eingeführt, wenn mindestens zwei konkrete Kommentararten sie tatsächlich benötigen.
+
+### Zwischeninkrement 12.1 – Kontextabhängige Ausreden
+
+**Status:** fachlich vorbereitet; Issue #42 offen. Paket 0 definiert Fachmodell, Persistenzentscheidung und neun Entwicklungspakete.
+
+Bei seltenen absoluten Ergebnis-, Zeit-, Board- oder bisherigen Tagesausreißern kann der Ergebnisautor freiwillig aus drei ephemeren redaktionellen Ausreden wählen, einmal nach einem Stil neu würfeln oder verzichten. Eine Auswahl wird persistiert und als ausschließlich sichtbarer Ausredentext ohne Stilbezeichnung in dieselbe kanonische Ergebnisnachricht gerendert.
+
+Verbindlich:
+
+- `docs/requirements/excuses.md`
+- `docs/increments/12.1-contextual-excuses.md`
+- ADR 0017
+- Issue #42
+
+Die Umsetzung beginnt erst nach dem vollständigen Abschluss und Merge von Zwischeninkrement 10.6. Der spätere Implementierungsbranch wird frisch vom dann aktuellen `main` erstellt und verwendet ausschließlich die endgültigen spielbezogenen Teilnahmeverträge. Eine Vorziehung gegenüber Inkrement 11 wird nicht durch dieses Dokument impliziert und müsste vor Implementierungsstart ausdrücklich priorisiert werden.
+
+Die Pakete führen nacheinander Ausredendomäne und Katalog, Angebots- und Boardkontext, PostgreSQL-Zustand, einmalige Ergebnisintegration, kanonische Komponenten, ephemere Auswahl, Lifecycle-Härtung sowie den redaktionellen Vollkatalog und die reale Discord-Abnahme ein.
 
 ## Definition of Done
 
