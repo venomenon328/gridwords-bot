@@ -11,7 +11,7 @@ RUN --mount=type=cache,target=/root/.m2 mvn --batch-mode --no-transfer-progress 
 FROM eclipse-temurin:21-jre@sha256:273396ed5998598ed1091e8d72711c2d36980a0e65103859c55a4e977a41ffd3 AS runtime
 
 ARG VCS_REF=unknown
-ARG VERSION=0.0.1-SNAPSHOT
+ARG VERSION=1.0.0
 ARG BUILD_DATE=unknown
 
 LABEL org.opencontainers.image.title="gridwords-bot" \
