@@ -89,7 +89,7 @@ Der RC wird lokal aus einem vollständig grünen `main` gebaut. Die Projektversi
 gridwords-bot:1.0.0-rc.1
 ```
 
-Dadurch kann exakt derselbe getestete Imageinhalt nach erfolgreicher Abnahme als `1.0.0` veröffentlicht werden. Zwischen RC-Abnahme und Veröffentlichung darf kein abweichender Quellstand verwendet werden.
+Nach erfolgreicher Abnahme darf ausschließlich derselbe freigegebene Commit veröffentlicht werden. Ein späterer Workflow-Lauf erzeugt einen neuen Build dieses Commits und ist nicht automatisch byte-identisch. Eine byte-identische Promotion ist nur möglich, wenn das lokal getestete Image erhalten und direkt veröffentlicht wird.
 
 Der lokale RC verwendet:
 
@@ -258,9 +258,9 @@ Vor einem produktiven Release müssen erfüllt sein:
 - Standardbuild grün
 - PostgreSQL-Integration grün
 - Container- und Betriebsworkflow grün
-- lokaler RC aus demselben Quellstand gebaut
+- lokaler RC aus demselben freigegebenen Commit gebaut
 - reale Discord-Abnahme auf dem Testserver erfolgreich
-- Image-ID beziehungsweise lokaler Digest des RC dokumentiert
+- Image-ID des lokalen RC dokumentiert
 - keine Quelländerung nach RC-Abnahme
 - manuelle GHCR-Veröffentlichung erfolgreich
 - produktives Backup vor Rollout erfolgreich
