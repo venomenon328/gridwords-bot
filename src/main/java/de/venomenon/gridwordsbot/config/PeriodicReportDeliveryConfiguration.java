@@ -21,6 +21,7 @@ import net.dv8tion.jda.api.JDA;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -48,7 +49,7 @@ class PeriodicReportDeliveryConfiguration {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "gridwords.discord", name = "enabled", havingValue = "true")
+    @Conditional(PeriodicReportActivationCondition.class)
     PeriodicReportDeliveryService periodicReportDeliveryService(
             PeriodicReportDeliveryStore store,
             PeriodicReportMessageGateway messages,
@@ -86,7 +87,7 @@ class PeriodicReportDeliveryConfiguration {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "gridwords.discord", name = "enabled", havingValue = "true")
+    @Conditional(PeriodicReportActivationCondition.class)
     WeeklyReportReconciliationService weeklyReportReconciliationService(
             PeriodicReportDeliveryStore store,
             PeriodicReportReconciliationPlanner planner,
@@ -105,7 +106,7 @@ class PeriodicReportDeliveryConfiguration {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "gridwords.discord", name = "enabled", havingValue = "true")
+    @Conditional(PeriodicReportActivationCondition.class)
     MonthlyReportReconciliationService monthlyReportReconciliationService(
             PeriodicReportDeliveryStore store,
             PeriodicReportReconciliationPlanner planner,
