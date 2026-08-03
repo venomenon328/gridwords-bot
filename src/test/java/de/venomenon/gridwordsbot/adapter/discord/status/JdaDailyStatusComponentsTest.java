@@ -42,8 +42,8 @@ class JdaDailyStatusComponentsTest {
 
         List<ActionRow> rows = capturedRows(create);
         assertThat(rows).hasSize(2);
-        assertThat(menu(rows.get(0)).getId()).isEqualTo("daily-result:v1:2026-08-03:g:0");
-        assertThat(menu(rows.get(1)).getId()).isEqualTo("daily-result:v1:2026-08-03:q:0");
+        assertThat(menu(rows.get(0)).getCustomId()).isEqualTo("daily-result:v1:2026-08-03:g:0");
+        assertThat(menu(rows.get(1)).getCustomId()).isEqualTo("daily-result:v1:2026-08-03:q:0");
         assertThat(menu(rows.get(0)).getOptions())
                 .extracting(option -> option.getLabel() + ":" + option.getValue())
                 .containsExactly("Player 01:user:1");
@@ -66,7 +66,7 @@ class JdaDailyStatusComponentsTest {
 
         List<ActionRow> rows = capturedRows(edit);
         assertThat(rows).hasSize(4);
-        assertThat(rows).extracting(row -> menu(row).getId()).containsExactly(
+        assertThat(rows).extracting(row -> menu(row).getCustomId()).containsExactly(
                 "daily-result:v1:2026-08-03:g:0",
                 "daily-result:v1:2026-08-03:g:1",
                 "daily-result:v1:2026-08-03:q:0",
