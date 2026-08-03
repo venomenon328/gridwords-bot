@@ -8,14 +8,15 @@ Lies vor der Implementierung mindestens:
 
 1. `docs/anforderungsspezifikation.md` – verbindliche fachliche Grundanforderungen und Versionsgrenzen
 2. `docs/requirements/series-model.md` – verbindliche Präzisierung und Änderung der Serien-, Tagesstatus- und Berichtssemantik
-3. `docs/requirements/dynamic-player-model.md` – dynamische Spieler, Teilnahmezeiträume und Reminder-Opt-out
-4. `docs/requirements/daily-status-reminders.md` – Tagesstatus, Scheduler und Reminder-Auslieferung
-5. `docs/requirements/periodic-reports.md`, wenn die Aufgabe Wochen-/Monatsberichte, Periodenstatistiken oder Report-Delivery betrifft
-6. `docs/architecture.md` – verbindliche Architektur, Modulgrenzen und Abläufe
-7. `docs/development-guide.md` – Build, Tests, Secrets und Arbeitsweise
-8. `docs/implementation-plan.md` – Reihenfolge der Inkremente
-9. `docs/requirements/production-deployment.md`, wenn die Aufgabe Build, Container, Deployment, Secrets, Backups oder Produktion betrifft
-10. vorhandene ADRs unter `docs/adr/`, wenn die Aufgabe die dort behandelten Entscheidungen berührt; für periodische Reports insbesondere ADR 0014
+3. `docs/requirements/dynamic-player-model.md` – dynamische Spieler, bisherige globale Teilnahmezeiträume und Reminder-Opt-out
+4. `docs/requirements/game-specific-participation.md`, wenn die Aufgabe Teilnahme, Shares, Commands, Serien, Tagesstatus, Reminder, Ergebnisdetails oder Berichte ab Zwischeninkrement 10.6 betrifft
+5. `docs/requirements/daily-status-reminders.md` – Tagesstatus, Scheduler und Reminder-Auslieferung
+6. `docs/requirements/periodic-reports.md`, wenn die Aufgabe Wochen-/Monatsberichte, Periodenstatistiken oder Report-Delivery betrifft
+7. `docs/architecture.md` – verbindliche Architektur, Modulgrenzen und Abläufe
+8. `docs/development-guide.md` – Build, Tests, Secrets und Arbeitsweise
+9. `docs/implementation-plan.md` – Reihenfolge der Inkremente
+10. `docs/requirements/production-deployment.md`, wenn die Aufgabe Build, Container, Deployment, Secrets, Backups oder Produktion betrifft
+11. vorhandene ADRs unter `docs/adr/`, wenn die Aufgabe die dort behandelten Entscheidungen berührt; für periodische Reports insbesondere ADR 0014 und für spielbezogene Teilnahme ADR 0016
 
 Bei Widersprüchen gilt:
 
@@ -81,21 +82,36 @@ Jeder Schritt muss nach einem Absturz oder erneut zugestellten Event gefahrlos f
 - Heute und gestern sind das einzige zulässige automatische Nachtragsfenster.
 - Wochen- und Monatsberichte verwenden ausschließlich vollständig abgeschlossene Kalenderperioden und einen expliziten Periodenend-Stichtag.
 
+### Spielbezogene Teilnahme ab Zwischeninkrement 10.6
+
+- Verbindlich sind `docs/requirements/game-specific-participation.md`, ADR 0016 und der Paketplan unter `docs/increments/10.6-game-specific-participation.md`.
+- Teilnahmezeiträume tragen immer einen `GameType`; neue fachliche Logik darf keinen spielunspezifischen Zeitraum voraussetzen.
+- Ein gültiges Share aktiviert ausschließlich den Spieltyp des Shares.
+- `player.active` ist nur eine abgeleitete aktuelle Kompatibilitätsinformation und keine historische Quelle.
+- Reminderstatus bleibt global; Reminderkandidaten werden ausschließlich aus der täglichen Teilnehmermenge des betreffenden Spiels gebildet.
+- `both`-Änderungen sind atomar und müssen bei einem Teilfehler vollständig zurückrollen.
+- Bestehende globale Zeiträume werden bei der Migration identisch für beide Spiele übernommen; historische Präferenzen dürfen nicht aus Ergebnissen geraten werden.
+- Kein generisches Modell für beliebig viele Spiele und kein Reminderstatus pro Spiel vorziehen.
+
 ### Serienmodell
 
 - Serien werden aus den persistierten Spielergebnissen und den historisch wirksamen Teilnahmezeiträumen abgeleitet und eindeutig benannt.
 - Persönlich zu berechnen sind Aktivitätsserie, Komplettserie, GridWords-Lösungsserie, QuadWords-Lösungsserie und Perfektserie.
 - Gemeinsam zu berechnen sind GridWords-Lösungsserie, QuadWords-Lösungsserie, Komplettserie und Perfektserie.
-- Gemeinsame Serien setzen pro Tag mindestens zwei aktive Spieler voraus; alle an diesem Tag aktiven Spieler müssen die jeweilige Bedingung erfüllen.
+- Gemeinsame GridWords- und QuadWords-Lösungsserien setzen jeweils mindestens zwei Teilnehmer des betreffenden Spiels voraus.
+- Persönliche sowie gemeinsame Komplett- und Perfektmetriken bleiben Zwei-Spiele-Metriken und verwenden ausschließlich Spieler, die am betreffenden Tag an beiden Spielen teilnehmen.
+- Nicht anwendbare Tage werden nicht übersprungen und pausieren keine Serie, sondern bilden eine Kalendergrenze.
 - GridWords- und QuadWords-Lösungsserien werden persönlich und gemeinsam vollständig unabhängig berechnet.
 - Es gibt keine gemeinsame Aktivitätsserie.
-- Maßgeblich sind die neun Serienarten, Definitionen und Testfälle in `docs/requirements/series-model.md`.
+- Maßgeblich sind die neun Serienarten und zusätzlich die Teilnehmermengen aus `docs/requirements/game-specific-participation.md`.
 
 ### Periodische Berichte
 
 - Verbindlich sind `docs/requirements/periodic-reports.md` und ADR 0014.
 - Ein Teilnahmetag ist nicht mit einem Aktivitätstag gleichzusetzen.
-- Individuelle Nenner verwenden ausschließlich historisch wirksame Teilnahmetage; gemeinsame Nenner ausschließlich Tage mit mindestens zwei aktiven Spielern.
+- Spielstatistiken verwenden getrennte historisch wirksame GridWords- und QuadWords-Teilnahmetage als Nenner.
+- Aktivität verwendet Teilnahmetage an mindestens einem Spiel; Komplett und Perfekt verwenden ausschließlich Zwei-Spiele-Teilnahmetage.
+- Gemeinsame Komplett- und Perfektnenner verwenden ausschließlich Tage mit mindestens zwei Zwei-Spiele-Teilnehmern.
 - Statistik- und Serienwerte werden bis einschließlich Periodenende abgeleitet. Daten danach dürfen den Bericht nicht beeinflussen.
 - Berechnete Reportwerte werden nicht als zweite fachliche Wahrheit persistiert.
 - Erfolgreich veröffentlichte Berichte sind Snapshots und werden durch spätere Ergebnisse nicht automatisch editiert.
@@ -143,8 +159,9 @@ Jeder Schritt muss nach einem Absturz oder erneut zugestellten Event gefahrlos f
 - Logs dürfen niemals Tokens, Passwörter, vollständige `.env`-Inhalte oder unnötige fremde Nachrichteninhalte enthalten.
 - Neue fachliche Logik benötigt Tests.
 - Parseränderungen benötigen Fixture-basierte Tests für Erfolg, Nicht-gelöst-Format und Fehlerfälle.
-- Serienänderungen benötigen getrennte Tests für alle neun definierten Serien, historische Teilnahmezeiträume und die Regel für den unvollständigen aktuellen Tag.
-- Reportänderungen benötigen getrennte Tests für Wochen-/Monatsperioden, Teilnahmetage, alle persönlichen und gemeinsamen Kennzahlen, Periodenend-Stichtag, Catch-up, NO_OP und Pagination.
+- Serienänderungen benötigen getrennte Tests für alle neun definierten Serien, spielbezogene historische Teilnahmezeiträume, nicht anwendbare Tage und die Regel für den unvollständigen aktuellen Tag.
+- Änderungen an spielbezogener Teilnahme benötigen symmetrische GridWords-only-/QuadWords-only-Fälle, `both`-Atomizität, Backfill, Konkurrenz, Reminder-Audience, Statusmenüs und getrennte Reportnenner.
+- Reportänderungen benötigen getrennte Tests für Wochen-/Monatsperioden, Union-, spielbezogene und Zwei-Spiele-Teilnahmetage, alle persönlichen und gemeinsamen Kennzahlen, Periodenend-Stichtag, Catch-up, NO_OP und Pagination.
 - Tests dürfen keine echte Discord-Verbindung öffnen.
 - Zeitabhängige Tests verwenden eine feste `Clock`.
 - Fehlerpfade und Idempotenz sind ebenso zu testen wie der Happy Path.
@@ -220,6 +237,7 @@ Für lokale manuelle Ausführung gelten die Befehle aus `README.md`, `docs/devel
 - PRs für Produktionsbetrieb bleiben Draft, bis automatisierte und reale Serverabnahme vollständig sind.
 - PRs für Wochen-/Monatsberichte bleiben Draft, bis beide Berichtstypen real in Discord dargestellt und duplikatsicher geprüft wurden.
 - Paketweise Inkremente verwenden den jeweils aktuellen Plan unter `docs/increments/`; keine späteren Pakete oder Folge-Issues vorziehen.
+- Für Issue #39 gilt die Reihenfolge aus `docs/increments/10.6-game-specific-participation.md`; Inkrement 11 wird nicht vor Abschluss von 10.6 begonnen.
 
 ## 9. Abschlussbericht für Codex-Aufgaben
 
