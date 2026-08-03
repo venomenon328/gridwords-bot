@@ -140,6 +140,21 @@ Die Projektversion ist `1.0.0`. Die RC-Bezeichnung gehört zum lokalen Image-Tag
 
 ## Geplante Folgeinkremente
 
+### Zwischeninkrement 10.6 – Spielbezogene Teilnahme
+
+**Status:** fachlich vorbereitet; Issue #39 offen. Paket 0 definiert Fachmodell, ADR und Entwicklungspakete.
+
+Spieler können unabhängig an GridWords, QuadWords, beiden Spielen oder keinem Spiel teilnehmen. Historische Teilnahmezeiträume werden pro Spieltyp geführt. Reminder, gemeinsame spielbezogene Serien, Tagesstatusmenüs und Berichtsnenner verwenden jeweils die passende Teilnehmermenge. Komplett und perfekt bleiben Zwei-Spiele-Metriken.
+
+Verbindlich:
+
+- `docs/requirements/game-specific-participation.md`
+- `docs/increments/10.6-game-specific-participation.md`
+- ADR 0016
+- Issue #39
+
+Die Umsetzung ist in neun aufeinander aufbauende Pakete von Dokumentation und Domänenverträgen über Liquibase, Commands, Serien, Status, Reminder und Reporting bis zur Gesamtintegration gegliedert. Inkrement 11 beginnt erst nach Abschluss von 10.6.
+
 ### Inkrement 11 – Statistik- und Konfigurations-Commands
 
 - Read-only-Statistik-Slash-Commands auf derselben Reporting-Grundlage,
