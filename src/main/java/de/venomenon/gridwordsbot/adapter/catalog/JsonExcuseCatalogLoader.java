@@ -143,11 +143,11 @@ public final class JsonExcuseCatalogLoader {
     private static String requiredText(
             JsonNode node, String field, String location, List<String> errors) {
         JsonNode value = node.get(field);
-        if (value == null || !value.isTextual() || value.textValue().isBlank()) {
+        if (value == null || !value.isString() || value.asString().isBlank()) {
             errors.add(location + "." + field + " must be a non-blank string");
             return "invalid";
         }
-        return value.textValue();
+        return value.asString();
     }
 
     private static int requiredInt(
@@ -199,10 +199,10 @@ public final class JsonExcuseCatalogLoader {
         Set<E> parsed = new LinkedHashSet<>();
         int index = 0;
         for (JsonNode value : values) {
-            if (!value.isTextual() || value.textValue().isBlank()) {
+            if (!value.isString() || value.asString().isBlank()) {
                 errors.add(location + "." + field + "[" + index + "] must be a non-blank string");
             } else {
-                String raw = value.textValue();
+                String raw = value.asString();
                 try {
                     E converted = Enum.valueOf(type, raw.toUpperCase(Locale.ROOT));
                     if (!parsed.add(converted)) {
@@ -227,10 +227,10 @@ public final class JsonExcuseCatalogLoader {
         Set<ExcuseCondition> parsed = new LinkedHashSet<>();
         int index = 0;
         for (JsonNode value : values) {
-            if (!value.isTextual() || value.textValue().isBlank()) {
+            if (!value.isString() || value.asString().isBlank()) {
                 errors.add(location + "." + field + "[" + index + "] must be a non-blank string");
             } else {
-                String raw = value.textValue();
+                String raw = value.asString();
                 ExcuseCondition.fromKey(raw).ifPresentOrElse(condition -> {
                     if (!parsed.add(condition)) {
                         errors.add(location + "." + field + " contains duplicate value " + raw);
