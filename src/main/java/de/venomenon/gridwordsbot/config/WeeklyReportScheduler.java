@@ -2,8 +2,8 @@ package de.venomenon.gridwordsbot.config;
 
 import de.venomenon.gridwordsbot.application.reporting.WeeklyReportReconciliationService;
 import java.util.Objects;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Profile;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 /** Triggers durable weekly reconciliation at startup and on a fixed cadence without owning report decisions. */
 @Component
 @Profile("database")
-@ConditionalOnProperty(prefix = "gridwords.discord", name = "enabled", havingValue = "true")
+@Conditional(PeriodicReportActivationCondition.class)
 final class WeeklyReportScheduler {
     private final WeeklyReportReconciliationService reconciliation;
     private final GridwordsBotProperties properties;
