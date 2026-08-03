@@ -1,0 +1,53 @@
+{
+  "version": "test-v1",
+  "templates": [
+    {
+      "id": "general.technical.01",
+      "style": "TECHNICAL",
+      "games": ["GRIDWORDS", "QUADWORDS"],
+      "topic": "TECHNICAL_FAILURE",
+      "specificity": 0,
+      "weight": 100,
+      "requiresAll": [],
+      "excludesAny": [],
+      "text": "Die Buchstabenpipeline war für {game} nicht verfügbar.",
+      "selectable": true
+    },
+    {
+      "id": "general.legal.01",
+      "style": "LEGAL",
+      "games": ["GRIDWORDS", "QUADWORDS"],
+      "topic": "RESPONSIBILITY",
+      "specificity": 0,
+      "weight": 80,
+      "requiresAll": [],
+      "excludesAny": [],
+      "text": "Ich erkenne das Ergebnis an, nicht jedoch seine Legitimität.",
+      "selectable": true
+    },
+    {
+      "id": "general.cosmic.01",
+      "style": "COSMIC",
+      "games": ["GRIDWORDS", "QUADWORDS"],
+      "topic": "GRID_CONFLICT",
+      "specificity": 0,
+      "weight": 60,
+      "requiresAll": [],
+      "excludesAny": [],
+      "text": "Die Vokale standen heute unter ungünstigem Einfluss.",
+      "selectable": true
+    },
+    {
+      "id": "quadwords.board.legal.01",
+      "style": "LEGAL",
+      "games": ["QUADWORDS"],
+      "topic": "SINGLE_BOARD_BLAME",
+      "specificity": 30,
+      "weight": 100,
+      "requiresAll": ["QUADWORDS_SINGLE_BOARD_COLLAPSE", "UNIQUE_WORST_BOARD"],
+      "excludesAny": ["BOARDLESS_SUBMISSION"],
+      "text": "Das Verhalten von {worstBoard} wird gesondert geprüft.",
+      "selectable": true
+    }
+  ]
+}
