@@ -43,6 +43,7 @@ class JdaDailyStatusMessageGatewayTest {
         MessageCreateAction create = mock(MessageCreateAction.class);
         Message sent = mock(Message.class);
         when(fixture.channel.sendMessageEmbeds(anyCollection())).thenReturn(create);
+        when(create.setComponents(anyCollection())).thenReturn(create);
         when(create.setAllowedMentions(anyCollection())).thenReturn(create);
         when(create.complete()).thenReturn(sent);
         when(sent.getIdLong()).thenReturn(99L);
@@ -76,6 +77,7 @@ class JdaDailyStatusMessageGatewayTest {
         when(retrieve.complete()).thenReturn(existing);
         when(existing.getIdLong()).thenReturn(99L);
         when(existing.editMessageEmbeds(anyCollection())).thenReturn(edit);
+        when(edit.setComponents(anyCollection())).thenReturn(edit);
         when(edit.setAllowedMentions(anyCollection())).thenReturn(edit);
 
         assertThat(fixture.gateway.publishOrEdit(12L, Optional.of(99L), status(), true)).isEqualTo(99L);
@@ -95,6 +97,7 @@ class JdaDailyStatusMessageGatewayTest {
         MessageCreateAction create = mock(MessageCreateAction.class);
         Message replacement = mock(Message.class);
         when(fixture.channel.sendMessageEmbeds(anyCollection())).thenReturn(create);
+        when(create.setComponents(anyCollection())).thenReturn(create);
         when(create.setAllowedMentions(anyCollection())).thenReturn(create);
         when(create.complete()).thenReturn(replacement);
         when(replacement.getIdLong()).thenReturn(101L);
@@ -111,6 +114,7 @@ class JdaDailyStatusMessageGatewayTest {
         fixture.history(List.of(matching));
         MessageEditAction edit = mock(MessageEditAction.class);
         when(matching.editMessageEmbeds(anyCollection())).thenReturn(edit);
+        when(edit.setComponents(anyCollection())).thenReturn(edit);
         when(edit.setAllowedMentions(anyCollection())).thenReturn(edit);
 
         assertThat(fixture.gateway.publishOrEdit(12L, Optional.empty(), status(), true)).isEqualTo(88L);
@@ -127,6 +131,7 @@ class JdaDailyStatusMessageGatewayTest {
         MessageCreateAction create = mock(MessageCreateAction.class);
         Message sent = mock(Message.class);
         when(fixture.channel.sendMessage(anyString())).thenReturn(create);
+        when(create.setComponents(anyCollection())).thenReturn(create);
         when(create.setAllowedMentions(anyCollection())).thenReturn(create);
         when(create.mentionUsers(anyCollection())).thenReturn(create);
         when(create.complete()).thenReturn(sent);
@@ -162,6 +167,7 @@ class JdaDailyStatusMessageGatewayTest {
         MessageCreateAction create = mock(MessageCreateAction.class);
         Message sent = mock(Message.class);
         when(fixture.channel.sendMessage(anyString())).thenReturn(create);
+        when(create.setComponents(anyCollection())).thenReturn(create);
         when(create.setAllowedMentions(anyCollection())).thenReturn(create);
         when(create.complete()).thenReturn(sent);
         when(sent.getIdLong()).thenReturn(78L);

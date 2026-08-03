@@ -379,8 +379,16 @@ Der parameterlose Root-Command `/status` trennt die persönliche Statusanzeige v
 - bei Reportinkrementen beide Berichtstypen real dargestellt und duplikatsicher geprüft,
 - PR reviewbar, Draft-Status erst nach vollständiger Abnahme aufheben.
 
-### Zwischeninkrement 10.4 ? Tagesabschluss, Reminder-Retention und Channel-Bereinigung
+### Zwischeninkrement 10.4 – Tagesabschluss, Reminder-Retention und Channel-Bereinigung
 
-**Status:** in Umsetzung; Issue #30 und Draft-PR #35 auf feature/daily-channel-cleanup.
+**Status:** abgeschlossen; Issue #30 geschlossen und PR #35 gemergt.
 
 Der tägliche 06:00-Uhr-Cleanup finalisiert den Vortag vor der persistent abgesicherten Entfernung kanonischer Ergebnis- und Reminder-Nachrichten. Reminder laufen standardmäßig um 16:00 und 22:00 Uhr; fachliche Ergebnisdaten, Boards, Rohshares und Reports bleiben erhalten.
+
+### Zwischeninkrement 10.5 – Interaktive Ergebnisdetails
+
+**Status:** in Umsetzung; Issue #34 und Draft-PR #36 auf `feature/interactive-result-details`.
+
+Die kanonische Tagesnachricht erhält zwei spielbezogene, paginierte Auswahlmenügruppen als dauerhaften read-only Einstiegspunkt für ephemere Ergebnisdetails. Die Komponenten sind aus der aktuellen Status-Message-ID, dem Spieltag und der historischen Teilnehmermenge rekonstruierbar; sie verwenden keine In-Memory-Session und ändern keine gespeicherten Fakten. Pro Menü gelten 25 Optionen, höchstens zwei Seiten je Spieltyp und damit maximal 50 Teilnehmer. Darüber wird vor Discord-I/O kontrolliert permanent abgebrochen.
+
+Verbindlich: `docs/increments/10.5-interactive-result-details.md`, Issue #34 und der dort dokumentierte Component-Vertrag `daily-result:v1:<yyyy-MM-dd>:<g|q>:<pageIndex>`.

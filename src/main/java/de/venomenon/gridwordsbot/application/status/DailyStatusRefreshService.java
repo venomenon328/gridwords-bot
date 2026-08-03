@@ -1,6 +1,7 @@
 package de.venomenon.gridwordsbot.application.status;
 
 import de.venomenon.gridwordsbot.domain.status.DailyStatus;
+import de.venomenon.gridwordsbot.domain.status.DailyStatusView;
 import de.venomenon.gridwordsbot.port.out.DailyStatusMessageGateway;
 import de.venomenon.gridwordsbot.port.out.DailyStatusStore;
 import de.venomenon.gridwordsbot.port.out.DiscordDeliveryException;
@@ -61,7 +62,8 @@ public final class DailyStatusRefreshService {
         if (!createIfMissing && !hasResult && !store.statusExists(guildId, channelId, date)) {
             return true;
         }
-        String fingerprint = fingerprint(status);
+        DailyStatusView view = DailyStatusView.versionOne(status);
+        String fingerprint = fingerprint(view);
         DailyStatusStore.StatusDelivery claim = store.claimStatus(
                 guildId, channelId, date, fingerprint, reconcileDelivered, clock.instant().plus(LEASE)).orElse(null);
         if (claim == null) {
@@ -69,7 +71,7 @@ public final class DailyStatusRefreshService {
         }
         boolean contentChanged = claim.previousFingerprint().filter(fingerprint::equals).isEmpty();
         try {
-            long messageId = messages.publishOrEdit(channelId, claim.discordMessageId(), status, contentChanged);
+            long messageId = messages.publishOrEdit(channelId, claim.discordMessageId(), view, contentChanged);
             store.completeStatus(claim, messageId, fingerprint);
             return true;
         } catch (DiscordDeliveryException exception) {
@@ -82,9 +84,13 @@ public final class DailyStatusRefreshService {
     }
 
     static String fingerprint(DailyStatus status) {
+        return fingerprint(DailyStatusView.versionOne(status));
+    }
+
+    static String fingerprint(DailyStatusView view) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(status.toString().getBytes(StandardCharsets.UTF_8));
+                    .digest(view.toString().getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(digest);
         } catch (NoSuchAlgorithmException impossible) {
             throw new IllegalStateException("SHA-256 is unavailable", impossible);

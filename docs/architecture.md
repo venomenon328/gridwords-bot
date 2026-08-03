@@ -434,3 +434,17 @@ Neue Reportfunktionalität wird erst nach vollständigem Build, PostgreSQL-Integ
 Der idempotente Cleanup-Orchestrator wird von Startup und Scheduler aufgerufen. Ab der konfigurierten 06:00-Grenze finalisiert er gestern vor jeder Nachrichtenbereinigung, pensioniert danach Ergebnis- und Reminder-Nachrichten mit getrennten Claims, Leases und Backoff und erstellt zuletzt den heutigen Statusanker. Retirement-Intent sperrt jede kanonische Publication- und Recovery-Neuerzeugung.
 
 ADR 0015 dokumentiert die persistente Zustands- und Fehlersemantik.
+## 18. Interaktive Ergebnisdetails
+
+Zwischeninkrement 10.5 erweitert die Tagesstatus-Delivery um eine transportneutrale vollständige Statussicht mit versionierten, nach historischer Teilnehmermenge sortierten Auswahlseiten. Das JDA-Gateway veröffentlicht oder ersetzt Embeds und Action Rows als gemeinsamen Delivery-Inhalt; der Status-Fingerprint umfasst beide Teile.
+
+Ein separater, ausschließlich lesender Application-Use-Case validiert die aktuelle Status-Message-ID, Spieltag, Spieltyp, Optionsseite und Zielspieler gegen PostgreSQL. Erst danach lädt er den aktuellen `game_result`. Die JDA-Interaction bestätigt sofort ephemer und delegiert Abfrage sowie Rendering an den begrenzten Worker. Es gibt weder einen Sessionzustand im Speicher noch eine schreibende Persistenzoperation im Detailpfad.
+
+Component-ID und Optionswert bleiben stabil und vollständig rekonstruierbar:
+
+```text
+daily-result:v1:<yyyy-MM-dd>:<g|q>:<pageIndex>
+user:<discordUserId>
+```
+
+Je String-Select sind höchstens 25 Optionen zulässig. Bis 50 Teilnehmer werden höchstens zwei Seiten pro Spieltyp dargestellt; größere Tagesstatus werden vor Discord-I/O als permanenter Delivery-Fehler abgelehnt. Details stehen in `docs/increments/10.5-interactive-result-details.md`.

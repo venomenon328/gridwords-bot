@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.venomenon.gridwordsbot.adapter.discord.inbound.DailyResultDetailsInteractionListener;
 import de.venomenon.gridwordsbot.adapter.discord.inbound.DiscordInboundListener;
 import de.venomenon.gridwordsbot.adapter.discord.inbound.DiscordParticipationCommandListener;
 import de.venomenon.gridwordsbot.application.canonical.CanonicalGridWordsPublicationService;
@@ -19,16 +20,23 @@ import org.springframework.boot.DefaultApplicationArguments;
 class DatabaseInboundStartupTest {
 
     @Test
-    void resumesDurableWorkBeforeRegisteringInboundAndCommandListeners() throws Exception {
+    void resumesDurableWorkBeforeRegisteringInboundInteractionAndCommandListeners() throws Exception {
         CanonicalGridWordsPublicationService canonical = mock(CanonicalGridWordsPublicationService.class);
         GridWordsSourceDeletionService deletion = mock(GridWordsSourceDeletionService.class);
         DailyChannelCleanupService cleanup = mock(DailyChannelCleanupService.class);
         JDA jda = mock(JDA.class);
         DiscordInboundListener inbound = mock(DiscordInboundListener.class);
+        DailyResultDetailsInteractionListener resultDetails = mock(DailyResultDetailsInteractionListener.class);
         DiscordParticipationCommandListener commands = mock(DiscordParticipationCommandListener.class);
 
         new DatabaseInboundStartup(
-                provider(jda), provider(inbound), provider(commands), provider(canonical), provider(deletion), provider(cleanup))
+                provider(jda),
+                provider(inbound),
+                provider(commands),
+                provider(resultDetails),
+                provider(canonical),
+                provider(deletion),
+                provider(cleanup))
                 .run(new DefaultApplicationArguments());
 
         InOrder order = inOrder(cleanup, canonical, deletion, jda, commands);
@@ -36,6 +44,7 @@ class DatabaseInboundStartupTest {
         order.verify(canonical).resumeOpenPublications();
         order.verify(deletion).resumeOpenDeletions();
         order.verify(jda).addEventListener(inbound);
+        order.verify(jda).addEventListener(resultDetails);
         order.verify(jda).addEventListener(commands);
         order.verify(commands).registerCommands(jda);
     }
