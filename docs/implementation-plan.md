@@ -115,7 +115,7 @@ Verbindlich:
 
 **Status:** abgeschlossen; Issue #30 geschlossen und PR #35 gemergt.
 
-Der tägliche Cleanup um 06:00 Uhr finalisiert zuerst den Vortag, pensioniert danach kanonische Ergebnis- und Reminder-Nachrichten und erzeugt beziehungsweise reconciliiert den heutigen Tagesstatus. Reminder laufen standardmäßig um 16:00 und 22:00 Uhr.
+Der tägliche Cleanup um 06:00 Uhr finalisiert zuerst den Vortag, pensioniert danach kanonische Ergebnis- und Reminder-Nachrichten und erzeugt beziehungsweise reconciliert den heutigen Tagesstatus. Reminder laufen standardmäßig um 16:00 und 22:00 Uhr.
 
 Verbindlich:
 
@@ -124,36 +124,59 @@ Verbindlich:
 
 ### Zwischeninkrement 10.5 – Interaktive Ergebnisdetails
 
-**Status:** automatisiert umgesetzt; Issue #34 geschlossen und PR #36 gemergt. Die reale Discord-Abnahme erfolgt mit dem Release Candidate auf dem separaten Testserver.
+**Status:** automatisiert umgesetzt; Issue #34 geschlossen und PR #36 gemergt. Die reale Discord-Abnahme erfolgt gemeinsam mit dem Release Candidate und Zwischeninkrement 10.6 auf dem separaten Testserver.
 
 Tagesstatusnachrichten enthalten spielbezogene Auswahlmenüs für ausschließlich lesende, ephemere GridWords- und QuadWords-Ergebnisdetails. Komponenten sind persistent rekonstruierbar und serverseitig gegen Message-ID, Spieltag, Teilnehmermenge und Optionsseite abgesichert.
 
 Verbindlich: `docs/increments/10.5-interactive-result-details.md`.
 
-## Release Candidate 1.0.0
-
-**Status:** vorbereitet; lokale Containererstellung und reale Discord-Abnahme stehen aus.
-
-Der RC wird lokal aus dem nach vollständiger CI freigegebenen `main` gebaut. Er verwendet eine separate Discord-Testanwendung, einen separaten Testserver/-channel und eine isolierte PostgreSQL-Datenbank. Der produktive Rollout und die manuelle GHCR-Veröffentlichung erfolgen erst nach erfolgreicher Abnahme und werden separat durchgeführt.
-
-Die Projektversion ist `1.0.0`. Die RC-Bezeichnung gehört zum lokalen Image-Tag und zum Abnahmeprotokoll. Nach erfolgreicher Abnahme darf nur derselbe freigegebene Commit veröffentlicht werden. Ein erneuter Workflow-Build gilt als neuer Build dieses Commits; byte-identische Promotion ist nur möglich, wenn das lokal getestete Image erhalten und direkt veröffentlicht wird.
-
-## Geplante Folgeinkremente
+## Aktuelle Abschlussarbeit
 
 ### Zwischeninkrement 10.6 – Spielbezogene Teilnahme
 
-**Status:** fachlich vorbereitet; Issue #39 offen. Paket 0 definiert Fachmodell, ADR und Entwicklungspakete.
+**Status:** Pakete 1–7 implementiert und automatisiert geprüft; Paket 8 läuft. Issue #39 und PR #41 bleiben bis zur realen Discord-Abnahme und zum finalen Container-Gate offen beziehungsweise Draft.
 
 Spieler können unabhängig an GridWords, QuadWords, beiden Spielen oder keinem Spiel teilnehmen. Historische Teilnahmezeiträume werden pro Spieltyp geführt. Reminder, gemeinsame spielbezogene Serien, Tagesstatusmenüs und Berichtsnenner verwenden jeweils die passende Teilnehmermenge. Komplett und perfekt bleiben Zwei-Spiele-Metriken.
+
+Umgesetzt sind insbesondere:
+
+- spielbezogene Domänentypen und PostgreSQL-Zeiträume,
+- verlustfreier Backfill bestehender globaler Historie auf beide Spiele,
+- atomare `both`-Mutationen und Share-Aktivierung nur des validierten Spieltyps,
+- Commands und persönliche Statusprojektionen mit getrennter Teilnahme,
+- alle neun Serien auf `G(d)`, `Q(d)`, `U(d)` und `B(d)`,
+- eindeutiger Tagesstatus und je Spiel getrennte Ergebnisdetailmenüs,
+- Reminder-Audience ausschließlich für teilgenommene fehlende Spiele,
+- Wochen- und Monatsberichte mit getrennten Spielnennern.
+
+Vor Paket 8 waren 501 Standardtests sowie 501 Surefire- und 138 Failsafe-Tests im PostgreSQL-Profil grün. Die normale GitHub-CI war vollständig erfolgreich. Der zeitintensive Produktionscontainerworkflow bleibt bei Draft-Pull-Requests bewusst übersprungen und wird erst auf dem final abgenommenen Commit durch **Ready for review** ausgelöst.
+
+Noch ausstehend:
+
+- reale Discord-Abnahme gemäß `docs/operations/10.6-game-specific-participation-acceptance.md`,
+- abschließende Dokumentations- und Compatibility-Prüfung,
+- finaler Container-, Compose-, Backup-, Restore-, Resume- und Rollback-Lauf,
+- Freigabe von PR #41 und Abschluss von Issue #39.
 
 Verbindlich:
 
 - `docs/requirements/game-specific-participation.md`
 - `docs/increments/10.6-game-specific-participation.md`
+- `docs/operations/10.6-game-specific-participation-acceptance.md`
 - ADR 0016
 - Issue #39
 
-Die Umsetzung ist in neun aufeinander aufbauende Pakete von Dokumentation und Domänenverträgen über Liquibase, Commands, Serien, Status, Reminder und Reporting bis zur Gesamtintegration gegliedert. Inkrement 11 beginnt erst nach Abschluss von 10.6.
+Inkrement 11 beginnt erst nach dem vollständigen Abschluss von 10.6.
+
+## Release Candidate 1.0.0
+
+**Status:** Quellumfang implementiert und automatisiert geprüft; reale Discord-Abnahme und finale Containerprüfung stehen aus.
+
+Der RC wird aus exakt dem final abgenommenen Commit gebaut. Er verwendet eine separate Discord-Testanwendung, einen separaten Testserver/-channel und eine isolierte PostgreSQL-Datenbank. Der produktive Rollout und die manuelle GHCR-Veröffentlichung erfolgen erst nach erfolgreicher Abnahme und werden separat durchgeführt.
+
+Die Projektversion ist `1.0.0`. Die RC-Bezeichnung gehört zum lokalen Image-Tag und zum Abnahmeprotokoll. Nach erfolgreicher Abnahme darf nur derselbe freigegebene Commit veröffentlicht werden. Ein erneuter Workflow-Build gilt als neuer Build dieses Commits; byte-identische Promotion ist nur möglich, wenn das lokal getestete Image erhalten und direkt veröffentlicht wird.
+
+## Geplante Folgeinkremente
 
 ### Inkrement 11 – Statistik- und Konfigurations-Commands
 
