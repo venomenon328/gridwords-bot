@@ -216,6 +216,19 @@ Der Reporting-Kern verwendet `LocalDate`, `ZoneId` und eine injizierte `Clock`. 
 
 Durchschnittswerte werden im fachlichen Kern nicht früh gerundet. Summen, Anzahlen und Minima bleiben transportneutral; die sichtbare Rundung ist Aufgabe des Renderers.
 
+### 8.2 Spielbezogene Teilnahme ab Zwischeninkrement 10.6
+
+Teilnahme wird durch einen transportneutralen Zeitraum mit Spieler-ID, `GameType`, inklusivem Beginn und exklusivem Ende modelliert. Für jeden Spieltag werden daraus vier Mengen abgeleitet: GridWords-Teilnehmer, QuadWords-Teilnehmer, ihre Union und ihre Schnittmenge.
+
+- Share- und Command-Use-Cases übergeben den Spieltyp beziehungsweise eine explizite Auswahl beider Spiele.
+- `player.active` bleibt nur ein abgeleitetes aktuelles Kompatibilitätsflag.
+- Spielbezogene Lösungsserien, Reminder und Detailmenüs verwenden die Teilnehmermenge des jeweiligen Spiels.
+- Komplett- und Perfektmetriken verwenden ausschließlich die Schnittmenge der Zwei-Spiele-Teilnehmer.
+- Reporting führt getrennte GridWords-, QuadWords-, Union- und Zwei-Spiele-Teilnahmetage.
+- Der fachliche Kern kennt weder Tabellenstruktur noch Discord-Choice-Typen.
+
+Die vollständigen Regeln stehen in `docs/requirements/game-specific-participation.md`; die Persistenzentscheidung dokumentiert ADR 0016.
+
 ## 9. Fehler- und Reaktionssemantik für QuadWords
 
 ### Fachlich stabil ungültig
@@ -313,7 +326,7 @@ QuadWords verwendet diesen Veröffentlichungs- und Löschablauf erst in Inkremen
 
 ## 12.1 Tagesstatus- und Reminder-Delivery
 
-Die Tagesstatusprojektion ist ein transportneutraler Application-Use-Case. Sie liest Ergebnisse und historisch wirksame Teilnahmezeiträume über Ports. Der projizierte Spieltag ist zugleich der Serien-Stichtag; die vorläufige Semantik ist nur für den aktuellen Tag der injizierten `Clock` in der konfigurierten Zeitzone zulässig.
+Die Tagesstatusprojektion ist ein transportneutraler Application-Use-Case. Sie liest Ergebnisse und historisch wirksame spielbezogene Teilnahmezeiträume über Ports. Der projizierte Spieltag ist zugleich der Serien-Stichtag; die vorläufige Semantik ist nur für den aktuellen Tag der injizierten `Clock` in der konfigurierten Zeitzone zulässig. Ab Zwischeninkrement 10.6 enthält die Statussicht die Union aller Teilnehmer, aber pro Spiel eine eigene Teilnahme- und Menüprojektion.
 
 Status und Reminder verwenden persistente Delivery-Zustände mit fachlichen Unique Constraints, tokengebundenen Claims, Leases und kurzen Zustandsübergängen. Discord-I/O liegt außerhalb von Datenbanktransaktionen. Ein Inhaltsfingerabdruck verhindert unnötige Status-Edits. Stabile Discord-Footer-Schlüssel reconciliieren unklare externe Ausgänge und ermöglichen eine deterministische Duplikatbereinigung.
 
@@ -323,7 +336,8 @@ Der Scheduler ist lediglich ein wiederholter Trigger. Startup und Minutentakt ru
 
 Der Reporting-Use-Case liest:
 
-- Spieler und historische Teilnahmezeiträume,
+- Spieler und historische spielbezogene Teilnahmezeiträume,
+- getrennte Union-, GridWords-, QuadWords- und Zwei-Spiele-Teilnahmetage,
 - gültige Ergebnisse bis einschließlich Periodenende,
 - Serienprojektionen und Rekorde bis einschließlich Periodenende.
 
@@ -356,7 +370,7 @@ Eine externe Löschung wird nur innerhalb des Catch-up-Fensters automatisch repa
 
 ## 12.3 Persönlicher Status
 
-`PersonalStatusUseCase` liefert für einen aufrufenden Nutzer eine strukturierte, transportneutrale Projektion. Sie enthält den für den aktuellen Berlin-Tag wirksamen Teilnahmezeitraum, den Reminder-Opt-in sowie optional je Spieltyp die letzte gültige Einreichung. Das Modell führt `LocalDate gameDate` und `Instant receivedAt`, aber weder fertigen Discord-Text noch JDA- oder Persistenztypen und keine Boards, Rohtexte oder Attachments.
+`PersonalStatusUseCase` liefert für einen aufrufenden Nutzer eine strukturierte, transportneutrale Projektion. Sie enthält ab Zwischeninkrement 10.6 die für den aktuellen Berlin-Tag getrennt wirksamen GridWords- und QuadWords-Teilnahmezeiträume, den globalen Reminder-Opt-in sowie optional je Spieltyp die letzte gültige Einreichung. Das Modell führt `LocalDate gameDate` und `Instant receivedAt`, aber weder fertigen Discord-Text noch JDA- oder Persistenztypen und keine Boards, Rohtexte oder Attachments.
 
 `PersonalStatusService` synchronisiert das Profil der Actor-ID über `PlayerStore`, bestimmt den heutigen fachlichen Kalendertag über injizierte `Clock` und konfigurierte `ZoneId` und kombiniert diese Daten mit genau einem Aufruf eines schmalen `LatestValidSubmissionQuery`-Ports.
 
@@ -370,7 +384,6 @@ source_message_id DESC
 
 Die Abfrage lädt keine Board-, Rohtext- oder Attachmentspalten. Der Discord-Adapter übergibt ausschließlich Actor-ID und aktuellen Anzeigenamen, formatiert erst dort den Einreichungszeitpunkt in der konfigurierten Zone und beantwortet `/status` stets ephemer. Die Registrierung bleibt in einem zentralen `guild.updateCommands()`-Pfad; `/participation` enthält nur die teilnahmeändernden Subcommands.
 
-
 ## 13. Tests
 
 ### Standardbuild
@@ -383,8 +396,8 @@ Ohne Netzwerk, Token, Datenbank und Container:
 - synthetische Layout- und Fehlerfixtures,
 - Application-Retry, Replay und Korrektur,
 - JDA-Adapter mit gemockter Grenze,
-- Tagesstatusprojektion, Scheduler, DST, Reminder und Discord-Limits,
-- Wochen-/Monatsperioden, Teilnahmetage, Statistiken und Serien-Stichtage,
+- Tagesstatusprojektion, spielbezogene Teilnehmermengen, Scheduler, DST, Reminder und Discord-Limits,
+- Wochen-/Monatsperioden, getrennte Spiel- und Zwei-Spiele-Teilnahmetage, Statistiken und Serien-Stichtage,
 - Report-Renderer, Pagination, Fingerprint, Delivery, Catch-up und Recovery mit Testdoubles,
 - ArchUnit-Regeln.
 
@@ -400,7 +413,8 @@ Mit echtem PostgreSQL:
 - Migration und In-place-Upgrade eines `quadwords-share-v1`-Datensatzes,
 - Start des vollständigen Spring-Kontexts,
 - Tagesstatus-/Reminder-Migration, Constraints, Claims, Leases, Backoff, Recovery und Konkurrenz,
-- Reportteilnehmer- und Statistikabfragen,
+- spielbezogene Teilnahme-Migration, Backfill, Exclusion Constraints, Atomizität und Konkurrenz,
+- Reportteilnehmer- und Statistikabfragen mit getrennten Spielnennern,
 - Report-Delivery-Migration, Unique Constraints, Claims, Leases, geordnete Message-IDs, NO_OP, Ablauf, Retry und Konkurrenz.
 
 ### Manuelle Abnahme
@@ -428,12 +442,15 @@ Neue Reportfunktionalität wird erst nach vollständigem Build, PostgreSQL-Integ
 - ADR 0012: persistente Tagesstatus- und Reminder-Auslieferung
 - ADR 0013: Produktionsdeployment und Betriebshärtung
 - ADR 0014: persistente periodische Report-Delivery
+- ADR 0015: persistente Channel-Retention und Tagesabschluss
+- ADR 0016: spielbezogene historische Teilnahme
 
 ## 17. Channel-Retention und Tagesabschluss
 
 Der idempotente Cleanup-Orchestrator wird von Startup und Scheduler aufgerufen. Ab der konfigurierten 06:00-Grenze finalisiert er gestern vor jeder Nachrichtenbereinigung, pensioniert danach Ergebnis- und Reminder-Nachrichten mit getrennten Claims, Leases und Backoff und erstellt zuletzt den heutigen Statusanker. Retirement-Intent sperrt jede kanonische Publication- und Recovery-Neuerzeugung.
 
 ADR 0015 dokumentiert die persistente Zustands- und Fehlersemantik.
+
 ## 18. Interaktive Ergebnisdetails
 
 Zwischeninkrement 10.5 erweitert die Tagesstatus-Delivery um eine transportneutrale vollständige Statussicht mit versionierten, nach historischer Teilnehmermenge sortierten Auswahlseiten. Das JDA-Gateway veröffentlicht oder ersetzt Embeds und Action Rows als gemeinsamen Delivery-Inhalt; der Status-Fingerprint umfasst beide Teile.
@@ -447,4 +464,23 @@ daily-result:v1:<yyyy-MM-dd>:<g|q>:<pageIndex>
 user:<discordUserId>
 ```
 
-Je String-Select sind höchstens 25 Optionen zulässig. Bis 50 Teilnehmer werden höchstens zwei Seiten pro Spieltyp dargestellt; größere Tagesstatus werden vor Discord-I/O als permanenter Delivery-Fehler abgelehnt. Details stehen in `docs/increments/10.5-interactive-result-details.md`.
+Je String-Select sind höchstens 25 Optionen zulässig. Im Ist-Stand von 10.5 werden bis 50 Teilnehmer über höchstens zwei Seiten pro Spieltyp dargestellt; größere Tagesstatus werden vor Discord-I/O als permanenter Delivery-Fehler abgelehnt. Zwischeninkrement 10.6 behält die Seitengröße und Grenze je Spieltyp bei, verwendet aber unterschiedliche GridWords- und QuadWords-Optionsmengen. Details stehen in `docs/increments/10.5-interactive-result-details.md` und `docs/increments/10.6-game-specific-participation.md`.
+
+## 19. Spielbezogene Teilnahme
+
+Zwischeninkrement 10.6 ersetzt die bisherige Annahme einer für beide Spiele identischen Teilnehmermenge. PostgreSQL persistiert Zeiträume je Spieler und `GameType`; bestehende globale Zeiträume werden bei der Migration mit identischen Grenzen für beide Spiele übernommen.
+
+Application- und Domaincode arbeiten mit den täglichen Mengen:
+
+```text
+G(d) = GridWords-Teilnehmer
+Q(d) = QuadWords-Teilnehmer
+U(d) = G(d) ∪ Q(d)
+B(d) = G(d) ∩ Q(d)
+```
+
+Share-Verarbeitung aktiviert ausschließlich den Spieltyp des validierten Ergebnisses. Commands dürfen ein Spiel oder atomar beide Spiele ändern. Der globale Reminderstatus bleibt bestehen; Kandidaten entstehen jedoch nur für teilgenommene Spiele.
+
+Tagesstatus und Ergebnisdetails verwenden `U(d)` für Spielerzeilen, aber getrennte `G(d)`-/`Q(d)`-Optionen und eine ausdrückliche Nichtteilnahme-Darstellung. Reporting führt pro Spiel eigene Nenner; Komplett und Perfekt verwenden ausschließlich `B(d)`.
+
+Die Umsetzung erfolgt paketweise gemäß `docs/increments/10.6-game-specific-participation.md`. Bis zum Abschluss von Paket 8 bleibt dies Zielarchitektur und darf nicht als bereits produktiv umgesetzt beschrieben werden.
