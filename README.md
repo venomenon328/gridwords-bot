@@ -4,15 +4,16 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 ## Aktueller Stand
 
-Der funktionale Umfang bis einschließlich Inkrement 10 sowie der Zwischeninkremente 10.4, 10.5 und 10.6 ist implementiert, automatisiert geprüft und auf einem separaten Discord-Testserver real abgenommen. Der vollständige Produktionscontainer-, Compose-, Backup-, Restore-, Resume- und Rollback-Pfad wird auf dem finalen Commit durch das Ereignis **Ready for review** geprüft.
+Der funktionale Umfang bis einschließlich Inkrement 10 sowie der Zwischeninkremente 10.4, 10.5 und 10.6 ist implementiert, gemergt, automatisiert geprüft und auf einem separaten Discord-Testserver real abgenommen.
 
-Der Quellstand trägt die Projektversion `1.0.0`. Der bestehende Produktivbetrieb bleibt bis zur bewussten Veröffentlichung nach GHCR und zum anschließenden manuellen Deployment unverändert.
+Der Quellstand trägt die Projektversion `1.0.0`. Der Umfang bis 10.6 bildet die feature-complete Basis für Version 1.0.x beziehungsweise 1.1.0. Ein produktiver Rollout und die manuelle Veröffentlichung nach GHCR bleiben bewusste separate Releasevorgänge.
 
 Der final abgenommene Stand umfasst:
 
 - 502 Standardtests ohne externe Infrastruktur,
 - eine grüne PostgreSQL-Integrationsmatrix mit echtem PostgreSQL,
-- grüne normale GitHub-CI für Standardbuild und Datenbankintegration,
+- grüne GitHub-CI für Standardbuild und Datenbankintegration,
+- ein erfolgreiches Produktionscontainer-, Compose-, Backup-, Restore-, Resume- und Rollback-Gate,
 - eine bestandene reale Discord-Abnahme für Commands, Single-Game-Teilnahme, Tagesstatus, Menüs, Reminder, Recovery und Reports.
 
 Das Abnahmeprotokoll steht unter [`docs/operations/10.6-game-specific-participation-acceptance.md`](docs/operations/10.6-game-specific-participation-acceptance.md).
@@ -44,12 +45,15 @@ Der Bot unterstützt insbesondere:
 
 Standardzeitzone ist `Europe/Berlin`.
 
+Die früher vorgemerkten allgemeinen Inkremente für Statistik-/Konfigurations-Commands und regelbasierte Kommentare werden nicht weiterverfolgt. Als nächste bewusst priorisierte Produkterweiterung ist **Inkrement 11 – Kontextabhängige Ausreden** aus Issue #42 fachlich vorbereitet. Eine gewählte Ausrede wird persistiert und ohne Stilbezeichnung in dieselbe kanonische Ergebnisnachricht gerendert.
+
 ## Projektdokumentation
 
 - [`docs/anforderungsspezifikation.md`](docs/anforderungsspezifikation.md) – fachliche Grundanforderungen
 - [`docs/requirements/series-model.md`](docs/requirements/series-model.md) – Seriensemantik
 - [`docs/requirements/dynamic-player-model.md`](docs/requirements/dynamic-player-model.md) – dynamische Spieler und historisches Ausgangsmodell
 - [`docs/requirements/game-specific-participation.md`](docs/requirements/game-specific-participation.md) – verbindliche spielbezogene Teilnahme ab Zwischeninkrement 10.6
+- [`docs/requirements/excuses.md`](docs/requirements/excuses.md) – kontextabhängige Ausreden, Auswahl, Persistenz und Wiederholungsschutz
 - [`docs/requirements/daily-status-reminders.md`](docs/requirements/daily-status-reminders.md) – Tagesstatus, Reminder und Cleanup
 - [`docs/requirements/periodic-reports.md`](docs/requirements/periodic-reports.md) – Wochen- und Monatsberichte
 - [`docs/requirements/production-deployment.md`](docs/requirements/production-deployment.md) – Produktions- und Deploymentweg
@@ -60,6 +64,7 @@ Standardzeitzone ist `Europe/Berlin`.
 - [`docs/increments/10.4-day-close-reminder-retention-cleanup.md`](docs/increments/10.4-day-close-reminder-retention-cleanup.md) – Tagesabschluss und Bereinigung
 - [`docs/increments/10.5-interactive-result-details.md`](docs/increments/10.5-interactive-result-details.md) – interaktive Ergebnisdetails
 - [`docs/increments/10.6-game-specific-participation.md`](docs/increments/10.6-game-specific-participation.md) – Entwicklungspakete für unabhängige Spielteilnahme
+- [`docs/increments/11-contextual-excuses.md`](docs/increments/11-contextual-excuses.md) – Entwicklungspakete für kontextabhängige Ausreden
 - [`docs/operations/10.6-game-specific-participation-acceptance.md`](docs/operations/10.6-game-specific-participation-acceptance.md) – automatisierte und reale Abschlussabnahme
 - [`docs/operations/`](docs/operations/) – Betrieb, Deployment, Backup und Fehlerdiagnose
 - [`docs/adr/`](docs/adr/) – Architekturentscheidungen

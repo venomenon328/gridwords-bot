@@ -39,6 +39,7 @@ Abhängigkeiten zeigen nach innen. JDA-Typen und Discord-URLs verlassen den Disc
 ```text
 de.venomenon.gridwordsbot
 ├── domain
+│   ├── excuse
 │   ├── model
 │   ├── parsing
 │   ├── reporting
@@ -47,6 +48,7 @@ de.venomenon.gridwordsbot
 │   ├── gridwords
 │   └── quadwords
 ├── application
+│   ├── excuse
 │   ├── submission
 │   ├── canonical
 │   ├── player
@@ -58,13 +60,14 @@ de.venomenon.gridwordsbot
 │   ├── discord
 │   │   ├── inbound
 │   │   ├── canonical
+│   │   ├── excuse
 │   │   └── reporting
 │   ├── persistence
 │   └── scheduling
 └── config
 ```
 
-Die neuen Reporting-Pakete sind eine Zielrichtung und dürfen paketweise entstehen. Es werden keine leeren Schichten oder vorauseilenden Abstraktionen nur zur Anpassung an diese Übersicht angelegt.
+Die Reporting- und Ausredenpakete sind Zielrichtungen und dürfen paketweise entstehen. Es werden keine leeren Schichten oder vorauseilenden Abstraktionen nur zur Anpassung an diese Übersicht angelegt.
 
 ## 4. Inbound-Verarbeitung
 
@@ -229,6 +232,14 @@ Teilnahme wird durch einen transportneutralen Zeitraum mit Spieler-ID, `GameType
 
 Die vollständigen Regeln stehen in `docs/requirements/game-specific-participation.md`; die Persistenzentscheidung dokumentiert ADR 0016.
 
+### 8.3 Ausredendomäne ab Inkrement 11
+
+Ausreden werden durch reine Typen für Stil, Anlass, Fakt, Thema, Template, Kontext, Runde und Option modelliert. Die Angebotsentscheidung und Kandidatenauswahl kennen weder JDA noch PostgreSQL.
+
+Der redaktionelle Katalog ist eine versionierte Repository-Ressource. Er enthält vollständige handgeschriebene Texte mit einer kleinen bekannten Platzhaltermenge. Beim Start wird der gesamte Katalog validiert. Ein Template mit unbekannter Bedingung oder nicht vollständig auflösbarem Platzhalter ist kein Runtimekandidat.
+
+Die Zufallsquelle wird injiziert. Spezifität und Gewicht sind getrennt: Spezifität bevorzugt echten Ergebnis- und Boardkontext, Gewicht variiert gleich geeignete Templates. Es gibt keine generative KI, keine freie Regelsprache und keinen allgemeinen Kommentar-Pluginmechanismus.
+
 ## 9. Fehler- und Reaktionssemantik für QuadWords
 
 ### Fachlich stabil ungültig
@@ -300,6 +311,14 @@ Guild-ID + Channel-ID + Berichtstyp + Periodenbeginn
 Persistiert werden Periodenende, Fälligkeit, Zustand, Claim/Lease, Retryinformationen, Fehlerkategorie, Inhalts-Fingerprint, geordnete Discord-Message-IDs, Veröffentlichungszeitpunkt sowie NO_OP- und Ablaufzustände.
 
 Mehrseitenberichte bilden eine logische Delivery. Die Reihenfolge der persistierten Message-IDs entspricht der sichtbaren Seitenreihenfolge.
+
+### 10.2 Persistenter Ausredenzustand ab Inkrement 11
+
+Jedes `game_result` erhält nach der Migration genau einen Ausredenzustand. Bestandsresultate werden ausdrücklich als `NOT_OFFERED` markiert. Eine positive oder negative Erstentscheidung wird nur bei der Neuanlage des fachlichen Ergebnisses gespeichert; Korrektur, Replay und Recovery eröffnen keinen neuen Vorgang.
+
+Ein separater Zustand speichert Angebot, Ablauf, Kontextgeneration, verbrauchten Stil-Neuwurf sowie gegebenenfalls Template-, Stil-, Themen- und Text-Snapshot der Auswahl. Eine Optionstabelle speichert vor ihrer ephemeren Anzeige genau die aktuell auswählbaren Positionen der Initial- und Stilrunde.
+
+PostgreSQL erzwingt höchstens einen Zustand je Ergebnis, eindeutige Positionen und Templates sowie konfliktfeste Statusübergänge. Cooldown und Verlauf werden aus persistierten Angeboten beziehungsweise weiterhin gültigen Auswahlen gelesen. Details regeln `docs/requirements/excuses.md` und ADR 0017.
 
 ## 11. Sichere Ergebnisersetzung
 
@@ -384,6 +403,26 @@ source_message_id DESC
 
 Die Abfrage lädt keine Board-, Rohtext- oder Attachmentspalten. Der Discord-Adapter übergibt ausschließlich Actor-ID und aktuellen Anzeigenamen, formatiert erst dort den Einreichungszeitpunkt in der konfigurierten Zone und beantwortet `/status` stets ephemer. Die Registrierung bleibt in einem zentralen `guild.updateCommands()`-Pfad; `/participation` enthält nur die teilnahmeändernden Subcommands.
 
+## 12.4 Ausreden-Interaktions- und Refreshgrenze
+
+Der Ergebnis-Upsert liefert bei einer echten Neuanlage eine deterministische positive oder negative Ausredenentscheidung an denselben atomaren Persistenzpfad. Ein bestehender Ergebnisdatensatz bewahrt seinen bisherigen Ausredenzustand. Korrekturen revalidieren ausschließlich `AVAILABLE` und `SELECTED`; sie erzeugen kein neues Angebot.
+
+Die kanonische Application-Projektion unterscheidet:
+
+```text
+NONE
+AVAILABLE
+SELECTED(renderedText)
+```
+
+`AVAILABLE` erzeugt einen öffentlichen Button in derselben Ergebnisnachricht. `SELECTED` erzeugt ausschließlich den Text am Ende der bestehenden Beschreibung; Stil und Metadaten bleiben unsichtbar. Create und Edit übertragen Embed und Action Rows gemeinsam.
+
+Der JDA-Interaction-Listener bestätigt sofort ephemer, validiert Guild, Channel, aktuelle kanonische Message-ID, Ergebnisautor, Status, Ablauf, Kontextgeneration und persistierte Option und delegiert an einen begrenzten Worker. Die Auswahlantworten bleiben ephemer.
+
+Eine Interaction führt keinen direkten öffentlichen Discord-Edit aus. Auswahl, Verzicht, Ablauf und Invalidierung persistieren ihren Zustandsübergang gemeinsam mit einem dauerhaften Auftrag an die bereits vorhandene kanonische Refresh-Generation. Die kanonische Publication-, Retry-, Recovery-, Duplikat- und Retirement-Pipeline bleibt die einzige öffentliche Deliverygrenze.
+
+Ein Startup-/Schedulerdienst setzt fällige `AVAILABLE`-Zustände idempotent auf `EXPIRED` und fordert denselben Refresh an. In-Memory-Sessions sind keine Quelle der Wahrheit. Details regeln `docs/requirements/excuses.md` und ADR 0017.
+
 ## 13. Tests
 
 ### Standardbuild
@@ -399,6 +438,8 @@ Ohne Netzwerk, Token, Datenbank und Container:
 - Tagesstatusprojektion, spielbezogene Teilnehmermengen, Scheduler, DST, Reminder und Discord-Limits,
 - Wochen-/Monatsperioden, getrennte Spiel- und Zwei-Spiele-Teilnahmetage, Statistiken und Serien-Stichtage,
 - Report-Renderer, Pagination, Fingerprint, Delivery, Catch-up und Recovery mit Testdoubles,
+- Ausredenkatalog, Platzhalter, Anlassschwellen, Boardabstand, Kandidatenauswahl und Wiederholungsschutz,
+- Ausreden-Interaction, Autorisierung, Ablauf, Korrekturrevalidierung und kanonische Komponenten,
 - ArchUnit-Regeln.
 
 ### PostgreSQL-Integration
@@ -415,13 +456,17 @@ Mit echtem PostgreSQL:
 - Tagesstatus-/Reminder-Migration, Constraints, Claims, Leases, Backoff, Recovery und Konkurrenz,
 - spielbezogene Teilnahme-Migration, Backfill, Exclusion Constraints, Atomizität und Konkurrenz,
 - Reportteilnehmer- und Statistikabfragen mit getrennten Spielnennern,
-- Report-Delivery-Migration, Unique Constraints, Claims, Leases, geordnete Message-IDs, NO_OP, Ablauf, Retry und Konkurrenz.
+- Report-Delivery-Migration, Unique Constraints, Claims, Leases, geordnete Message-IDs, NO_OP, Ablauf, Retry und Konkurrenz,
+- Ausredenzustand, Bestands-Backfill, Optionen, Cooldown, Snapshots, Statusübergänge und Auswahlkonkurrenz,
+- atomarer Ausreden-Refreshauftrag sowie Recovery nach Auswahl, Verzicht, Ablauf und Invalidierung.
 
 ### Manuelle Abnahme
 
 Der reale Discord-/PostgreSQL-Smoke-Test prüft echte gelöste und nicht gelöste Bilder, Zellfarben, Boardreihenfolge, Reaktionen, Korrektur, Neustart sowie unverändertes GridWords-Verhalten.
 
 Für Inkrement 10 werden zusätzlich ein realer Wochen- und Monatsbericht, visuelle Pagination, persistierte Message-IDs und Duplikatschutz geprüft.
+
+Für Inkrement 11 werden zusätzlich öffentlicher Button, ephemere Vorschläge und Stilwahl, einmaliger Neu-Wurf, Auswahl ohne Stilbezeichnung, Verzicht, Ablauf, Autorisierung, Korrektur, Boardanreicherung, Neustart und unveränderte kanonische Message-ID geprüft.
 
 ## 14. Lokale Infrastruktur
 
@@ -431,7 +476,7 @@ Der schnelle Standardbuild bleibt infrastrukturunabhängig. Für Persistenz- und
 
 Der produktive Bot läuft als private Containeranwendung auf einem gehärteten Debian-13-VPS gemäß `docs/requirements/production-deployment.md` und ADR 0013.
 
-Neue Reportfunktionalität wird erst nach vollständigem Build, PostgreSQL-Integration, Containerprüfung und realem Discord-Smoke-Test über einen unveränderlichen Image-Tag kontrolliert deployt. GitHub Actions erhält keinen automatischen SSH-Zugang zur Produktion.
+Neue Report- oder Ausredenfunktionalität wird erst nach vollständigem Build, PostgreSQL-Integration, Containerprüfung und realem Discord-Smoke-Test über einen unveränderlichen Image-Tag kontrolliert deployt. GitHub Actions erhält keinen automatischen SSH-Zugang zur Produktion.
 
 ## 16. Verwandte ADRs
 
@@ -444,6 +489,7 @@ Neue Reportfunktionalität wird erst nach vollständigem Build, PostgreSQL-Integ
 - ADR 0014: persistente periodische Report-Delivery
 - ADR 0015: persistente Channel-Retention und Tagesabschluss
 - ADR 0016: spielbezogene historische Teilnahme
+- ADR 0017: persistente Ausredenauswahl und kanonische Aktualisierung
 
 ## 17. Channel-Retention und Tagesabschluss
 
@@ -468,7 +514,7 @@ Je String-Select sind höchstens 25 Optionen zulässig. Im Ist-Stand von 10.5 we
 
 ## 19. Spielbezogene Teilnahme
 
-Zwischeninkrement 10.6 ersetzt die bisherige Annahme einer für beide Spiele identischen Teilnehmermenge. PostgreSQL persistiert Zeiträume je Spieler und `GameType`; bestehende globale Zeiträume werden bei der Migration mit identischen Grenzen für beide Spiele übernommen.
+Zwischeninkrement 10.6 ersetzt die bisherige Annahme einer für beide Spiele identischen Teilnehmermenge. PostgreSQL persistiert Zeiträume je Spieler und `GameType`; bestehende globale Zeiträume wurden bei der Migration mit identischen Grenzen für beide Spiele übernommen.
 
 Application- und Domaincode arbeiten mit den täglichen Mengen:
 
@@ -483,4 +529,16 @@ Share-Verarbeitung aktiviert ausschließlich den Spieltyp des validierten Ergebn
 
 Tagesstatus und Ergebnisdetails verwenden `U(d)` für Spielerzeilen, aber getrennte `G(d)`-/`Q(d)`-Optionen und eine ausdrückliche Nichtteilnahme-Darstellung. Reporting führt pro Spiel eigene Nenner; Komplett und Perfekt verwenden ausschließlich `B(d)`.
 
-Die Umsetzung erfolgt paketweise gemäß `docs/increments/10.6-game-specific-participation.md`. Bis zum Abschluss von Paket 8 bleibt dies Zielarchitektur und darf nicht als bereits produktiv umgesetzt beschrieben werden.
+Zwischeninkrement 10.6 ist vollständig umgesetzt, automatisiert geprüft, real abgenommen und über PR #41 gemergt. Die verbindlichen Details stehen in `docs/requirements/game-specific-participation.md`, ADR 0016 und `docs/increments/10.6-game-specific-participation.md`.
+
+## 20. Kontextabhängige Ausreden
+
+Inkrement 11 ergänzt eine freiwillige, vollständig deterministische Interaktion an kanonischen Ergebnisnachrichten. Der Umfang bis einschließlich 10.6 bleibt davon unabhängig die feature-complete Basis für Version 1.0.x beziehungsweise 1.1.0.
+
+Die erstmalige Angebotsentscheidung wird bei der Neuanlage eines gültigen Ergebnisses getroffen. Absolute Ergebnis- und Zeitschwellen, vier vollständig vorhandene QuadWords-Boards sowie ein eng begrenzter Vergleich mit den bereits eingegangenen Ergebnissen desselben Spiels bilden einen typisierten Kontext. Der QuadWords-Einzelboardausreißer verlangt bei vier gelösten Boards mindestens drei Versuche Abstand zum zweitschlechtesten Board.
+
+Der Nutzer sieht öffentlich nur einen Button. Drei Vorschläge, Stilnamen, einmaliger Stil-Neuwurf und Verzicht bleiben ephemer. Bei einer Auswahl speichert PostgreSQL den tatsächlich angebotenen Template-, Stil-, Themen- und Text-Snapshot. In der kanonischen Ergebnisnachricht erscheint anschließend ausschließlich der gewählte Text, nicht der Stil.
+
+Die Interaction persistiert ihren Zustand und einen kanonischen Refreshauftrag atomar. Der bestehende kanonische Publisher liest Ergebnis, Serien und Ausredenzustand gemeinsam und editiert dieselbe Message-ID. Korrektur, Boardanreicherung, Ablauf und Recovery folgen derselben Pipeline; ein direkter öffentlicher Discord-Edit aus dem Interaction-Listener ist nicht zulässig.
+
+Bis zum Abschluss von Paket 8B bleibt dieser Abschnitt Zielarchitektur. Verbindliche Details stehen in `docs/requirements/excuses.md`, `docs/increments/11-contextual-excuses.md` und ADR 0017.

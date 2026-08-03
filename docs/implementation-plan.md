@@ -132,7 +132,7 @@ Verbindlich: `docs/increments/10.5-interactive-result-details.md`.
 
 ### Zwischeninkrement 10.6 – Spielbezogene Teilnahme
 
-**Status:** implementiert, automatisiert geprüft und real auf dem separaten Discord-Testserver abgenommen. PR #41 durchläuft als finalen Freigabeschritt das Ready-for-review-Container-Gate; Issue #39 bleibt bis zum Merge offen.
+**Status:** abgeschlossen; Issue #39 geschlossen und PR #41 gemergt. Automatisierte Prüfung, Produktionscontainer-Gate und reale Discord-Abnahme sind bestanden.
 
 Spieler können unabhängig an GridWords, QuadWords, beiden Spielen oder keinem Spiel teilnehmen. Historische Teilnahmezeiträume werden pro Spieltyp geführt. Reminder, gemeinsame spielbezogene Serien, Tagesstatusmenüs und Berichtsnenner verwenden jeweils die passende Teilnehmermenge. Komplett und perfekt bleiben Zwei-Spiele-Metriken.
 
@@ -149,7 +149,7 @@ Umgesetzt und abgenommen sind insbesondere:
 - Compatibility-Audit und ArchUnit-Grenze gegen globale Teilnahme in produktiven Projektionen,
 - reale Discord-Abnahme gemäß `docs/operations/10.6-game-specific-participation-acceptance.md`.
 
-Der finale Kandidat besitzt 502 grüne Standardtests sowie eine grüne PostgreSQL-Integrationsmatrix. Das vollständige Produktionsimage-, Compose-, Backup-, Restore-, Resume- und Rollback-Gate wird auf dem abgenommenen Commit durch **Ready for review** ausgelöst. Eine GHCR-Veröffentlichung und ein Produktionsdeployment erfolgen anschließend bewusst separat.
+Der finale Stand besitzt 502 grüne Standardtests, eine grüne PostgreSQL-Integrationsmatrix und ein erfolgreiches vollständiges Produktionsimage-, Compose-, Backup-, Restore-, Resume- und Rollback-Gate. Eine GHCR-Veröffentlichung und ein Produktionsdeployment bleiben bewusste separate Releasevorgänge.
 
 Verbindlich:
 
@@ -159,32 +159,45 @@ Verbindlich:
 - ADR 0016
 - Issue #39
 
-Inkrement 11 beginnt erst nach dem vollständigen Abschluss von 10.6.
+## Feature-complete Versionsbasis
 
-## Release Candidate 1.0.0
+Der Funktionsumfang bis einschließlich Inkrement 10 und der Zwischeninkremente 10.x bildet die feature-complete Basis für Version 1.0.x beziehungsweise 1.1.0.
 
-**Status:** Quellumfang implementiert, automatisiert geprüft und real abgenommen; finales Container-Gate, manuelle GHCR-Veröffentlichung und Produktionsdeployment erfolgen als getrennte Freigabeschritte.
+Neue Inkremente sind keine Voraussetzung für diese Versionsbasis, sondern bewusst priorisierte optionale Produkterweiterungen. Produktive Veröffentlichung und Deployment bleiben von der fachlichen Feature-Vollständigkeit getrennte Freigabeschritte.
 
-Der RC wird aus exakt dem final abgenommenen Commit gebaut. Er verwendet eine separate Discord-Testanwendung, einen separaten Testserver/-channel und eine isolierte PostgreSQL-Datenbank. Der produktive Rollout und die manuelle GHCR-Veröffentlichung erfolgen erst nach erfolgreicher Abnahme und werden separat durchgeführt.
+## Release Candidate 1.0.0 / 1.1.0
 
-Die Projektversion ist `1.0.0`. Die RC-Bezeichnung gehört zum lokalen Image-Tag und zum Abnahmeprotokoll. Nach erfolgreicher Abnahme darf nur derselbe freigegebene Commit veröffentlicht werden. Ein erneuter Workflow-Build gilt als neuer Build dieses Commits; byte-identische Promotion ist nur möglich, wenn das lokal getestete Image erhalten und direkt veröffentlicht wird.
+**Status:** Quellumfang implementiert, gemergt, automatisiert geprüft und real abgenommen; manuelle GHCR-Veröffentlichung und Produktionsdeployment erfolgen als getrennte Freigabeschritte.
 
-## Geplante Folgeinkremente
+Ein Release Candidate verwendet eine separate Discord-Testanwendung, einen separaten Testserver/-channel und eine isolierte PostgreSQL-Datenbank. Nach erfolgreicher Abnahme darf ausschließlich der freigegebene Commit veröffentlicht werden. Ein erneuter Workflow-Build gilt als neuer Build dieses Commits; byte-identische Promotion ist nur möglich, wenn das getestete Image erhalten und direkt veröffentlicht wird.
 
-### Inkrement 11 – Statistik- und Konfigurations-Commands
+## Obsolet gewordene frühere Roadmap-Platzhalter
 
-- Read-only-Statistik-Slash-Commands auf derselben Reporting-Grundlage,
-- eindeutige Auswahl der Serienarten,
-- persistente Zeitkonfiguration,
-- Admin-Autorisierung,
-- Scheduler-Neuplanung ohne Neustart.
+Die früher vorgemerkten Folgeinkremente
 
-### Inkrement 12 – Regelbasierte Kommentare
+- „Statistik- und Konfigurations-Commands“ und
+- „Regelbasierte Kommentare“ als generischer Sammelumfang
 
-- regelbasierte Kategorien und Textvarianten,
-- Serien-, Komplett- und Perfekt-Auslöser,
-- definierte Nachrichtenlimits,
-- keine generative KI.
+werden nicht weiterverfolgt. Sie waren keine umgesetzten oder abgenommenen Anforderungen. Einzelne Ideen daraus können später nur über neue, ausdrücklich priorisierte Issues mit eigener Fachentscheidung zurückkehren.
+
+## Zur Umsetzung vorgesehen
+
+### Inkrement 11 – Kontextabhängige Ausreden
+
+**Status:** fachlich vorbereitet; Issue #42 offen. Paket 0 richtet Requirement, ADR, Roadmap, Architektur und Arbeitsregeln auf das neue Inkrement 11 aus.
+
+Bei seltenen absoluten Ergebnis-, Zeit-, Board- oder bisherigen Tagesausreißern kann der Ergebnisautor freiwillig aus drei ephemeren redaktionellen Ausreden wählen, einmal nach einem Stil neu würfeln oder verzichten. Eine Auswahl wird persistiert und als ausschließlich sichtbarer Ausredentext ohne Stilbezeichnung in dieselbe kanonische Ergebnisnachricht gerendert.
+
+Verbindlich:
+
+- `docs/requirements/excuses.md`
+- `docs/increments/11-contextual-excuses.md`
+- ADR 0017
+- Issue #42
+
+Die Umsetzung erfolgt paketweise über Ausredendomäne und Katalogmechanik, Angebots- und Boardkontext, PostgreSQL-Zustand, einmalige Ergebnisintegration, kanonische Komponenten, ephemere Auswahl, Lifecycle-Härtung, redaktionellen Vollkatalog sowie Gesamtintegration und reale Discord-Abnahme.
+
+Der Implementierungsbranch `feature/contextual-excuses` wird nach Merge des Dokumentationspakets frisch vom aktuellen `main` erstellt.
 
 ## Definition of Done
 

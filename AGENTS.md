@@ -9,14 +9,15 @@ Lies vor der Implementierung mindestens:
 1. `docs/anforderungsspezifikation.md` – verbindliche fachliche Grundanforderungen und Versionsgrenzen
 2. `docs/requirements/series-model.md` – verbindliche Präzisierung und Änderung der Serien-, Tagesstatus- und Berichtssemantik
 3. `docs/requirements/dynamic-player-model.md` – dynamische Spieler, bisherige globale Teilnahmezeiträume und Reminder-Opt-out
-4. `docs/requirements/game-specific-participation.md`, wenn die Aufgabe Teilnahme, Shares, Commands, Serien, Tagesstatus, Reminder, Ergebnisdetails oder Berichte ab Zwischeninkrement 10.6 betrifft
+4. `docs/requirements/game-specific-participation.md`, wenn die Aufgabe Teilnahme, Shares, Commands, Serien, Tagesstatus, Reminder, Ergebnisdetails, Ausreden oder Berichte ab Zwischeninkrement 10.6 betrifft
 5. `docs/requirements/daily-status-reminders.md` – Tagesstatus, Scheduler und Reminder-Auslieferung
 6. `docs/requirements/periodic-reports.md`, wenn die Aufgabe Wochen-/Monatsberichte, Periodenstatistiken oder Report-Delivery betrifft
-7. `docs/architecture.md` – verbindliche Architektur, Modulgrenzen und Abläufe
-8. `docs/development-guide.md` – Build, Tests, Secrets und Arbeitsweise
-9. `docs/implementation-plan.md` – Reihenfolge der Inkremente
-10. `docs/requirements/production-deployment.md`, wenn die Aufgabe Build, Container, Deployment, Secrets, Backups oder Produktion betrifft
-11. vorhandene ADRs unter `docs/adr/`, wenn die Aufgabe die dort behandelten Entscheidungen berührt; für periodische Reports insbesondere ADR 0014 und für spielbezogene Teilnahme ADR 0016
+7. `docs/requirements/excuses.md`, wenn die Aufgabe Ausreden, kanonische Ergebnis-Komponenten, Ausredeninteraktionen, Kataloge oder Wiederholungsschutz betrifft
+8. `docs/architecture.md` – verbindliche Architektur, Modulgrenzen und Abläufe
+9. `docs/development-guide.md` – Build, Tests, Secrets und Arbeitsweise
+10. `docs/implementation-plan.md` – Reihenfolge der Inkremente
+11. `docs/requirements/production-deployment.md`, wenn die Aufgabe Build, Container, Deployment, Secrets, Backups oder Produktion betrifft
+12. vorhandene ADRs unter `docs/adr/`, wenn die Aufgabe die dort behandelten Entscheidungen berührt; für periodische Reports insbesondere ADR 0014, für spielbezogene Teilnahme ADR 0016 und für Ausreden ADR 0017
 
 Bei Widersprüchen gilt:
 
@@ -90,8 +91,26 @@ Jeder Schritt muss nach einem Absturz oder erneut zugestellten Event gefahrlos f
 - `player.active` ist nur eine abgeleitete aktuelle Kompatibilitätsinformation und keine historische Quelle.
 - Reminderstatus bleibt global; Reminderkandidaten werden ausschließlich aus der täglichen Teilnehmermenge des betreffenden Spiels gebildet.
 - `both`-Änderungen sind atomar und müssen bei einem Teilfehler vollständig zurückrollen.
-- Bestehende globale Zeiträume werden bei der Migration identisch für beide Spiele übernommen; historische Präferenzen dürfen nicht aus Ergebnissen geraten werden.
+- Bestehende globale Zeiträume wurden bei der Migration identisch für beide Spiele übernommen; historische Präferenzen dürfen nicht aus Ergebnissen geraten werden.
 - Kein generisches Modell für beliebig viele Spiele und kein Reminderstatus pro Spiel vorziehen.
+
+### Kontextabhängige Ausreden ab Inkrement 11
+
+- Verbindlich sind `docs/requirements/excuses.md`, ADR 0017 und der Paketplan unter `docs/increments/11-contextual-excuses.md`.
+- Angebots- und Tagesvergleichslogik verwendet ausschließlich die historisch wirksame Teilnehmermenge des betroffenen Spiels; `player.active` ist keine zulässige Grundlage.
+- Es gibt keine generative KI, keine externe Text-API und keine freie Template- oder Regelsprache zur Laufzeit.
+- Der vollständige redaktionelle Katalog wird beim Start und in einem Katalogtest validiert; ein nicht vollständig auflösbares Template wird vollständig verworfen.
+- Die Zufallsquelle wird injiziert, damit jede Auswahl reproduzierbar testbar bleibt.
+- Der QuadWords-Einzelboardausreißer erfordert bei vier gelösten Boards einen eindeutigen schlechtesten Quadranten, mindestens acht Versuche und mindestens drei Versuche Abstand zum zweitschlechtesten Board.
+- Für jedes `game_result` gibt es nach der Migration genau eine persistierte positive oder negative Erstentscheidung; Bestandsresultate werden als `NOT_OFFERED` markiert.
+- Replay, Korrektur, Boardanreicherung und Recovery dürfen kein erstmaliges Angebot erzeugen.
+- Tatsächlich gezeigte Optionen werden vor der ephemeren Ausgabe persistiert. Auswahl ist nur aus der aktuellen persistierten Runde und Kontextgeneration zulässig.
+- Template-, Stil-, Themen- und gerenderter Text-Snapshot werden bei Auswahl gespeichert. Der gewählte Text wird niemals stillschweigend umformuliert.
+- Stilnamen erscheinen ausschließlich ephemer. In der kanonischen Ergebnisnachricht steht nach Auswahl nur der Text, ohne Stil, Überschrift oder Ausredenlabel.
+- Der Ergebnisautor ist der einzige berechtigte Actor. Guild, Channel, aktuelle kanonische Message-ID, Ergebnis-ID, Status, Ablauf, Generation, Runde und Position werden serverseitig validiert.
+- Eine Ausredeninteraction editiert die öffentliche Discord-Nachricht niemals direkt. Zustandsübergang und dauerhafter kanonischer Refresh-Auftrag werden atomar persistiert.
+- Create und Edit der kanonischen Nachricht übertragen Embed und Action Rows gemeinsam; ein terminaler Ausredenzustand darf keinen veralteten Button zurücklassen.
+- Inkrement 11 führt kein allgemeines Kommentar-, Event- oder Plugin-Framework ein.
 
 ### Serienmodell
 
@@ -162,6 +181,9 @@ Jeder Schritt muss nach einem Absturz oder erneut zugestellten Event gefahrlos f
 - Serienänderungen benötigen getrennte Tests für alle neun definierten Serien, spielbezogene historische Teilnahmezeiträume, nicht anwendbare Tage und die Regel für den unvollständigen aktuellen Tag.
 - Änderungen an spielbezogener Teilnahme benötigen symmetrische GridWords-only-/QuadWords-only-Fälle, `both`-Atomizität, Backfill, Konkurrenz, Reminder-Audience, Statusmenüs und getrennte Reportnenner.
 - Reportänderungen benötigen getrennte Tests für Wochen-/Monatsperioden, Union-, spielbezogene und Zwei-Spiele-Teilnahmetage, alle persönlichen und gemeinsamen Kennzahlen, Periodenend-Stichtag, Catch-up, NO_OP und Pagination.
+- Ausredenänderungen benötigen getrennte Tests für alle absoluten Schwellen und direkten Untergrenzen, den QuadWords-Boardabstand 2 gegenüber 3, boardlose Ergebnisse, mindestens zwei andere Tagesresultate, spielbezogene Teilnehmermengen, Cooldown, Wiederholungsschutz und injizierte Zufallsquelle.
+- Ausredenpersistenz benötigt Backfill-, Constraint-, Auswahl-, Ablauf-, Korrektur-, Konkurrenz- und atomare Refreshtests gegen echtes PostgreSQL.
+- Ausredeninteraktionen benötigen Autorisierungs-, Message-ID-, Generation-, Runde-, Position-, Ablauf-, Doppelklick-, Worker-Queue- und Restartfälle. Stil darf in keiner kanonischen Ausgabe erscheinen.
 - Tests dürfen keine echte Discord-Verbindung öffnen.
 - Zeitabhängige Tests verwenden eine feste `Clock`.
 - Fehlerpfade und Idempotenz sind ebenso zu testen wie der Happy Path.
@@ -237,7 +259,8 @@ Für lokale manuelle Ausführung gelten die Befehle aus `README.md`, `docs/devel
 - PRs für Produktionsbetrieb bleiben Draft, bis automatisierte und reale Serverabnahme vollständig sind.
 - PRs für Wochen-/Monatsberichte bleiben Draft, bis beide Berichtstypen real in Discord dargestellt und duplikatsicher geprüft wurden.
 - Paketweise Inkremente verwenden den jeweils aktuellen Plan unter `docs/increments/`; keine späteren Pakete oder Folge-Issues vorziehen.
-- Für Issue #39 gilt die Reihenfolge aus `docs/increments/10.6-game-specific-participation.md`; Inkrement 11 wird nicht vor Abschluss von 10.6 begonnen.
+- Für Issue #42 gilt die Reihenfolge aus `docs/increments/11-contextual-excuses.md`; keine spätere Interaktions-, Persistenz- oder Katalogstufe provisorisch vorziehen.
+- Der Implementierungs-PR für Inkrement 11 bleibt Draft, bis Standardbuild, PostgreSQL-Profil und reale Discord-Abnahme einschließlich Auswahl, Stil-Neuwurf, Ablauf, Neustart und Korrektur vollständig sind.
 
 ## 9. Abschlussbericht für Codex-Aufgaben
 
