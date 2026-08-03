@@ -45,6 +45,12 @@ class ArchitectureTest {
                     "org.hibernate..");
 
     @ArchTest
+    static final ArchRule excuseTypesDoNotUseGlobalParticipationCompatibility = noClasses()
+            .that().haveSimpleNameStartingWith("Excuse")
+            .should().dependOnClassesThat().haveFullyQualifiedName(
+                    "de.venomenon.gridwordsbot.domain.model.ParticipationPeriod");
+
+    @ArchTest
     static final ArchRule parsersOnlyDependOnDomainAndJdk = noClasses()
             .that().resideInAPackage("..parser..")
             .should().dependOnClassesThat().resideInAnyPackage(
