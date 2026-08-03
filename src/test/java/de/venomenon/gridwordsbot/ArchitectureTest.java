@@ -30,6 +30,21 @@ class ArchitectureTest {
             .should().dependOnClassesThat().resideInAnyPackage(FORBIDDEN_FRAMEWORK_AND_ADAPTER_PACKAGES);
 
     @ArchTest
+    static final ArchRule excuseDomainOnlyDependsOnDomainAndJdk = noClasses()
+            .that().resideInAPackage("..domain.excuse..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    "..application..",
+                    "..port..",
+                    "..adapter..",
+                    "..config..",
+                    "org.springframework..",
+                    "net.dv8tion.jda..",
+                    "tools.jackson..",
+                    "jakarta.persistence..",
+                    "javax.persistence..",
+                    "org.hibernate..");
+
+    @ArchTest
     static final ArchRule parsersOnlyDependOnDomainAndJdk = noClasses()
             .that().resideInAPackage("..parser..")
             .should().dependOnClassesThat().resideInAnyPackage(

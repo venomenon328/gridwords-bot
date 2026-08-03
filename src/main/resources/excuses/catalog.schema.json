@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gridwords-bot.local/schemas/excuse-catalog-v1.json",
+  "title": "GridWords Bot excuse catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "templates"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*$"
+    },
+    "templates": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/template" }
+    }
+  },
+  "$defs": {
+    "game": {
+      "enum": ["GRIDWORDS", "QUADWORDS"]
+    },
+    "style": {
+      "enum": [
+        "TECHNICAL",
+        "TACTICAL",
+        "BUREAUCRATIC",
+        "DRAMATIC",
+        "COSMIC",
+        "NORTHERN_GERMAN",
+        "SPORTING",
+        "LEGAL"
+      ]
+    },
+    "topic": {
+      "enum": [
+        "GENERAL",
+        "TECHNICAL_FAILURE",
+        "LONG_TERM_PLAN",
+        "RESPONSIBILITY",
+        "GRID_CONFLICT",
+        "LATE_SUBMISSION",
+        "SLOW_RESULT",
+        "NOT_SOLVED",
+        "LAST_ATTEMPT",
+        "SINGLE_BOARD_BLAME",
+        "DAILY_OUTLIER"
+      ]
+    },
+    "condition": {
+      "enum": [
+        "NOT_SOLVED",
+        "VERY_LATE_SUBMISSION",
+        "GRIDWORDS_LAST_ATTEMPT",
+        "GRIDWORDS_VERY_SLOW",
+        "QUADWORDS_VERY_SLOW",
+        "QUADWORDS_SINGLE_BOARD_COLLAPSE",
+        "CLEAR_CURRENT_DAILY_OUTLIER",
+        "FOUR_BOARDS_PRESENT",
+        "BOARDLESS_SUBMISSION",
+        "UNIQUE_WORST_BOARD",
+        "SIGNIFICANT_WORST_BOARD_GAP",
+        "THREE_BOARDS_SOLVED_ONE_UNSOLVED",
+        "ALL_BOARDS_SOLVED",
+        "BOARDS_SIMILAR",
+        "TOP_LEFT_WORST",
+        "TOP_RIGHT_WORST",
+        "BOTTOM_LEFT_WORST",
+        "BOTTOM_RIGHT_WORST"
+      ]
+    },
+    "template": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "style",
+        "games",
+        "topic",
+        "specificity",
+        "weight",
+        "requiresAll",
+        "excludesAny",
+        "text",
+        "selectable"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$"
+        },
+        "style": { "$ref": "#/$defs/style" },
+        "games": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/game" }
+        },
+        "topic": { "$ref": "#/$defs/topic" },
+        "specificity": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "weight": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "requiresAll": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/condition" }
+        },
+        "excludesAny": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/condition" }
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "selectable": { "type": "boolean" }
+      }
+    }
+  }
+}
