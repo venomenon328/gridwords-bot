@@ -156,7 +156,7 @@ Der Produktionscontainer wird aus dem versionierten `Dockerfile` gebaut und läu
 
 Normale Pull Requests und Pushes auf `main` führen den vollständigen Container- und Betriebscheck aus, veröffentlichen aber kein Image. Eine Veröffentlichung nach `ghcr.io/venomenon328/gridwords-bot` erfolgt ausschließlich durch den bewusst manuell gestarteten Workflow `Container image` auf `main` mit einem neuen SemVer-Tag.
 
-Release Candidates werden lokal gebaut und zunächst ausschließlich gegen den Discord-Testserver geprüft. Nach erfolgreicher Abnahme kann exakt der getestete Imageinhalt im separaten Produktionsschritt veröffentlicht und ausgerollt werden.
+Release Candidates werden lokal gebaut und zunächst ausschließlich gegen den Discord-Testserver geprüft. Nach erfolgreicher Abnahme wird ausschließlich derselbe freigegebene Commit im separaten Produktionsschritt veröffentlicht und ausgerollt. Ein erneuter Workflow-Build ist ein neuer Build desselben Commits; eine byte-identische Promotion setzt voraus, dass das lokal getestete Image erhalten und direkt veröffentlicht wird.
 
 ## Datenbankzugriff mit DBeaver
 
