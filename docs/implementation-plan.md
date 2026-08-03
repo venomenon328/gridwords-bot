@@ -115,7 +115,7 @@ Verbindlich:
 
 **Status:** abgeschlossen; Issue #30 geschlossen und PR #35 gemergt.
 
-Der tägliche Cleanup um 06:00 Uhr finalisiert zuerst den Vortag, pensioniert danach kanonische Ergebnis- und Reminder-Nachrichten und erzeugt beziehungsweise reconciliert den heutigen Tagesstatus. Reminder laufen standardmäßig um 16:00 und 22:00 Uhr.
+Der tägliche Cleanup um 06:00 Uhr finalisiert zuerst den Vortag, pensioniert danach kanonische Ergebnis- und Reminder-Nachrichten und erzeugt beziehungsweise reconciliiert den heutigen Tagesstatus. Reminder laufen standardmäßig um 16:00 und 22:00 Uhr.
 
 Verbindlich:
 
@@ -124,21 +124,19 @@ Verbindlich:
 
 ### Zwischeninkrement 10.5 – Interaktive Ergebnisdetails
 
-**Status:** automatisiert umgesetzt; Issue #34 geschlossen und PR #36 gemergt. Die reale Discord-Abnahme erfolgt gemeinsam mit dem Release Candidate und Zwischeninkrement 10.6 auf dem separaten Testserver.
+**Status:** abgeschlossen; Issue #34 geschlossen und PR #36 gemergt. Die reale Discord-Abnahme wurde gemeinsam mit Zwischeninkrement 10.6 auf dem separaten Testserver durchgeführt.
 
 Tagesstatusnachrichten enthalten spielbezogene Auswahlmenüs für ausschließlich lesende, ephemere GridWords- und QuadWords-Ergebnisdetails. Komponenten sind persistent rekonstruierbar und serverseitig gegen Message-ID, Spieltag, Teilnehmermenge und Optionsseite abgesichert.
 
 Verbindlich: `docs/increments/10.5-interactive-result-details.md`.
 
-## Aktuelle Abschlussarbeit
-
 ### Zwischeninkrement 10.6 – Spielbezogene Teilnahme
 
-**Status:** Pakete 1–7 implementiert und automatisiert geprüft; Paket 8 läuft. Issue #39 und PR #41 bleiben bis zur realen Discord-Abnahme und zum finalen Container-Gate offen beziehungsweise Draft.
+**Status:** implementiert, automatisiert geprüft und real auf dem separaten Discord-Testserver abgenommen. PR #41 durchläuft als finalen Freigabeschritt das Ready-for-review-Container-Gate; Issue #39 bleibt bis zum Merge offen.
 
 Spieler können unabhängig an GridWords, QuadWords, beiden Spielen oder keinem Spiel teilnehmen. Historische Teilnahmezeiträume werden pro Spieltyp geführt. Reminder, gemeinsame spielbezogene Serien, Tagesstatusmenüs und Berichtsnenner verwenden jeweils die passende Teilnehmermenge. Komplett und perfekt bleiben Zwei-Spiele-Metriken.
 
-Umgesetzt sind insbesondere:
+Umgesetzt und abgenommen sind insbesondere:
 
 - spielbezogene Domänentypen und PostgreSQL-Zeiträume,
 - verlustfreier Backfill bestehender globaler Historie auf beide Spiele,
@@ -147,16 +145,11 @@ Umgesetzt sind insbesondere:
 - alle neun Serien auf `G(d)`, `Q(d)`, `U(d)` und `B(d)`,
 - eindeutiger Tagesstatus und je Spiel getrennte Ergebnisdetailmenüs,
 - Reminder-Audience ausschließlich für teilgenommene fehlende Spiele,
-- Wochen- und Monatsberichte mit getrennten Spielnennern.
+- Wochen- und Monatsberichte mit getrennten Spielnennern,
+- Compatibility-Audit und ArchUnit-Grenze gegen globale Teilnahme in produktiven Projektionen,
+- reale Discord-Abnahme gemäß `docs/operations/10.6-game-specific-participation-acceptance.md`.
 
-Vor Paket 8 waren 501 Standardtests sowie 501 Surefire- und 138 Failsafe-Tests im PostgreSQL-Profil grün. Die normale GitHub-CI war vollständig erfolgreich. Der zeitintensive Produktionscontainerworkflow bleibt bei Draft-Pull-Requests bewusst übersprungen und wird erst auf dem final abgenommenen Commit durch **Ready for review** ausgelöst.
-
-Noch ausstehend:
-
-- reale Discord-Abnahme gemäß `docs/operations/10.6-game-specific-participation-acceptance.md`,
-- abschließende Dokumentations- und Compatibility-Prüfung,
-- finaler Container-, Compose-, Backup-, Restore-, Resume- und Rollback-Lauf,
-- Freigabe von PR #41 und Abschluss von Issue #39.
+Der finale Kandidat besitzt 502 grüne Standardtests sowie eine grüne PostgreSQL-Integrationsmatrix. Das vollständige Produktionsimage-, Compose-, Backup-, Restore-, Resume- und Rollback-Gate wird auf dem abgenommenen Commit durch **Ready for review** ausgelöst. Eine GHCR-Veröffentlichung und ein Produktionsdeployment erfolgen anschließend bewusst separat.
 
 Verbindlich:
 
@@ -170,7 +163,7 @@ Inkrement 11 beginnt erst nach dem vollständigen Abschluss von 10.6.
 
 ## Release Candidate 1.0.0
 
-**Status:** Quellumfang implementiert und automatisiert geprüft; reale Discord-Abnahme und finale Containerprüfung stehen aus.
+**Status:** Quellumfang implementiert, automatisiert geprüft und real abgenommen; finales Container-Gate, manuelle GHCR-Veröffentlichung und Produktionsdeployment erfolgen als getrennte Freigabeschritte.
 
 Der RC wird aus exakt dem final abgenommenen Commit gebaut. Er verwendet eine separate Discord-Testanwendung, einen separaten Testserver/-channel und eine isolierte PostgreSQL-Datenbank. Der produktive Rollout und die manuelle GHCR-Veröffentlichung erfolgen erst nach erfolgreicher Abnahme und werden separat durchgeführt.
 
