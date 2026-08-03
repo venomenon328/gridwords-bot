@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import de.venomenon.gridwordsbot.domain.model.GameType;
+import de.venomenon.gridwordsbot.domain.model.GameParticipationSelection;
 import de.venomenon.gridwordsbot.domain.model.NormalizedBoard;
 import de.venomenon.gridwordsbot.domain.model.ParsedGameResult;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
@@ -193,6 +194,111 @@ class DynamicPlayerPostgresPersistenceAdapterIT {
         assertFalse(plain.reminderOptIn());
         assertEquals(List.of(GameType.GRIDWORDS, GameType.QUADWORDS), included.missingGames());
         assertEquals(List.of(GameType.GRIDWORDS, GameType.QUADWORDS), plain.missingGames());
+    }
+
+    @Test
+    void persistsSingleGamePeriodsAndKeepsGlobalCompatibilityAsTheUnion() {
+        long playerId = 20_009L;
+        PlayerStore.ProfileUpdate profile = profile(playerId);
+
+        PlayerStore.StoredPlayer gridOnly = adapter.activateGames(new PlayerStore.GameParticipationChange(
+                profile, GameParticipationSelection.GRIDWORDS, GAME_DATE));
+        assertTrue(gridOnly.active());
+        assertTrue(gridOnly.reminderOptIn());
+        assertEquals(List.of(GameType.GRIDWORDS), adapter.findGameParticipationPeriods().stream()
+                .filter(period -> period.playerId() == playerId)
+                .map(period -> period.gameType())
+                .toList());
+
+        adapter.setReminderOptIn(profile, false);
+        PlayerStore.StoredPlayer both = adapter.activateGames(new PlayerStore.GameParticipationChange(
+                profile, GameParticipationSelection.QUADWORDS, GAME_DATE));
+        assertTrue(both.active());
+        assertFalse(both.reminderOptIn());
+        assertTrue(adapter.findGameParticipationPeriod(playerId, GameType.GRIDWORDS, GAME_DATE).isPresent());
+        assertTrue(adapter.findGameParticipationPeriod(playerId, GameType.QUADWORDS, GAME_DATE).isPresent());
+        assertEquals(1, adapter.findParticipationPeriods().stream()
+                .filter(period -> period.playerId() == playerId)
+                .count());
+
+        PlayerStore.StoredPlayer quadOnly = adapter.deactivateGames(new PlayerStore.GameParticipationChange(
+                profile, GameParticipationSelection.GRIDWORDS, GAME_DATE));
+        assertTrue(quadOnly.active());
+        assertFalse(quadOnly.reminderOptIn());
+
+        PlayerStore.StoredPlayer inactive = adapter.deactivateGames(new PlayerStore.GameParticipationChange(
+                profile, GameParticipationSelection.QUADWORDS, GAME_DATE));
+        assertFalse(inactive.active());
+
+        PlayerStore.StoredPlayer reactivated = adapter.activateGames(new PlayerStore.GameParticipationChange(
+                profile, GameParticipationSelection.QUADWORDS, GAME_DATE));
+        assertTrue(reactivated.active());
+        assertTrue(reactivated.reminderOptIn());
+    }
+
+    @Test
+    void rollsBackBothWhenTheSecondGameWriteFails() {
+        long playerId = 20_010L;
+        jdbc.execute("""
+                CREATE FUNCTION reject_quadwords_participation() RETURNS trigger LANGUAGE plpgsql AS $$
+                BEGIN
+                    IF NEW.game_type = 'QUADWORDS' THEN
+                        RAISE EXCEPTION 'forced QuadWords failure';
+                    END IF;
+                    RETURN NEW;
+                END;
+                $$;
+                CREATE TRIGGER reject_quadwords_participation
+                BEFORE INSERT ON player_participation_period
+                FOR EACH ROW EXECUTE FUNCTION reject_quadwords_participation()
+                """);
+        try {
+            assertThrows(RuntimeException.class, () -> transactions.executeWithoutResult(status ->
+                    adapter.activateGames(new PlayerStore.GameParticipationChange(
+                            profile(playerId), GameParticipationSelection.BOTH, GAME_DATE))));
+
+            assertTrue(adapter.findByDiscordUserId(playerId).isEmpty());
+            assertTrue(adapter.findGameParticipationPeriods().stream()
+                    .noneMatch(period -> period.playerId() == playerId));
+        } finally {
+            jdbc.execute("DROP TRIGGER IF EXISTS reject_quadwords_participation ON player_participation_period");
+            jdbc.execute("DROP FUNCTION IF EXISTS reject_quadwords_participation()");
+        }
+    }
+
+    @Test
+    void concurrentSameAndDifferentGameActivationsRemainConflictSafe() throws Exception {
+        long sameGamePlayer = 20_011L;
+        long differentGamesPlayer = 20_012L;
+        try (ExecutorService executor = Executors.newFixedThreadPool(4)) {
+            var firstGrid = executor.submit(() -> transactions.executeWithoutResult(status ->
+                    adapter.activateGames(new PlayerStore.GameParticipationChange(
+                            profile(sameGamePlayer), GameParticipationSelection.GRIDWORDS, GAME_DATE))));
+            var secondGrid = executor.submit(() -> transactions.executeWithoutResult(status ->
+                    adapter.activateGames(new PlayerStore.GameParticipationChange(
+                            profile(sameGamePlayer), GameParticipationSelection.GRIDWORDS, GAME_DATE))));
+            firstGrid.get(10, TimeUnit.SECONDS);
+            secondGrid.get(10, TimeUnit.SECONDS);
+
+            var grid = executor.submit(() -> transactions.executeWithoutResult(status ->
+                    adapter.activateGames(new PlayerStore.GameParticipationChange(
+                            profile(differentGamesPlayer), GameParticipationSelection.GRIDWORDS, GAME_DATE))));
+            var quad = executor.submit(() -> transactions.executeWithoutResult(status ->
+                    adapter.activateGames(new PlayerStore.GameParticipationChange(
+                            profile(differentGamesPlayer), GameParticipationSelection.QUADWORDS, GAME_DATE))));
+            grid.get(10, TimeUnit.SECONDS);
+            quad.get(10, TimeUnit.SECONDS);
+        }
+
+        assertEquals(1, jdbc.queryForObject("""
+                SELECT count(*) FROM player_participation_period
+                WHERE player_id = ? AND game_type = 'GRIDWORDS'
+                """, Integer.class, sameGamePlayer));
+        assertEquals(2, jdbc.queryForObject("""
+                SELECT count(*) FROM player_participation_period
+                WHERE player_id = ?
+                """, Integer.class, differentGamesPlayer));
+        assertTrue(adapter.findByDiscordUserId(differentGamesPlayer).orElseThrow().active());
     }
 
     private void register(long sourceMessageId, long playerId) {

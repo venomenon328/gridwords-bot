@@ -261,8 +261,10 @@ class PeriodicReportSchedulerSpringIT {
                 VALUES (?, ?, FALSE, FALSE, FALSE, ?, ?)
                 """, playerId, name, now, now);
         jdbc.update("""
-                INSERT INTO player_participation_period (player_id, active_from, inactive_from, created_at, updated_at)
-                VALUES (?, ?, NULL, ?, ?)
+                INSERT INTO player_participation_period (
+                    player_id, game_type, active_from, inactive_from, created_at, updated_at)
+                SELECT ?, game.game_type, ?, NULL, ?, ?
+                FROM (VALUES ('GRIDWORDS'), ('QUADWORDS')) AS game(game_type)
                 """, playerId, activeFrom, now, now);
     }
 

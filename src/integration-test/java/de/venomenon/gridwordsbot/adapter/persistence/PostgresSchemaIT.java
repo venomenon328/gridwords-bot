@@ -84,6 +84,37 @@ class PostgresSchemaIT {
                 """, now, now);
     }
 
+    @Test
+    void gameSpecificParticipationSchemaAcceptsOverlapsAcrossGamesButRejectsInvalidRows() {
+        insertPlayer(212);
+        jdbc.update("""
+                insert into player_participation_period(
+                    player_id,game_type,active_from,inactive_from,created_at,updated_at)
+                values (212,'GRIDWORDS',DATE '2026-07-20',NULL,?,?)
+                """, now, now);
+        jdbc.update("""
+                insert into player_participation_period(
+                    player_id,game_type,active_from,inactive_from,created_at,updated_at)
+                values (212,'QUADWORDS',DATE '2026-07-20',NULL,?,?)
+                """, now, now);
+
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("""
+                insert into player_participation_period(
+                    player_id,game_type,active_from,inactive_from,created_at,updated_at)
+                values (212,'UNKNOWN',DATE '2026-07-20',NULL,?,?)
+                """, now, now));
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("""
+                insert into player_participation_period(
+                    player_id,game_type,active_from,inactive_from,created_at,updated_at)
+                values (212,'GRIDWORDS',DATE '2026-07-21',NULL,?,?)
+                """, now, now));
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("""
+                insert into player_participation_period(
+                    player_id,game_type,active_from,inactive_from,created_at,updated_at)
+                values (212,'GRIDWORDS',DATE '2026-07-20',DATE '2026-07-20',?,?)
+                """, now, now));
+    }
+
     private void insertPlayer(long id) { jdbc.update("insert into player values (?, 'p'||?,true,false,?,?) on conflict do nothing",id,id,now,now); }
     private void insertSubmission(long id,long player) { jdbc.update("insert into submission(source_message_id,guild_id,channel_id,author_player_id,raw_message_content,processing_state,received_at,updated_at) values (?,1,1,?,'x','RECEIVED',?,?)",id,player,now,now); }
     private void insertGridResult(long player) { jdbc.update("insert into game_result(player_id,game_type,game_date,solved,max_attempts,duration_seconds,normalized_board,raw_share_text,parser_version,created_at,updated_at) values (?,'GRIDWORDS',current_date,false,6,0,'b','x','v',?,?)",player,now,now); }

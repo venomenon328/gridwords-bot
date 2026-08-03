@@ -7,6 +7,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.venomenon.gridwordsbot.domain.model.GameParticipationSelection;
 import de.venomenon.gridwordsbot.domain.model.ParticipationPeriod;
 import de.venomenon.gridwordsbot.port.in.PlayerParticipationUseCase.PlayerIdentity;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
@@ -28,17 +29,21 @@ class PlayerParticipationServiceTest {
     @Test
     void joinStartsTodayAndLeaveEndsTomorrow() {
         PlayerStore store = mock(PlayerStore.class);
-        when(store.activate(any())).thenReturn(player(true, false));
-        when(store.deactivate(any())).thenReturn(player(true, false));
+        when(store.activateGames(any())).thenReturn(player(true, false));
+        when(store.deactivateGames(any())).thenReturn(player(true, false));
         PlayerParticipationService service = service(store);
 
         service.join(identity(PLAYER));
         service.leave(identity(PLAYER));
 
-        verify(store).activate(new PlayerStore.ParticipationChange(new PlayerStore.ProfileUpdate(PLAYER, "Player", false),
-                LocalDate.of(2026, 7, 29)));
-        verify(store).deactivate(new PlayerStore.ParticipationChange(new PlayerStore.ProfileUpdate(PLAYER, "Player", false),
-                LocalDate.of(2026, 7, 30)));
+        verify(store).activateGames(new PlayerStore.GameParticipationChange(
+                new PlayerStore.ProfileUpdate(PLAYER, "Player", false),
+                GameParticipationSelection.BOTH, LocalDate.of(2026, 7, 29)));
+        verify(store).deactivateGames(new PlayerStore.GameParticipationChange(
+                new PlayerStore.ProfileUpdate(PLAYER, "Player", false),
+                GameParticipationSelection.BOTH, LocalDate.of(2026, 7, 30)));
+        verify(store, never()).activate(any());
+        verify(store, never()).deactivate(any());
     }
 
     @Test
@@ -48,7 +53,7 @@ class PlayerParticipationServiceTest {
 
         assertThat(service.activate(identity(PLAYER), identity(3L)).authorized()).isFalse();
 
-        verify(store, never()).activate(any());
+        verify(store, never()).activateGames(any());
         verify(store, never()).synchronizeProfile(any());
     }
 
@@ -89,7 +94,7 @@ class PlayerParticipationServiceTest {
         assertThat(status.active()).isFalse();
         assertThat(status.message()).isEqualTo("Teilnahme: inaktiv; Reminder: aus.");
         verify(store).synchronizeProfile(new PlayerStore.ProfileUpdate(target, "Player", false));
-        verify(store, never()).activate(any());
+        verify(store, never()).activateGames(any());
     }
 
     @Test
@@ -106,8 +111,8 @@ class PlayerParticipationServiceTest {
     @Test
     void joinAndAdminActivationRefreshTodaysStatusButProspectiveLeaveDoesNot() {
         PlayerStore store = mock(PlayerStore.class);
-        when(store.activate(any())).thenReturn(player(true, false));
-        when(store.deactivate(any())).thenReturn(player(true, false));
+        when(store.activateGames(any())).thenReturn(player(true, false));
+        when(store.deactivateGames(any())).thenReturn(player(true, false));
         when(store.synchronizeProfile(any())).thenReturn(new PlayerStore.StoredPlayer(
                 ADMIN, "Admin", true, true, false, Instant.EPOCH, Instant.EPOCH));
         java.util.List<LocalDate> refreshes = new java.util.ArrayList<>();
@@ -124,12 +129,12 @@ class PlayerParticipationServiceTest {
     @Test
     void statusRefreshFailureDoesNotRollBackSuccessfulJoin() {
         PlayerStore store = mock(PlayerStore.class);
-        when(store.activate(any())).thenReturn(player(true, false));
+        when(store.activateGames(any())).thenReturn(player(true, false));
         PlayerParticipationService service = new PlayerParticipationService(store, CLOCK, BERLIN, Set.of(ADMIN),
                 ignored -> { throw new IllegalStateException("status unavailable"); });
 
         assertThat(service.join(identity(PLAYER)).active()).isTrue();
-        verify(store).activate(any());
+        verify(store).activateGames(any());
     }
     private static PlayerParticipationService service(PlayerStore store) {
         return new PlayerParticipationService(store, CLOCK, BERLIN, Set.of(ADMIN));

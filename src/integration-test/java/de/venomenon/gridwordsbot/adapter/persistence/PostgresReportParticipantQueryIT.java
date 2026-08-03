@@ -86,8 +86,9 @@ class PostgresReportParticipantQueryIT {
     private void insertPeriod(long playerId, LocalDate activeFrom, LocalDate inactiveFrom) {
         jdbc.update("""
                 INSERT INTO player_participation_period (
-                    player_id, active_from, inactive_from, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?)
+                    player_id, game_type, active_from, inactive_from, created_at, updated_at)
+                SELECT ?, game.game_type, ?, ?, ?, ?
+                FROM (VALUES ('GRIDWORDS'), ('QUADWORDS')) AS game(game_type)
                 """, playerId, activeFrom, inactiveFrom, NOW, NOW);
     }
 

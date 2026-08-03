@@ -149,8 +149,9 @@ class PostgresDailyResultDetailsQueryIT {
     private void insertPeriod(long playerId, LocalDate activeFrom, LocalDate inactiveFrom) {
         jdbc.update("""
                 INSERT INTO player_participation_period
-                    (player_id, active_from, inactive_from, created_at, updated_at)
-                VALUES (?, ?, ?, now(), now())
+                    (player_id, game_type, active_from, inactive_from, created_at, updated_at)
+                SELECT ?, game.game_type, ?, ?, now(), now()
+                FROM (VALUES ('GRIDWORDS'), ('QUADWORDS')) AS game(game_type)
                 """, playerId, activeFrom, inactiveFrom);
     }
 
