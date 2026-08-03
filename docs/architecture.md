@@ -269,7 +269,7 @@ Beispiele:
 Folge:
 
 - Submission wechselt vor der Ergebnisspeicherung nach `FAILED_RETRYABLE`,
-- kein gültiges `game_result`,
+- kein `game_result`,
 - keine irreführende `✅`- oder `⚠️`-Reaktion,
 - dasselbe Event kann später aus `FAILED_RETRYABLE` wieder nach `VALIDATED` aufgenommen und gespeichert werden.
 
