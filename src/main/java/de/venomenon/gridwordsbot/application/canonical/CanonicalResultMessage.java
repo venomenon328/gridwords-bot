@@ -16,7 +16,7 @@ public record CanonicalResultMessage(
         String playerDisplayName, GameType gameType, LocalDate gameDate, ShareOutcome outcome, Duration duration,
         NormalizedBoard board, StreakSummary streaks, OptionalInt personalComplete, OptionalInt personalPerfect,
         OptionalInt sharedComplete, OptionalInt sharedPerfect, Optional<QuadWordsBoards> quadWordsBoards,
-        String publicationKey) {
+        CanonicalExcuseProjection excuse, String publicationKey) {
 
     public CanonicalResultMessage {
         Objects.requireNonNull(playerDisplayName);
@@ -30,6 +30,7 @@ public record CanonicalResultMessage(
         Objects.requireNonNull(sharedComplete);
         Objects.requireNonNull(sharedPerfect);
         quadWordsBoards = Objects.requireNonNull(quadWordsBoards);
+        Objects.requireNonNull(excuse);
         if (gameType == GameType.GRIDWORDS && (board == null || quadWordsBoards.isPresent())) {
             throw new IllegalArgumentException("a GridWords message requires only its board");
         }
@@ -45,6 +46,15 @@ public record CanonicalResultMessage(
             OptionalInt personalComplete, OptionalInt personalPerfect, OptionalInt sharedComplete,
             OptionalInt sharedPerfect, String publicationKey) {
         this(playerDisplayName, gameType, gameDate, outcome, duration, board, streaks, personalComplete,
-                personalPerfect, sharedComplete, sharedPerfect, Optional.empty(), publicationKey);
+                personalPerfect, sharedComplete, sharedPerfect, Optional.empty(), CanonicalExcuseProjection.none(), publicationKey);
+    }
+
+    /** Compatibility constructor for callers that already provide QuadWords boards. */
+    public CanonicalResultMessage(String playerDisplayName, GameType gameType, LocalDate gameDate,
+            ShareOutcome outcome, Duration duration, NormalizedBoard board, StreakSummary streaks,
+            OptionalInt personalComplete, OptionalInt personalPerfect, OptionalInt sharedComplete,
+            OptionalInt sharedPerfect, Optional<QuadWordsBoards> quadWordsBoards, String publicationKey) {
+        this(playerDisplayName, gameType, gameDate, outcome, duration, board, streaks, personalComplete,
+                personalPerfect, sharedComplete, sharedPerfect, quadWordsBoards, CanonicalExcuseProjection.none(), publicationKey);
     }
 }

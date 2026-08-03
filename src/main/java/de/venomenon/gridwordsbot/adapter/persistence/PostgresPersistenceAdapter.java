@@ -1,5 +1,6 @@
 package de.venomenon.gridwordsbot.adapter.persistence;
 
+import de.venomenon.gridwordsbot.application.excuse.ExcuseResultLifecycle;
 import de.venomenon.gridwordsbot.domain.model.DailyGameParticipation;
 import de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod;
 import de.venomenon.gridwordsbot.domain.model.GameParticipationSelection;
@@ -45,15 +46,27 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
     private final JdbcTemplate jdbc;
     private final Clock clock;
     private final ZoneId businessZone;
+    private final ExcuseResultLifecycle excuseLifecycle;
 
     public PostgresPersistenceAdapter(JdbcTemplate jdbc, Clock clock) {
         this(jdbc, clock, clock.getZone());
     }
 
     public PostgresPersistenceAdapter(JdbcTemplate jdbc, Clock clock, ZoneId businessZone) {
+        this(jdbc, clock, businessZone, ExcuseResultLifecycle.disabled(
+                new PostgresExcuseStateStore(jdbc, clock, businessZone), clock));
+    }
+
+    /** Visible for database integration tests that exercise the enabled package-4 lifecycle. */
+    public PostgresPersistenceAdapter(
+            JdbcTemplate jdbc,
+            Clock clock,
+            ZoneId businessZone,
+            ExcuseResultLifecycle excuseLifecycle) {
         this.jdbc = java.util.Objects.requireNonNull(jdbc);
         this.clock = java.util.Objects.requireNonNull(clock);
         this.businessZone = java.util.Objects.requireNonNull(businessZone);
+        this.excuseLifecycle = java.util.Objects.requireNonNull(excuseLifecycle);
     }
 
     @Override
@@ -190,6 +203,13 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         }
 
         StoredGameResult result = insertedResult.get();
+        if (excuseLifecycleEnabled()) {
+            excuseLifecycle.decideForNewResult(
+                    result,
+                    request.sourceMessageId(),
+                    existing.receivedAt(),
+                    DailyGameParticipation.fromPeriods(result.parsedResult().gameDate(), periods));
+        }
         PublicationContext publicationContext = publicationContext(before, findAll(), request.result().playerId(),
                 result.parsedResult().gameDate(), periods);
         linkStoredResult(request.sourceMessageId(), result.id(), publicationContext);
@@ -209,6 +229,11 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
             throw new SubmissionConflictException("new submission cannot already be canonically published");
         }
         StoredGameResult result = upsertResult(request.result(), clock.instant());
+        if (excuseLifecycleEnabled()) {
+            excuseLifecycle.revalidateExistingResult(
+                    result,
+                    DailyGameParticipation.fromPeriods(result.parsedResult().gameDate(), periods));
+        }
         PublicationContext publicationContext = publicationContext(before, findAll(), request.result().playerId(),
                 result.parsedResult().gameDate(), periods);
         updatePublicationContext(request.sourceMessageId(), result.id(), publicationContext);
@@ -1155,6 +1180,11 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         return stored.playerId() == request.playerId() && stored.parsedResult().equals(request.parsedResult())
                 && stored.rawShareText().equals(request.rawShareText())
                 && stored.parserVersion().equals(request.parserVersion());
+    }
+
+    /** Legacy compatibility migrations predate the contextual-excuse tables. */
+    protected boolean excuseLifecycleEnabled() {
+        return true;
     }
 
     private StoredSubmission lockRequired(long sourceMessageId) {

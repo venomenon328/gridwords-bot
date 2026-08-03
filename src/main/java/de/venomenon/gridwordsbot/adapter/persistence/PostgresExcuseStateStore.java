@@ -1,10 +1,12 @@
 package de.venomenon.gridwordsbot.adapter.persistence;
 
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseOffer;
+import de.venomenon.gridwordsbot.domain.excuse.ExcuseOfferContext;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseOfferMetadata;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseOption;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseOptionSelection;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseRound;
+import de.venomenon.gridwordsbot.domain.excuse.ExcuseRevalidation;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseSelectionHistoryEntry;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseSelectionSnapshot;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseState;
@@ -59,9 +61,12 @@ public class PostgresExcuseStateStore implements ExcuseStateStore {
     public Optional<ExcuseState> find(long gameResultId) {
         requirePositive(gameResultId, "gameResultId");
         return jdbc.query("""
-                SELECT *
-                FROM game_result_excuse
-                WHERE game_result_id = ?
+                SELECT excuse.*, context.original_received_at, context.comparison_game_type,
+                    context.compared_result_count, context.all_compared_results_solved,
+                    context.highest_solved_attempts, context.longest_duration_seconds, context.context_fingerprint
+                FROM game_result_excuse excuse
+                LEFT JOIN game_result_excuse_offer_context context ON context.game_result_id = excuse.game_result_id
+                WHERE excuse.game_result_id = ?
                 """, this::state, gameResultId).stream().findFirst();
     }
 
@@ -83,6 +88,17 @@ public class PostgresExcuseStateStore implements ExcuseStateStore {
     @Override
     @Transactional
     public Optional<ExcuseState> initializeAvailable(ExcuseOffer offer) {
+        return initializeAvailableInternal(offer, Optional.empty());
+    }
+
+    @Override
+    @Transactional
+    public Optional<ExcuseState> initializeAvailable(ExcuseOffer offer, ExcuseOfferContext offerContext) {
+        return initializeAvailableInternal(offer, Optional.of(Objects.requireNonNull(offerContext, "offerContext")));
+    }
+
+    private Optional<ExcuseState> initializeAvailableInternal(
+            ExcuseOffer offer, Optional<ExcuseOfferContext> offerContext) {
         Objects.requireNonNull(offer, "offer");
         lockOfferDecision(offer.playerId(), offer.gameType());
         if (find(offer.gameResultId()).isPresent() || !cooldownSatisfiedInternal(
@@ -106,7 +122,62 @@ public class PostgresExcuseStateStore implements ExcuseStateStore {
         if (inserted != 1) {
             return Optional.empty();
         }
+        offerContext.ifPresent(context -> storeOfferContext(offer.gameResultId(), context, now));
         return find(offer.gameResultId());
+    }
+
+    @Override
+    @Transactional
+    public Optional<ExcuseState> revalidate(ExcuseRevalidation revalidation) {
+        Objects.requireNonNull(revalidation, "revalidation");
+        Optional<ExcuseState> locked = findForUpdate(revalidation.gameResultId());
+        if (locked.isEmpty()) {
+            return Optional.empty();
+        }
+        ExcuseState state = locked.get();
+        boolean applies = switch (revalidation.outcome()) {
+            case KEEP_AVAILABLE, REPLACE_AVAILABLE_CONTEXT -> state.status() == ExcuseStatus.AVAILABLE;
+            case KEEP_SELECTED -> state.status() == ExcuseStatus.SELECTED;
+            case INVALIDATE -> state.status() == ExcuseStatus.AVAILABLE || state.status() == ExcuseStatus.SELECTED;
+        };
+        if (!applies) {
+            return Optional.empty();
+        }
+
+        Instant now = clock.instant();
+        switch (revalidation.outcome()) {
+            case KEEP_AVAILABLE -> updateOfferContext(revalidation.gameResultId(), revalidation.offerContext(), now);
+            case REPLACE_AVAILABLE_CONTEXT -> {
+                jdbc.update("DELETE FROM game_result_excuse_option WHERE game_result_id = ?", revalidation.gameResultId());
+                int changed = jdbc.update("""
+                        UPDATE game_result_excuse
+                        SET context_generation = context_generation + 1, updated_at = ?
+                        WHERE game_result_id = ? AND status = 'AVAILABLE'
+                        """, utc(now), revalidation.gameResultId());
+                if (changed != 1) {
+                    throw new IllegalStateException("available excuse state changed during revalidation");
+                }
+                updateOfferContext(revalidation.gameResultId(), revalidation.offerContext(), now);
+            }
+            case KEEP_SELECTED -> updateOfferContext(revalidation.gameResultId(), revalidation.offerContext(), now);
+            case INVALIDATE -> {
+                // A selected snapshot is protected by a deferred foreign key to its persisted option.
+                // Keep that immutable evidence when invalidating a selection; available options can be removed.
+                if (state.status() == ExcuseStatus.AVAILABLE) {
+                    jdbc.update("DELETE FROM game_result_excuse_option WHERE game_result_id = ?", revalidation.gameResultId());
+                }
+                int changed = jdbc.update("""
+                        UPDATE game_result_excuse
+                        SET status = 'INVALIDATED', updated_at = ?
+                        WHERE game_result_id = ? AND status IN ('AVAILABLE', 'SELECTED')
+                        """, utc(now), revalidation.gameResultId());
+                if (changed != 1) {
+                    throw new IllegalStateException("excuse state changed during invalidation");
+                }
+                updateOfferContext(revalidation.gameResultId(), revalidation.offerContext(), now);
+            }
+        }
+        return find(revalidation.gameResultId());
     }
 
     @Override
@@ -193,10 +264,13 @@ public class PostgresExcuseStateStore implements ExcuseStateStore {
         Objects.requireNonNull(now, "now");
         requirePositive(limit, "limit");
         return jdbc.query("""
-                SELECT *
-                FROM game_result_excuse
-                WHERE status = 'AVAILABLE' AND expires_at <= ?
-                ORDER BY expires_at, game_result_id
+                SELECT excuse.*, context.original_received_at, context.comparison_game_type,
+                    context.compared_result_count, context.all_compared_results_solved,
+                    context.highest_solved_attempts, context.longest_duration_seconds, context.context_fingerprint
+                FROM game_result_excuse excuse
+                LEFT JOIN game_result_excuse_offer_context context ON context.game_result_id = excuse.game_result_id
+                WHERE excuse.status = 'AVAILABLE' AND excuse.expires_at <= ?
+                ORDER BY excuse.expires_at, excuse.game_result_id
                 LIMIT ?
                 """, this::state, utc(now), limit);
     }
@@ -259,10 +333,13 @@ public class PostgresExcuseStateStore implements ExcuseStateStore {
 
     private Optional<ExcuseState> findForUpdate(long gameResultId) {
         return jdbc.query("""
-                SELECT *
-                FROM game_result_excuse
-                WHERE game_result_id = ?
-                FOR UPDATE
+                SELECT excuse.*, context.original_received_at, context.comparison_game_type,
+                    context.compared_result_count, context.all_compared_results_solved,
+                    context.highest_solved_attempts, context.longest_duration_seconds, context.context_fingerprint
+                FROM game_result_excuse excuse
+                LEFT JOIN game_result_excuse_offer_context context ON context.game_result_id = excuse.game_result_id
+                WHERE excuse.game_result_id = ?
+                FOR UPDATE OF excuse
                 """, this::state, gameResultId).stream().findFirst();
     }
 
@@ -311,7 +388,7 @@ public class PostgresExcuseStateStore implements ExcuseStateStore {
         Optional<ExcuseOfferMetadata> offer = optionalOffer(rs);
         Optional<ExcuseSelectionSnapshot> selection = optionalSelection(rs);
         return new ExcuseState(
-                rs.getLong("game_result_id"), status, offer, rs.getBoolean("reroll_used"), selection,
+                rs.getLong("game_result_id"), status, offer, optionalOfferContext(rs), rs.getBoolean("reroll_used"), selection,
                 instant(rs, "created_at"), instant(rs, "updated_at"));
     }
 
@@ -336,6 +413,60 @@ public class PostgresExcuseStateStore implements ExcuseStateStore {
                 ExcuseStyle.valueOf(rs.getString("selected_style")),
                 ExcuseTopic.valueOf(rs.getString("selected_topic")), rs.getString("selected_rendered_text"),
                 instant(rs, "selected_at")));
+    }
+
+    private static Optional<ExcuseOfferContext> optionalOfferContext(ResultSet rs) throws SQLException {
+        OffsetDateTime originalReceivedAt = rs.getObject("original_received_at", OffsetDateTime.class);
+        if (originalReceivedAt == null) {
+            return Optional.empty();
+        }
+        Integer highestSolvedAttempts = rs.getObject("highest_solved_attempts", Integer.class);
+        return Optional.of(new ExcuseOfferContext(
+                originalReceivedAt.toInstant(),
+                new de.venomenon.gridwordsbot.domain.excuse.DailyComparisonSnapshot(
+                        GameType.valueOf(rs.getString("comparison_game_type")),
+                        rs.getInt("compared_result_count"),
+                        rs.getBoolean("all_compared_results_solved"),
+                        highestSolvedAttempts == null ? java.util.OptionalInt.empty()
+                                : java.util.OptionalInt.of(highestSolvedAttempts),
+                        java.time.Duration.ofSeconds(rs.getLong("longest_duration_seconds"))),
+                rs.getString("context_fingerprint")));
+    }
+
+    private void storeOfferContext(long gameResultId, ExcuseOfferContext context, Instant now) {
+        jdbc.update("""
+                INSERT INTO game_result_excuse_offer_context (
+                    game_result_id, original_received_at, comparison_game_type, compared_result_count,
+                    all_compared_results_solved, highest_solved_attempts, longest_duration_seconds,
+                    context_fingerprint, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, gameResultId, utc(context.originalReceivedAt()), context.dailyComparison().gameType().name(),
+                context.dailyComparison().comparedResultCount(), context.dailyComparison().allComparedResultsSolved(),
+                context.dailyComparison().highestSolvedAttempts().isPresent()
+                        ? context.dailyComparison().highestSolvedAttempts().getAsInt() : null,
+                context.dailyComparison().longestDuration().toSeconds(), context.contextFingerprint(), utc(now), utc(now));
+    }
+
+    private void updateOfferContext(long gameResultId, ExcuseOfferContext context, Instant now) {
+        int changed = jdbc.update("""
+                UPDATE game_result_excuse_offer_context
+                SET context_fingerprint = ?, updated_at = ?
+                WHERE game_result_id = ?
+                    AND original_received_at = ?
+                    AND comparison_game_type = ?
+                    AND compared_result_count = ?
+                    AND all_compared_results_solved = ?
+                    AND highest_solved_attempts IS NOT DISTINCT FROM ?
+                    AND longest_duration_seconds = ?
+                """, context.contextFingerprint(), utc(now), gameResultId, utc(context.originalReceivedAt()),
+                context.dailyComparison().gameType().name(), context.dailyComparison().comparedResultCount(),
+                context.dailyComparison().allComparedResultsSolved(),
+                context.dailyComparison().highestSolvedAttempts().isPresent()
+                        ? context.dailyComparison().highestSolvedAttempts().getAsInt() : null,
+                context.dailyComparison().longestDuration().toSeconds());
+        if (changed != 1) {
+            throw new IllegalStateException("frozen excuse offer context changed unexpectedly");
+        }
     }
 
     private static OffsetDateTime utc(Instant instant) {

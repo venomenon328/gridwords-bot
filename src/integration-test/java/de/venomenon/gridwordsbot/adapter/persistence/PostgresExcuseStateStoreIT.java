@@ -4,19 +4,23 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseOffer;
+import de.venomenon.gridwordsbot.domain.excuse.ExcuseOfferContext;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseOfferMetadata;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseOption;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseOptionSelection;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseRound;
+import de.venomenon.gridwordsbot.domain.excuse.ExcuseRevalidation;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseState;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseStatus;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseStyle;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseTopic;
+import de.venomenon.gridwordsbot.domain.excuse.DailyComparisonSnapshot;
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.Duration;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -116,6 +120,36 @@ class PostgresExcuseStateStoreIT {
                 .containsExactly(ExcuseRound.INITIAL, 2, "initial.2", ExcuseStyle.TACTICAL,
                         ExcuseTopic.LONG_TERM_PLAN, "initial text 2");
         assertThat(transaction(() -> store.decline(resultId, 1, NOW.plusSeconds(2)))).isEmpty();
+    }
+
+    @Test
+    void roundTripsFrozenOfferFactsAndReplacesOnlyTheCurrentAvailableContext() {
+        long resultId = result(PLAYER_ID, GameType.GRIDWORDS, LocalDate.of(2026, 8, 1));
+        source(resultId, PLAYER_ID);
+        ExcuseOfferContext initial = new ExcuseOfferContext(
+                NOW.minusSeconds(90),
+                new DailyComparisonSnapshot(GameType.GRIDWORDS, 2, true, java.util.OptionalInt.of(4), Duration.ofMinutes(3)),
+                "0".repeat(64));
+        transaction(() -> store.initializeAvailable(
+                offer(resultId, PLAYER_ID, GameType.GRIDWORDS, NOW, NOW.plusSeconds(600)), initial));
+        transaction(() -> store.storeInitialOptions(resultId, 1, options(ExcuseRound.INITIAL, "initial")));
+
+        ExcuseState revalidated = transaction(() -> store.revalidate(new ExcuseRevalidation(
+                resultId,
+                ExcuseRevalidation.Outcome.REPLACE_AVAILABLE_CONTEXT,
+                new ExcuseOfferContext(
+                        NOW.minusSeconds(90),
+                        new DailyComparisonSnapshot(
+                                GameType.GRIDWORDS, 2, true, java.util.OptionalInt.of(4), Duration.ofMinutes(3)),
+                        "a".repeat(64))))).orElseThrow();
+
+        assertThat(revalidated.offerContext()).contains(new ExcuseOfferContext(
+                NOW.minusSeconds(90),
+                new DailyComparisonSnapshot(GameType.GRIDWORDS, 2, true, java.util.OptionalInt.of(4), Duration.ofMinutes(3)),
+                "a".repeat(64)));
+        assertThat(revalidated.offer().orElseThrow().contextGeneration()).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM game_result_excuse_option WHERE game_result_id = ?", Integer.class,
+                resultId)).isZero();
     }
 
     @Test

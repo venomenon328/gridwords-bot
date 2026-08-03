@@ -20,13 +20,24 @@ public final class ExcuseEligibilityPolicy {
     }
 
     public ExcuseEligibility evaluate(ExcuseEligibilityRequest request) {
+        return evaluate(request, null);
+    }
+
+    /** Reuses the historical comparison snapshot when a correction is revalidated. */
+    public ExcuseEligibility evaluate(
+            ExcuseEligibilityRequest request, DailyComparisonSnapshot frozenComparison) {
         java.util.Objects.requireNonNull(request, "request");
         ParsedGameResult result = request.result();
         QuadWordsBoardAnalysis boardAnalysis = result.quadWordsBoards()
                 .map(boards -> QuadWordsBoardAnalysis.analyze(
                         boards, thresholds.worstSolvedBoardMinimumAttempt(), thresholds.worstBoardMinimumGap()))
                 .orElseGet(QuadWordsBoardAnalysis::boardless);
-        DailyComparisonSnapshot comparison = DailyComparisonSnapshot.from(result.gameType(), eligiblePriorResults(request));
+        if (frozenComparison != null && frozenComparison.gameType() != result.gameType()) {
+            throw new IllegalArgumentException("frozen comparison must match the result game type");
+        }
+        DailyComparisonSnapshot comparison = frozenComparison == null
+                ? DailyComparisonSnapshot.from(result.gameType(), eligiblePriorResults(request))
+                : frozenComparison;
         EnumSet<ExcuseReason> reasons = EnumSet.noneOf(ExcuseReason.class);
         if (isRelevantParticipant(request) && !request.exclusivePositivePriorityEvent()) {
             evaluateAbsoluteReasons(result, request, boardAnalysis, reasons);

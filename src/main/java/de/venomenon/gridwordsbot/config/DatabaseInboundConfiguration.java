@@ -25,6 +25,7 @@ import de.venomenon.gridwordsbot.port.in.ProcessSharedResultUseCase;
 import de.venomenon.gridwordsbot.port.out.AttachmentContentLoader;
 import de.venomenon.gridwordsbot.port.out.CanonicalMessageGateway;
 import de.venomenon.gridwordsbot.port.out.CanonicalPublicationContextStore;
+import de.venomenon.gridwordsbot.port.out.ExcuseStateStore;
 import de.venomenon.gridwordsbot.port.out.ChannelMessageRetirementStore;
 import de.venomenon.gridwordsbot.port.out.DailyResultDetailsQuery;
 import de.venomenon.gridwordsbot.port.out.DailyStatusInteractionContextQuery;
@@ -203,7 +204,8 @@ class DatabaseInboundConfiguration {
             GridwordsBotProperties properties,
             PublicationRetryScheduler retries,
             ObjectProvider<GridWordsSourceDeletionService> deletions,
-            ChannelMessageRetirementStore retirement) {
+            ChannelMessageRetirementStore retirement,
+            ObjectProvider<ExcuseStateStore> excuses) {
         return new CanonicalGridWordsPublicationService(
                 results,
                 players,
@@ -217,7 +219,7 @@ class DatabaseInboundConfiguration {
                     if (deletion != null) {
                         deletion.reconcileAfterCanonicalPublication(sourceMessageId);
                     }
-                })
+                }, excuses.getIfAvailable(CanonicalGridWordsPublicationService::noExcuses))
                 .withRetirementFence(retirement);
     }
 
