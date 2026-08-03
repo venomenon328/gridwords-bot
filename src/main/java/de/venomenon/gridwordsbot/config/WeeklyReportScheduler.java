@@ -1,10 +1,9 @@
 package de.venomenon.gridwordsbot.config;
 
 import de.venomenon.gridwordsbot.application.reporting.WeeklyReportReconciliationService;
-import de.venomenon.gridwordsbot.port.out.PeriodicReportMessageGateway;
 import java.util.Objects;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Profile;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -13,12 +12,14 @@ import org.springframework.stereotype.Component;
 /** Triggers durable weekly reconciliation at startup and on a fixed cadence without owning report decisions. */
 @Component
 @Profile("database")
-@ConditionalOnBean(PeriodicReportMessageGateway.class)
+@Conditional(PeriodicReportActivationCondition.class)
 final class WeeklyReportScheduler {
     private final WeeklyReportReconciliationService reconciliation;
     private final GridwordsBotProperties properties;
 
-    WeeklyReportScheduler(WeeklyReportReconciliationService reconciliation, GridwordsBotProperties properties) {
+    WeeklyReportScheduler(
+            WeeklyReportReconciliationService reconciliation,
+            GridwordsBotProperties properties) {
         this.reconciliation = Objects.requireNonNull(reconciliation, "reconciliation");
         this.properties = Objects.requireNonNull(properties, "properties");
     }
@@ -30,6 +31,7 @@ final class WeeklyReportScheduler {
 
     @Scheduled(fixedDelay = 60_000, initialDelay = 60_000)
     void reconcile() {
-        reconciliation.reconcile(properties.discord().guildId(), properties.discord().channelId());
+        reconciliation.reconcile(
+                properties.discord().guildId(), properties.discord().channelId());
     }
 }

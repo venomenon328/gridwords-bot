@@ -3,9 +3,9 @@ package de.venomenon.gridwordsbot.config;
 import de.venomenon.gridwordsbot.adapter.discord.reporting.JdaPeriodicReportMessageGateway;
 import de.venomenon.gridwordsbot.adapter.persistence.PostgresPeriodicReportDeliveryStore;
 import de.venomenon.gridwordsbot.application.reporting.MonthlyReportReconciliationService;
-import de.venomenon.gridwordsbot.application.reporting.PeriodicReportUseCase;
 import de.venomenon.gridwordsbot.application.reporting.PeriodicReportDeliveryService;
 import de.venomenon.gridwordsbot.application.reporting.PeriodicReportRenderer;
+import de.venomenon.gridwordsbot.application.reporting.PeriodicReportUseCase;
 import de.venomenon.gridwordsbot.application.reporting.ReportDayAndStreakProjector;
 import de.venomenon.gridwordsbot.application.reporting.ReportGameStatisticsProjector;
 import de.venomenon.gridwordsbot.application.reporting.ReportParticipantProjector;
@@ -18,9 +18,10 @@ import de.venomenon.gridwordsbot.port.out.ReportParticipantQuery;
 import de.venomenon.gridwordsbot.port.out.ReportStreakHistoryQuery;
 import java.time.Clock;
 import net.dv8tion.jda.api.JDA;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -41,14 +42,14 @@ class PeriodicReportDeliveryConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean(JDA.class)
+    @ConditionalOnProperty(prefix = "gridwords.discord", name = "enabled", havingValue = "true")
     @ConditionalOnMissingBean(PeriodicReportMessageGateway.class)
     PeriodicReportMessageGateway periodicReportMessageGateway(JDA jda) {
         return new JdaPeriodicReportMessageGateway(jda);
     }
 
     @Bean
-    @ConditionalOnBean(PeriodicReportMessageGateway.class)
+    @Conditional(PeriodicReportActivationCondition.class)
     PeriodicReportDeliveryService periodicReportDeliveryService(
             PeriodicReportDeliveryStore store,
             PeriodicReportMessageGateway messages,
@@ -86,7 +87,7 @@ class PeriodicReportDeliveryConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean(PeriodicReportDeliveryService.class)
+    @Conditional(PeriodicReportActivationCondition.class)
     WeeklyReportReconciliationService weeklyReportReconciliationService(
             PeriodicReportDeliveryStore store,
             PeriodicReportReconciliationPlanner planner,
@@ -105,7 +106,7 @@ class PeriodicReportDeliveryConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean(PeriodicReportDeliveryService.class)
+    @Conditional(PeriodicReportActivationCondition.class)
     MonthlyReportReconciliationService monthlyReportReconciliationService(
             PeriodicReportDeliveryStore store,
             PeriodicReportReconciliationPlanner planner,

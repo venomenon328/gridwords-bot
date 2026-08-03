@@ -15,21 +15,24 @@ import java.time.Clock;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Map;
 import net.dv8tion.jda.api.JDA;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.core.env.MapPropertySource;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 class PeriodicReportDeliveryConfigurationTest {
 
     @Test
-    void databaseProfileWiresDeliveryCoreWithAnInjectedTransportGatewayWithoutStartingJda() {
+    void databaseProfileWiresDeliveryCoreWithAnInjectedTransportGatewayWhileDiscordIsDisabled() {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
-            context.getEnvironment().setActiveProfiles("database");
-            registerProperties(context);
+            configureDiscord(context, false);
+            registerProperties(context, false);
             context.registerBean(Clock.class, Clock::systemUTC);
             context.registerBean(JdbcTemplate.class, () -> mock(JdbcTemplate.class));
-            context.registerBean(PeriodicReportMessageGateway.class, () -> mock(PeriodicReportMessageGateway.class));
+            context.registerBean(PeriodicReportMessageGateway.class,
+                    () -> mock(PeriodicReportMessageGateway.class));
             registerReportQueries(context);
             context.register(PeriodicReportDeliveryConfiguration.class);
             context.refresh();
@@ -44,8 +47,8 @@ class PeriodicReportDeliveryConfigurationTest {
     @Test
     void databaseProfileWiresTheJdaGatewayAndDeliveryServiceWhenJdaIsProvided() {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
-            context.getEnvironment().setActiveProfiles("database");
-            registerProperties(context);
+            configureDiscord(context, true);
+            registerProperties(context, true);
             context.registerBean(Clock.class, Clock::systemUTC);
             context.registerBean(JdbcTemplate.class, () -> mock(JdbcTemplate.class));
             context.registerBean(JDA.class, () -> mock(JDA.class));
@@ -53,16 +56,28 @@ class PeriodicReportDeliveryConfigurationTest {
             context.register(PeriodicReportDeliveryConfiguration.class);
             context.refresh();
 
-            assertThat(context.getBean(PeriodicReportMessageGateway.class)).isInstanceOf(JdaPeriodicReportMessageGateway.class);
+            assertThat(context.getBean(PeriodicReportMessageGateway.class))
+                    .isInstanceOf(JdaPeriodicReportMessageGateway.class);
             assertThat(context.getBean(PeriodicReportDeliveryService.class)).isNotNull();
         }
     }
 
-    private static void registerProperties(AnnotationConfigApplicationContext context) {
+    private static void configureDiscord(
+            AnnotationConfigApplicationContext context,
+            boolean enabled) {
+        context.getEnvironment().setActiveProfiles("database");
+        context.getEnvironment().getPropertySources().addFirst(new MapPropertySource(
+                "test-discord",
+                Map.of("gridwords.discord.enabled", Boolean.toString(enabled))));
+    }
+
+    private static void registerProperties(
+            AnnotationConfigApplicationContext context,
+            boolean discordEnabled) {
         context.registerBean(
                 GridwordsBotProperties.class,
                 () -> new GridwordsBotProperties(
-                        new GridwordsBotProperties.Discord(false, "", 1L, 2L, List.of()),
+                        new GridwordsBotProperties.Discord(discordEnabled, "", 1L, 2L, List.of()),
                         new GridwordsBotProperties.Schedule(
                                 LocalTime.of(18, 0),
                                 LocalTime.of(23, 0),
@@ -73,8 +88,11 @@ class PeriodicReportDeliveryConfigurationTest {
     }
 
     private static void registerReportQueries(AnnotationConfigApplicationContext context) {
-        context.registerBean(ReportParticipantQuery.class, () -> mock(ReportParticipantQuery.class));
-        context.registerBean(ReportGameResultQuery.class, () -> mock(ReportGameResultQuery.class));
-        context.registerBean(ReportStreakHistoryQuery.class, () -> mock(ReportStreakHistoryQuery.class));
+        context.registerBean(ReportParticipantQuery.class,
+                () -> mock(ReportParticipantQuery.class));
+        context.registerBean(ReportGameResultQuery.class,
+                () -> mock(ReportGameResultQuery.class));
+        context.registerBean(ReportStreakHistoryQuery.class,
+                () -> mock(ReportStreakHistoryQuery.class));
     }
 }

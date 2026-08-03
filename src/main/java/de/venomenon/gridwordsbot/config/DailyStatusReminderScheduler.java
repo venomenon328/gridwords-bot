@@ -13,7 +13,7 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.annotation.Profile;
 import org.springframework.context.event.EventListener;
@@ -23,7 +23,7 @@ import org.springframework.stereotype.Component;
 /** Frequent trigger over durable idempotent use cases; host timezone and cron offsets are irrelevant. */
 @Component
 @Profile("database")
-@ConditionalOnBean(DailyStatusRefreshService.class)
+@ConditionalOnProperty(prefix = "gridwords.discord", name = "enabled", havingValue = "true")
 final class DailyStatusReminderScheduler {
     private final DailyStatusRefreshService status;
     private final ReminderDeliveryService reminders;
@@ -34,9 +34,13 @@ final class DailyStatusReminderScheduler {
     private final GridwordsBotProperties properties;
 
     @Autowired
-    DailyStatusReminderScheduler(DailyStatusRefreshService status, ReminderDeliveryService reminders,
-            DailyStatusStore deliveries, ChannelMessageRetirementService retirement,
-            DailyChannelCleanupService cleanup, Clock clock,
+    DailyStatusReminderScheduler(
+            DailyStatusRefreshService status,
+            ReminderDeliveryService reminders,
+            DailyStatusStore deliveries,
+            ChannelMessageRetirementService retirement,
+            DailyChannelCleanupService cleanup,
+            Clock clock,
             GridwordsBotProperties properties) {
         this.status = status;
         this.reminders = reminders;
@@ -47,8 +51,12 @@ final class DailyStatusReminderScheduler {
         this.properties = properties;
     }
 
-    DailyStatusReminderScheduler(DailyStatusRefreshService status, ReminderDeliveryService reminders,
-            DailyStatusStore deliveries, Clock clock, GridwordsBotProperties properties) {
+    DailyStatusReminderScheduler(
+            DailyStatusRefreshService status,
+            ReminderDeliveryService reminders,
+            DailyStatusStore deliveries,
+            Clock clock,
+            GridwordsBotProperties properties) {
         this(status, reminders, deliveries, null, null, clock, properties);
     }
 
