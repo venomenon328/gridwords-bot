@@ -41,24 +41,22 @@ import org.springframework.jdbc.core.JdbcTemplate;
 class WeeklyReportConfigurationTest {
 
     @Test
-    void databaseProfileWiresIndependentWeeklyAndMonthlyPathsWithAnInjectedGateway() {
-        try (AnnotationConfigApplicationContext context = context(true)) {
-            assertThat(context.getBeansOfType(ReportParticipantProjector.class)).hasSize(1);
-            assertThat(context.getBeansOfType(ReportGameStatisticsProjector.class)).hasSize(1);
-            assertThat(context.getBeansOfType(ReportDayAndStreakProjector.class)).hasSize(1);
-            assertThat(context.getBeansOfType(PeriodicReportUseCase.class)).hasSize(1);
-            assertThat(context.getBeansOfType(PeriodicReportReconciliationPlanner.class)).hasSize(1);
-            assertThat(context.getBeansOfType(PeriodicReportDeliveryService.class)).hasSize(1);
-            assertThat(context.getBeansOfType(WeeklyReportReconciliationService.class)).hasSize(1);
-            assertThat(context.getBeansOfType(MonthlyReportReconciliationService.class)).hasSize(1);
-            assertThat(context.getBeansOfType(WeeklyReportScheduler.class)).hasSize(1);
-            assertThat(context.getBeansOfType(MonthlyReportScheduler.class)).hasSize(1);
+    void databaseProfileWiresIndependentWeeklyAndMonthlyPathsWithAnExplicitGateway() {
+        try (AnnotationConfigApplicationContext context = context(false, true)) {
+            assertCompleteReportingPath(context);
+        }
+    }
+
+    @Test
+    void databaseProfileWiresIndependentWeeklyAndMonthlyPathsWhenDiscordIsEnabled() {
+        try (AnnotationConfigApplicationContext context = context(true, true)) {
+            assertCompleteReportingPath(context);
         }
     }
 
     @Test
     void databaseProfileWithDiscordDisabledKeepsTheReportingCoreWithoutDeliveryServices() {
-        try (AnnotationConfigApplicationContext context = context(false)) {
+        try (AnnotationConfigApplicationContext context = context(false, false)) {
             assertThat(context.getBeansOfType(ReportParticipantProjector.class)).hasSize(1);
             assertThat(context.getBeansOfType(ReportGameStatisticsProjector.class)).hasSize(1);
             assertThat(context.getBeansOfType(ReportDayAndStreakProjector.class)).hasSize(1);
@@ -100,7 +98,22 @@ class WeeklyReportConfigurationTest {
                         ZoneId.of("Europe/Berlin")));
     }
 
-    private static AnnotationConfigApplicationContext context(boolean discordEnabled) {
+    private static void assertCompleteReportingPath(AnnotationConfigApplicationContext context) {
+        assertThat(context.getBeansOfType(ReportParticipantProjector.class)).hasSize(1);
+        assertThat(context.getBeansOfType(ReportGameStatisticsProjector.class)).hasSize(1);
+        assertThat(context.getBeansOfType(ReportDayAndStreakProjector.class)).hasSize(1);
+        assertThat(context.getBeansOfType(PeriodicReportUseCase.class)).hasSize(1);
+        assertThat(context.getBeansOfType(PeriodicReportReconciliationPlanner.class)).hasSize(1);
+        assertThat(context.getBeansOfType(PeriodicReportDeliveryService.class)).hasSize(1);
+        assertThat(context.getBeansOfType(WeeklyReportReconciliationService.class)).hasSize(1);
+        assertThat(context.getBeansOfType(MonthlyReportReconciliationService.class)).hasSize(1);
+        assertThat(context.getBeansOfType(WeeklyReportScheduler.class)).hasSize(1);
+        assertThat(context.getBeansOfType(MonthlyReportScheduler.class)).hasSize(1);
+    }
+
+    private static AnnotationConfigApplicationContext context(
+            boolean discordEnabled,
+            boolean gatewayAvailable) {
         AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
         context.getEnvironment().setActiveProfiles("database");
         context.getEnvironment().getPropertySources().addFirst(new MapPropertySource(
@@ -115,7 +128,7 @@ class WeeklyReportConfigurationTest {
                 () -> mock(ReportGameResultQuery.class));
         context.registerBean(ReportStreakHistoryQuery.class,
                 () -> mock(ReportStreakHistoryQuery.class));
-        if (discordEnabled) {
+        if (gatewayAvailable) {
             context.registerBean(PeriodicReportMessageGateway.class,
                     () -> mock(PeriodicReportMessageGateway.class));
         }
