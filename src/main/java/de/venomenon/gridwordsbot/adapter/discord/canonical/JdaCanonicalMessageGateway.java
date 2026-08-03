@@ -131,6 +131,7 @@ public final class JdaCanonicalMessageGateway implements CanonicalMessageGateway
                 contextual(message.sharedPerfect(), history.sharedPerfectEstablished(),
                         message.streaks().sharedPerfect()),
                 message.quadWordsBoards(),
+                message.excuse(),
                 message.publicationKey());
     }
 

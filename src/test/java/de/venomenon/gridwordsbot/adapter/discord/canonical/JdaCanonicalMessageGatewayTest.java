@@ -86,6 +86,7 @@ class JdaCanonicalMessageGatewayTest {
         new JdaCanonicalMessageGateway(jda, contextStore).create(12L, messageWithContextStreaks());
 
         verify(channel).sendMessageEmbeds(embed.capture());
+        assertThat(embed.getValue().getDescription()).endsWith("Der Text bleibt unver\u00e4ndert.\u201C");
         assertThat(embed.getValue().getDescription()).contains(
                 "✅ Komplett: 4 Tage",
                 "💎 Perfekt: 3 Tage",
@@ -170,6 +171,9 @@ class JdaCanonicalMessageGatewayTest {
                 OptionalInt.empty(),
                 OptionalInt.empty(),
                 OptionalInt.empty(),
+                java.util.Optional.empty(),
+                new de.venomenon.gridwordsbot.application.canonical.CanonicalExcuseProjection.Selected(
+                        "Der Text bleibt unver\u00e4ndert."),
                 "gridwords-result-20");
     }
 }

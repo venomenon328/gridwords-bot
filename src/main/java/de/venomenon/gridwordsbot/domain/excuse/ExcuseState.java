@@ -9,6 +9,7 @@ public record ExcuseState(
         long gameResultId,
         ExcuseStatus status,
         Optional<ExcuseOfferMetadata> offer,
+        Optional<ExcuseOfferContext> offerContext,
         boolean rerollUsed,
         Optional<ExcuseSelectionSnapshot> selection,
         Instant createdAt,
@@ -20,6 +21,7 @@ public record ExcuseState(
         }
         Objects.requireNonNull(status, "status");
         offer = Objects.requireNonNull(offer, "offer");
+        offerContext = Objects.requireNonNull(offerContext, "offerContext");
         selection = Objects.requireNonNull(selection, "selection");
         Objects.requireNonNull(createdAt, "createdAt");
         Objects.requireNonNull(updatedAt, "updatedAt");
@@ -39,5 +41,17 @@ public record ExcuseState(
         if (status == ExcuseStatus.SELECTED && selection.isEmpty()) {
             throw new IllegalArgumentException("selected state requires a selection snapshot");
         }
+    }
+
+    /** Compatibility constructor for pre-context persistence callers. */
+    public ExcuseState(
+            long gameResultId,
+            ExcuseStatus status,
+            Optional<ExcuseOfferMetadata> offer,
+            boolean rerollUsed,
+            Optional<ExcuseSelectionSnapshot> selection,
+            Instant createdAt,
+            Instant updatedAt) {
+        this(gameResultId, status, offer, Optional.empty(), rerollUsed, selection, createdAt, updatedAt);
     }
 }

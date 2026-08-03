@@ -1,10 +1,12 @@
 package de.venomenon.gridwordsbot.port.out;
 
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseOffer;
+import de.venomenon.gridwordsbot.domain.excuse.ExcuseOfferContext;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseOption;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseOptionSelection;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseSelectionHistoryEntry;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseState;
+import de.venomenon.gridwordsbot.domain.excuse.ExcuseRevalidation;
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import java.time.Instant;
 import java.util.List;
@@ -26,6 +28,16 @@ public interface ExcuseStateStore {
      * cooldown is satisfied. An empty result leaves an existing state or a cooldown-blocked result unchanged.
      */
     Optional<ExcuseState> initializeAvailable(ExcuseOffer offer);
+
+    /** Creates a positive decision and its immutable original submission/day-comparison facts together. */
+    default Optional<ExcuseState> initializeAvailable(ExcuseOffer offer, ExcuseOfferContext offerContext) {
+        throw new UnsupportedOperationException("offer contexts are not available");
+    }
+
+    /** Applies a correction revalidation only to the expected currently active state. */
+    default Optional<ExcuseState> revalidate(ExcuseRevalidation revalidation) {
+        throw new UnsupportedOperationException("excuse revalidation is not available");
+    }
 
     /** A convenience read; callers requiring concurrency safety must use initializeAvailable. */
     boolean cooldownSatisfied(long playerId, GameType gameType, Instant offeredAt);

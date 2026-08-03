@@ -2,6 +2,7 @@ package de.venomenon.gridwordsbot.adapter.discord.canonical;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import de.venomenon.gridwordsbot.application.canonical.CanonicalExcuseProjection;
 import de.venomenon.gridwordsbot.application.canonical.CanonicalResultMessage;
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.model.NormalizedBoard;
@@ -58,6 +59,24 @@ class CanonicalEmbedRendererTest {
                 "🤝 Gemeinsam komplett: 5 Tage",
                 "🏆 Gemeinsam perfekt: 2 Tage");
         assertThat(edited.getDescription()).doesNotContain("\nKomplett: ", "\nPerfekt: ");
+    }
+
+    @Test
+    void keepsTheSelectedExcuseAsTheLastContentBlockWhenAnEditPreservesSeriesLines() {
+        CanonicalEmbedRenderer renderer = new CanonicalEmbedRenderer();
+        CanonicalResultMessage selected = new CanonicalResultMessage(
+                "Tobias", GameType.GRIDWORDS, LocalDate.of(2026, 7, 29), new ShareOutcome.Solved(3, 6),
+                Duration.ofSeconds(85), new NormalizedBoard(Collections.nCopies(6, "\u2B1C".repeat(5))),
+                new StreakSummary(12, 8, 7, 4, 3, 5, 2), OptionalInt.empty(), OptionalInt.empty(),
+                OptionalInt.empty(), OptionalInt.empty(), Optional.empty(),
+                new CanonicalExcuseProjection.Selected("Die Buchstaben waren anderweitig gebunden."),
+                "gridwords-result-4");
+        var previous = new EmbedBuilder().setDescription("alt\nâœ… Komplett: 8 Tage").build();
+
+        var edited = renderer.renderForEdit(selected, previous);
+
+        assertThat(edited.getDescription()).endsWith("„Die Buchstaben waren anderweitig gebunden.“");
+        assertThat(edited.getDescription()).doesNotContain("Ausrede");
     }
 
     @Test

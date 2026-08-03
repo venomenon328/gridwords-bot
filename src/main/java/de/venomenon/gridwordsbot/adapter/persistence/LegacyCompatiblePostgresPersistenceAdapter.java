@@ -68,6 +68,9 @@ public class LegacyCompatiblePostgresPersistenceAdapter extends PostgresPersiste
     protected boolean participationEnabled() { return false; }
 
     @Override
+    protected boolean excuseLifecycleEnabled() { return false; }
+
+    @Override
     public Optional<StoredGameResult> find(long playerId, GameType gameType, java.time.LocalDate gameDate) {
         return jdbc.query("SELECT * FROM game_result WHERE player_id = ? AND game_type = ? AND game_date = ?",
                 LEGACY_RESULT, playerId, gameType.name(), gameDate).stream().findFirst();
