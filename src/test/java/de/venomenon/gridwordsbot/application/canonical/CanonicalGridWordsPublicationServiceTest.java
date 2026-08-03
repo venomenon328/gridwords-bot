@@ -14,8 +14,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod;
 import de.venomenon.gridwordsbot.domain.model.GameType;
-import de.venomenon.gridwordsbot.domain.model.ParticipationPeriod;
 import de.venomenon.gridwordsbot.domain.model.NormalizedBoard;
 import de.venomenon.gridwordsbot.domain.model.ParsedGameResult;
 import de.venomenon.gridwordsbot.domain.model.QuadWordsBoard;
@@ -94,9 +94,7 @@ class CanonicalGridWordsPublicationServiceTest {
                 Instant.EPOCH,
                 Instant.EPOCH)));
         when(results.findAll()).thenReturn(List.of(result));
-        when(players.findParticipationPeriods()).thenReturn(List.of(
-                new ParticipationPeriod(TOBIAS, LocalDate.MIN, null),
-                new ParticipationPeriod(GEORGIA, LocalDate.MIN, null)));
+        when(players.findGameParticipationPeriods()).thenReturn(bothGamesParticipation(TOBIAS, GEORGIA));
         when(submissions.prepareCanonicalPublication(anyLong(), anyLong()))
                 .thenReturn(SubmissionStore.CanonicalPublicationPreparation.PUBLISHABLE);
         when(submissions.beginCanonicalDelivery(anyLong(), anyLong(), any()))
@@ -244,9 +242,7 @@ class CanonicalGridWordsPublicationServiceTest {
     void replacesMissingCanonicalMessageUnderTheClaim() {
         result = gridResult(RESULT, TOBIAS, OptionalLong.of(88L), 3);
         when(results.findAll()).thenReturn(List.of(result));
-        when(players.findParticipationPeriods()).thenReturn(List.of(
-                new ParticipationPeriod(TOBIAS, LocalDate.MIN, null),
-                new ParticipationPeriod(GEORGIA, LocalDate.MIN, null)));
+        when(players.findGameParticipationPeriods()).thenReturn(bothGamesParticipation(TOBIAS, GEORGIA));
         stored(SubmissionStore.SubmissionState.RESULT_STORED);
         when(results.findById(RESULT)).thenReturn(Optional.of(result));
         GameResultStore.PublicationClaim claim = claim("00000000-0000-0000-0000-000000000002");
@@ -790,9 +786,7 @@ class CanonicalGridWordsPublicationServiceTest {
                 new SubmissionStore.CanonicalRefreshCandidate(current, 7);
         result = gridResult(RESULT, TOBIAS, OptionalLong.of(88L), 2);
         when(results.findAll()).thenReturn(List.of(result));
-        when(players.findParticipationPeriods()).thenReturn(List.of(
-                new ParticipationPeriod(TOBIAS, LocalDate.MIN, null),
-                new ParticipationPeriod(GEORGIA, LocalDate.MIN, null)));
+        when(players.findGameParticipationPeriods()).thenReturn(bothGamesParticipation(TOBIAS, GEORGIA));
         when(submissions.findGridWordsAwaitingCanonicalPublication()).thenReturn(List.of());
         when(submissions.findCanonicalRefreshCandidates()).thenReturn(List.of(refresh));
         when(submissions.findCurrentCanonicalPublicationCandidate(RESULT)).thenReturn(Optional.of(refresh));
@@ -897,6 +891,32 @@ class CanonicalGridWordsPublicationServiceTest {
         assertThat(message.getValue().sharedPerfect()).hasValue(1);
     }
 
+    @Test
+    void singleGameParticipationCannotRenderCompleteOrPerfectContextDuringRecreate() {
+        useResult(gridResult(RESULT, TOBIAS, OptionalLong.of(88L), 3));
+        when(players.findGameParticipationPeriods()).thenReturn(List.of(
+                new GameParticipationPeriod(TOBIAS, GameType.GRIDWORDS, LocalDate.MIN, null)));
+        stored(SubmissionStore.SubmissionState.RESULT_STORED,
+                new SubmissionStore.PublicationContext(true, true, true, true));
+        GameResultStore.PublicationClaim claim = claim("00000000-0000-0000-0000-000000000032");
+        when(results.claimCanonicalPublication(eq(RESULT), any())).thenReturn(Optional.of(claim));
+        doThrow(new CanonicalMessageGateway.UnknownMessageException())
+                .when(discord)
+                .edit(eq(12L), eq(88L), any());
+        when(discord.findByPublicationKey(anyLong(), any())).thenReturn(OptionalLong.empty());
+        when(discord.create(anyLong(), any())).thenReturn(99L);
+        when(submissions.completeCanonicalPublication(SOURCE, RESULT, 99L, claim.token())).thenReturn(true);
+        ArgumentCaptor<CanonicalResultMessage> message = ArgumentCaptor.forClass(CanonicalResultMessage.class);
+
+        assertThat(service.publish(SOURCE)).isTrue();
+
+        verify(discord).create(eq(12L), message.capture());
+        assertThat(message.getValue().personalComplete()).isEmpty();
+        assertThat(message.getValue().personalPerfect()).isEmpty();
+        assertThat(message.getValue().sharedComplete()).isEmpty();
+        assertThat(message.getValue().sharedPerfect()).isEmpty();
+    }
+
     private SubmissionStore.StoredSubmission stored(SubmissionStore.SubmissionState state) {
         return stored(state, SubmissionStore.PublicationContext.none());
     }
@@ -927,6 +947,15 @@ class CanonicalGridWordsPublicationServiceTest {
                 publicationContext,
                 Instant.EPOCH,
                 Instant.EPOCH);
+    }
+
+    private static List<GameParticipationPeriod> bothGamesParticipation(long... playerIds) {
+        return java.util.Arrays.stream(playerIds)
+                .mapToObj(playerId -> List.of(
+                        new GameParticipationPeriod(playerId, GameType.GRIDWORDS, LocalDate.MIN, null),
+                        new GameParticipationPeriod(playerId, GameType.QUADWORDS, LocalDate.MIN, null)))
+                .flatMap(List::stream)
+                .toList();
     }
 
     private record ScheduledAction(Instant at, Runnable action) {

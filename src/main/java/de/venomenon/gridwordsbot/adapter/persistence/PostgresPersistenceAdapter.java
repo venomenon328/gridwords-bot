@@ -1,5 +1,6 @@
 package de.venomenon.gridwordsbot.adapter.persistence;
 
+import de.venomenon.gridwordsbot.domain.model.DailyGameParticipation;
 import de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod;
 import de.venomenon.gridwordsbot.domain.model.GameParticipationSelection;
 import de.venomenon.gridwordsbot.domain.model.GameType;
@@ -173,7 +174,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         if (participationEnabled()) activateGames(request.playerRegistration());
         lockParticipationTableForPublicationContext();
         List<StoredGameResult> before = findAll();
-        List<ParticipationPeriod> periods = participationEnabled() ? findParticipationPeriods() : List.of();
+        List<GameParticipationPeriod> periods = participationEnabled() ? findGameParticipationPeriods() : List.of();
         Optional<StoredGameResult> existingResult = findResultForUpdate(request.result());
         if (existingResult.isPresent()) {
             return storeAgainstExistingResult(retainStoredQuadWordsBoards(request, existingResult.get()),
@@ -200,7 +201,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
             ResultStorage request,
             StoredGameResult existingResult,
             List<StoredGameResult> before,
-            List<ParticipationPeriod> periods) {
+            List<GameParticipationPeriod> periods) {
         linkStoredResult(request.sourceMessageId(), existingResult.id(), PublicationContext.none());
         CanonicalPublicationPreparation preparation = prepareCanonicalPublication(request.sourceMessageId(), existingResult.id());
         if (preparation == CanonicalPublicationPreparation.SUPERSEDED) return findRequired(request.sourceMessageId());
@@ -1020,15 +1021,18 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         }
     }
     private static PublicationContext publicationContext(List<StoredGameResult> before, List<StoredGameResult> after,
-            long playerId, LocalDate gameDate, List<ParticipationPeriod> periods) {
-        boolean personalCompleteBefore = complete(before, playerId, gameDate);
-        boolean personalPerfectBefore = perfect(before, playerId, gameDate);
-        boolean sharedCompleteBefore = sharedComplete(before, periods, gameDate);
-        boolean sharedPerfectBefore = sharedPerfect(before, periods, gameDate);
-        return new PublicationContext(!personalCompleteBefore && complete(after, playerId, gameDate),
-                !personalPerfectBefore && perfect(after, playerId, gameDate),
-                !sharedCompleteBefore && sharedComplete(after, periods, gameDate),
-                !sharedPerfectBefore && sharedPerfect(after, periods, gameDate));
+            long playerId, LocalDate gameDate, List<GameParticipationPeriod> periods) {
+        DailyGameParticipation participation = DailyGameParticipation.fromPeriods(gameDate, periods);
+        boolean personalApplicable = participation.bothGamesPlayers().contains(playerId);
+        boolean personalCompleteBefore = personalApplicable && complete(before, playerId, gameDate);
+        boolean personalPerfectBefore = personalApplicable && perfect(before, playerId, gameDate);
+        boolean sharedCompleteBefore = sharedComplete(before, participation, gameDate);
+        boolean sharedPerfectBefore = sharedPerfect(before, participation, gameDate);
+        return new PublicationContext(
+                personalApplicable && !personalCompleteBefore && complete(after, playerId, gameDate),
+                personalApplicable && !personalPerfectBefore && perfect(after, playerId, gameDate),
+                !sharedCompleteBefore && sharedComplete(after, participation, gameDate),
+                !sharedPerfectBefore && sharedPerfect(after, participation, gameDate));
     }
 
     private static boolean complete(List<StoredGameResult> results, long playerId, LocalDate gameDate) {
@@ -1041,17 +1045,15 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         return complete(results, playerId, gameDate) && games.stream().allMatch(result -> result.parsedResult().outcome() instanceof ShareOutcome.Solved);
     }
 
-    private static List<Long> activePlayers(List<ParticipationPeriod> periods, LocalDate gameDate) {
-        return periods.stream().filter(period -> period.contains(gameDate)).map(ParticipationPeriod::playerId).distinct().toList();
-    }
-
-    private static boolean sharedComplete(List<StoredGameResult> results, List<ParticipationPeriod> periods, LocalDate gameDate) {
-        List<Long> players = activePlayers(periods, gameDate);
+    private static boolean sharedComplete(
+            List<StoredGameResult> results, DailyGameParticipation participation, LocalDate gameDate) {
+        List<Long> players = List.copyOf(participation.bothGamesPlayers());
         return players.size() >= 2 && players.stream().allMatch(playerId -> complete(results, playerId, gameDate));
     }
 
-    private static boolean sharedPerfect(List<StoredGameResult> results, List<ParticipationPeriod> periods, LocalDate gameDate) {
-        List<Long> players = activePlayers(periods, gameDate);
+    private static boolean sharedPerfect(
+            List<StoredGameResult> results, DailyGameParticipation participation, LocalDate gameDate) {
+        List<Long> players = List.copyOf(participation.bothGamesPlayers());
         return players.size() >= 2 && players.stream().allMatch(playerId -> perfect(results, playerId, gameDate));
     }
     private Optional<StoredGameResult> insertResultIfAbsent(GameResultUpsert request, Instant now) {
