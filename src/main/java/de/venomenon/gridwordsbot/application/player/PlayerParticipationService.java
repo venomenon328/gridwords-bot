@@ -1,6 +1,7 @@
 package de.venomenon.gridwordsbot.application.player;
 
 import de.venomenon.gridwordsbot.domain.model.ParticipationPeriod;
+import de.venomenon.gridwordsbot.domain.model.GameParticipationSelection;
 import de.venomenon.gridwordsbot.port.in.PlayerParticipationUseCase;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
 import java.time.Clock;
@@ -36,32 +37,32 @@ public final class PlayerParticipationService implements PlayerParticipationUseC
     }
 
     @Override
-    public PlayerStatus join(PlayerIdentity actor) {
+    public PlayerStatus join(PlayerIdentity actor, GameParticipationSelection selection) {
         LocalDate today = today();
-        PlayerStatus result = changed(players.activate(change(actor, today)), "Teilnahme ist ab heute aktiv.");
+        PlayerStatus result = changed(activate(actor, selection, today), "Teilnahme ist ab heute aktiv.");
         refreshSafely(today);
         return result;
     }
 
     @Override
-    public PlayerStatus leave(PlayerIdentity actor) {
-        return changed(players.deactivate(change(actor, today().plusDays(1))), "Teilnahme endet ab morgen.");
+    public PlayerStatus leave(PlayerIdentity actor, GameParticipationSelection selection) {
+        return changed(deactivate(actor, selection, today().plusDays(1)), "Teilnahme endet ab morgen.");
     }
 
 
     @Override
-    public PlayerStatus activate(PlayerIdentity actor, PlayerIdentity target) {
+    public PlayerStatus activate(PlayerIdentity actor, PlayerIdentity target, GameParticipationSelection selection) {
         if (!authorize(actor)) return denied();
         LocalDate today = today();
-        PlayerStatus result = changed(players.activate(change(target, today)), "Teilnahme ist ab heute aktiv.");
+        PlayerStatus result = changed(activate(target, selection, today), "Teilnahme ist ab heute aktiv.");
         refreshSafely(today);
         return result;
     }
 
     @Override
-    public PlayerStatus deactivate(PlayerIdentity actor, PlayerIdentity target) {
+    public PlayerStatus deactivate(PlayerIdentity actor, PlayerIdentity target, GameParticipationSelection selection) {
         if (!authorize(actor)) return denied();
-        return changed(players.deactivate(change(target, today().plusDays(1))), "Teilnahme endet ab morgen.");
+        return changed(deactivate(target, selection, today().plusDays(1)), "Teilnahme endet ab morgen.");
     }
 
     @Override
@@ -99,6 +100,18 @@ public final class PlayerParticipationService implements PlayerParticipationUseC
     private PlayerStore.ParticipationChange change(PlayerIdentity identity, LocalDate effectiveDate) {
         return new PlayerStore.ParticipationChange(profile(identity), effectiveDate);
     }
+    private PlayerStore.StoredPlayer activate(PlayerIdentity identity, GameParticipationSelection selection, LocalDate effectiveDate) {
+        Objects.requireNonNull(selection, "selection");
+        if (selection == GameParticipationSelection.BOTH) return players.activate(change(identity, effectiveDate));
+        return players.activateGames(new PlayerStore.GameParticipationChange(profile(identity), selection, effectiveDate));
+    }
+
+    private PlayerStore.StoredPlayer deactivate(PlayerIdentity identity, GameParticipationSelection selection, LocalDate effectiveDate) {
+        Objects.requireNonNull(selection, "selection");
+        if (selection == GameParticipationSelection.BOTH) return players.deactivate(change(identity, effectiveDate));
+        return players.deactivateGames(new PlayerStore.GameParticipationChange(profile(identity), selection, effectiveDate));
+    }
+
 
     private PlayerStore.ProfileUpdate profile(PlayerIdentity identity) {
         return new PlayerStore.ProfileUpdate(identity.discordUserId(), identity.displayName(), isAdministrator(identity));
