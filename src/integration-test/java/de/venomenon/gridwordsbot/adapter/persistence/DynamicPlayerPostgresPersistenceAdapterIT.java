@@ -197,6 +197,41 @@ class DynamicPlayerPostgresPersistenceAdapterIT {
     }
 
     @Test
+    void reminderReadModelUsesHistoricalParticipationForEachMissingGame() {
+        long gridOnly = 20_013L;
+        long quadOnly = 20_014L;
+        long both = 20_015L;
+        long historicalGridOnly = 20_016L;
+        LocalDate previousDay = GAME_DATE.minusDays(1);
+        adapter.activateGames(new PlayerStore.GameParticipationChange(
+                profile(gridOnly), GameParticipationSelection.GRIDWORDS, GAME_DATE));
+        adapter.activateGames(new PlayerStore.GameParticipationChange(
+                profile(quadOnly), GameParticipationSelection.QUADWORDS, GAME_DATE));
+        adapter.activateGames(new PlayerStore.GameParticipationChange(
+                profile(both), GameParticipationSelection.BOTH, GAME_DATE));
+        adapter.activateGames(new PlayerStore.GameParticipationChange(
+                profile(historicalGridOnly), GameParticipationSelection.GRIDWORDS, previousDay));
+        adapter.deactivateGames(new PlayerStore.GameParticipationChange(
+                profile(historicalGridOnly), GameParticipationSelection.GRIDWORDS, GAME_DATE));
+        adapter.setReminderOptIn(profile(quadOnly), false);
+
+        long gridSource = 30_013L;
+        register(gridSource, both);
+        adapter.storeResult(storage(gridSource, both, "GridWords done"));
+
+        List<ReminderCandidateStore.ReminderCandidate> candidates = adapter.findReminderCandidates(GAME_DATE);
+
+        assertEquals(List.of(GameType.GRIDWORDS), missingGames(candidates, gridOnly));
+        assertEquals(List.of(GameType.QUADWORDS), missingGames(candidates, quadOnly));
+        assertEquals(List.of(GameType.QUADWORDS), missingGames(candidates, both));
+        assertFalse(candidates.stream().filter(candidate -> candidate.discordUserId() == quadOnly)
+                .findFirst().orElseThrow().reminderOptIn());
+
+        assertEquals(List.of(GameType.GRIDWORDS),
+                missingGames(adapter.findReminderCandidates(previousDay), historicalGridOnly));
+    }
+
+    @Test
     void persistsSingleGamePeriodsAndKeepsGlobalCompatibilityAsTheUnion() {
         long playerId = 20_009L;
         PlayerStore.ProfileUpdate profile = profile(playerId);
@@ -314,6 +349,12 @@ class DynamicPlayerPostgresPersistenceAdapterIT {
 
     private PlayerStore.ProfileUpdate profile(long playerId) {
         return new PlayerStore.ProfileUpdate(playerId, "Player " + playerId, playerId == 20_003L);
+    }
+
+    private static List<GameType> missingGames(
+            List<ReminderCandidateStore.ReminderCandidate> candidates, long playerId) {
+        return candidates.stream().filter(candidate -> candidate.discordUserId() == playerId)
+                .findFirst().orElseThrow().missingGames();
     }
 
     private SubmissionStore.ResultStorage storage(long sourceMessageId, long playerId, String text) {

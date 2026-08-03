@@ -48,13 +48,25 @@ public class DynamicPlayerPostgresPersistenceAdapter extends PostgresPersistence
     public List<ReminderCandidate> findReminderCandidates(LocalDate gameDate) {
         return jdbc.query("""
                 SELECT p.discord_user_id, p.display_name, p.reminder_opt_in,
-                    NOT EXISTS (
+                    EXISTS (
+                        SELECT 1 FROM player_participation_period pp
+                        WHERE pp.player_id = p.discord_user_id
+                          AND pp.game_type = 'GRIDWORDS'
+                          AND pp.active_from <= ?
+                          AND (pp.inactive_from IS NULL OR ? < pp.inactive_from)
+                    ) AND NOT EXISTS (
                         SELECT 1 FROM game_result r
                         WHERE r.player_id = p.discord_user_id
                           AND r.game_type = 'GRIDWORDS'
                           AND r.game_date = ?
                     ) AS missing_gridwords,
-                    NOT EXISTS (
+                    EXISTS (
+                        SELECT 1 FROM player_participation_period pp
+                        WHERE pp.player_id = p.discord_user_id
+                          AND pp.game_type = 'QUADWORDS'
+                          AND pp.active_from <= ?
+                          AND (pp.inactive_from IS NULL OR ? < pp.inactive_from)
+                    ) AND NOT EXISTS (
                         SELECT 1 FROM game_result r
                         WHERE r.player_id = p.discord_user_id
                           AND r.game_type = 'QUADWORDS'
@@ -78,7 +90,7 @@ public class DynamicPlayerPostgresPersistenceAdapter extends PostgresPersistence
                             rs.getString("display_name"),
                             missing,
                             rs.getBoolean("reminder_opt_in"));
-                }, gameDate, gameDate, gameDate, gameDate).stream()
+                }, gameDate, gameDate, gameDate, gameDate, gameDate, gameDate, gameDate, gameDate).stream()
                 .filter(java.util.Objects::nonNull)
                 .toList();
     }
