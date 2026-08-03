@@ -5,8 +5,31 @@
 - Docker und Compose sind nach `server-bootstrap.md` installiert.
 - `/opt/gridwords-bot/runtime.env` enthält ausschließlich Produktionswerte und hat Modus `0600`.
 - Der Benutzer `gridwords` ist mit einem auf `read:packages` begrenzten Token bei GHCR angemeldet.
-- Das gewünschte Image wurde durch den grünen `main`-Workflow als `sha-<40 hex>` oder bewusst als SemVer-Tag veröffentlicht.
+- Der gewünschte Quellstand wurde als Release Candidate lokal gebaut und auf dem separaten Discord-Testserver erfolgreich abgenommen.
+- Das gewünschte Image wurde danach bewusst über den manuell gestarteten GitHub-Actions-Workflow `Container image` auf `main` veröffentlicht.
+- Das Deployment verwendet einen unveränderlichen Tag `sha-<40 hex>` oder den dabei einmalig erzeugten SemVer-Tag.
 - `deployment.env` wird **nicht** vor dem ersten erfolgreichen Deployment angelegt. Das Skript schreibt diese Datei erst nach vollständiger Verifikation.
+
+Ein normaler Push auf `main` baut und prüft das Produktionsimage, veröffentlicht es aber nicht nach GHCR.
+
+## Manuelle GHCR-Veröffentlichung
+
+Nach erfolgreicher RC-Abnahme in GitHub:
+
+1. `Actions` öffnen.
+2. Workflow `Container image` auswählen.
+3. `Run workflow` wählen.
+4. Branch `main` wählen.
+5. den neuen Release-Tag im Format `MAJOR.MINOR.PATCH`, beispielsweise `1.0.0`, eingeben.
+6. Workflow starten und vollständig grün abwarten.
+
+Der Workflow veröffentlicht:
+
+- den unveränderlichen Commit-Tag `sha-<vollständige main-SHA>`,
+- den einmaligen SemVer-Tag, beispielsweise `1.0.0`,
+- SBOM und Provenance.
+
+Vorhandene SemVer-Tags werden nicht überschrieben. Für das Deployment bleibt der zugehörige SHA-Tag die bevorzugte Referenz.
 
 ## Erstdeployment
 
@@ -32,13 +55,13 @@ Der Ablauf ist:
 
 ## Normales Update
 
-Den gewünschten Tag lokal bewusst auswählen und per SSH auslösen:
+Den gewünschten SHA-Tag lokal bewusst auswählen und per SSH auslösen:
 
 ```powershell
 ssh -i $env:USERPROFILE\.ssh\gridwords_netcup gridwords@SERVER_IP "/opt/gridwords-bot/scripts/deploy.sh sha-REPLACE_WITH_40_LOWERCASE_HEX_CHARACTERS"
 ```
 
-Danach optional separat prüfen:
+Danach separat prüfen:
 
 ```powershell
 ssh -i $env:USERPROFILE\.ssh\gridwords_netcup gridwords@SERVER_IP "/opt/gridwords-bot/scripts/verify-deployment.sh"
@@ -83,10 +106,6 @@ cd /opt/gridwords-bot
 ```
 
 Vorher muss geklärt sein, dass das ältere App-Image mit dem aktuellen Datenbankschema kompatibel ist. Bei destruktiven oder inkompatiblen Migrationen ist stattdessen der kontrollierte Datenbank-Restore nach `backup-restore.md` erforderlich.
-
-## Manuell veröffentlichter SemVer-Tag
-
-Der Workflow `Container image` kann über `workflow_dispatch` einen Tag wie `0.9.0` veröffentlichen. Der Workflow akzeptiert dies ausschließlich von `main`, nach vollständiger CI und nur, wenn der Release-Tag in GHCR noch nicht existiert. Vorhandene SemVer-Tags werden nicht überschrieben. Für maximale Nachvollziehbarkeit bleibt der zugehörige `sha-...`-Tag die bevorzugte Deploymentreferenz.
 
 ## Diagnose
 

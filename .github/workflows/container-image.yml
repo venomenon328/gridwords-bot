@@ -113,18 +113,15 @@ jobs:
         run: bash scripts/test/production-operations.sh
 
   publish-image:
-    name: Publish private GHCR image
+    name: Publish private GHCR image manually
     needs: [test, verify-image]
-    if: >-
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
       - name: Validate manual release source and tag
-        if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           [[ "$GITHUB_REF" == 'refs/heads/main' ]]
@@ -144,7 +141,6 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Refuse an existing manual release tag
-        if: github.event_name == 'workflow_dispatch'
         shell: bash
         env:
           RELEASE_IMAGE: ghcr.io/venomenon328/gridwords-bot:${{ inputs.release_tag }}
@@ -161,7 +157,7 @@ jobs:
           images: ghcr.io/venomenon328/gridwords-bot
           tags: |
             type=sha,prefix=sha-,format=long
-            type=raw,value=${{ inputs.release_tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=raw,value=${{ inputs.release_tag }}
 
       - name: Build and publish image
         uses: docker/build-push-action@v6
@@ -174,5 +170,5 @@ jobs:
           provenance: mode=max
           build-args: |
             VCS_REF=${{ needs.verify-image.outputs.revision }}
-            VERSION=sha-${{ needs.verify-image.outputs.revision }}
+            VERSION=${{ inputs.release_tag }}
             BUILD_DATE=${{ needs.verify-image.outputs.build_date }}
