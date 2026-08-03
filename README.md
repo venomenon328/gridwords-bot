@@ -40,14 +40,17 @@ Der Bot unterstützt insbesondere:
 
 Standardzeitzone ist `Europe/Berlin`.
 
-Die nächste fachlich vorbereitete Erweiterung ist Zwischeninkrement 10.6 aus Issue #39: historische Teilnahme pro Spieltyp mit getrennten Reminder-, Serien-, Status- und Berichtsnennern. Diese Funktion ist auf dem aktuellen Produktionsstand noch nicht implementiert.
+Zwischeninkrement 10.6 aus Issue #39 befindet sich in Umsetzung. Es führt historische Teilnahme pro Spieltyp mit getrennten Reminder-, Serien-, Status- und Berichtsnennern ein. Diese Funktion ist auf dem aktuellen Produktionsstand noch nicht vollständig implementiert.
+
+Als späteres Folgefeature ist Zwischeninkrement 12.1 aus Issue #42 fachlich vorbereitet: Bei seltenen Ergebniskonstellationen kann der Ergebnisautor freiwillig aus deterministischen redaktionellen Ausreden wählen. Eine gewählte Ausrede wird persistiert und ohne Stilbezeichnung in dieselbe kanonische Ergebnisnachricht gerendert. Die Produktionsumsetzung beginnt erst nach vollständigem Abschluss von 10.6.
 
 ## Projektdokumentation
 
 - [`docs/anforderungsspezifikation.md`](docs/anforderungsspezifikation.md) – fachliche Grundanforderungen
 - [`docs/requirements/series-model.md`](docs/requirements/series-model.md) – Seriensemantik
 - [`docs/requirements/dynamic-player-model.md`](docs/requirements/dynamic-player-model.md) – dynamische Spieler und bisherige globale Teilnahmezeiträume
-- [`docs/requirements/game-specific-participation.md`](docs/requirements/game-specific-participation.md) – geplante spielbezogene Teilnahme ab Zwischeninkrement 10.6
+- [`docs/requirements/game-specific-participation.md`](docs/requirements/game-specific-participation.md) – spielbezogene Teilnahme ab Zwischeninkrement 10.6
+- [`docs/requirements/excuses.md`](docs/requirements/excuses.md) – kontextabhängige Ausreden, Auswahl, Persistenz und Wiederholungsschutz
 - [`docs/requirements/daily-status-reminders.md`](docs/requirements/daily-status-reminders.md) – Tagesstatus, Reminder und Cleanup
 - [`docs/requirements/periodic-reports.md`](docs/requirements/periodic-reports.md) – Wochen- und Monatsberichte
 - [`docs/requirements/production-deployment.md`](docs/requirements/production-deployment.md) – Produktions- und Deploymentweg
@@ -58,6 +61,7 @@ Die nächste fachlich vorbereitete Erweiterung ist Zwischeninkrement 10.6 aus Is
 - [`docs/increments/10.4-day-close-reminder-retention-cleanup.md`](docs/increments/10.4-day-close-reminder-retention-cleanup.md) – Tagesabschluss und Bereinigung
 - [`docs/increments/10.5-interactive-result-details.md`](docs/increments/10.5-interactive-result-details.md) – interaktive Ergebnisdetails
 - [`docs/increments/10.6-game-specific-participation.md`](docs/increments/10.6-game-specific-participation.md) – Entwicklungspakete für unabhängige Spielteilnahme
+- [`docs/increments/12.1-contextual-excuses.md`](docs/increments/12.1-contextual-excuses.md) – Entwicklungspakete für kontextabhängige Ausreden
 - [`docs/operations/`](docs/operations/) – Betrieb, Deployment, Backup und Fehlerdiagnose
 - [`docs/adr/`](docs/adr/) – Architekturentscheidungen
 - [`AGENTS.md`](AGENTS.md) – Arbeitsregeln für Codex und Reviews
