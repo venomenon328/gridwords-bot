@@ -97,18 +97,13 @@ public final class PlayerParticipationService implements PlayerParticipationUseC
         return true;
     }
 
-    private PlayerStore.ParticipationChange change(PlayerIdentity identity, LocalDate effectiveDate) {
-        return new PlayerStore.ParticipationChange(profile(identity), effectiveDate);
-    }
     private PlayerStore.StoredPlayer activate(PlayerIdentity identity, GameParticipationSelection selection, LocalDate effectiveDate) {
         Objects.requireNonNull(selection, "selection");
-        if (selection == GameParticipationSelection.BOTH) return players.activate(change(identity, effectiveDate));
         return players.activateGames(new PlayerStore.GameParticipationChange(profile(identity), selection, effectiveDate));
     }
 
     private PlayerStore.StoredPlayer deactivate(PlayerIdentity identity, GameParticipationSelection selection, LocalDate effectiveDate) {
         Objects.requireNonNull(selection, "selection");
-        if (selection == GameParticipationSelection.BOTH) return players.deactivate(change(identity, effectiveDate));
         return players.deactivateGames(new PlayerStore.GameParticipationChange(profile(identity), selection, effectiveDate));
     }
 

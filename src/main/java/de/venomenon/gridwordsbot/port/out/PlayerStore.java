@@ -18,9 +18,9 @@ public interface PlayerStore extends ReminderCandidateStore {
     default List<StoredPlayer> findActivePlayers() { throw new UnsupportedOperationException("active-player lookup is not available"); }
     /** Includes inactive profiles; callers apply participation periods for the requested business day. */
     default List<StoredPlayer> findAllPlayers() { throw new UnsupportedOperationException("player lookup is not available"); }
-    /** Temporary pre-migration compatibility view. New application code must use game-specific periods. */
+    /** Global compatibility view derived from the per-game history by the production persistence adapter. */
     default List<ParticipationPeriod> findParticipationPeriods() { throw new UnsupportedOperationException("participation periods are not available"); }
-    /** Returns typed periods; until package 2 every legacy period is losslessly exposed for both games. */
+    /** Production persistence adapters override this; the default only supports legacy in-memory compatibility fakes. */
     default List<GameParticipationPeriod> findGameParticipationPeriods() {
         return findParticipationPeriods().stream().flatMap(period -> Arrays.stream(GameType.values())
                 .map(gameType -> new GameParticipationPeriod(period.playerId(), gameType, period.activeFrom(), period.inactiveFrom()))).toList();

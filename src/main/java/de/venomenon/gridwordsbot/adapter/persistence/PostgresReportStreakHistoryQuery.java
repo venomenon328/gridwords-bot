@@ -29,15 +29,17 @@ public class PostgresReportStreakHistoryQuery implements ReportStreakHistoryQuer
     }
 
     private List<ParticipationPeriod> participationPeriodsThrough(LocalDate inclusiveCutoff) {
-        return jdbc.query("""
-                SELECT player_id, active_from, inactive_from
+        List<de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod> typedPeriods = jdbc.query("""
+                SELECT player_id, game_type, active_from, inactive_from
                 FROM player_participation_period
                 WHERE active_from <= ?
-                ORDER BY player_id, active_from
-                """, (resultSet, row) -> new ParticipationPeriod(
+                ORDER BY player_id, game_type, active_from
+                """, (resultSet, row) -> new de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod(
                 resultSet.getLong("player_id"),
+                GameType.valueOf(resultSet.getString("game_type")),
                 resultSet.getObject("active_from", LocalDate.class),
                 resultSet.getObject("inactive_from", LocalDate.class)), inclusiveCutoff);
+        return ParticipationPeriodCompatibility.union(typedPeriods);
     }
 
     private List<ReportGameResult> resultsThrough(LocalDate inclusiveCutoff) {

@@ -22,53 +22,57 @@ public class PostgresReportParticipantQuery implements ReportParticipantQuery {
     @Override
     public List<ParticipantProfile> findParticipantsTouching(ReportPeriod period) {
         return jdbc.query("""
-                SELECT p.discord_user_id, p.display_name, history.first_participation_start,
-                    pp.active_from, pp.inactive_from
+                SELECT p.discord_user_id, p.display_name, pp.game_type, pp.active_from, pp.inactive_from
                 FROM player p
-                JOIN (
-                    SELECT player_id, MIN(active_from) AS first_participation_start
-                    FROM player_participation_period
-                    GROUP BY player_id
-                ) history ON history.player_id = p.discord_user_id
                 JOIN player_participation_period pp ON pp.player_id = p.discord_user_id
-                WHERE pp.active_from <= ?
-                  AND (pp.inactive_from IS NULL OR pp.inactive_from > ?)
-                ORDER BY history.first_participation_start, p.discord_user_id, pp.active_from
+                ORDER BY p.discord_user_id, pp.game_type, pp.active_from
                 """, resultSet -> {
             java.util.Map<Long, ParticipantProfileBuilder> profiles = new java.util.LinkedHashMap<>();
             while (resultSet.next()) {
                 long playerId = resultSet.getLong("discord_user_id");
                 ParticipantProfileBuilder profile = profiles.get(playerId);
                 if (profile == null) {
-                    profile = new ParticipantProfileBuilder(
-                            playerId,
-                            resultSet.getString("display_name"),
-                            resultSet.getObject("first_participation_start", LocalDate.class));
+                    profile = new ParticipantProfileBuilder(playerId, resultSet.getString("display_name"));
                     profiles.put(playerId, profile);
                 }
-                profile.periods.add(new ParticipationPeriod(
+                profile.typedPeriods.add(new de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod(
                         playerId,
+                        de.venomenon.gridwordsbot.domain.model.GameType.valueOf(resultSet.getString("game_type")),
                         resultSet.getObject("active_from", LocalDate.class),
                         resultSet.getObject("inactive_from", LocalDate.class)));
             }
-            return profiles.values().stream().map(ParticipantProfileBuilder::build).toList();
-        }, period.endDate(), period.startDate());
+            return profiles.values().stream()
+                    .map(profile -> profile.build(period))
+                    .flatMap(java.util.Optional::stream)
+                    .sorted(java.util.Comparator.comparing(ParticipantProfile::firstParticipationStart)
+                            .thenComparingLong(ParticipantProfile::discordUserId))
+                    .toList();
+        });
     }
 
     private static final class ParticipantProfileBuilder {
         private final long discordUserId;
         private final String displayName;
-        private final LocalDate firstParticipationStart;
-        private final List<ParticipationPeriod> periods = new java.util.ArrayList<>();
+        private final List<de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod> typedPeriods =
+                new java.util.ArrayList<>();
 
-        private ParticipantProfileBuilder(long discordUserId, String displayName, LocalDate firstParticipationStart) {
+        private ParticipantProfileBuilder(long discordUserId, String displayName) {
             this.discordUserId = discordUserId;
             this.displayName = displayName;
-            this.firstParticipationStart = firstParticipationStart;
         }
 
-        private ParticipantProfile build() {
-            return new ParticipantProfile(discordUserId, displayName, firstParticipationStart, periods);
+        private java.util.Optional<ParticipantProfile> build(ReportPeriod period) {
+            List<ParticipationPeriod> globalPeriods = ParticipationPeriodCompatibility.union(typedPeriods);
+            List<ParticipationPeriod> touchingPeriods = globalPeriods.stream()
+                    .filter(candidate -> candidate.activeFrom().compareTo(period.endDate()) <= 0
+                            && (candidate.inactiveFrom() == null
+                                    || candidate.inactiveFrom().isAfter(period.startDate())))
+                    .toList();
+            if (touchingPeriods.isEmpty()) {
+                return java.util.Optional.empty();
+            }
+            return java.util.Optional.of(new ParticipantProfile(
+                    discordUserId, displayName, globalPeriods.getFirst().activeFrom(), touchingPeriods));
         }
     }
 }
