@@ -48,25 +48,30 @@ class PostgresDailyResultDetailsQueryIT {
     }
 
     @Test
-    void contextRequiresTheCurrentMessageAndUsesHistoricalParticipationBounds() {
+    void contextRequiresTheCurrentMessageAndQueriesEachHistoricalGameAudienceSeparately() {
         insertPlayer(1L, "Zulu");
         insertPlayer(2L, "alpha");
-        insertPlayer(3L, "Inactive");
-        insertPeriod(1L, DATE.minusDays(2), null);
-        insertPeriod(2L, DATE, DATE.plusDays(1));
-        insertPeriod(3L, DATE.minusDays(10), DATE);
+        insertPlayer(3L, "Bravo");
+        insertPlayer(4L, "Inactive");
+        insertPeriod(1L, GameType.GRIDWORDS, DATE.minusDays(2), null);
+        insertPeriod(2L, GameType.QUADWORDS, DATE, DATE.plusDays(1));
+        insertPeriod(3L, GameType.GRIDWORDS, DATE.minusDays(2), null);
+        insertPeriod(3L, GameType.QUADWORDS, DATE.minusDays(2), null);
+        insertPeriod(4L, GameType.GRIDWORDS, DATE.minusDays(10), DATE);
         insertStatus(11L, 12L, DATE, 99L);
 
         var current = contexts.findCurrent(11L, 12L, 99L, DATE).orElseThrow();
 
-        assertThat(current.participants())
+        assertThat(current.gridWordsParticipants())
                 .extracting(participant -> participant.discordUserId() + ":" + participant.displayName())
-                .containsExactly("2:alpha", "1:Zulu");
+                .containsExactly("3:Bravo", "1:Zulu");
+        assertThat(current.quadWordsParticipants())
+                .extracting(participant -> participant.discordUserId() + ":" + participant.displayName())
+                .containsExactly("2:alpha", "3:Bravo");
         assertThat(contexts.findCurrent(11L, 12L, 100L, DATE)).isEmpty();
         assertThat(contexts.findCurrent(11L, 13L, 99L, DATE)).isEmpty();
         assertThat(contexts.findCurrent(10L, 12L, 99L, DATE)).isEmpty();
     }
-
     @Test
     void resultQueryReturnsTheCurrentCorrectedGridWordsRow() {
         insertPlayer(1L, "Player");
@@ -146,15 +151,13 @@ class PostgresDailyResultDetailsQueryIT {
                 """, id, displayName);
     }
 
-    private void insertPeriod(long playerId, LocalDate activeFrom, LocalDate inactiveFrom) {
+    private void insertPeriod(long playerId, GameType gameType, LocalDate activeFrom, LocalDate inactiveFrom) {
         jdbc.update("""
                 INSERT INTO player_participation_period
                     (player_id, game_type, active_from, inactive_from, created_at, updated_at)
-                SELECT ?, game.game_type, ?, ?, now(), now()
-                FROM (VALUES ('GRIDWORDS'), ('QUADWORDS')) AS game(game_type)
-                """, playerId, activeFrom, inactiveFrom);
+                VALUES (?, ?, ?, ?, now(), now())
+                """, playerId, gameType.name(), activeFrom, inactiveFrom);
     }
-
     private void insertStatus(long guildId, long channelId, LocalDate date, long messageId) {
         jdbc.update("""
                 INSERT INTO daily_status_message

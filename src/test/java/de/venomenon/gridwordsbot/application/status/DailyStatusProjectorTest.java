@@ -146,6 +146,10 @@ class DailyStatusProjectorTest {
                 .filter(player -> player.discordUserId() == 1L)
                 .findFirst()
                 .orElseThrow();
+        assertThat(switcher.participates(GameType.GRIDWORDS)).isTrue();
+        assertThat(switcher.participates(GameType.QUADWORDS)).isFalse();
+        assertThat(switcher.gridWords()).isPresent();
+        assertThat(switcher.quadWords()).isEmpty();
         assertThat(switcher.streaks().personalActivity()).isEqualTo(2);
         assertThat(switcher.streaks().personalGridWordsSolved()).isEqualTo(2);
         assertThat(switcher.streaks().personalQuadWordsSolved()).isZero();

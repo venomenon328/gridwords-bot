@@ -152,4 +152,30 @@ class JdaDailyStatusComponentsTest {
             when(request.complete()).thenReturn(List.of());
         }
     }
+    @Test
+    void recreateRestoresOnlyTheGameSpecificSelectorsAndNeverCreatesAnEmptyMenu() {
+        Fixture fixture = new Fixture();
+        RestAction<Message> retrieve = mock(RestAction.class);
+        ErrorResponseException missing = mock(ErrorResponseException.class);
+        when(missing.getErrorResponse()).thenReturn(ErrorResponse.UNKNOWN_MESSAGE);
+        when(fixture.channel.retrieveMessageById(99L)).thenReturn(retrieve);
+        when(retrieve.complete()).thenThrow(missing);
+        fixture.emptyHistory();
+        MessageCreateAction create = fixture.createAction(101L);
+        DailyStatus status = new DailyStatus(DATE, List.of(new DailyStatus.PlayerLine(
+                1L,
+                "Grid only",
+                new DailyStatus.GameState(de.venomenon.gridwordsbot.domain.model.GameType.GRIDWORDS, true, Optional.empty()),
+                new DailyStatus.GameState(de.venomenon.gridwordsbot.domain.model.GameType.QUADWORDS, false, Optional.empty()),
+                new StreakSummary(0, 0, 0, 0, 0, 0, 0))), 0, 0);
+
+        fixture.gateway.publishOrEdit(12L, Optional.of(99L), DailyStatusView.versionOne(status), false);
+
+        List<ActionRow> rows = capturedRows(create);
+        assertThat(rows).singleElement().satisfies(row -> {
+            assertThat(menu(row).getCustomId()).isEqualTo("daily-result:v1:2026-08-03:g:0");
+            assertThat(menu(row).getOptions()).singleElement()
+                    .extracting(option -> option.getValue()).isEqualTo("user:1");
+        });
+    }
 }
