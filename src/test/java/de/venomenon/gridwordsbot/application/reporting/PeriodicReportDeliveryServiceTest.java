@@ -462,7 +462,9 @@ class PeriodicReportDeliveryServiceTest {
         ReportGameStatistics grid = game(GameType.GRIDWORDS);
         ReportGameStatistics quad = game(GameType.QUADWORDS);
         return new PeriodicReportParticipantSection(
-                new ReportParticipant(index, "P" + index, PERIOD.startDate(), List.of(PERIOD.startDate())),
+                new ReportParticipant(index, "P" + index, PERIOD.startDate(),
+                        List.of(PERIOD.startDate()), List.of(PERIOD.startDate()),
+                        List.of(PERIOD.startDate()), List.of(PERIOD.startDate())),
                 new ReportPlayerGameStatistics(index, grid, quad),
                 new ReportPersonalDayCounts(1, 0, 0, 0),
                 new ReportPersonalStreaks(new ReportStreakSnapshot(0, 0), new ReportStreakSnapshot(0, 0),

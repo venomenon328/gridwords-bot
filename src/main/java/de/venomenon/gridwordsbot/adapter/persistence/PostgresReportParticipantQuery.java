@@ -1,6 +1,7 @@
 package de.venomenon.gridwordsbot.adapter.persistence;
 
-import de.venomenon.gridwordsbot.domain.model.ParticipationPeriod;
+import de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod;
+import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.reporting.ReportPeriod;
 import de.venomenon.gridwordsbot.port.out.ReportParticipantQuery;
 import java.time.LocalDate;
@@ -35,9 +36,9 @@ public class PostgresReportParticipantQuery implements ReportParticipantQuery {
                     profile = new ParticipantProfileBuilder(playerId, resultSet.getString("display_name"));
                     profiles.put(playerId, profile);
                 }
-                profile.typedPeriods.add(new de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod(
+                profile.typedPeriods.add(new GameParticipationPeriod(
                         playerId,
-                        de.venomenon.gridwordsbot.domain.model.GameType.valueOf(resultSet.getString("game_type")),
+                        GameType.valueOf(resultSet.getString("game_type")),
                         resultSet.getObject("active_from", LocalDate.class),
                         resultSet.getObject("inactive_from", LocalDate.class)));
             }
@@ -53,8 +54,7 @@ public class PostgresReportParticipantQuery implements ReportParticipantQuery {
     private static final class ParticipantProfileBuilder {
         private final long discordUserId;
         private final String displayName;
-        private final List<de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod> typedPeriods =
-                new java.util.ArrayList<>();
+        private final List<GameParticipationPeriod> typedPeriods = new java.util.ArrayList<>();
 
         private ParticipantProfileBuilder(long discordUserId, String displayName) {
             this.discordUserId = discordUserId;
@@ -62,8 +62,7 @@ public class PostgresReportParticipantQuery implements ReportParticipantQuery {
         }
 
         private java.util.Optional<ParticipantProfile> build(ReportPeriod period) {
-            List<ParticipationPeriod> globalPeriods = ParticipationPeriodCompatibility.union(typedPeriods);
-            List<ParticipationPeriod> touchingPeriods = globalPeriods.stream()
+            List<GameParticipationPeriod> touchingPeriods = typedPeriods.stream()
                     .filter(candidate -> candidate.activeFrom().compareTo(period.endDate()) <= 0
                             && (candidate.inactiveFrom() == null
                                     || candidate.inactiveFrom().isAfter(period.startDate())))
@@ -72,7 +71,10 @@ public class PostgresReportParticipantQuery implements ReportParticipantQuery {
                 return java.util.Optional.empty();
             }
             return java.util.Optional.of(new ParticipantProfile(
-                    discordUserId, displayName, globalPeriods.getFirst().activeFrom(), touchingPeriods));
+                    discordUserId,
+                    displayName,
+                    typedPeriods.stream().map(GameParticipationPeriod::activeFrom).min(LocalDate::compareTo).orElseThrow(),
+                    touchingPeriods));
         }
     }
 }

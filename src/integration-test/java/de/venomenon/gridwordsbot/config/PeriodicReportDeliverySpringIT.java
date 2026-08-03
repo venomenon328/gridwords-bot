@@ -203,7 +203,9 @@ class PeriodicReportDeliverySpringIT {
             ReportGameStatistics grid = game(GameType.GRIDWORDS);
             ReportGameStatistics quad = game(GameType.QUADWORDS);
             sections.add(new PeriodicReportParticipantSection(
-                    new ReportParticipant(index + 1L, "P" + index, PERIOD.startDate(), List.of(PERIOD.startDate())),
+                    new ReportParticipant(index + 1L, "P" + index, PERIOD.startDate(),
+                            List.of(PERIOD.startDate()), List.of(PERIOD.startDate()),
+                            List.of(PERIOD.startDate()), List.of(PERIOD.startDate())),
                     new ReportPlayerGameStatistics(index + 1L, grid, quad),
                     new ReportPersonalDayCounts(1, 0, 0, 0),
                     new ReportPersonalStreaks(streak(), streak(), streak(), streak(), streak())));

@@ -16,8 +16,8 @@ public record PeriodicReportParticipantSection(
         if (gameStatistics.discordUserId() != participant.discordUserId()) {
             throw new IllegalArgumentException("game statistics must belong to the participant");
         }
-        if (dayCounts.participationDays() != participant.participationDays().size()) {
-            throw new IllegalArgumentException("day counts must match participant participation days");
+        if (dayCounts.participationDays() != participant.unionParticipationDays().size()) {
+            throw new IllegalArgumentException("day counts must match participant union participation days");
         }
     }
 }
