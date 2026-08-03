@@ -4,19 +4,18 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 ## Aktueller Stand
 
-Der funktionale Umfang bis einschließlich Inkrement 10 sowie der Zwischeninkremente 10.4, 10.5 und der Implementierungspakete 1–7 von Zwischeninkrement 10.6 ist umgesetzt und automatisiert geprüft. Paket 8 bündelt den abschließenden Compatibility-Audit, die reale Discord-Abnahme und das finale Produktionscontainer-Gate.
+Der funktionale Umfang bis einschließlich Inkrement 10 sowie der Zwischeninkremente 10.4, 10.5 und 10.6 ist implementiert, automatisiert geprüft und auf einem separaten Discord-Testserver real abgenommen. Der vollständige Produktionscontainer-, Compose-, Backup-, Restore-, Resume- und Rollback-Pfad wird auf dem finalen Commit durch das Ereignis **Ready for review** geprüft.
 
-Der Quellstand trägt die Projektversion `1.0.0` und wird vor dem produktiven Release als Release Candidate auf einem separaten Discord-Testserver mit isolierter PostgreSQL-Datenbank abgenommen. Der bestehende Produktivbetrieb bleibt bis zur erfolgreichen RC-Abnahme unverändert. Ein produktiver Rollout und die manuelle Veröffentlichung nach GHCR erfolgen separat.
+Der Quellstand trägt die Projektversion `1.0.0`. Der bestehende Produktivbetrieb bleibt bis zur bewussten Veröffentlichung nach GHCR und zum anschließenden manuellen Deployment unverändert.
 
-Der vor Paket 8 vollständig automatisiert geprüfte Funktionsstand umfasste:
+Der final abgenommene Stand umfasst:
 
-- 501 Standardtests ohne externe Infrastruktur,
-- 501 Surefire- und 138 Failsafe-Tests im PostgreSQL-Profil mit echtem PostgreSQL,
-- grüne normale GitHub-CI für Standardbuild und Datenbankintegration.
+- 502 Standardtests ohne externe Infrastruktur,
+- eine grüne PostgreSQL-Integrationsmatrix mit echtem PostgreSQL,
+- grüne normale GitHub-CI für Standardbuild und Datenbankintegration,
+- eine bestandene reale Discord-Abnahme für Commands, Single-Game-Teilnahme, Tagesstatus, Menüs, Reminder, Recovery und Reports.
 
-Der vollständige Container-, Compose-, Backup-, Restore-, Resume- und Rollback-Pfad wird auf dem final abgenommenen Commit durch das Ereignis **Ready for review** ausgeführt. Bei Draft-Pull-Requests bleibt dieser zeitintensive Workflow bewusst übersprungen.
-
-Die reale Discord-Abnahme und ihr Protokoll stehen unter [`docs/operations/10.6-game-specific-participation-acceptance.md`](docs/operations/10.6-game-specific-participation-acceptance.md).
+Das Abnahmeprotokoll steht unter [`docs/operations/10.6-game-specific-participation-acceptance.md`](docs/operations/10.6-game-specific-participation-acceptance.md).
 
 ## Fachlicher Funktionsumfang
 
