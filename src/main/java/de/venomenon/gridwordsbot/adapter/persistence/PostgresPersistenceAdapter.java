@@ -627,11 +627,23 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                     SELECT *
                     FROM submission
                     WHERE game_result_id = r.id
-                      AND processing_state IN ('RESULT_STORED', 'FAILED_RETRYABLE', 'CANONICAL_MESSAGE_PUBLISHED')
+                      AND processing_state IN (
+                          'RESULT_STORED',
+                          'FAILED_RETRYABLE',
+                          'CANONICAL_MESSAGE_PUBLISHED',
+                          'ORIGINAL_MESSAGE_DELETED',
+                          'COMPLETED'
+                      )
                     ORDER BY received_at DESC, source_message_id DESC
                     LIMIT 1
                 ) s ON TRUE
                 WHERE r.canonical_refresh_required = TRUE
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM canonical_result_retirement retirement
+                      WHERE retirement.game_result_id = r.id
+                        AND retirement.retirement_state <> 'ACTIVE'
+                  )
                   AND (
                     r.game_type = 'GRIDWORDS'
                     OR (
