@@ -105,6 +105,26 @@ class ExcuseSelectorTest {
         assertTrue(selection.options().stream().noneMatch(option -> option.templateId().equals("legal.01")));
     }
 
+    @Test
+    void listsOnlyStylesWithThreeNewCandidatesWithoutConsumingRandomness() {
+        CountingRandom random = new CountingRandom();
+        ExcuseSelector selector = new ExcuseSelector(new ExcuseTemplateRenderer(), random);
+        ExcuseCatalog catalog = new ExcuseCatalog("v1", List.of(
+                ExcuseTestFixtures.general("technical.01", ExcuseStyle.TECHNICAL, ExcuseTopic.GENERAL),
+                ExcuseTestFixtures.general("technical.02", ExcuseStyle.TECHNICAL, ExcuseTopic.GENERAL),
+                ExcuseTestFixtures.general("technical.03", ExcuseStyle.TECHNICAL, ExcuseTopic.GENERAL),
+                ExcuseTestFixtures.general("legal.01", ExcuseStyle.LEGAL, ExcuseTopic.RESPONSIBILITY),
+                ExcuseTestFixtures.general("legal.02", ExcuseStyle.LEGAL, ExcuseTopic.RESPONSIBILITY),
+                ExcuseTestFixtures.general("cosmic.01", ExcuseStyle.COSMIC, ExcuseTopic.GRID_CONFLICT),
+                ExcuseTestFixtures.general("cosmic.02", ExcuseStyle.COSMIC, ExcuseTopic.GRID_CONFLICT),
+                ExcuseTestFixtures.general("cosmic.03", ExcuseStyle.COSMIC, ExcuseTopic.GRID_CONFLICT)));
+
+        assertEquals(List.of(ExcuseStyle.TECHNICAL), selector.availableStyles(
+                catalog, ExcuseContext.forGame(GameType.GRIDWORDS),
+                Set.of("cosmic.01", "cosmic.02", "cosmic.03")));
+        assertEquals(0, random.calls);
+    }
+
     private static ExcuseSelector selector(int... values) {
         return new ExcuseSelector(new ExcuseTemplateRenderer(), new SequenceRandom(values));
     }
@@ -122,6 +142,16 @@ class ExcuseSelectorTest {
         public int nextInt(int bound) {
             int value = values.isEmpty() ? 0 : values.removeFirst();
             return Math.floorMod(value, bound);
+        }
+    }
+
+    private static final class CountingRandom implements ExcuseRandom {
+        private int calls;
+
+        @Override
+        public int nextInt(int bound) {
+            calls++;
+            return 0;
         }
     }
 }

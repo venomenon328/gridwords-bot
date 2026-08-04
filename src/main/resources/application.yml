@@ -36,3 +36,6 @@ gridwords:
     time-zone: ${TIME_ZONE:Europe/Berlin}
   storage:
     raw-image-retention-hours: ${RAW_IMAGE_RETENTION_HOURS:48}
+  excuses:
+    enabled: ${EXCUSES_ENABLED:false}
+    offer-lifetime: ${EXCUSE_OFFER_LIFETIME:PT15M}

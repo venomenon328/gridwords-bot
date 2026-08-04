@@ -122,6 +122,14 @@ public final class CanonicalGridWordsPublicationService {
         }
     }
 
+    /** Wakes the existing recovery pipeline after another transaction has durably requested refresh work. */
+    public void wakeUpCanonicalRefresh(long resultId) {
+        if (resultId <= 0) {
+            throw new IllegalArgumentException("resultId must be positive");
+        }
+        scheduleCurrentRefresh(resultId, 0);
+    }
+
     private PublicationOutcome publishAndHandOff(long sourceMessageId) {
         PublicationOutcome outcome = publishOutcome(sourceMessageId);
         if (outcome == PublicationOutcome.PUBLISHED) {

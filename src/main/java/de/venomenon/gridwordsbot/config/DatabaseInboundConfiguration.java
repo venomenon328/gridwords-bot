@@ -4,6 +4,7 @@ import de.venomenon.gridwordsbot.adapter.discord.canonical.JdaCanonicalMessageGa
 import de.venomenon.gridwordsbot.adapter.discord.canonical.JdaSourceMessageDeletionGateway;
 import de.venomenon.gridwordsbot.adapter.discord.inbound.DailyResultDetailsInteractionListener;
 import de.venomenon.gridwordsbot.adapter.discord.inbound.ExcuseOpenInteractionListener;
+import de.venomenon.gridwordsbot.adapter.discord.inbound.ExcuseInteractionListener;
 import de.venomenon.gridwordsbot.adapter.discord.inbound.DiscordInboundListener;
 import de.venomenon.gridwordsbot.adapter.discord.inbound.DiscordParticipationCommandListener;
 import de.venomenon.gridwordsbot.adapter.discord.inbound.JdaAttachmentContentLoader;
@@ -13,6 +14,8 @@ import de.venomenon.gridwordsbot.application.canonical.GridWordsSourceDeletionSe
 import de.venomenon.gridwordsbot.application.cleanup.DailyChannelCleanupService;
 import de.venomenon.gridwordsbot.application.player.PersonalStatusService;
 import de.venomenon.gridwordsbot.application.player.PlayerParticipationService;
+import de.venomenon.gridwordsbot.application.excuse.ExcuseInteractionService;
+import de.venomenon.gridwordsbot.application.excuse.ExcuseOpenService;
 import de.venomenon.gridwordsbot.application.status.DailyResultDetailsService;
 import de.venomenon.gridwordsbot.application.status.DailyStatusRefreshService;
 import de.venomenon.gridwordsbot.application.submission.ProcessSharedResultService;
@@ -21,6 +24,7 @@ import de.venomenon.gridwordsbot.parser.quadwords.QuadWordsImageParser;
 import de.venomenon.gridwordsbot.parser.quadwords.QuadWordsShareParser;
 import de.venomenon.gridwordsbot.port.in.DailyResultDetailsUseCase;
 import de.venomenon.gridwordsbot.port.in.ExcuseOpenUseCase;
+import de.venomenon.gridwordsbot.port.in.ExcuseInteractionUseCase;
 import de.venomenon.gridwordsbot.port.in.PersonalStatusUseCase;
 import de.venomenon.gridwordsbot.port.in.PlayerParticipationUseCase;
 import de.venomenon.gridwordsbot.port.in.ProcessSharedResultUseCase;
@@ -28,6 +32,7 @@ import de.venomenon.gridwordsbot.port.out.AttachmentContentLoader;
 import de.venomenon.gridwordsbot.port.out.CanonicalMessageGateway;
 import de.venomenon.gridwordsbot.port.out.CanonicalPublicationContextStore;
 import de.venomenon.gridwordsbot.port.out.ExcuseStateStore;
+import de.venomenon.gridwordsbot.port.out.CanonicalRefreshWakeUp;
 import de.venomenon.gridwordsbot.port.out.ChannelMessageRetirementStore;
 import de.venomenon.gridwordsbot.port.out.DailyResultDetailsQuery;
 import de.venomenon.gridwordsbot.port.out.DailyStatusInteractionContextQuery;
@@ -41,6 +46,7 @@ import de.venomenon.gridwordsbot.port.out.SubmissionStore;
 import java.time.Clock;
 import java.time.ZoneId;
 import java.util.Set;
+import java.util.random.RandomGenerator;
 import java.util.concurrent.ExecutorService;
 import net.dv8tion.jda.api.JDA;
 import org.springframework.beans.factory.ObjectProvider;
@@ -123,9 +129,86 @@ class DatabaseInboundConfiguration {
     }
 
     @Bean
-    @ConditionalOnMissingBean(ExcuseOpenUseCase.class)
+    @ConditionalOnProperty(prefix = "gridwords.excuses", name = "enabled", havingValue = "false", matchIfMissing = true)
     ExcuseOpenUseCase disabledExcuseOpenUseCase() {
         return request -> new ExcuseOpenUseCase.Rejected(ExcuseOpenUseCase.Reason.FEATURE_DISABLED);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "gridwords.excuses", name = "enabled", havingValue = "true")
+    ExcuseOpenUseCase enabledExcuseOpenUseCase(
+            GridwordsBotProperties properties,
+            GameResultStore results,
+            PlayerStore players,
+            SubmissionStore submissions,
+            ExcuseStateStore states,
+            de.venomenon.gridwordsbot.domain.excuse.ExcuseCatalog catalog,
+            de.venomenon.gridwordsbot.domain.excuse.ExcuseSelector selector,
+            Clock clock) {
+        return new ExcuseOpenService(
+                properties.discord().guildId(), properties.discord().channelId(), results, players, submissions, states,
+                new de.venomenon.gridwordsbot.domain.excuse.ExcuseEligibilityPolicy(
+                        de.venomenon.gridwordsbot.domain.excuse.ExcuseEligibilityThresholds.defaults()),
+                catalog, selector, clock);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "gridwords.excuses", name = "enabled", havingValue = "false", matchIfMissing = true)
+    ExcuseInteractionUseCase disabledExcuseInteractionUseCase() {
+        return new ExcuseInteractionUseCase() {
+            private final Rejected disabled = new Rejected(Reason.FEATURE_DISABLED);
+            @Override public Result openStyleMenu(ActionRequest request) { return disabled; }
+            @Override public Result selectStyle(StyleRequest request) { return disabled; }
+            @Override public Result pick(PickRequest request) { return disabled; }
+            @Override public Result decline(ActionRequest request) { return disabled; }
+        };
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "gridwords.excuses", name = "enabled", havingValue = "true")
+    ExcuseInteractionUseCase enabledExcuseInteractionUseCase(
+            GridwordsBotProperties properties,
+            GameResultStore results,
+            PlayerStore players,
+            SubmissionStore submissions,
+            ExcuseStateStore states,
+            de.venomenon.gridwordsbot.domain.excuse.ExcuseCatalog catalog,
+            de.venomenon.gridwordsbot.domain.excuse.ExcuseSelector selector,
+            Clock clock,
+            CanonicalRefreshWakeUp refreshWakeUp) {
+        return new ExcuseInteractionService(
+                properties.discord().guildId(), properties.discord().channelId(), results, players, submissions, states,
+                new de.venomenon.gridwordsbot.domain.excuse.ExcuseEligibilityPolicy(
+                        de.venomenon.gridwordsbot.domain.excuse.ExcuseEligibilityThresholds.defaults()),
+                catalog, selector, clock, refreshWakeUp);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "gridwords.excuses", name = "enabled", havingValue = "true")
+    de.venomenon.gridwordsbot.domain.excuse.ExcuseCatalog excuseCatalog() {
+        return new de.venomenon.gridwordsbot.adapter.catalog.JsonExcuseCatalogLoader(
+                tools.jackson.databind.json.JsonMapper.builder().build(),
+                new de.venomenon.gridwordsbot.domain.excuse.ExcuseCatalogValidator(),
+                de.venomenon.gridwordsbot.domain.excuse.ExcuseCatalogCoverage.production())
+                .loadResource(getClass().getClassLoader(), "excuses/catalog.json");
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "gridwords.excuses", name = "enabled", havingValue = "true")
+    de.venomenon.gridwordsbot.domain.excuse.ExcuseSelector excuseSelector() {
+        return new de.venomenon.gridwordsbot.domain.excuse.ExcuseSelector(
+                new de.venomenon.gridwordsbot.domain.excuse.ExcuseTemplateRenderer(),
+                new de.venomenon.gridwordsbot.domain.excuse.JavaExcuseRandom(RandomGenerator.getDefault()));
+    }
+
+    @Bean
+    CanonicalRefreshWakeUp canonicalRefreshWakeUp(ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider) {
+        return gameResultId -> {
+            CanonicalGridWordsPublicationService canonical = canonicalProvider.getIfAvailable();
+            if (canonical != null) {
+                canonical.wakeUpCanonicalRefresh(gameResultId);
+            }
+        };
     }
 
     @Bean
@@ -174,6 +257,15 @@ class DatabaseInboundConfiguration {
             ExecutorService discordInboundExecutor,
             ExcuseOpenUseCase open) {
         return new ExcuseOpenInteractionListener(properties, discordInboundExecutor, open);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "gridwords.discord", name = "enabled", havingValue = "true")
+    ExcuseInteractionListener excuseInteractionListener(
+            GridwordsBotProperties properties,
+            ExecutorService discordInboundExecutor,
+            ExcuseInteractionUseCase interactions) {
+        return new ExcuseInteractionListener(properties, discordInboundExecutor, interactions);
     }
 
     @Bean
@@ -265,10 +357,11 @@ class DatabaseInboundConfiguration {
             ObjectProvider<DiscordParticipationCommandListener> commands,
             ObjectProvider<DailyResultDetailsInteractionListener> resultDetails,
             ObjectProvider<ExcuseOpenInteractionListener> excuseOpen,
+            ObjectProvider<ExcuseInteractionListener> excuseInteractions,
             ObjectProvider<CanonicalGridWordsPublicationService> canonical,
             ObjectProvider<GridWordsSourceDeletionService> deletion,
             ObjectProvider<DailyChannelCleanupService> cleanup) {
         return new DatabaseInboundStartup(
-                jda, listener, commands, resultDetails, excuseOpen, canonical, deletion, cleanup);
+                jda, listener, commands, resultDetails, excuseOpen, excuseInteractions, canonical, deletion, cleanup);
     }
 }

@@ -8,6 +8,7 @@ import de.venomenon.gridwordsbot.domain.excuse.ExcuseSelection;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseSelectionHistoryEntry;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseState;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseRevalidation;
+import de.venomenon.gridwordsbot.domain.excuse.ExcuseRound;
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import java.time.Instant;
 import java.util.List;
@@ -55,14 +56,53 @@ public interface ExcuseStateStore {
         throw new UnsupportedOperationException("initial option load-or-create is not available");
     }
 
+    /**
+     * Returns all shown options for the active context generation in deterministic round/position
+     * order. The caller uses these IDs to exclude every already displayed template from a reroll.
+     */
+    default List<ExcuseOption> findOptions(long gameResultId, int contextGeneration) {
+        throw new UnsupportedOperationException("option lookup is not available");
+    }
+
+    /** Returns only the persisted round that is currently actionable for this offer. */
+    default List<ExcuseOption> findActiveOptions(long gameResultId, int contextGeneration, ExcuseRound round) {
+        return findOptions(gameResultId, contextGeneration).stream()
+                .filter(option -> option.round() == round)
+                .toList();
+    }
+
     /** Persists all three reroll options and consumes the one allowed reroll atomically. */
     Optional<ExcuseState> storeStyleRerollOptions(long gameResultId, int contextGeneration, List<ExcuseOption> options);
+
+    /**
+     * Locks one available generation and atomically creates the one allowed reroll round. The
+     * factory is invoked only by the transaction that wins the reroll, so losing requests do not
+     * consume the injected random source.
+     */
+    default Optional<ExcuseSelection> loadOrCreateStyleRerollOptions(
+            long gameResultId, int contextGeneration, Supplier<ExcuseSelection> optionsFactory) {
+        throw new UnsupportedOperationException("style reroll load-or-create is not available");
+    }
 
     /** Selects only an option from the currently active persisted round and copies its snapshot atomically. */
     Optional<ExcuseState> select(ExcuseOptionSelection selection);
 
+    /**
+     * Performs selection and durably increments the existing canonical refresh generation in the
+     * same database transaction. Callers may only wake the already-persisted refresh pipeline.
+     */
+    default Optional<ExcuseState> selectAndRequestCanonicalRefresh(ExcuseOptionSelection selection) {
+        throw new UnsupportedOperationException("atomic excuse selection refresh is not available");
+    }
+
     /** Declines only the current available context generation. */
     Optional<ExcuseState> decline(long gameResultId, int contextGeneration, Instant declinedAt);
+
+    /** Performs decline and the canonical refresh request in one database transaction. */
+    default Optional<ExcuseState> declineAndRequestCanonicalRefresh(
+            long gameResultId, int contextGeneration, Instant declinedAt) {
+        throw new UnsupportedOperationException("atomic excuse decline refresh is not available");
+    }
 
     /** Returns a bounded, deterministic list of active offers whose expiry is due. */
     List<ExcuseState> findDueExpirations(Instant now, int limit);

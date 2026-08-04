@@ -238,7 +238,57 @@ public class PostgresExcuseStateStore implements ExcuseStateStore {
 
     @Override
     @Transactional
+    public Optional<ExcuseSelection> loadOrCreateStyleRerollOptions(
+            long gameResultId, int contextGeneration, Supplier<ExcuseSelection> optionsFactory) {
+        requirePositive(gameResultId, "gameResultId");
+        requirePositive(contextGeneration, "contextGeneration");
+        Objects.requireNonNull(optionsFactory, "optionsFactory");
+        Optional<ExcuseState> locked = findForUpdate(gameResultId);
+        if (locked.isEmpty()) {
+            return Optional.empty();
+        }
+        ExcuseState state = locked.get();
+        if (state.status() != ExcuseStatus.AVAILABLE
+                || state.rerollUsed()
+                || state.offer().orElseThrow().contextGeneration() != contextGeneration
+                || !clock.instant().isBefore(state.offer().orElseThrow().expiresAt())) {
+            return Optional.empty();
+        }
+        List<ExcuseOption> existing = optionsForRound(gameResultId, contextGeneration, ExcuseRound.STYLE_REROLL);
+        if (!existing.isEmpty()) {
+            throw new IllegalStateException("reroll options exist without a consumed reroll");
+        }
+        ExcuseSelection created = Objects.requireNonNull(optionsFactory.get(), "optionsFactory result");
+        if (created.round() != ExcuseRound.STYLE_REROLL) {
+            throw new IllegalArgumentException("reroll option factory must create the style reroll round");
+        }
+        validateOptions(ExcuseRound.STYLE_REROLL, created.options());
+        Instant now = clock.instant();
+        insertOptions(gameResultId, contextGeneration, created.options(), now);
+        int changed = jdbc.update("""
+                UPDATE game_result_excuse
+                SET reroll_used = TRUE, updated_at = ?
+                WHERE game_result_id = ? AND status = 'AVAILABLE' AND reroll_used = FALSE
+                """, utc(now), gameResultId);
+        if (changed != 1) {
+            throw new IllegalStateException("excuse state changed while storing reroll options");
+        }
+        return Optional.of(created);
+    }
+
+    @Override
+    @Transactional
     public Optional<ExcuseState> select(ExcuseOptionSelection selection) {
+        return selectInternal(selection, false);
+    }
+
+    @Override
+    @Transactional
+    public Optional<ExcuseState> selectAndRequestCanonicalRefresh(ExcuseOptionSelection selection) {
+        return selectInternal(selection, true);
+    }
+
+    private Optional<ExcuseState> selectInternal(ExcuseOptionSelection selection, boolean requestCanonicalRefresh) {
         Objects.requireNonNull(selection, "selection");
         Optional<ExcuseState> locked = findForUpdate(selection.gameResultId());
         if (locked.isEmpty()) {
@@ -251,12 +301,15 @@ public class PostgresExcuseStateStore implements ExcuseStateStore {
             return Optional.empty();
         }
         ExcuseRound currentRound = state.rerollUsed() ? ExcuseRound.STYLE_REROLL : ExcuseRound.INITIAL;
+        if (selection.round() != currentRound) {
+            return Optional.empty();
+        }
         Optional<ExcuseOption> option = jdbc.query("""
                 SELECT round, position, template_id, style, topic, rendered_text
                 FROM game_result_excuse_option
                 WHERE game_result_id = ? AND context_generation = ? AND round = ? AND position = ?
                 """, (rs, row) -> option(rs), selection.gameResultId(), selection.contextGeneration(),
-                currentRound.name(), selection.position()).stream().findFirst();
+                selection.round().name(), selection.position()).stream().findFirst();
         if (option.isEmpty()) {
             return Optional.empty();
         }
@@ -267,15 +320,33 @@ public class PostgresExcuseStateStore implements ExcuseStateStore {
                 SET status = 'SELECTED', selected_round = ?, selected_position = ?, selected_template_id = ?,
                     selected_style = ?, selected_topic = ?, selected_rendered_text = ?, selected_at = ?, updated_at = ?
                 WHERE game_result_id = ? AND status = 'AVAILABLE' AND context_generation = ?
-                """, currentRound.name(), persisted.position(), persisted.templateId(), persisted.style().name(),
+                """, selection.round().name(), persisted.position(), persisted.templateId(), persisted.style().name(),
                 persisted.topic().name(), persisted.renderedText(), utc(selection.selectedAt()), utc(now),
                 selection.gameResultId(), selection.contextGeneration());
-        return changed == 1 ? find(selection.gameResultId()) : Optional.empty();
+        if (changed != 1) {
+            return Optional.empty();
+        }
+        if (requestCanonicalRefresh) {
+            requestCanonicalRefresh(selection.gameResultId(), now);
+        }
+        return find(selection.gameResultId());
     }
 
     @Override
     @Transactional
     public Optional<ExcuseState> decline(long gameResultId, int contextGeneration, Instant declinedAt) {
+        return declineInternal(gameResultId, contextGeneration, declinedAt, false);
+    }
+
+    @Override
+    @Transactional
+    public Optional<ExcuseState> declineAndRequestCanonicalRefresh(
+            long gameResultId, int contextGeneration, Instant declinedAt) {
+        return declineInternal(gameResultId, contextGeneration, declinedAt, true);
+    }
+
+    private Optional<ExcuseState> declineInternal(
+            long gameResultId, int contextGeneration, Instant declinedAt, boolean requestCanonicalRefresh) {
         requirePositive(gameResultId, "gameResultId");
         requirePositive(contextGeneration, "contextGeneration");
         Objects.requireNonNull(declinedAt, "declinedAt");
@@ -291,7 +362,13 @@ public class PostgresExcuseStateStore implements ExcuseStateStore {
                 SET status = 'DECLINED', updated_at = ?
                 WHERE game_result_id = ? AND status = 'AVAILABLE' AND context_generation = ?
                 """, utc(now), gameResultId, contextGeneration);
-        return changed == 1 ? find(gameResultId) : Optional.empty();
+        if (changed != 1) {
+            return Optional.empty();
+        }
+        if (requestCanonicalRefresh) {
+            requestCanonicalRefresh(gameResultId, now);
+        }
+        return find(gameResultId);
     }
 
     @Override
@@ -371,12 +448,36 @@ public class PostgresExcuseStateStore implements ExcuseStateStore {
     }
 
     private List<ExcuseOption> initialOptions(long gameResultId, int contextGeneration) {
+        return optionsForRound(gameResultId, contextGeneration, ExcuseRound.INITIAL);
+    }
+
+    @Override
+    public List<ExcuseOption> findOptions(long gameResultId, int contextGeneration) {
+        requirePositive(gameResultId, "gameResultId");
+        requirePositive(contextGeneration, "contextGeneration");
         return jdbc.query("""
                 SELECT round, position, template_id, style, topic, rendered_text
                 FROM game_result_excuse_option
-                WHERE game_result_id = ? AND context_generation = ? AND round = 'INITIAL'
-                ORDER BY position
+                WHERE game_result_id = ? AND context_generation = ?
+                ORDER BY CASE round WHEN 'INITIAL' THEN 1 WHEN 'STYLE_REROLL' THEN 2 END, position
                 """, (rs, row) -> option(rs), gameResultId, contextGeneration);
+    }
+
+    @Override
+    public List<ExcuseOption> findActiveOptions(long gameResultId, int contextGeneration, ExcuseRound round) {
+        requirePositive(gameResultId, "gameResultId");
+        requirePositive(contextGeneration, "contextGeneration");
+        Objects.requireNonNull(round, "round");
+        return optionsForRound(gameResultId, contextGeneration, round);
+    }
+
+    private List<ExcuseOption> optionsForRound(long gameResultId, int contextGeneration, ExcuseRound round) {
+        return jdbc.query("""
+                SELECT round, position, template_id, style, topic, rendered_text
+                FROM game_result_excuse_option
+                WHERE game_result_id = ? AND context_generation = ? AND round = ?
+                ORDER BY position
+                """, (rs, row) -> option(rs), gameResultId, contextGeneration, round.name());
     }
 
     private void insertOptions(
@@ -389,6 +490,19 @@ public class PostgresExcuseStateStore implements ExcuseStateStore {
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, gameResultId, contextGeneration, option.round().name(), option.position(), option.templateId(),
                     option.style().name(), option.topic().name(), option.renderedText(), utc(createdAt));
+        }
+    }
+
+    /** Shares the persisted refresh-generation protocol with PostgresPersistenceAdapter. */
+    private void requestCanonicalRefresh(long gameResultId, Instant now) {
+        int changed = jdbc.update("""
+                UPDATE game_result
+                SET canonical_refresh_required = TRUE, canonical_refresh_generation = canonical_refresh_generation + 1,
+                    updated_at = ?, version = version + 1
+                WHERE id = ?
+                """, utc(now), gameResultId);
+        if (changed != 1) {
+            throw new IllegalStateException("game result not found: " + gameResultId);
         }
     }
 

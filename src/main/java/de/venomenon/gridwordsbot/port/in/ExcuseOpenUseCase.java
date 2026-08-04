@@ -1,6 +1,7 @@
 package de.venomenon.gridwordsbot.port.in;
 
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseOption;
+import de.venomenon.gridwordsbot.domain.excuse.ExcuseStyle;
 import java.util.List;
 import java.util.Objects;
 
@@ -20,12 +21,24 @@ public interface ExcuseOpenUseCase {
     sealed interface Result permits Options, Rejected {
     }
 
-    record Options(List<ExcuseOption> options) implements Result {
+    record Options(int contextGeneration, List<ExcuseOption> options, List<ExcuseStyle> availableRerollStyles) implements Result {
         public Options {
+            if (contextGeneration < 1) {
+                throw new IllegalArgumentException("contextGeneration must be positive");
+            }
             options = List.copyOf(Objects.requireNonNull(options, "options"));
+            availableRerollStyles = List.copyOf(Objects.requireNonNull(availableRerollStyles, "availableRerollStyles"));
             if (options.size() != 3) {
                 throw new IllegalArgumentException("exactly three initial options are required");
             }
+        }
+
+        public Options(List<ExcuseOption> options) {
+            this(1, options, List.of());
+        }
+
+        public Options(List<ExcuseOption> options, List<ExcuseStyle> availableRerollStyles) {
+            this(1, options, availableRerollStyles);
         }
     }
 

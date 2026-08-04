@@ -6,6 +6,10 @@ import static org.mockito.Mockito.mock;
 import de.venomenon.gridwordsbot.application.canonical.CanonicalGridWordsPublicationService;
 import de.venomenon.gridwordsbot.application.canonical.GridWordsSourceDeletionService;
 import de.venomenon.gridwordsbot.adapter.discord.inbound.ExcuseOpenInteractionListener;
+import de.venomenon.gridwordsbot.adapter.discord.inbound.ExcuseInteractionListener;
+import de.venomenon.gridwordsbot.application.excuse.ExcuseInteractionService;
+import de.venomenon.gridwordsbot.application.excuse.ExcuseOpenService;
+import de.venomenon.gridwordsbot.port.in.ExcuseInteractionUseCase;
 import de.venomenon.gridwordsbot.port.in.ExcuseOpenUseCase;
 import de.venomenon.gridwordsbot.port.out.CanonicalMessageGateway;
 import de.venomenon.gridwordsbot.port.out.ChannelMessageRetirementStore;
@@ -17,6 +21,7 @@ import de.venomenon.gridwordsbot.port.out.PlayerStore;
 import de.venomenon.gridwordsbot.port.out.PublicationRetryScheduler;
 import de.venomenon.gridwordsbot.port.out.SourceMessageDeletionGateway;
 import de.venomenon.gridwordsbot.port.out.SubmissionStore;
+import de.venomenon.gridwordsbot.port.out.ExcuseStateStore;
 import java.time.Clock;
 import java.time.LocalTime;
 import java.time.ZoneId;
@@ -66,6 +71,40 @@ class DatabaseInboundConfigurationTest {
             assertThat(context.getBean(ExcuseOpenUseCase.class).open(
                     new ExcuseOpenUseCase.Request(11L, 12L, 13L, 14L, 15L)))
                     .isEqualTo(new ExcuseOpenUseCase.Rejected(ExcuseOpenUseCase.Reason.FEATURE_DISABLED));
+        }
+    }
+
+    @Test
+    void enablesTheCompletedEphemeralFlowOnlyForAnExplicitTestFeatureFlag() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.getEnvironment().setActiveProfiles("database");
+            context.getEnvironment().getPropertySources().addFirst(new MapPropertySource(
+                    "test-excuses",
+                    Map.of("gridwords.discord.enabled", "true", "gridwords.excuses.enabled", "true")));
+            context.registerBean("liquibase", Object.class, Object::new);
+            context.registerBean(Clock.class, Clock::systemUTC);
+            context.registerBean(JDA.class, () -> mock(JDA.class));
+            context.registerBean(ExecutorService.class, () -> mock(ExecutorService.class));
+            context.registerBean(GameResultStore.class, () -> mock(GameResultStore.class));
+            context.registerBean(LatestValidSubmissionQuery.class,
+                    () -> mock(LatestValidSubmissionQuery.class));
+            context.registerBean(DailyStatusInteractionContextQuery.class,
+                    () -> mock(DailyStatusInteractionContextQuery.class));
+            context.registerBean(DailyResultDetailsQuery.class,
+                    () -> mock(DailyResultDetailsQuery.class));
+            context.registerBean(PlayerStore.class, () -> mock(PlayerStore.class));
+            context.registerBean(SubmissionStore.class, () -> mock(SubmissionStore.class));
+            context.registerBean(ExcuseStateStore.class, () -> mock(ExcuseStateStore.class));
+            context.registerBean(ChannelMessageRetirementStore.class,
+                    () -> mock(ChannelMessageRetirementStore.class));
+            context.registerBean(GridwordsBotProperties.class,
+                    DatabaseInboundConfigurationTest::properties);
+            context.register(DatabaseInboundConfiguration.class);
+            context.refresh();
+
+            assertThat(context.getBean(ExcuseOpenUseCase.class)).isInstanceOf(ExcuseOpenService.class);
+            assertThat(context.getBean(ExcuseInteractionUseCase.class)).isInstanceOf(ExcuseInteractionService.class);
+            assertThat(context.getBean(ExcuseInteractionListener.class)).isNotNull();
         }
     }
 
