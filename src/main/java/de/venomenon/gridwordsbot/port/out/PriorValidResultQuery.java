@@ -7,10 +7,11 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Reads already committed valid results for one game-day. Implementations must restrict the result
- * set to the supplied historically effective participants and exclude the requesting player.
+ * Reads already committed valid results for one game-day before the result currently being stored.
+ * Implementations restrict the result set to historically effective participants and exclude the
+ * requesting player.
  */
-public interface ExcuseDailyResultQuery {
+public interface PriorValidResultQuery {
     List<ExcuseDailyResult> findPriorValidResults(
             long requestingPlayerId, GameType gameType, LocalDate gameDate, Set<Long> participantIds);
 }

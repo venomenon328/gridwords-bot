@@ -6,6 +6,7 @@ import de.venomenon.gridwordsbot.port.in.ExcuseInteractionUseCase;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
@@ -20,6 +21,7 @@ public final class ExcuseInteractionListener extends ListenerAdapter {
     private static final String SELECTED = "Die Ausrede wird in der Ergebnisnachricht \u00fcbernommen.";
     private static final String DECLINED = "Es wurde keine Ausrede ausgew\u00e4hlt.";
     private static final String FAILURE = "Die Ausreden konnten nicht verarbeitet werden. Bitte versuche es erneut.";
+    private static final long TERMINAL_CONFIRMATION_SECONDS = 2L;
 
     private final GridwordsBotProperties properties;
     private final Executor executor;
@@ -46,7 +48,7 @@ public final class ExcuseInteractionListener extends ListenerAdapter {
         long gameResultId = pick != null ? pick.gameResultId() : reroll != null ? reroll.gameResultId() : decline.gameResultId();
         int contextGeneration = pick != null ? pick.contextGeneration()
                 : reroll != null ? reroll.contextGeneration() : decline.contextGeneration();
-        event.deferReply(true).queue(hook -> dispatch(hook, gameResultId, contextGeneration, () -> {
+        event.deferEdit().queue(hook -> dispatch(hook, gameResultId, contextGeneration, () -> {
             ExcuseInteractionUseCase.ActionRequest action = action(event,
                     gameResultId, contextGeneration);
             return pick != null
@@ -61,7 +63,7 @@ public final class ExcuseInteractionListener extends ListenerAdapter {
         if (style == null || !inConfiguredContext(event)) {
             return;
         }
-        event.deferReply(true).queue(hook -> dispatch(hook, style.gameResultId(), style.contextGeneration(), () -> {
+        event.deferEdit().queue(hook -> dispatch(hook, style.gameResultId(), style.contextGeneration(), () -> {
             List<String> values = event.getValues();
             de.venomenon.gridwordsbot.domain.excuse.ExcuseStyle selected = values.size() == 1
                     ? codec.decodeStyleValue(values.getFirst()).orElse(null) : null;
@@ -81,7 +83,7 @@ public final class ExcuseInteractionListener extends ListenerAdapter {
         try {
             executor.execute(() -> reply(hook, gameResultId, contextGeneration, action));
         } catch (RejectedExecutionException exception) {
-            hook.editOriginal(BUSY).queue();
+            replaceWithMessage(hook, BUSY);
         }
     }
 
@@ -105,17 +107,32 @@ public final class ExcuseInteractionListener extends ListenerAdapter {
                 return;
             }
             if (result == ExcuseInteractionUseCase.Selected.INSTANCE) {
-                hook.editOriginal(SELECTED).queue();
+                confirmAndDelete(hook, SELECTED);
             } else if (result == ExcuseInteractionUseCase.Declined.INSTANCE) {
-                hook.editOriginal(DECLINED).queue();
+                confirmAndDelete(hook, DECLINED);
             } else {
                 ExcuseInteractionUseCase.Rejected rejected = (ExcuseInteractionUseCase.Rejected) result;
-                hook.editOriginal(rejected.reason() == ExcuseInteractionUseCase.Reason.NOT_RESULT_AUTHOR ? FORBIDDEN : UNAVAILABLE)
-                        .queue();
+                replaceWithMessage(
+                        hook,
+                        rejected.reason() == ExcuseInteractionUseCase.Reason.NOT_RESULT_AUTHOR ? FORBIDDEN : UNAVAILABLE);
             }
         } catch (RuntimeException exception) {
-            hook.editOriginal(FAILURE).queue();
+            replaceWithMessage(hook, FAILURE);
         }
+    }
+
+    private void confirmAndDelete(InteractionHook hook, String message) {
+        hook.editOriginal(message)
+                .setEmbeds(List.of())
+                .setComponents(List.of())
+                .queue(ignored -> hook.deleteOriginal().queueAfter(TERMINAL_CONFIRMATION_SECONDS, TimeUnit.SECONDS));
+    }
+
+    private void replaceWithMessage(InteractionHook hook, String message) {
+        hook.editOriginal(message)
+                .setEmbeds(List.of())
+                .setComponents(List.of())
+                .queue();
     }
 
     private ExcuseInteractionUseCase.ActionRequest action(

@@ -1,6 +1,7 @@
 package de.venomenon.gridwordsbot.adapter.persistence;
 
-import de.venomenon.gridwordsbot.application.excuse.ExcuseResultLifecycle;
+import de.venomenon.gridwordsbot.application.excuse.ExcuseLifecycle;
+import de.venomenon.gridwordsbot.application.excuse.NoOpExcuseLifecycle;
 import de.venomenon.gridwordsbot.domain.model.DailyGameParticipation;
 import de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod;
 import de.venomenon.gridwordsbot.domain.model.GameParticipationSelection;
@@ -46,27 +47,34 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
     private final JdbcTemplate jdbc;
     private final Clock clock;
     private final ZoneId businessZone;
-    private final ExcuseResultLifecycle excuseLifecycle;
+    private final ExcuseLifecycle excuseLifecycle;
+    private final ExcuseLifecycle.Context excuseLifecycleContext;
 
     public PostgresPersistenceAdapter(JdbcTemplate jdbc, Clock clock) {
         this(jdbc, clock, clock.getZone());
     }
 
     public PostgresPersistenceAdapter(JdbcTemplate jdbc, Clock clock, ZoneId businessZone) {
-        this(jdbc, clock, businessZone, ExcuseResultLifecycle.disabled(
-                new PostgresExcuseStateStore(jdbc, clock, businessZone), clock));
+        this(
+                jdbc,
+                clock,
+                businessZone,
+                NoOpExcuseLifecycle.INSTANCE,
+                ExcuseLifecycle.Context.noOp(new PostgresExcuseStateStore(jdbc, clock, businessZone)));
     }
 
-    /** Visible for database integration tests that exercise the enabled package-4 lifecycle. */
+    /** Visible for database integration tests that exercise the enabled contextual lifecycle. */
     public PostgresPersistenceAdapter(
             JdbcTemplate jdbc,
             Clock clock,
             ZoneId businessZone,
-            ExcuseResultLifecycle excuseLifecycle) {
+            ExcuseLifecycle excuseLifecycle,
+            ExcuseLifecycle.Context excuseLifecycleContext) {
         this.jdbc = java.util.Objects.requireNonNull(jdbc);
         this.clock = java.util.Objects.requireNonNull(clock);
         this.businessZone = java.util.Objects.requireNonNull(businessZone);
         this.excuseLifecycle = java.util.Objects.requireNonNull(excuseLifecycle);
+        this.excuseLifecycleContext = java.util.Objects.requireNonNull(excuseLifecycleContext);
     }
 
     @Override
@@ -208,7 +216,8 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                     result,
                     request.sourceMessageId(),
                     existing.receivedAt(),
-                    DailyGameParticipation.fromPeriods(result.parsedResult().gameDate(), periods));
+                    DailyGameParticipation.fromPeriods(result.parsedResult().gameDate(), periods),
+                    excuseLifecycleContext);
         }
         PublicationContext publicationContext = publicationContext(before, findAll(), request.result().playerId(),
                 result.parsedResult().gameDate(), periods);
@@ -232,7 +241,8 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         if (excuseLifecycleEnabled()) {
             excuseLifecycle.revalidateExistingResult(
                     result,
-                    DailyGameParticipation.fromPeriods(result.parsedResult().gameDate(), periods));
+                    DailyGameParticipation.fromPeriods(result.parsedResult().gameDate(), periods),
+                    excuseLifecycleContext);
         }
         PublicationContext publicationContext = publicationContext(before, findAll(), request.result().playerId(),
                 result.parsedResult().gameDate(), periods);

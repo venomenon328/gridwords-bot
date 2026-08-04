@@ -9,6 +9,7 @@ import de.venomenon.gridwordsbot.adapter.discord.inbound.ExcuseOpenInteractionLi
 import de.venomenon.gridwordsbot.adapter.discord.inbound.ExcuseInteractionListener;
 import de.venomenon.gridwordsbot.application.excuse.ExcuseInteractionService;
 import de.venomenon.gridwordsbot.application.excuse.ExcuseOpenService;
+import de.venomenon.gridwordsbot.domain.excuse.ExcuseCatalog;
 import de.venomenon.gridwordsbot.port.in.ExcuseInteractionUseCase;
 import de.venomenon.gridwordsbot.port.in.ExcuseOpenUseCase;
 import de.venomenon.gridwordsbot.port.in.ExcuseExpirationUseCase;
@@ -81,7 +82,9 @@ class DatabaseInboundConfigurationTest {
             context.getEnvironment().setActiveProfiles("database");
             context.getEnvironment().getPropertySources().addFirst(new MapPropertySource(
                     "test-excuses",
-                    Map.of("gridwords.discord.enabled", "true", "gridwords.excuses.enabled", "true")));
+                    Map.of(
+                            "gridwords.discord.enabled", "true",
+                            "gridwords.excuse-generator.contextual-enabled", "true")));
             context.registerBean("liquibase", Object.class, Object::new);
             context.registerBean(Clock.class, Clock::systemUTC);
             context.registerBean(JDA.class, () -> mock(JDA.class));
@@ -96,6 +99,7 @@ class DatabaseInboundConfigurationTest {
             context.registerBean(PlayerStore.class, () -> mock(PlayerStore.class));
             context.registerBean(SubmissionStore.class, () -> mock(SubmissionStore.class));
             context.registerBean(ExcuseStateStore.class, () -> mock(ExcuseStateStore.class));
+            context.registerBean(ExcuseCatalog.class, () -> mock(ExcuseCatalog.class));
             context.registerBean(ChannelMessageRetirementStore.class,
                     () -> mock(ChannelMessageRetirementStore.class));
             context.registerBean(GridwordsBotProperties.class,

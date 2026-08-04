@@ -40,7 +40,15 @@ class GridwordsBotPropertiesTest {
             assertThat(properties.schedule().dailyCleanup()).isEqualTo(LocalTime.of(6, 0));
             assertThat(properties.schedule().timeZone()).isEqualTo(ZoneId.of("Europe/Berlin"));
             assertThat(properties.storage().rawImageRetentionHours()).isEqualTo(48);
+            assertThat(properties.excuseGenerator().contextualEnabled()).isFalse();
         });
+    }
+
+    @Test
+    void bindsTheContextualExcuseLifecycleFlagSeparatelyFromItsRuntimeSettings() {
+        contextRunner.withPropertyValues("gridwords.excuse-generator.contextual-enabled=true")
+                .run(context -> assertThat(context.getBean(GridwordsBotProperties.class)
+                        .excuseGenerator().contextualEnabled()).isTrue());
     }
 
     @Test
