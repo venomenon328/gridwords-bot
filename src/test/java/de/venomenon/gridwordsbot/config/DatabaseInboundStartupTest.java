@@ -8,9 +8,11 @@ import static org.mockito.Mockito.when;
 import de.venomenon.gridwordsbot.adapter.discord.inbound.DailyResultDetailsInteractionListener;
 import de.venomenon.gridwordsbot.adapter.discord.inbound.DiscordInboundListener;
 import de.venomenon.gridwordsbot.adapter.discord.inbound.DiscordParticipationCommandListener;
+import de.venomenon.gridwordsbot.adapter.discord.inbound.ExcuseOpenInteractionListener;
 import de.venomenon.gridwordsbot.application.canonical.CanonicalGridWordsPublicationService;
 import de.venomenon.gridwordsbot.application.canonical.GridWordsSourceDeletionService;
 import de.venomenon.gridwordsbot.application.cleanup.DailyChannelCleanupService;
+import de.venomenon.gridwordsbot.port.in.ExcuseExpirationUseCase;
 import net.dv8tion.jda.api.JDA;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
@@ -27,6 +29,7 @@ class DatabaseInboundStartupTest {
         JDA jda = mock(JDA.class);
         DiscordInboundListener inbound = mock(DiscordInboundListener.class);
         DailyResultDetailsInteractionListener resultDetails = mock(DailyResultDetailsInteractionListener.class);
+        ExcuseOpenInteractionListener excuseOpen = mock(ExcuseOpenInteractionListener.class);
         DiscordParticipationCommandListener commands = mock(DiscordParticipationCommandListener.class);
 
         new DatabaseInboundStartup(
@@ -34,6 +37,7 @@ class DatabaseInboundStartupTest {
                 provider(inbound),
                 provider(commands),
                 provider(resultDetails),
+                provider(excuseOpen),
                 provider(canonical),
                 provider(deletion),
                 provider(cleanup))
@@ -45,6 +49,7 @@ class DatabaseInboundStartupTest {
         order.verify(deletion).resumeOpenDeletions();
         order.verify(jda).addEventListener(inbound);
         order.verify(jda).addEventListener(resultDetails);
+        order.verify(jda).addEventListener(excuseOpen);
         order.verify(jda).addEventListener(commands);
         order.verify(commands).registerCommands(jda);
     }
@@ -65,6 +70,24 @@ class DatabaseInboundStartupTest {
         verify(jda).getIfAvailable();
         verify(inbound).getIfAvailable();
         verify(commands).getIfAvailable();
+    }
+
+    @Test
+    void expiresDueOffersBeforeCanonicalRecoveryAndListenerRegistration() throws Exception {
+        ExcuseExpirationUseCase expirations = mock(ExcuseExpirationUseCase.class);
+        CanonicalGridWordsPublicationService canonical = mock(CanonicalGridWordsPublicationService.class);
+        JDA jda = mock(JDA.class);
+        DiscordInboundListener inbound = mock(DiscordInboundListener.class);
+
+        new DatabaseInboundStartup(
+                provider(jda), provider(inbound), provider(null), provider(null), provider(null), provider(null),
+                provider(expirations), provider(canonical), provider(null), provider(null))
+                .run(new DefaultApplicationArguments());
+
+        InOrder order = inOrder(expirations, canonical, jda);
+        order.verify(expirations).reconcile();
+        order.verify(canonical).resumeOpenPublications();
+        order.verify(jda).addEventListener(inbound);
     }
 
     @SuppressWarnings("unchecked")

@@ -1,5 +1,6 @@
 package de.venomenon.gridwordsbot.adapter.persistence;
 
+import de.venomenon.gridwordsbot.application.excuse.ExcuseLifecycle;
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.port.out.ReminderCandidateStore.ReminderCandidate;
 import de.venomenon.gridwordsbot.port.out.SubmissionStore.ResultStorage;
@@ -10,6 +11,7 @@ import java.time.ZoneId;
 import java.util.List;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,8 +32,20 @@ public class DynamicPlayerPostgresPersistenceAdapter extends PostgresPersistence
 
     private final JdbcTemplate jdbc;
 
+    /** Direct persistence tests intentionally use the disabled lifecycle. */
     public DynamicPlayerPostgresPersistenceAdapter(JdbcTemplate jdbc, Clock clock, ZoneId businessZone) {
         super(jdbc, clock, businessZone);
+        this.jdbc = jdbc;
+    }
+
+    @Autowired
+    public DynamicPlayerPostgresPersistenceAdapter(
+            JdbcTemplate jdbc,
+            Clock clock,
+            ZoneId businessZone,
+            ExcuseLifecycle excuseLifecycle,
+            ExcuseLifecycle.Context excuseLifecycleContext) {
+        super(jdbc, clock, businessZone, excuseLifecycle, excuseLifecycleContext);
         this.jdbc = jdbc;
     }
 

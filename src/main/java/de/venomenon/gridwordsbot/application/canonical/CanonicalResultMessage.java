@@ -8,6 +8,7 @@ import de.venomenon.gridwordsbot.domain.streak.StreakSummary;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.Objects;
+import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
 
@@ -16,7 +17,7 @@ public record CanonicalResultMessage(
         String playerDisplayName, GameType gameType, LocalDate gameDate, ShareOutcome outcome, Duration duration,
         NormalizedBoard board, StreakSummary streaks, OptionalInt personalComplete, OptionalInt personalPerfect,
         OptionalInt sharedComplete, OptionalInt sharedPerfect, Optional<QuadWordsBoards> quadWordsBoards,
-        String publicationKey) {
+        CanonicalExcuseProjection excuse, List<CanonicalMessageComponent> components, String publicationKey) {
 
     public CanonicalResultMessage {
         Objects.requireNonNull(playerDisplayName);
@@ -30,6 +31,8 @@ public record CanonicalResultMessage(
         Objects.requireNonNull(sharedComplete);
         Objects.requireNonNull(sharedPerfect);
         quadWordsBoards = Objects.requireNonNull(quadWordsBoards);
+        Objects.requireNonNull(excuse);
+        components = List.copyOf(Objects.requireNonNull(components));
         if (gameType == GameType.GRIDWORDS && (board == null || quadWordsBoards.isPresent())) {
             throw new IllegalArgumentException("a GridWords message requires only its board");
         }
@@ -45,6 +48,27 @@ public record CanonicalResultMessage(
             OptionalInt personalComplete, OptionalInt personalPerfect, OptionalInt sharedComplete,
             OptionalInt sharedPerfect, String publicationKey) {
         this(playerDisplayName, gameType, gameDate, outcome, duration, board, streaks, personalComplete,
-                personalPerfect, sharedComplete, sharedPerfect, Optional.empty(), publicationKey);
+                personalPerfect, sharedComplete, sharedPerfect, Optional.empty(), CanonicalExcuseProjection.none(),
+                List.of(), publicationKey);
+    }
+
+    /** Compatibility constructor for callers that already provide QuadWords boards. */
+    public CanonicalResultMessage(String playerDisplayName, GameType gameType, LocalDate gameDate,
+            ShareOutcome outcome, Duration duration, NormalizedBoard board, StreakSummary streaks,
+            OptionalInt personalComplete, OptionalInt personalPerfect, OptionalInt sharedComplete,
+            OptionalInt sharedPerfect, Optional<QuadWordsBoards> quadWordsBoards, String publicationKey) {
+        this(playerDisplayName, gameType, gameDate, outcome, duration, board, streaks, personalComplete,
+                personalPerfect, sharedComplete, sharedPerfect, quadWordsBoards, CanonicalExcuseProjection.none(),
+                List.of(), publicationKey);
+    }
+
+    /** Compatibility constructor for callers that already provide the package-4 excuse projection. */
+    public CanonicalResultMessage(String playerDisplayName, GameType gameType, LocalDate gameDate,
+            ShareOutcome outcome, Duration duration, NormalizedBoard board, StreakSummary streaks,
+            OptionalInt personalComplete, OptionalInt personalPerfect, OptionalInt sharedComplete,
+            OptionalInt sharedPerfect, Optional<QuadWordsBoards> quadWordsBoards,
+            CanonicalExcuseProjection excuse, String publicationKey) {
+        this(playerDisplayName, gameType, gameDate, outcome, duration, board, streaks, personalComplete,
+                personalPerfect, sharedComplete, sharedPerfect, quadWordsBoards, excuse, List.of(), publicationKey);
     }
 }

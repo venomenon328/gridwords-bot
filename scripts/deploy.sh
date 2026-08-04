@@ -29,6 +29,19 @@ write_state() {
   mv -f "$tmp" "$DEPLOYMENT_STATE_FILE"
 }
 
+print_failed_target_diagnostics() {
+  local failed_id health_status
+  echo "Failed target diagnostics for $target:" >&2
+  compose_with_image "$target" ps -a bot >&2 || true
+  failed_id="$(compose_with_image "$target" ps -aq bot 2>/dev/null || true)"
+  if [[ -n "$failed_id" ]]; then
+    health_status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$failed_id" 2>/dev/null || true)"
+    echo "Container health/status: ${health_status:-unknown}" >&2
+    docker inspect --format '{{range .State.Health.Log}}{{println .Start "exit=" .ExitCode}}{{println .Output}}{{end}}' "$failed_id" >&2 || true
+  fi
+  compose_with_image "$target" logs --no-color --tail=240 bot >&2 || true
+}
+
 if [[ "$target" == "$recorded_previous" && -n "$bot_id" ]] \
     && [[ "$(docker inspect "$bot_id" --format '{{.Config.Image}}')" == "$target" ]] \
     && "$verify_script" "$target"; then
@@ -63,6 +76,7 @@ if compose_with_image "$target" up -d --no-deps bot && "$verify_script" "$target
   exit 0
 fi
 
+print_failed_target_diagnostics
 echo "Deployment of $target failed; attempting verified rollback" >&2
 if [[ -n "$rollback_image" && "$rollback_image" != "$target" ]] \
     && compose_with_image "$rollback_image" up -d --no-deps bot \

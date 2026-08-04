@@ -113,7 +113,9 @@ jobs:
 
       - name: Exercise Compose, backup, restore, resume and rollback
         shell: bash
-        run: bash scripts/test/production-operations.sh
+        run: |
+          bash scripts/test/production-compose-contextual-excuses.sh
+          bash scripts/test/production-operations.sh
 
   publish-image:
     name: Publish private GHCR image manually

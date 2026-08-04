@@ -1,6 +1,7 @@
 package de.venomenon.gridwordsbot.adapter.discord.canonical;
 
 import de.venomenon.gridwordsbot.adapter.discord.common.QuadWordsBoardFormatter;
+import de.venomenon.gridwordsbot.application.canonical.CanonicalExcuseProjection;
 import de.venomenon.gridwordsbot.application.canonical.CanonicalResultMessage;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
 import java.time.format.DateTimeFormatter;
@@ -30,6 +31,7 @@ final class CanonicalEmbedRenderer {
                 .append(duration);
         boardText(message).ifPresent(board -> description.append("\n\n").append(board));
         description.append("\n\n").append(series(message));
+        appendSelectedExcuse(description, message);
         return new EmbedBuilder()
                 .setTitle(title)
                 .setDescription(description.toString())
@@ -43,6 +45,10 @@ final class CanonicalEmbedRenderer {
             return rendered;
         }
         String description = rendered.getDescription();
+        String selectedExcuse = selectedExcuseBlock(message);
+        if (!selectedExcuse.isEmpty() && description.endsWith(selectedExcuse)) {
+            description = description.substring(0, description.length() - selectedExcuse.length());
+        }
         description = preserveLine(description, existingEmbed.getDescription(), PERSONAL_COMPLETE, "Komplett: ", true);
         description = preserveLine(
                 description, existingEmbed.getDescription(), SHARED_COMPLETE, "Gemeinsam komplett: ", true);
@@ -51,6 +57,7 @@ final class CanonicalEmbedRenderer {
                 description, existingEmbed.getDescription(), PERSONAL_PERFECT, "Perfekt: ", stillSolved);
         description = preserveLine(
                 description, existingEmbed.getDescription(), SHARED_PERFECT, "Gemeinsam perfekt: ", stillSolved);
+        description += selectedExcuse;
         return new EmbedBuilder(rendered).setDescription(description).build();
     }
 
@@ -118,6 +125,17 @@ final class CanonicalEmbedRenderer {
         if (streak.isPresent()) {
             series.append("\n").append(label).append(days(streak.getAsInt()));
         }
+    }
+
+    private static void appendSelectedExcuse(StringBuilder description, CanonicalResultMessage message) {
+        description.append(selectedExcuseBlock(message));
+    }
+
+    private static String selectedExcuseBlock(CanonicalResultMessage message) {
+        if (!(message.excuse() instanceof CanonicalExcuseProjection.Selected selected)) {
+            return "";
+        }
+        return "\n\n„" + selected.renderedText() + "“";
     }
 
     private static String days(int count) {

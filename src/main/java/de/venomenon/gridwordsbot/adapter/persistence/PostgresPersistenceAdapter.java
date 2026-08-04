@@ -1,5 +1,7 @@
 package de.venomenon.gridwordsbot.adapter.persistence;
 
+import de.venomenon.gridwordsbot.application.excuse.ExcuseLifecycle;
+import de.venomenon.gridwordsbot.application.excuse.NoOpExcuseLifecycle;
 import de.venomenon.gridwordsbot.domain.model.DailyGameParticipation;
 import de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod;
 import de.venomenon.gridwordsbot.domain.model.GameParticipationSelection;
@@ -45,15 +47,34 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
     private final JdbcTemplate jdbc;
     private final Clock clock;
     private final ZoneId businessZone;
+    private final ExcuseLifecycle excuseLifecycle;
+    private final ExcuseLifecycle.Context excuseLifecycleContext;
 
     public PostgresPersistenceAdapter(JdbcTemplate jdbc, Clock clock) {
         this(jdbc, clock, clock.getZone());
     }
 
     public PostgresPersistenceAdapter(JdbcTemplate jdbc, Clock clock, ZoneId businessZone) {
+        this(
+                jdbc,
+                clock,
+                businessZone,
+                NoOpExcuseLifecycle.INSTANCE,
+                ExcuseLifecycle.Context.noOp(new PostgresExcuseStateStore(jdbc, clock, businessZone)));
+    }
+
+    /** Visible for database integration tests that exercise the enabled contextual lifecycle. */
+    public PostgresPersistenceAdapter(
+            JdbcTemplate jdbc,
+            Clock clock,
+            ZoneId businessZone,
+            ExcuseLifecycle excuseLifecycle,
+            ExcuseLifecycle.Context excuseLifecycleContext) {
         this.jdbc = java.util.Objects.requireNonNull(jdbc);
         this.clock = java.util.Objects.requireNonNull(clock);
         this.businessZone = java.util.Objects.requireNonNull(businessZone);
+        this.excuseLifecycle = java.util.Objects.requireNonNull(excuseLifecycle);
+        this.excuseLifecycleContext = java.util.Objects.requireNonNull(excuseLifecycleContext);
     }
 
     @Override
@@ -190,6 +211,14 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         }
 
         StoredGameResult result = insertedResult.get();
+        if (excuseLifecycleEnabled()) {
+            excuseLifecycle.decideForNewResult(
+                    result,
+                    request.sourceMessageId(),
+                    existing.receivedAt(),
+                    DailyGameParticipation.fromPeriods(result.parsedResult().gameDate(), periods),
+                    excuseLifecycleContext);
+        }
         PublicationContext publicationContext = publicationContext(before, findAll(), request.result().playerId(),
                 result.parsedResult().gameDate(), periods);
         linkStoredResult(request.sourceMessageId(), result.id(), publicationContext);
@@ -209,6 +238,12 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
             throw new SubmissionConflictException("new submission cannot already be canonically published");
         }
         StoredGameResult result = upsertResult(request.result(), clock.instant());
+        if (excuseLifecycleEnabled()) {
+            excuseLifecycle.revalidateExistingResult(
+                    result,
+                    DailyGameParticipation.fromPeriods(result.parsedResult().gameDate(), periods),
+                    excuseLifecycleContext);
+        }
         PublicationContext publicationContext = publicationContext(before, findAll(), request.result().playerId(),
                 result.parsedResult().gameDate(), periods);
         updatePublicationContext(request.sourceMessageId(), result.id(), publicationContext);
@@ -602,11 +637,23 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                     SELECT *
                     FROM submission
                     WHERE game_result_id = r.id
-                      AND processing_state IN ('RESULT_STORED', 'FAILED_RETRYABLE', 'CANONICAL_MESSAGE_PUBLISHED')
+                      AND processing_state IN (
+                          'RESULT_STORED',
+                          'FAILED_RETRYABLE',
+                          'CANONICAL_MESSAGE_PUBLISHED',
+                          'ORIGINAL_MESSAGE_DELETED',
+                          'COMPLETED'
+                      )
                     ORDER BY received_at DESC, source_message_id DESC
                     LIMIT 1
                 ) s ON TRUE
                 WHERE r.canonical_refresh_required = TRUE
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM canonical_result_retirement retirement
+                      WHERE retirement.game_result_id = r.id
+                        AND retirement.retirement_state <> 'ACTIVE'
+                  )
                   AND (
                     r.game_type = 'GRIDWORDS'
                     OR (
@@ -1155,6 +1202,11 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         return stored.playerId() == request.playerId() && stored.parsedResult().equals(request.parsedResult())
                 && stored.rawShareText().equals(request.rawShareText())
                 && stored.parserVersion().equals(request.parserVersion());
+    }
+
+    /** Legacy compatibility migrations predate the contextual-excuse tables. */
+    protected boolean excuseLifecycleEnabled() {
+        return true;
     }
 
     private StoredSubmission lockRequired(long sourceMessageId) {

@@ -5,6 +5,7 @@ import de.venomenon.gridwordsbot.domain.streak.StreakCalculator;
 import de.venomenon.gridwordsbot.domain.streak.StreakSummary;
 import de.venomenon.gridwordsbot.port.out.CanonicalMessageGateway;
 import de.venomenon.gridwordsbot.port.out.CanonicalPublicationRetirementQuery;
+import de.venomenon.gridwordsbot.port.out.ExcuseStateStore;
 import de.venomenon.gridwordsbot.port.out.GameResultStore;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
 import de.venomenon.gridwordsbot.port.out.PublicationRetryScheduler;
@@ -38,6 +39,7 @@ public final class CanonicalGridWordsPublicationService {
     private final StreakCalculator streakCalculator;
     private final PublicationRetryScheduler retryScheduler;
     private final LongConsumer postPublication;
+    private final ExcuseStateStore excuses;
     private CanonicalPublicationRetirementQuery retirement = CanonicalPublicationRetirementQuery.allowAll();
     private final Set<Long> scheduledRetries = ConcurrentHashMap.newKeySet();
     private final ConcurrentMap<Long, RefreshSchedule> scheduledRefreshes = new ConcurrentHashMap<>();
@@ -72,6 +74,19 @@ public final class CanonicalGridWordsPublicationService {
             ZoneId zoneId,
             PublicationRetryScheduler retryScheduler,
             LongConsumer postPublication) {
+        this(results, players, submissions, discord, clock, zoneId, retryScheduler, postPublication, noExcuses());
+    }
+
+    public CanonicalGridWordsPublicationService(
+            GameResultStore results,
+            PlayerStore players,
+            SubmissionStore submissions,
+            CanonicalMessageGateway discord,
+            Clock clock,
+            ZoneId zoneId,
+            PublicationRetryScheduler retryScheduler,
+            LongConsumer postPublication,
+            ExcuseStateStore excuses) {
         this.results = Objects.requireNonNull(results);
         this.players = Objects.requireNonNull(players);
         this.submissions = Objects.requireNonNull(submissions);
@@ -81,6 +96,7 @@ public final class CanonicalGridWordsPublicationService {
         this.streakCalculator = new StreakCalculator();
         this.retryScheduler = Objects.requireNonNull(retryScheduler);
         this.postPublication = Objects.requireNonNull(postPublication);
+        this.excuses = Objects.requireNonNull(excuses);
     }
 
     public CanonicalGridWordsPublicationService withRetirementFence(CanonicalPublicationRetirementQuery fence) {
@@ -104,6 +120,14 @@ public final class CanonicalGridWordsPublicationService {
         for (SubmissionStore.CanonicalRefreshCandidate refresh : submissions.findCanonicalRefreshCandidates()) {
             resumeCurrentRefresh(refresh.submission().gameResultId().orElseThrow());
         }
+    }
+
+    /** Wakes the existing recovery pipeline after another transaction has durably requested refresh work. */
+    public void wakeUpCanonicalRefresh(long resultId) {
+        if (resultId <= 0) {
+            throw new IllegalArgumentException("resultId must be positive");
+        }
+        scheduleCurrentRefresh(resultId, 0);
     }
 
     private PublicationOutcome publishAndHandOff(long sourceMessageId) {
@@ -410,6 +434,10 @@ public final class CanonicalGridWordsPublicationService {
                 playerId,
                 clock.instant().atZone(zoneId).toLocalDate());
 
+        CanonicalExcuseProjection excuse = excuseProjection(result.id());
+        java.util.List<CanonicalMessageComponent> components = excuse instanceof CanonicalExcuseProjection.Available
+                ? java.util.List.of(new CanonicalMessageComponent.ExcuseOpen(result.id()))
+                : java.util.List.of();
         return new CanonicalResultMessage(
                 players.findByDiscordUserId(playerId).orElseThrow().displayName(),
                 result.parsedResult().gameType(),
@@ -423,8 +451,84 @@ public final class CanonicalGridWordsPublicationService {
                 contextual(streaks.sharedComplete(), publicationContext.sharedCompleteEstablished()),
                 contextual(streaks.sharedPerfect(), publicationContext.sharedPerfectEstablished()),
                 result.parsedResult().quadWordsBoards(),
+                excuse,
+                components,
                 result.parsedResult().gameType().name().toLowerCase(java.util.Locale.ROOT)
                         + "-result-" + result.id());
+    }
+
+    private CanonicalExcuseProjection excuseProjection(long gameResultId) {
+        return excuses.find(gameResultId).map(state -> switch (state.status()) {
+            case AVAILABLE -> CanonicalExcuseProjection.Available.INSTANCE;
+            case SELECTED -> new CanonicalExcuseProjection.Selected(state.selection().orElseThrow().renderedText());
+            case NOT_OFFERED, DECLINED, EXPIRED, INVALIDATED -> CanonicalExcuseProjection.none();
+        }).orElseGet(CanonicalExcuseProjection::none);
+    }
+
+    public static ExcuseStateStore noExcuses() {
+        return new ExcuseStateStore() {
+            @Override
+            public java.util.Optional<de.venomenon.gridwordsbot.domain.excuse.ExcuseState> find(long gameResultId) {
+                return java.util.Optional.empty();
+            }
+
+            @Override
+            public de.venomenon.gridwordsbot.domain.excuse.ExcuseState initializeNotOffered(long gameResultId) {
+                throw new UnsupportedOperationException("canonical projection is read-only");
+            }
+
+            @Override
+            public java.util.Optional<de.venomenon.gridwordsbot.domain.excuse.ExcuseState> initializeAvailable(
+                    de.venomenon.gridwordsbot.domain.excuse.ExcuseOffer offer) {
+                throw new UnsupportedOperationException("canonical projection is read-only");
+            }
+
+            @Override
+            public boolean cooldownSatisfied(
+                    long playerId,
+                    de.venomenon.gridwordsbot.domain.model.GameType gameType,
+                    java.time.Instant offeredAt) {
+                return false;
+            }
+
+            @Override
+            public java.util.Optional<de.venomenon.gridwordsbot.domain.excuse.ExcuseState> storeInitialOptions(
+                    long gameResultId, int contextGeneration,
+                    java.util.List<de.venomenon.gridwordsbot.domain.excuse.ExcuseOption> options) {
+                throw new UnsupportedOperationException("canonical projection is read-only");
+            }
+
+            @Override
+            public java.util.Optional<de.venomenon.gridwordsbot.domain.excuse.ExcuseState> storeStyleRerollOptions(
+                    long gameResultId, int contextGeneration,
+                    java.util.List<de.venomenon.gridwordsbot.domain.excuse.ExcuseOption> options) {
+                throw new UnsupportedOperationException("canonical projection is read-only");
+            }
+
+            @Override
+            public java.util.Optional<de.venomenon.gridwordsbot.domain.excuse.ExcuseState> select(
+                    de.venomenon.gridwordsbot.domain.excuse.ExcuseOptionSelection selection) {
+                throw new UnsupportedOperationException("canonical projection is read-only");
+            }
+
+            @Override
+            public java.util.Optional<de.venomenon.gridwordsbot.domain.excuse.ExcuseState> decline(
+                    long gameResultId, int contextGeneration, java.time.Instant declinedAt) {
+                throw new UnsupportedOperationException("canonical projection is read-only");
+            }
+
+            @Override
+            public java.util.List<de.venomenon.gridwordsbot.domain.excuse.ExcuseState> findDueExpirations(
+                    java.time.Instant now, int limit) {
+                return java.util.List.of();
+            }
+
+            @Override
+            public java.util.List<de.venomenon.gridwordsbot.domain.excuse.ExcuseSelectionHistoryEntry> findRecentSelections(
+                    long playerId, int limit) {
+                return java.util.List.of();
+            }
+        };
     }
 
     private static boolean isPublishable(GameResultStore.StoredGameResult result) {

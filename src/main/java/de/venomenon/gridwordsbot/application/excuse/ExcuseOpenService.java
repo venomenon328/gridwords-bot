@@ -1,0 +1,164 @@
+package de.venomenon.gridwordsbot.application.excuse;
+
+import de.venomenon.gridwordsbot.domain.excuse.ExcuseCatalog;
+import de.venomenon.gridwordsbot.domain.excuse.ExcuseEligibility;
+import de.venomenon.gridwordsbot.domain.excuse.ExcuseEligibilityPolicy;
+import de.venomenon.gridwordsbot.domain.excuse.ExcuseEligibilityRequest;
+import de.venomenon.gridwordsbot.domain.excuse.ExcuseSelectionRequest;
+import de.venomenon.gridwordsbot.domain.excuse.ExcuseRound;
+import de.venomenon.gridwordsbot.domain.excuse.ExcuseSelectionHistoryEntry;
+import de.venomenon.gridwordsbot.domain.excuse.ExcuseTopic;
+import de.venomenon.gridwordsbot.domain.excuse.ExcuseSelector;
+import de.venomenon.gridwordsbot.domain.excuse.ExcuseState;
+import de.venomenon.gridwordsbot.domain.excuse.ExcuseStatus;
+import de.venomenon.gridwordsbot.port.in.ExcuseOpenUseCase;
+import de.venomenon.gridwordsbot.port.out.ExcuseStateStore;
+import de.venomenon.gridwordsbot.port.out.GameResultStore;
+import de.venomenon.gridwordsbot.port.out.PlayerStore;
+import de.venomenon.gridwordsbot.port.out.SubmissionStore;
+import java.time.Clock;
+import java.util.Objects;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+
+/**
+ * Opens the ephemeral first round only after validating the canonical Discord message against
+ * persisted server state. Initial options are created or reused by one store operation.
+ */
+public final class ExcuseOpenService implements ExcuseOpenUseCase {
+
+    private static final de.venomenon.gridwordsbot.port.in.ExcuseExpirationUseCase NO_EXPIRATION =
+            new de.venomenon.gridwordsbot.port.in.ExcuseExpirationUseCase() {
+                @Override public int reconcile() { return 0; }
+                @Override public boolean expireIfDue(long gameResultId) { return false; }
+            };
+
+    private final ExcuseStateStore states;
+    private final ExcuseCatalog catalog;
+    private final ExcuseSelector selector;
+    private final ExcuseInteractionAuthorizer authorizer;
+    private final ExcuseAvailableContextResolver contextResolver;
+    private final de.venomenon.gridwordsbot.port.in.ExcuseExpirationUseCase expirations;
+
+    public ExcuseOpenService(
+            long configuredGuildId,
+            long configuredChannelId,
+            GameResultStore results,
+            PlayerStore players,
+            SubmissionStore submissions,
+            ExcuseStateStore states,
+            ExcuseEligibilityPolicy eligibilityPolicy,
+            ExcuseCatalog catalog,
+            ExcuseSelector selector,
+            Clock clock) {
+        this(configuredGuildId, configuredChannelId, results, players, submissions, states, eligibilityPolicy,
+                catalog, selector, clock, NO_EXPIRATION);
+    }
+
+    public ExcuseOpenService(
+            long configuredGuildId,
+            long configuredChannelId,
+            GameResultStore results,
+            PlayerStore players,
+            SubmissionStore submissions,
+            ExcuseStateStore states,
+            ExcuseEligibilityPolicy eligibilityPolicy,
+            ExcuseCatalog catalog,
+            ExcuseSelector selector,
+            Clock clock,
+            de.venomenon.gridwordsbot.port.in.ExcuseExpirationUseCase expirations) {
+        this.states = Objects.requireNonNull(states, "states");
+        this.catalog = Objects.requireNonNull(catalog, "catalog");
+        this.selector = Objects.requireNonNull(selector, "selector");
+        this.authorizer = new ExcuseInteractionAuthorizer(
+                configuredGuildId, configuredChannelId, results, submissions, states, clock);
+        this.contextResolver = new ExcuseAvailableContextResolver(players, eligibilityPolicy);
+        this.expirations = Objects.requireNonNull(expirations, "expirations");
+    }
+
+    @Override
+    public Result open(Request request) {
+        Objects.requireNonNull(request, "request");
+        ExcuseInteractionAuthorizer.Result authorization = authorizer.authorizeOpen(
+                new ExcuseInteractionAuthorizer.OpenRequest(
+                        request.guildId(), request.channelId(), request.canonicalMessageId(), request.gameResultId(),
+                        request.actorId(), null));
+        if (authorization instanceof ExcuseInteractionAuthorizer.Rejected rejected) {
+            return rejected(rejected.reason());
+        }
+        if (authorization instanceof ExcuseInteractionAuthorizer.Expired expired) {
+            expirations.expireIfDue(expired.gameResultId());
+            return rejected(Reason.OFFER_UNAVAILABLE);
+        }
+        ExcuseInteractionAuthorizer.Authorized authorized = (ExcuseInteractionAuthorizer.Authorized) authorization;
+        ExcuseEligibility eligibility = contextResolver.resolve(authorized.gameResult(), authorized.state()).orElse(null);
+        if (eligibility == null) {
+            return rejected(Reason.OFFER_UNAVAILABLE);
+        }
+        int generation = authorized.state().offer().orElseThrow().contextGeneration();
+        if (authorized.state().rerollUsed()) {
+            java.util.List<de.venomenon.gridwordsbot.domain.excuse.ExcuseOption> options = states.findActiveOptions(
+                    request.gameResultId(), generation, ExcuseRound.STYLE_REROLL);
+            if (options.size() != 3) {
+                return rejected(Reason.OFFER_UNAVAILABLE);
+            }
+            return new Options(generation, options, java.util.List.of());
+        }
+        try {
+            return states.loadOrCreateInitialOptions(
+                            request.gameResultId(),
+                            generation,
+                            () -> selectInitialOptions(eligibility, authorized.gameResult().playerId())
+                                    .orElseThrow(NoInitialOptions::new))
+                    .<Result>map(selection -> new Options(
+                            generation,
+                            selection.options(),
+                            selector.availableStyles(
+                                    catalog,
+                                    eligibility.context(),
+                                    selection.options().stream().map(option -> option.templateId())
+                                            .collect(java.util.stream.Collectors.toSet()))))
+                    .orElseGet(() -> rejected(Reason.OFFER_UNAVAILABLE));
+        } catch (NoInitialOptions exception) {
+            return rejected(Reason.OFFER_UNAVAILABLE);
+        }
+    }
+
+    private static Rejected rejected(ExcuseInteractionAuthorizer.Reason reason) {
+        return switch (reason) {
+            case NOT_RESULT_AUTHOR -> rejected(Reason.NOT_RESULT_AUTHOR);
+            case CONTEXT_MISMATCH -> rejected(Reason.CONTEXT_MISMATCH);
+            case OFFER_UNAVAILABLE -> rejected(Reason.OFFER_UNAVAILABLE);
+        };
+    }
+
+    private static Rejected rejected(Reason reason) {
+        return new Rejected(reason);
+    }
+
+    /** Keeps the most recent valid choice unavailable and relaxes only older exclusions in age order. */
+    private Optional<de.venomenon.gridwordsbot.domain.excuse.ExcuseSelection> selectInitialOptions(
+            ExcuseEligibility eligibility, long playerId) {
+        List<ExcuseSelectionHistoryEntry> history = states.findRecentSelections(playerId, 10);
+        Set<ExcuseTopic> discouragedTopics = history.stream()
+                .map(ExcuseSelectionHistoryEntry::topic)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        Set<String> hardExcluded = history.isEmpty() ? Set.of() : Set.of(history.getFirst().templateId());
+        List<String> softExcluded = history.stream().skip(1).map(ExcuseSelectionHistoryEntry::templateId).toList();
+        for (int remainingSoft = softExcluded.size(); remainingSoft >= 0; remainingSoft--) {
+            Set<String> excluded = new LinkedHashSet<>(hardExcluded);
+            excluded.addAll(softExcluded.subList(0, remainingSoft));
+            Optional<de.venomenon.gridwordsbot.domain.excuse.ExcuseSelection> selection = selector.select(
+                    catalog, eligibility.context(), ExcuseSelectionRequest.initial(excluded, discouragedTopics));
+            if (selection.isPresent()) {
+                return selection;
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static final class NoInitialOptions extends RuntimeException {
+    }
+}
