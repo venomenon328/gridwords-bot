@@ -1,651 +1,92 @@
 # Inkrement 11: Kontextabhängige Ausreden
 
-**Status:** fachlich vorbereitet; Paket 0 ist Gegenstand des Dokumentations-PRs  
-**Issue:** #42  
-**Vorgesehener Implementierungsbranch:** `feature/contextual-excuses`  
-**Reihenfolge:** nach dem vollständig abgeschlossenen Zwischeninkrement 10.6
-
-## Einordnung
-
-Der Funktionsumfang bis einschließlich Inkrement 10 und der Zwischeninkremente 10.x bildet die feature-complete Basis für Version 1.0.x beziehungsweise 1.1.0.
-
-Die bisher im Implementierungsplan vorgemerkten Folgeinkremente für allgemeine Statistik-/Konfigurations-Commands und generische regelbasierte Kommentare werden nicht weiterverfolgt. Sie waren keine umgesetzten oder abgenommenen Anforderungen und gelten als obsolet. Einzelne Ideen daraus können später nur über neue, ausdrücklich priorisierte Issues zurückkehren.
-
-Das Ausredenfeature ist damit das neue Inkrement 11 und eine optionale Produkterweiterung oberhalb der abgeschlossenen Versionsbasis.
+**Status:** abgeschlossen  
+**Issue:** #42 – geschlossen  
+**Kumulativer PR:** #46 – nach `main` gemergt  
+**Produktionsrelease:** 1.2.0 – veröffentlicht und ausgerollt  
+**Abschlussdatum:** 4. August 2026
 
 ## Ziel
 
-Bei seltenen, klar definierten Ergebniskonstellationen ergänzt der Bot die kanonische Ergebnisnachricht um eine freiwillige Ausredenwahl. Der Ergebnisautor erhält ephemer drei deterministisch ausgewählte redaktionelle Texte, kann einmal nach einem Stil neu würfeln, verzichten oder genau einen Text auswählen.
+Bei klar definierten auffälligen GridWords- und QuadWords-Ergebnissen kann der Ergebnisautor freiwillig eine Ausrede auswählen.
 
-Nur der gewählte Text wird öffentlich. Er erscheint ohne Stil, Überschrift oder Metadaten am Ende derselben kanonischen Ergebnisnachricht.
+Der Bot zeigt privat drei redaktionelle Vorschläge. Der Nutzer kann einmal Vorschläge eines anderen Stils anfordern, eine Ausrede wählen oder verzichten. Öffentlich erscheint ausschließlich der gewählte Text am Ende derselben kanonischen Ergebnisnachricht.
 
-Verbindliche Fachgrundlage:
-
-- `docs/requirements/excuses.md`,
-- ADR 0017,
-- Issue #42,
-- `docs/requirements/game-specific-participation.md` und ADR 0016.
-
-## Branchstrategie
-
-Paket 0 wird auf einem aktuellen Dokumentationsbranch von `main` erstellt und separat gemergt.
-
-Danach wird der Implementierungsbranch `feature/contextual-excuses` frisch vom dann aktuellen `main` erstellt. Er übernimmt damit die endgültigen Portverträge und Read-Modelle des abgeschlossenen Zwischeninkrements 10.6.
-
-## Umfang
+## Umgesetzter Umfang
 
 Inkrement 11 umfasst:
 
-- acht feste redaktionelle Stile,
-- versionierten Template-Katalog ohne Laufzeit-KI,
-- deterministische Kontext- und Angebotslogik,
-- absolute GridWords- und QuadWords-Schwellen,
-- QuadWords-Boardanalyse mit mindestens drei Versuchen Ausreißerabstand,
-- einen eng begrenzten bisherigen Tagesausreißer,
-- spielbezogenen Drei-Tage-Cooldown,
-- persistierten Zustand je `game_result`,
+- versionierten und vollständig validierten redaktionellen Katalog ohne Laufzeit-KI,
+- klare Ergebnis-, Zeit-, Board- und Tagesausreißerregeln,
+- spielbezogenen Cooldown,
+- persistierten Zustand je Ergebnis,
 - persistierte tatsächlich gezeigte Optionen,
 - spielübergreifenden Wiederholungsschutz für gewählte Templates,
 - öffentlichen Button in der kanonischen Ergebnisnachricht,
 - ausschließlich ephemere Vorschläge und Stilwahl,
-- einmaliges Neu-Würfeln nach Stil,
+- genau einen Stilwechsel,
 - Auswahl, Verzicht, Ablauf und Korrekturrevalidierung,
-- Aktualisierung ausschließlich über die vorhandene kanonische Refresh-/Recovery-Pipeline,
-- einen redaktionellen Vollkatalog,
+- Boardanreicherung und sichere Ablehnung veralteter Interaktionen,
+- Aktualisierung ausschließlich über die kanonische Refresh- und Recovery-Pipeline,
+- produktiven Katalog `2026.08.04.1` mit 564 auswählbaren Templates,
 - vollständige Unit-, Adapter-, Architektur- und PostgreSQL-Abdeckung,
-- reale Discord-Abnahme.
+- reale Discord-Abnahme und produktiven Rollout.
+
+## Paketabschluss
+
+- [x] Paket 0 – Requirement, ADR, Inkrementplan, Roadmap und Arbeitsregeln
+- [x] Paket 1 – Ausredendomäne, Katalogmechanik, Validierung und Zufallsquelle
+- [x] Paket 2 – Angebotsgründe, Kontextanalyse, Boardanalyse und Tagesausreißer
+- [x] Paket 3 – Liquibase-Schema, PostgreSQL-Zustand, Optionen und Verlauf
+- [x] Paket 4 – Einmalige Ergebnisintegration, Korrekturrevalidierung und kanonische Projektion
+- [x] Paket 5 – Kanonische Komponenten, Codec und autorisierter Öffnungsflow
+- [x] Paket 6 – Vorschläge, Stilwechsel, Auswahl, Verzicht und Refresh-Handoff
+- [x] Paket 7 – Ablauf, Recovery, Konkurrenz, Boardanreicherung und Wiederholungsschutz
+- [x] Paket 8A – Redaktioneller Vollkatalog
+- [x] Paket 8B – Gesamtintegration, reale Abnahme und Abschluss
+
+## Abnahme
+
+Bestanden wurden:
+
+- Standardbuild mit 582 Tests,
+- vollständiges PostgreSQL-Profil,
+- Produktionsimage- und Nicht-Root-Prüfung,
+- Compose-Konfigurationsprüfung,
+- Backup-, Restore-, Resume- und Rollbackpfad,
+- reale Discord-Abnahme mit separater Testanwendung und isolierter PostgreSQL-Datenbank,
+- Produktivdeployment des unveränderlichen SHA-Images.
+
+Das vollständige Protokoll steht unter:
+
+- `docs/operations/11-contextual-excuses-acceptance.md`
+
+## Historischer Paketplan
+
+Der während der Umsetzung verbindliche detaillierte Paket-, Test- und Abnahmeplan bleibt zu Dokumentationszwecken erhalten:
+
+- `docs/increments/archive/11-contextual-excuses-package-plan.md`
+
+Die vorliegende Datei beschreibt den endgültigen abgenommenen Zustand und ist für den aktuellen Projektstatus maßgeblich.
+
+## Verbindliche Dokumente
+
+- `docs/requirements/excuses.md`
+- `docs/requirements/game-specific-participation.md`
+- `docs/adr/0017-persistent-excuse-selection.md`
+- `docs/architecture.md`
+- `docs/operations/11-contextual-excuses-acceptance.md`
 
 ## Abgrenzung
 
-Nicht enthalten sind:
+Nicht Bestandteil von Inkrement 11 sind insbesondere:
 
 - generative KI oder externe Textdienste,
-- Ausreden-Command,
-- öffentliche Vorschlagslisten oder zusätzliche öffentliche Nachrichten,
-- individuelle Stilpräferenzen,
+- ein Ausreden-Command,
+- öffentliche Vorschlagslisten,
 - Bearbeiten oder Zurückziehen einer gewählten Ausrede,
-- öffentliche Stilbezeichnung,
-- Tagesabschluss- oder endgültige Ranglistenbehauptungen,
-- namentliche Vergleiche,
-- ausredenbezogene Achievements,
-- Wochen-/Monatsberichte oder Jahresrückblicke mit Ausreden,
-- redaktionelles Admin-UI,
-- allgemeines Plugin- oder Regel-Framework für beliebige Kommentararten.
-
-Achievements, Rekordmeldungen und weitere Unterhaltungsfeatures dürfen später dieselben kanonischen Integrationsgrenzen verwenden. Inkrement 11 baut dafür jedoch keine universelle Event-Engine.
-
-## Umsetzungsgrundsätze
-
-- Fachliche Schwellen und Templatebedingungen bleiben unabhängig von Discord und PostgreSQL testbar.
-- JDA-Typen verlassen den Discord-Adapter nicht.
-- Discord-I/O findet niemals innerhalb einer Datenbanktransaktion statt.
-- Die erstmalige Angebotsentscheidung wird atomar mit einem neuen Ergebnis gespeichert.
-- Ein bestehendes Ergebnis erhält durch Replay, Korrektur oder Recovery niemals erstmals ein Angebot.
-- Alle Bestandsresultate werden beim Backfill als `NOT_OFFERED` markiert.
-- Der Katalog wird beim Start vollständig validiert; Laufzeitfehler werden nicht durch unvollständiges Rendering kaschiert.
-- Sichtbare Zustände werden ausschließlich aus PostgreSQL rekonstruiert.
-- Die Interaction ändert keine öffentliche Nachricht direkt, sondern persistiert Zustand und kanonischen Refresh-Auftrag atomar.
-- Create und Edit behandeln Embed und Action Rows als einen gemeinsamen kanonischen Inhalt.
-- Ein gewählter Text ist ein unveränderlicher Snapshot und wird bei Korrekturen entweder beibehalten oder vollständig invalidiert.
-- Teilnahme- und Tagesvergleichslogik verwendet ausschließlich den betroffenen Spieltyp.
-- Es wird kein spielunspezifischer Compatibility-Pfad eingeführt.
-- Jeder Paket-Head muss den Standardbuild bestehen.
-- Ab Paket 3 muss zusätzlich das PostgreSQL-Profil grün sein.
-- Das Feature bleibt bis zum vollständigen Interaktions- und Recoverypfad standardmäßig deaktiviert.
-
-## Paketübersicht
-
-- [x] Paket 0 – Requirement, ADR, Inkrementplan, Roadmap und Arbeitsregeln
-- [ ] Paket 1 – Ausredendomäne, Katalogmechanik, Validierung und Zufallsquelle
-- [ ] Paket 2 – Angebotsgründe, Kontextanalyse, Boardanalyse und Tagesausreißer
-- [ ] Paket 3 – Liquibase-Schema, PostgreSQL-Zustand, Optionen und Verlauf
-- [ ] Paket 4 – Einmalige Ergebnisintegration, Korrekturrevalidierung und kanonische Projektion
-- [ ] Paket 5 – Kanonische Komponenten, Codec und autorisierter Öffnungsflow
-- [ ] Paket 6 – Vorschläge, Stil-Neuwurf, Auswahl, Verzicht und Refresh-Handoff
-- [ ] Paket 7 – Ablauf, Recovery, Konkurrenz, Boardanreicherung und Wiederholungsschutz
-- [ ] Paket 8A – Redaktioneller Vollkatalog
-- [ ] Paket 8B – Gesamtintegration, reale Abnahme und Abschluss
-
-Die Pakete werden in dieser Reihenfolge umgesetzt. Paket 8A kann nach Stabilisierung des Katalogschemas aus Paket 1 redaktionell vorbereitet werden, wird aber erst gemeinsam mit Paket 8B vollständig integriert.
-
-## Paket 0 – Requirement, ADR, Inkrementplan, Roadmap und Arbeitsregeln
-
-### Ziel
-
-Das Feature ist vor der Implementierung fachlich und architektonisch vollständig festgelegt und als neues Inkrement 11 eingeordnet.
-
-### Umfang
-
-- verbindliches Requirement `docs/requirements/excuses.md`,
-- ADR 0017 zur Persistenz- und Deliveryentscheidung,
-- dieses Inkrementdokument,
-- Issue #42 mit Paket- und Abnahmeliste,
-- alte Roadmap-Platzhalter für Inkremente 11 und 12 entfernen,
-- `docs/implementation-plan.md` auf die feature-complete Versionsbasis und das neue Inkrement 11 aktualisieren,
-- Architekturziel und Interaktionsgrenzen ergänzen,
-- verpflichtende Lese-, Reihenfolge- und Testregeln in `AGENTS.md`,
-- README-Verlinkung.
-
-### Abnahme
-
-- Keine offene fachliche Entscheidung für den MVP.
-- Öffentliche Darstellung enthält ausschließlich den gewählten Text und keinen Stil.
-- QuadWords-Boardausreißer verlangt mindestens drei Versuche Abstand.
-- Zwischeninkrement 10.6 ist als vollständig abgeschlossene Grundlage behandelt.
-- Persistenz, Cooldown, Korrekturen, Ablauf und Wiederholungsschutz sind eindeutig.
-- Entwicklungspakete besitzen Scope, Designgrenzen, Tests und Commit-Vorschläge.
-- Keine Produktionslogik oder Datenbankmigration wird verändert.
-
-Commit-Vorschlag:
-
-```text
-docs: define increment 11 excuses
-```
-
-## Paket 1 – Ausredendomäne, Katalogmechanik, Validierung und Zufallsquelle
-
-### Ziel
-
-Der fachliche Kern kann Stile, Fakten, Templates, Kandidaten und reproduzierbare Auswahl ohne Spring, JDA oder PostgreSQL ausdrücken.
-
-### Umfang
-
-- stabile Typen für `ExcuseStyle`, `ExcuseReason`, `ExcuseFact`, `ExcuseTopic`, `ExcuseTemplate`, `ExcuseContext`, `ExcuseOption`, `ExcuseRound` und `ExcuseSelection` oder gleichwertige geschlossene Modelle,
-- kleine injizierbare Zufallsgrenze, beispielsweise `ExcuseRandom`,
-- Kandidatenfilterung für Spiel, Fakten, Ausschlüsse und Platzhalter,
-- Trennung von `specificity` und `weight`,
-- stilzuerst arbeitende gewichtete Auswahl ohne Zurücklegen,
-- Themen- und Stildiversität nach Möglichkeit,
-- mindestens ein kontextspezifischer Vorschlag bei vorhandenen Kandidaten,
-- Katalogschema und Loader für eine versionierte Repository-Ressource,
-- vollständige Start- und Testvalidierung,
-- ausschließlich explizit bekannte Platzhalter,
-- kleiner Testkatalog für allgemeine, spielbezogene und boardbezogene Fälle,
-- keine Spring-Wiring-Aktivierung des Features.
-
-### Designgrenzen
-
-- Kein generischer Regelinterpreter.
-- Keine Skriptsprache und keine Expressions im Katalog.
-- Keine Satzbaustein-Kombination.
-- Kein Zugriff des Katalogrenderers auf Datenbank, Discord oder aktuelle Zeit.
-- Keine neue externe Bibliothek, sofern die vorhandene JSON-Unterstützung ausreicht.
-
-### Tests
-
-- eindeutige IDs,
-- bekannte und unbekannte Stile, Spiele, Fakten, Themen und Platzhalter,
-- leere und zu lange Texte,
-- `@everyone` und `@here`,
-- teilweise nicht auflösbare Templates werden vollständig verworfen,
-- Spezifitätspriorität,
-- gewichtete Auswahl mit kontrollierter Zufallsquelle,
-- drei unterschiedliche Templates,
-- drei Stile und Themen, soweit möglich,
-- kontextspezifischer Mindestanteil,
-- Verhalten bei genau zwei beziehungsweise genau drei Kandidaten,
-- keine Wiederholung innerhalb eines Sets,
-- Architekturtests gegen Spring-/JDA-/Persistenzabhängigkeiten.
-
-### Abnahme
-
-- Jede mögliche Runtimeausgabe stammt aus einer erfolgreich validierten Template-Definition.
-- Ein fehlender Wert kann niemals in einen sichtbaren Text gelangen.
-- Auswahltests sind vollständig reproduzierbar.
-- Noch keine Persistenz, Discord-Komponente oder produktive Aktivierung.
-
-Commit-Vorschlag:
-
-```text
-feat: add deterministic excuse catalog
-```
-
-## Paket 2 – Angebotsgründe, Kontextanalyse, Boardanalyse und Tagesausreißer
-
-### Ziel
-
-Eine reine fachliche Policy kann aus einem neuen Ergebnis und explizit gelieferten Vergleichsdaten eine positive oder negative Angebotsentscheidung erzeugen.
-
-### Umfang
-
-- typisierte Schwellenkonfiguration mit den verbindlichen Defaults,
-- reine `ExcuseEligibilityPolicy` oder gleichwertige Komponente,
-- allgemeine Gründe: nicht gelöst und Einreichung ab 23:30 Uhr,
-- GridWords-Gründe: exakt 6/6 und Dauer mindestens 05:00,
-- QuadWords-Gründe: Dauer mindestens 08:00, drei gelöste plus ein ungelöstes Board oder eindeutiges schlechtestes gelöstes Board ab Versuch 8 mit mindestens drei Versuchen Abstand,
-- transportneutrale Ableitung der vier Board-Lösungszeilen,
-- boardlose QuadWords-Fälle ohne Boardfakten,
-- schmaler Query-Port für bisherige gültige Tagesergebnisse desselben Spiels,
-- bestehende spielbezogene Teilnahmeprojektion für historische Teilnehmer,
-- Tagesausreißerregeln mit mindestens zwei anderen Ergebnissen,
-- eingefrorener Vergleichssnapshot für spätere Korrekturrevalidierung,
-- Trennung zwischen Angebotsgrund und zusätzlichen Templatefakten,
-- Ausschlussgrenze für spätere positive Prioritätsereignisse,
-- noch keine Speicherung oder Discord-Ausgabe.
-
-### Designgrenzen
-
-- Tagesvergleich erfolgt nur gegen denselben Spieltyp.
-- `player.active` wird weder im Port noch in der Policy akzeptiert.
-- Andere Spieler werden nicht namentlich in den Kontext übernommen.
-- Später eingehende Ergebnisse ändern den historischen Vergleichssnapshot nicht.
-
-### Tests
-
-- 6/6 gegenüber 5/6,
-- 05:00 gegenüber 04:59,
-- 08:00 gegenüber 07:59,
-- 23:30 gegenüber 23:29:59,
-- Berlin-Zeit einschließlich Tageswechsel und DST mit fester `Clock`,
-- drei gelöste und ein ungelöstes Board,
-- zwei oder vier ungelöste Boards,
-- schlechtestes Board 8 und zweitschlechtestes 5,
-- schlechtestes Board 9 und zweitschlechtestes 6,
-- Abstand 2 gegenüber Abstand 3,
-- Gleichstand der schlechtesten Boards,
-- schlechtestes Board nur in Versuch 7,
-- boardloses Ergebnis,
-- erste vollständig grüne Zeile als Lösungszeile,
-- null, ein und zwei andere Tagesergebnisse,
-- ausschließlich richtige spielbezogene Teilnehmermenge,
-- GridWords-Versuchsabstand 1 gegenüber 2,
-- GridWords-Zeitabstand 01:59 gegenüber 02:00,
-- QuadWords-Zeitabstand 02:59 gegenüber 03:00,
-- spätere Ergebnisse verändern den Snapshot nicht.
-
-### Abnahme
-
-- Alle MVP-Anlässe sind als benannte Fakten verfügbar.
-- Kein Boardkontext kann ohne vier Boards entstehen.
-- Der Abstand zum zweitschlechtesten QuadWords-Board ist exakt drei oder mehr.
-- Noch keine neue Datenbanktabelle oder sichtbare Nachricht.
-
-Commit-Vorschlag:
-
-```text
-feat: evaluate excuse eligibility
-```
-
-## Paket 3 – Liquibase-Schema, PostgreSQL-Zustand, Optionen und Verlauf
-
-### Ziel
-
-PostgreSQL wird zur konfliktfesten Quelle für die einmalige Angebotsentscheidung, den Interaktionszustand, die gezeigten Optionen und die Wiederholungshistorie.
-
-### Umfang
-
-- nächste freie Liquibase-Migration verwenden,
-- Haupttabelle mit genau einem Zustand je `game_result`,
-- Backfill aller vorhandenen Ergebnisse als `NOT_OFFERED`,
-- Status-Check für `NOT_OFFERED`, `AVAILABLE`, `SELECTED`, `DECLINED`, `EXPIRED` und `INVALIDATED`,
-- Fremdschlüssel und Löschsemantik bewusst festlegen,
-- Angebots-, Ablauf-, Kontextgenerations- und Neu-Wurf-Felder,
-- ausgewählte Template-, Stil-, Themen- und Text-Snapshots,
-- Optionstabelle für `INITIAL` und `STYLE_REROLL`, jeweils Position 1 bis 3,
-- Unique Constraints gegen doppelte Positionen und Templates,
-- kleiner Outbound-Port für aktuellen Zustand, atomare Zustandsübergänge, Optionsspeicherung, Cooldown, letzte zehn gültig gewählte Templates und fällige Abläufe,
-- konfliktfeste Serialisierung konkurrierender Angebotsentscheidungen desselben Spielers und Spiels,
-- noch keine Änderung an der kanonischen Nachricht.
-
-### PostgreSQL-Tests
-
-- Migration aus leerem Schema und Upgrade des aktuellen 10.6-Schemas,
-- vollständiger `NOT_OFFERED`-Backfill,
-- genau ein Zustand je Ergebnis,
-- alle Status- und Timestamp-Constraints,
-- Snapshotpflicht bei `SELECTED`,
-- keine Auswahl ohne persistierte aktuelle Option,
-- maximal drei Positionen je Runde,
-- keine doppelte Template-ID innerhalb eines Vorgangs,
-- atomare Speicherung dreier Optionen,
-- konkurrierte Auswahl und konkurrierter Verzicht,
-- einmaliger Neu-Wurf,
-- Drei-Tage-Cooldown Montag bis Donnerstag,
-- unabhängiger Cooldown je Spiel,
-- spielübergreifender Verlauf gewählter Templates,
-- keine Veränderung bestehender Ergebnis-, Submission-, Teilnahme- oder Deliverydaten.
-
-### Abnahme
-
-- Ein Neustart verliert weder Zustand noch Optionen.
-- Alte Ergebnisse können durch spätere Korrekturen kein Angebot erhalten.
-- Datenbankconstraints tragen die zentralen Invarianten.
-- Standardbuild und PostgreSQL-Profil sind grün.
-
-Commit-Vorschlag:
-
-```text
-feat: persist excuse interactions
-```
-
-## Paket 4 – Einmalige Ergebnisintegration, Korrekturrevalidierung und kanonische Projektion
-
-### Ziel
-
-Der bestehende Ergebnis-Upsert entscheidet bei einer echten Neuanlage genau einmal über ein Angebot; Korrekturen revalidieren vorhandene Zustände. Die kanonische Application-Projektion kann Ausreden transportneutral darstellen.
-
-### Umfang
-
-- reine Angebotsentscheidung in den vorhandenen atomaren `ResultStorage`-Pfad integrieren,
-- bei neuer Ergebnis-ID atomar `AVAILABLE` oder `NOT_OFFERED` speichern,
-- bei Replay/Korrektur vorhandenen Ausredenzustand bewahren,
-- Cooldown unter dem in Paket 3 definierten Konkurrenzschutz final prüfen,
-- `AVAILABLE` mit `offered_at`, `expires_at` und eingefrorenem Angebotskontext anlegen,
-- Korrekturrevalidierung für `AVAILABLE` und `SELECTED`,
-- Boardanreicherung als Kontextänderung, nicht als neues Angebot,
-- transportneutrale kanonische Projektion `NONE`, `AVAILABLE` oder `SELECTED(renderedText)`,
-- `CanonicalResultMessage` oder gleichwertiges Modell erweitern,
-- sämtliche Rekonstruktions- und historischen Kontextpfade kopieren den Ausredenzustand vollständig,
-- Renderer ergänzt bei `SELECTED` ausschließlich den gewählten Text ohne Stil oder Label,
-- `NOT_OFFERED`, `DECLINED`, `EXPIRED` und `INVALIDATED` bleiben unsichtbar,
-- noch keine öffentliche Komponente und keine Interaction aktivieren.
-
-### Designgrenzen
-
-- Korrektur darf `NOT_OFFERED` niemals nach `AVAILABLE` ändern.
-- Ein gewählter Text wird nicht neu formuliert.
-- `SELECTED` bleibt nur bei weiterhin erfüllten Bedingungen und exakt identischem Re-Rendering bestehen.
-- Tagesvergleich und ursprünglicher Einreichungszeitpunkt bleiben eingefroren; aktuelle Ergebnis- und Boardfakten werden neu bewertet.
-
-### Tests
-
-- neue qualifizierende und nicht qualifizierende Ergebnisse,
-- vorhandenes Ergebnis mit Korrektur über und unter Schwelle,
-- Replay und konkurrierte identische Submission,
-- Boardanreicherung vor und nach Optionserzeugung,
-- verfügbare Ausrede wird invalidiert,
-- allgemeine gewählte Ausrede bleibt gültig,
-- boardbezogene gewählte Ausrede wird ungültig,
-- geänderter Platzhaltertext führt zu Invalidierung statt Umschreiben,
-- kanonischer Renderer zeigt ausschließlich Text,
-- keine Stil-, Themen-, Anlass- oder Template-Metadaten,
-- bestehende Serien- und historische PublicationContext-Zeilen bleiben erhalten,
-- Feature deaktiviert erzeugt `NOT_OFFERED` und unveränderte Nachricht.
-
-### PostgreSQL-Integration
-
-- ResultStorage und Ausredenentscheidung in derselben Transaktion,
-- Rollback bei einem Persistenzfehler,
-- Korrektur bewahrt eindeutigen Zustand,
-- Invalidierung fordert die kanonische Refreshgeneration korrekt an.
-
-### Abnahme
-
-- Die erste kanonische Projektion kennt den endgültigen persistierten Angebotszustand.
-- Ein späterer Replay kann keine Ausrede nachrüsten.
-- Gewählter Text erscheint ohne Stil und ohne zusätzliche öffentliche Nachricht.
-
-Commit-Vorschlag:
-
-```text
-feat: project excuses into canonical results
-```
-
-## Paket 5 – Kanonische Komponenten, Codec und autorisierter Öffnungsflow
-
-### Ziel
-
-`AVAILABLE` wird als stabiler öffentlicher Button in derselben kanonischen Nachricht dargestellt. Ein dünner Interaction-Adapter kann den Ergebnisautor sicher und ephemer in den Auswahlflow führen.
-
-### Umfang
-
-- kanonische Komponentenprojektion ergänzen,
-- `CanonicalMessageGateway` und JDA-Adapter übertragen Embed und Action Rows gemeinsam,
-- Create, Edit, Lost-Message-Recovery und Duplikatbereinigung berücksichtigen Komponenten,
-- `AVAILABLE` erzeugt genau den Button `Ausrede wählen`,
-- alle anderen Zustände entfernen den Button,
-- versionierter Component-Codec `excuse:v1`,
-- öffentlicher Open-Flow validiert Guild, Channel, aktuelle kanonische Message-ID, Ergebnis-ID, Ergebnisautor, Zustand und Ablaufzeit,
-- JDA-Listener bestätigt sofort ephemer und delegiert auf den begrenzten Worker,
-- fremde Nutzer erhalten nur einen ephemeren Hinweis,
-- initiale Optionen werden beim ersten autorisierten Öffnen atomar persistiert und anschließend ephemer dargestellt,
-- erneutes Öffnen derselben Kontextgeneration zeigt dieselben Optionen.
-
-### Tests
-
-- Create und Edit mit Button,
-- Edit entfernt veralteten Button,
-- Lost-Message-Recreate mit aktuellem Zustand,
-- unveränderte Publication-ID und Footer-Recovery,
-- falsche Guild, Channel, Message-ID und Ergebnis-ID,
-- fremder Nutzer,
-- abgelaufenes oder terminales Angebot,
-- manipulierte und unbekannte Component-Version,
-- volle Worker-Queue,
-- ephemeres Defer vor Datenbankarbeit,
-- exakt drei persistierte Optionen vor sichtbarer Antwort,
-- Neustart und erneutes Öffnen mit identischen Optionen,
-- Discord-Action-Row- und Custom-ID-Limits.
-
-### Abnahme
-
-- Der Channel enthält weiterhin genau eine kanonische Nachricht pro Ergebnis.
-- Vorschläge bleiben vollständig ephemer.
-- Nur der Ergebnisautor erreicht einen gültigen Auswahlzustand.
-- Das Feature bleibt bis Paket 6 standardmäßig deaktiviert.
-
-Commit-Vorschlag:
-
-```text
-feat: offer excuses on canonical results
-```
-
-## Paket 6 – Vorschläge, Stil-Neuwurf, Auswahl, Verzicht und Refresh-Handoff
-
-### Ziel
-
-Der vollständige freiwillige Nutzerflow ist funktionsfähig und jede öffentliche Änderung wird über einen atomar angeforderten kanonischen Refresh ausgeliefert.
-
-### Umfang
-
-- ephemere Darstellung der drei initialen Vorschläge mit Stilnamen,
-- Auswahlbuttons mit Runde, Kontextgeneration und Position,
-- `Anderer Stil` nur bei mindestens einem Stil mit drei neuen Kandidaten,
-- ephemeres Stil-Select mit stabilen Werten,
-- nach Stilwahl genau drei bislang nicht gezeigte Texte dieses Stils,
-- Neu-Wurf wird erst bei erfolgreicher Optionspersistenz verbraucht,
-- zweiter Neu-Wurf wird abgelehnt,
-- Auswahl nur aus einer persistierten aktuellen Option,
-- atomarer Übergang `AVAILABLE -> SELECTED`,
-- Snapshots für Template, Stil, Thema und gerenderten Text,
-- atomarer Übergang `AVAILABLE -> DECLINED`,
-- Zustandsübergang und `requestCanonicalRefresh(gameResultId)` in derselben PostgreSQL-Operation,
-- keinerlei direkter öffentlicher Discord-Edit aus dem Listener,
-- Erfolg und fachliche Ablehnungen ephemer bestätigen,
-- Feature-Flag kann nach vollständiger Paketprüfung erstmals in Testkonfiguration aktiviert werden.
-
-### Tests
-
-- Initialauswahl aus drei Stilen,
-- zulässige Wiederholung eines Stils nur bei unzureichender Stildiversität,
-- mindestens ein Kontexttemplate,
-- Stilmenü nur mit drei verfügbaren neuen Kandidaten,
-- genau ein Neu-Wurf,
-- gezeigte IDs aus Initialrunde im Neu-Wurf ausgeschlossen,
-- manipulierte Runde, Position, Generation und Stilwerte,
-- Auswahl einer nicht gezeigten Option,
-- Doppelklick auf dieselbe Option,
-- konkurrierende unterschiedliche Optionen,
-- Auswahl gegen gleichzeitigen Verzicht,
-- fremder Nutzer verbraucht nichts,
-- Snapshot vor kanonischem Refresh,
-- Refreshfehler lässt persistierte Auswahl bestehen und wird durch Recovery nachgeliefert,
-- kanonische Nachricht zeigt nach Refresh ausschließlich den gewählten Text.
-
-### PostgreSQL-Integration
-
-- Optionspersistenz, Auswahl und Refreshgeneration atomar,
-- Konkurrenz mit echten Transaktionen,
-- Neustart zwischen Auswahlpersistenz und Discord-Edit,
-- keine doppelte Auswahl oder zweite Refreshwirkung.
-
-### Abnahme
-
-- Der vollständige Auswahlflow ist ohne Runtime-KI nutzbar.
-- Stil erscheint nur ephemer.
-- Auswahl und Verzicht sind auch bei Crash und Konkurrenz eindeutig.
-
-Commit-Vorschlag:
-
-```text
-feat: select and publish excuses
-```
-
-## Paket 7 – Ablauf, Recovery, Konkurrenz, Boardanreicherung und Wiederholungsschutz
-
-### Ziel
-
-Alle zeitlichen, korrigierenden und konkurrierenden Randfälle sind persistent wiederaufnehmbar; häufige Textwiederholungen werden verhindert.
-
-### Umfang
-
-- Ablaufdienst über bestehenden Startup-/Scheduler-Trigger,
-- atomarer Übergang `AVAILABLE -> EXPIRED` plus Refreshauftrag,
-- Interaction kann denselben Ablauf idempotent feststellen,
-- fällige Angebote paginiert und begrenzt verarbeiten,
-- Retirement-Fence verhindert Wiederveröffentlichung alter Ergebnisnachrichten,
-- Startup-Recovery nach Auswahl, Verzicht, Ablauf, Invalidierung und externer Löschung,
-- Korrektur und Boardanreicherung während geöffneter ephemerer Auswahl,
-- Kontextgeneration ersetzt nur ungewählte Optionen,
-- veraltete Interactions werden sicher abgelehnt,
-- hartes Ausschließen des zuletzt gewählten Templates,
-- weiches Ausschließen der weiteren neun zuletzt gewählten Templates,
-- älteste weiche Ausschlüsse bei Kandidatenmangel kontrolliert freigeben,
-- spielübergreifende Templatehistorie, aber spielbezogener Cooldown,
-- Themenwiederholungen nach Möglichkeit reduzieren,
-- sichere Logs ohne Rohshares, Tokens oder unnötigen Ausredentext.
-
-### Tests
-
-- Ablauf exakt an der Grenze und eine Sekunde davor,
-- Startup mit bereits abgelaufenem Angebot,
-- konkurrierter Scheduler und Interaction,
-- Retry und permanenter Discordfehler,
-- pensionierte Nachricht wird nicht neu erstellt,
-- Korrektur zwischen Öffnen und Auswählen,
-- Boardanreicherung ersetzt initiale Optionen,
-- alte Kontextgeneration kann nicht gewählt werden,
-- allgemeine Auswahl überlebt irrelevante Boardanreicherung,
-- letzte Auswahl hart ausgeschlossen,
-- neun weitere weich ausgeschlossen,
-- kontrollierte Wiederzulassung bei kleinem Kandidatenpool,
-- GridWords-Auswahl beeinflusst folgende QuadWords-Kandidaten,
-- Cooldown bleibt dagegen pro Spiel getrennt,
-- Mehrfachstart und mehrfacher Schedulerlauf bleiben idempotent.
-
-### PostgreSQL-Integration
-
-- konfliktfester Ablaufübergang,
-- Recovery nach jedem relevanten Crashfenster,
-- Verlaufssortierung und Soft-Fallback,
-- externe Nachrichtenlöschung und bestehende kanonische Reconciliation,
-- keine Hot-Loops.
-
-### Abnahme
-
-- Kein Button bleibt nach Auswahl, Verzicht, Ablauf oder Invalidierung dauerhaft sichtbar.
-- Kein Botneustart setzt Neu-Wurf oder Optionen zurück.
-- Das unmittelbar zuvor gewählte Template kann nicht erneut angeboten werden.
-
-Commit-Vorschlag:
-
-```text
-feat: harden excuse lifecycle
-```
-
-## Paket 8A – Redaktioneller Vollkatalog
-
-### Ziel
-
-Das Feature erhält einen abwechslungsreichen, vollständig geprüften und inhaltlich freigegebenen Katalog.
-
-### Umfang
-
-- mindestens sechs allgemeine Templates je Stil,
-- insgesamt ungefähr 70 bis 90 redaktionell geprüfte Templates,
-- zusätzliche Familien für GridWords 6/6, GridWords langsam, QuadWords langsam, nicht gelöst, sehr späte Einreichung, einzelnes QuadWords-Board und bisherigen Tagesausreißer,
-- keine beleidigenden, herablassenden, personenbezogenen oder namentlich vergleichenden Texte,
-- keine falschen finalen Tagesbehauptungen,
-- stabile IDs, Themen und Spezifitäten gemäß dem implementierten Schema,
-- vollständiger Katalog-Golden-Test beziehungsweise die von Paket 1 vorgesehene Katalogvalidierung.
-
-### Abnahme
-
-- Mindestmengen je Stil sind erfüllt.
-- Alle Templates werden vom produktiven Loader akzeptiert.
-- Jeder Stil ist redaktionell klar unterscheidbar.
-- Mindestens drei allgemeine Texte je Stil bleiben nach einer initial gezeigten Option für einen Stil-Neuwurf verfügbar.
-- Kein Text erzeugt unerwünschte Mentions oder erfundene Tatsachen.
-
-Commit-Vorschlag:
-
-```text
-content: add excuse catalog
-```
-
-## Paket 8B – Gesamtintegration, reale Abnahme und Abschluss
-
-### Ziel
-
-Das Feature wird vollständig regressionsgeprüft, dokumentiert und real in Discord abgenommen.
-
-### Umfang
-
-- Vollkatalog aus Paket 8A integrieren,
-- gesamter Standard- und PostgreSQL-Vollpfad,
-- Architekturregression,
-- Konfigurationsbeispiele und `.env.example` aktualisieren,
-- README, Requirements, Architektur, Implementierungsplan, AGENTS und Inkrementstatus abschließen,
-- Issue- und PR-Checklisten aktualisieren,
-- reale Discord-/PostgreSQL-Abnahme mit separater Testanwendung,
-- Feature in Produktion erst nach erfolgreichem RC und bewusstem Rollout aktivieren.
-
-### Vollständige automatisierte Abnahme
-
-- alle Schwellen- und Kontextgrenzen,
-- vollständiger Katalog,
-- GridWords-only und QuadWords-only,
-- boardlose und bebilderte QuadWords-Ergebnisse,
-- neue Ergebnisse, Replays, Korrekturen und Boardanreicherungen,
-- Cooldown und Wiederholungsschutz,
-- Auswahl, Stil-Neuwurf, Verzicht und Ablauf,
-- Autorisierung und manipulierte Komponenten,
-- kanonische Create-/Edit-/Recreate-/Recoverypfade,
-- Retirement und Cleanup,
-- PostgreSQL-Migration, Backfill, Constraints und Konkurrenz,
-- bestehende Parser-, Ergebnis-, Status-, Reminder-, Serien- und Reportregression.
-
-### Reale Discord-Abnahme
-
-Mindestens prüfen:
-
-- qualifizierendes GridWords-Ergebnis mit öffentlichem Button,
-- qualifizierendes QuadWords-Ergebnis mit Boardkontext,
-- boardloses QuadWords ohne Boardbehauptung,
-- drei ephemere Vorschläge mit Stilnamen,
-- einmaliger Stil-Neuwurf,
-- Auswahl und ausschließlicher Text ohne Stil in derselben Message-ID,
-- Verzicht ohne öffentliche Zusatzmeldung,
-- Ablauf und Buttonentfernung,
-- fremder Nutzer,
-- Doppelklick,
-- Korrektur vor und nach Auswahl,
-- Boardanreicherung,
-- Neustart zwischen Auswahl und Refresh,
-- externe Löschung und Recovery,
-- unveränderte Ergebnis-, Serien-, Tagesstatus-, Reminder- und Berichtsfunktion.
-
-### Abnahme
-
-- Standardbuild grün.
-- PostgreSQL-Profil grün.
-- GitHub Actions vollständig grün.
-- Realer Discord-Smoke-Test erfolgreich dokumentiert.
-- Keine Secrets oder echten Tokens in Logs, Fixtures, Issue oder PR.
-- Issue #42 kann geschlossen und Inkrement 11 als abgeschlossen markiert werden.
-
-Commit-Vorschlag:
-
-```text
-feat: complete contextual excuses
-```
+- öffentliche Stilbezeichnungen,
+- ausredenbezogene Achievements oder Rückblicke,
+- ein allgemeines Plugin- oder Event-Framework.
+
+Spätere Unterhaltungsfeatures können die vorhandenen kanonischen Integrationsgrenzen verwenden, benötigen aber ein eigenes priorisiertes Issue und eine neue fachliche Spezifikation.
