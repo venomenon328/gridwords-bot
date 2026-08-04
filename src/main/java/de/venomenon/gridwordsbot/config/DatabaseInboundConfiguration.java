@@ -83,20 +83,20 @@ class DatabaseInboundConfiguration {
                 loader,
                 new QuadWordsImageParser(),
                 clock,
-                properties.zoneId(),
+                properties.schedule().timeZone(),
                 players,
                 submissions,
-                canonicalProvider::getIfAvailable,
-                statusProvider::getIfAvailable);
-    }
-
-    @Bean
-    PersonalStatusUseCase personalStatusUseCase(
-            Clock clock,
-            GridwordsBotProperties properties,
-            PlayerStore players,
-            LatestValidSubmissionQuery latestSubmissions) {
-        return new PersonalStatusService(clock, properties.zoneId(), players, latestSubmissions);
+                sourceMessageId -> {
+                    CanonicalGridWordsPublicationService canonical = canonicalProvider.getIfAvailable();
+                    return canonical != null && canonical.publish(sourceMessageId);
+                },
+                properties.discord().adminUserIds()::contains,
+                gameDate -> {
+                    DailyStatusRefreshService status = statusProvider.getIfAvailable();
+                    if (status != null) {
+                        status.refresh(gameDate);
+                    }
+                });
     }
 
     @Bean
@@ -106,21 +106,28 @@ class DatabaseInboundConfiguration {
             PlayerStore players,
             ObjectProvider<DailyStatusRefreshService> statusProvider) {
         return new PlayerParticipationService(
-                clock,
-                properties.zoneId(),
                 players,
-                statusProvider::getIfAvailable);
+                clock,
+                properties.schedule().timeZone(),
+                Set.copyOf(properties.discord().adminUserIds()),
+                gameDate -> {
+                    DailyStatusRefreshService status = statusProvider.getIfAvailable();
+                    if (status != null) {
+                        status.refreshExisting(gameDate);
+                    }
+                });
     }
 
     @Bean
-    DailyResultDetailsUseCase dailyResultDetailsUseCase(DailyResultDetailsQuery query) {
-        return new DailyResultDetailsService(query);
+    ZoneId businessZone(GridwordsBotProperties properties) {
+        return properties.schedule().timeZone();
     }
 
     @Bean
-    DailyStatusInteractionContextQuery dailyStatusInteractionContextQuery(
-            CanonicalPublicationContextStore contexts) {
-        return contexts::findStatusInteractionContext;
+    DailyResultDetailsUseCase dailyResultDetailsUseCase(
+            DailyStatusInteractionContextQuery contexts,
+            DailyResultDetailsQuery results) {
+        return new DailyResultDetailsService(contexts, results);
     }
 
     @Bean
@@ -130,7 +137,7 @@ class DatabaseInboundConfiguration {
             havingValue = "false",
             matchIfMissing = true)
     ExcuseOpenUseCase disabledExcuseOpenUseCase() {
-        return request -> ExcuseOpenUseCase.OpenResult.notOffered();
+        return request -> new ExcuseOpenUseCase.Rejected(ExcuseOpenUseCase.Reason.FEATURE_DISABLED);
     }
 
     @Bean
@@ -139,23 +146,20 @@ class DatabaseInboundConfiguration {
             name = "contextual-enabled",
             havingValue = "true")
     ExcuseOpenUseCase enabledExcuseOpenUseCase(
+            GridwordsBotProperties properties,
+            GameResultStore results,
+            PlayerStore players,
+            SubmissionStore submissions,
             ExcuseStateStore states,
-            GameResultStore gameResults,
-            DailyResultDetailsQuery resultDetails,
-            DailyStatusInteractionContextQuery statusContexts,
             de.venomenon.gridwordsbot.domain.excuse.ExcuseCatalog catalog,
             de.venomenon.gridwordsbot.domain.excuse.ExcuseSelector selector,
             Clock clock,
-            GridwordsBotProperties properties) {
+            ExcuseExpirationUseCase expirations) {
         return new ExcuseOpenService(
-                states,
-                gameResults,
-                resultDetails,
-                statusContexts,
-                catalog,
-                selector,
-                clock,
-                properties.excuses().offerLifetime());
+                properties.discord().guildId(), properties.discord().channelId(), results, players, submissions, states,
+                new de.venomenon.gridwordsbot.domain.excuse.ExcuseEligibilityPolicy(
+                        de.venomenon.gridwordsbot.domain.excuse.ExcuseEligibilityThresholds.defaults()),
+                catalog, selector, clock, expirations);
     }
 
     @Bean
@@ -166,15 +170,11 @@ class DatabaseInboundConfiguration {
             matchIfMissing = true)
     ExcuseInteractionUseCase disabledExcuseInteractionUseCase() {
         return new ExcuseInteractionUseCase() {
-            @Override public InteractionResult pick(PickRequest request) {
-                return InteractionResult.rejected("NOT_OFFERED");
-            }
-            @Override public InteractionResult reroll(RerollRequest request) {
-                return InteractionResult.rejected("NOT_OFFERED");
-            }
-            @Override public InteractionResult decline(DeclineRequest request) {
-                return InteractionResult.rejected("NOT_OFFERED");
-            }
+            private final Rejected disabled = new Rejected(Reason.FEATURE_DISABLED);
+            @Override public Result openStyleMenu(ActionRequest request) { return disabled; }
+            @Override public Result selectStyle(StyleRequest request) { return disabled; }
+            @Override public Result pick(PickRequest request) { return disabled; }
+            @Override public Result decline(ActionRequest request) { return disabled; }
         };
     }
 
@@ -184,13 +184,21 @@ class DatabaseInboundConfiguration {
             name = "contextual-enabled",
             havingValue = "true")
     ExcuseInteractionUseCase enabledExcuseInteractionUseCase(
+            GridwordsBotProperties properties,
+            GameResultStore results,
+            PlayerStore players,
+            SubmissionStore submissions,
             ExcuseStateStore states,
-            GameResultStore gameResults,
             de.venomenon.gridwordsbot.domain.excuse.ExcuseCatalog catalog,
             de.venomenon.gridwordsbot.domain.excuse.ExcuseSelector selector,
+            Clock clock,
             CanonicalRefreshWakeUp refreshWakeUp,
-            Clock clock) {
-        return new ExcuseInteractionService(states, gameResults, catalog, selector, refreshWakeUp, clock);
+            ExcuseExpirationUseCase expirations) {
+        return new ExcuseInteractionService(
+                properties.discord().guildId(), properties.discord().channelId(), results, players, submissions, states,
+                new de.venomenon.gridwordsbot.domain.excuse.ExcuseEligibilityPolicy(
+                        de.venomenon.gridwordsbot.domain.excuse.ExcuseEligibilityThresholds.defaults()),
+                catalog, selector, clock, refreshWakeUp, expirations);
     }
 
     @Bean
@@ -247,47 +255,72 @@ class DatabaseInboundConfiguration {
             Clock clock,
             GridwordsBotProperties properties,
             PlayerStore players,
-            LatestValidSubmissionQuery latestSubmissions) {
-        return new PersonalStatusService(clock, properties.zoneId(), players, latestSubmissions);
+            LatestValidSubmissionQuery submissions) {
+        return new PersonalStatusService(
+                players,
+                submissions,
+                clock,
+                properties.schedule().timeZone(),
+                Set.copyOf(properties.discord().adminUserIds()));
     }
 
     @Bean
-    PlayerParticipationUseCase playerParticipationUseCase(
-            PlayerStore players,
-            Clock clock,
-            GridwordsBotProperties properties,
-            ObjectProvider<DailyStatusRefreshService> statusProvider) {
-        return new PlayerParticipationService(players, clock, properties.zoneId(), statusProvider::getIfAvailable);
-    }
-
-    @Bean
-    DailyResultDetailsUseCase dailyResultDetailsUseCase(DailyResultDetailsQuery query) {
-        return new DailyResultDetailsService(query);
-    }
-
-    @Bean
-    DailyStatusInteractionContextQuery dailyStatusInteractionContextQuery(CanonicalPublicationContextStore store) {
-        return store::findStatusInteractionContext;
-    }
-
-    @Bean
-    @ConditionalOnMissingBean
-    AttachmentContentLoader attachmentContentLoader() {
-        return attachment -> {
-            throw new UnsupportedOperationException("Attachment loading is not available");
-        };
+    PersonalStatusEmbedRenderer personalStatusEmbedRenderer(GridwordsBotProperties properties) {
+        return new PersonalStatusEmbedRenderer(properties.schedule().timeZone());
     }
 
     @Bean
     @ConditionalOnProperty(prefix = "gridwords.discord", name = "enabled", havingValue = "true")
-    JdaAttachmentContentLoader jdaAttachmentContentLoader(JDA jda) {
+    DiscordParticipationCommandListener discordParticipationCommandListener(
+            GridwordsBotProperties properties,
+            PlayerParticipationUseCase commands,
+            PersonalStatusUseCase personalStatus,
+            PersonalStatusEmbedRenderer personalStatusRenderer) {
+        return new DiscordParticipationCommandListener(
+                properties, commands, personalStatus, personalStatusRenderer);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "gridwords.discord", name = "enabled", havingValue = "true")
+    DailyResultDetailsInteractionListener dailyResultDetailsInteractionListener(
+            GridwordsBotProperties properties,
+            ExecutorService discordInboundExecutor,
+            DailyResultDetailsUseCase details) {
+        return new DailyResultDetailsInteractionListener(properties, discordInboundExecutor, details);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "gridwords.discord", name = "enabled", havingValue = "true")
+    ExcuseOpenInteractionListener excuseOpenInteractionListener(
+            GridwordsBotProperties properties,
+            ExecutorService discordInboundExecutor,
+            ExcuseOpenUseCase open) {
+        return new ExcuseOpenInteractionListener(properties, discordInboundExecutor, open);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "gridwords.discord", name = "enabled", havingValue = "true")
+    ExcuseInteractionListener excuseInteractionListener(
+            GridwordsBotProperties properties,
+            ExecutorService discordInboundExecutor,
+            ExcuseInteractionUseCase interactions) {
+        return new ExcuseInteractionListener(properties, discordInboundExecutor, interactions);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "gridwords.discord", name = "enabled", havingValue = "true")
+    AttachmentContentLoader attachmentContentLoader(JDA jda) {
         return new JdaAttachmentContentLoader(jda);
     }
 
     @Bean
     @ConditionalOnProperty(prefix = "gridwords.discord", name = "enabled", havingValue = "true")
-    CanonicalMessageGateway canonicalMessageGateway(JDA jda) {
-        return new JdaCanonicalMessageGateway(jda);
+    CanonicalMessageGateway canonicalMessageGateway(
+            JDA jda,
+            ObjectProvider<CanonicalPublicationContextStore> contexts) {
+        return new JdaCanonicalMessageGateway(
+                jda,
+                contexts.getIfAvailable(CanonicalPublicationContextStore::none));
     }
 
     @Bean
@@ -296,90 +329,79 @@ class DatabaseInboundConfiguration {
         return new JdaSourceMessageDeletionGateway(jda);
     }
 
-    @Bean
-    @ConditionalOnProperty(prefix = "gridwords.discord", name = "enabled", havingValue = "true")
-    PersonalStatusEmbedRenderer personalStatusEmbedRenderer() {
-        return new PersonalStatusEmbedRenderer();
+    @Bean(destroyMethod = "shutdown")
+    ThreadPoolTaskScheduler canonicalPublicationTaskScheduler() {
+        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(1);
+        scheduler.setThreadNamePrefix("gridwords-canonical-retry-");
+        return scheduler;
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "gridwords.discord", name = "enabled", havingValue = "true")
-    DiscordInboundListener discordInboundListener(
-            JDA jda,
-            ProcessSharedResultUseCase processSharedResultUseCase,
-            ExecutorService inboundExecutor,
-            GridwordsBotProperties properties) {
-        return new DiscordInboundListener(jda, processSharedResultUseCase, inboundExecutor, properties.discord().channelId());
-    }
-
-    @Bean
-    @ConditionalOnProperty(prefix = "gridwords.discord", name = "enabled", havingValue = "true")
-    DiscordParticipationCommandListener discordParticipationCommandListener(
-            JDA jda,
-            PlayerParticipationUseCase participationUseCase,
-            GridwordsBotProperties properties) {
-        return new DiscordParticipationCommandListener(jda, participationUseCase, properties.discord().guildId());
-    }
-
-    @Bean
-    @ConditionalOnProperty(prefix = "gridwords.discord", name = "enabled", havingValue = "true")
-    DailyResultDetailsInteractionListener dailyResultDetailsInteractionListener(
-            JDA jda,
-            DailyResultDetailsUseCase useCase,
-            GridwordsBotProperties properties) {
-        return new DailyResultDetailsInteractionListener(jda, useCase, properties.discord().guildId());
-    }
-
-    @Bean
-    @ConditionalOnProperty(prefix = "gridwords.discord", name = "enabled", havingValue = "true")
-    ExcuseOpenInteractionListener excuseOpenInteractionListener(
-            JDA jda,
-            ExcuseOpenUseCase useCase,
-            GridwordsBotProperties properties) {
-        return new ExcuseOpenInteractionListener(jda, useCase, properties.discord().guildId());
-    }
-
-    @Bean
-    @ConditionalOnProperty(prefix = "gridwords.discord", name = "enabled", havingValue = "true")
-    ExcuseInteractionListener excuseInteractionListener(
-            JDA jda,
-            ExcuseInteractionUseCase useCase,
-            GridwordsBotProperties properties) {
-        return new ExcuseInteractionListener(jda, useCase, properties.discord().guildId());
-    }
-
-    @Bean
-    @DependsOn("databaseInboundStartup")
-    ApplicationRunner databaseInboundStartupRunner(ApplicationRunner databaseInboundStartup) {
-        return databaseInboundStartup;
-    }
-
-    @Bean
-    @ConditionalOnMissingBean(PublicationRetryScheduler.class)
     PublicationRetryScheduler publicationRetryScheduler(ThreadPoolTaskScheduler scheduler) {
-        return scheduler::schedule;
+        return (at, action) -> scheduler.schedule(action, at);
     }
 
     @Bean
-    DailyChannelCleanupService dailyChannelCleanupService(
-            ChannelMessageRetirementStore retirementStore,
-            CanonicalMessageGateway canonicalGateway,
-            SourceMessageDeletionGateway sourceDeletionGateway,
+    @ConditionalOnProperty(prefix = "gridwords.discord", name = "enabled", havingValue = "true")
+    CanonicalGridWordsPublicationService canonicalGridWordsPublicationService(
+            GameResultStore results,
+            PlayerStore players,
+            SubmissionStore submissions,
+            CanonicalMessageGateway discord,
             Clock clock,
-            GridwordsBotProperties properties) {
-        return new DailyChannelCleanupService(
-                retirementStore,
-                canonicalGateway,
-                sourceDeletionGateway,
+            GridwordsBotProperties properties,
+            PublicationRetryScheduler retries,
+            ObjectProvider<GridWordsSourceDeletionService> deletions,
+            ChannelMessageRetirementStore retirement,
+            ObjectProvider<ExcuseStateStore> excuses) {
+        return new CanonicalGridWordsPublicationService(
+                results,
+                players,
+                submissions,
+                discord,
                 clock,
-                properties.zoneId());
+                properties.schedule().timeZone(),
+                retries,
+                sourceMessageId -> {
+                    GridWordsSourceDeletionService deletion = deletions.getIfAvailable();
+                    if (deletion != null) {
+                        deletion.reconcileAfterCanonicalPublication(sourceMessageId);
+                    }
+                }, excuses.getIfAvailable(CanonicalGridWordsPublicationService::noExcuses))
+                .withRetirementFence(retirement);
     }
 
     @Bean
+    @ConditionalOnProperty(prefix = "gridwords.discord", name = "enabled", havingValue = "true")
     GridWordsSourceDeletionService gridWordsSourceDeletionService(
-            SourceDeletionRecoveryStore recoveryStore,
+            SubmissionStore submissions,
             SourceMessageDeletionGateway deletionGateway,
-            CanonicalGridWordsPublicationService canonicalPublicationService) {
-        return new GridWordsSourceDeletionService(recoveryStore, deletionGateway, canonicalPublicationService);
+            Clock clock,
+            PublicationRetryScheduler retries,
+            ObjectProvider<SourceDeletionRecoveryStore> recovery) {
+        return new GridWordsSourceDeletionService(
+                submissions,
+                deletionGateway,
+                clock,
+                retries,
+                recovery.getIfAvailable(() -> ignored -> 0));
+    }
+
+    @Bean
+    @DependsOn("liquibase")
+    ApplicationRunner databaseInboundStartup(
+            ObjectProvider<JDA> jda,
+            ObjectProvider<DiscordInboundListener> listener,
+            ObjectProvider<DiscordParticipationCommandListener> commands,
+            ObjectProvider<DailyResultDetailsInteractionListener> resultDetails,
+            ObjectProvider<ExcuseOpenInteractionListener> excuseOpen,
+            ObjectProvider<ExcuseInteractionListener> excuseInteractions,
+            ObjectProvider<ExcuseExpirationUseCase> excuseExpirations,
+            ObjectProvider<CanonicalGridWordsPublicationService> canonical,
+            ObjectProvider<GridWordsSourceDeletionService> deletion,
+            ObjectProvider<DailyChannelCleanupService> cleanup) {
+        return new DatabaseInboundStartup(
+                jda, listener, commands, resultDetails, excuseOpen, excuseInteractions, excuseExpirations, canonical, deletion, cleanup);
     }
 }
