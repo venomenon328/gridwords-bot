@@ -1,6 +1,6 @@
 # Manifest des redaktionellen Ausredenkatalogs
 
-Dieses Manifest ist der Einstiegspunkt für Inkrement 11, Paket 8A. Es konsolidiert die verteilten Arbeitsquellen, ihre Mengen und die redaktionelle Präzedenz bis zur Erzeugung des produktiven JSON-Katalogs.
+Dieses Manifest ist der Einstiegspunkt für Inkrement 11, Paket 8A. Es konsolidiert die redaktionellen Quellen, ihre Mengen, die Qualitätsregeln und den produktiven Katalog.
 
 ## Gesamtbestand
 
@@ -15,6 +15,18 @@ Dieses Manifest ist der Einstiegspunkt für Inkrement 11, Paket 8A. Es konsolidi
 | `CLEAR_CURRENT_DAILY_OUTLIER` | `excuse-catalog-draft-current-daily-outlier.md` | 58 |
 | **Gesamt** |  | **564** |
 
+Der produktive Snapshot liegt unter:
+
+```text
+src/main/resources/excuses/catalog.json
+```
+
+Katalogversion:
+
+```text
+2026.08.04.1
+```
+
 ## Ergänzende Quellen
 
 | Datei | Funktion |
@@ -25,16 +37,17 @@ Dieses Manifest ist der Einstiegspunkt für Inkrement 11, Paket 8A. Es konsolidi
 | `../requirements/excuse-catalog-volume.md` | fachlich abgenommener Umfang von 564 Templates; ersetzt die frühere Größenordnung von 70 bis 90 |
 | `../../tools/build_excuse_catalog.py` | deterministische Erzeugung und Prüfung von `catalog.json` |
 
-## Präzedenz bei der Katalogisierung
+## Präzedenz bei späteren Änderungen
 
-1. Direkt überarbeiteter Text in einem Familienentwurf.
-2. Eine explizite Ersetzung aus `excuse-catalog-review-pass-1.md`.
-3. Ursprünglicher Text aus dem jeweiligen Familienentwurf.
-4. Themenzuordnung aus `excuse-catalog-general-topic-map.md`.
-5. Familienmetadaten aus dem jeweiligen Entwurf.
-6. Allgemeine Qualitätsregeln.
+1. Produktiver Katalog und stabile Template-ID.
+2. Direkt überarbeiteter Text in einem Familienentwurf.
+3. Eine explizite Ersetzung aus `excuse-catalog-review-pass-1.md`.
+4. Ursprünglicher Text aus dem jeweiligen Familienentwurf.
+5. Themenzuordnung aus `excuse-catalog-general-topic-map.md`.
+6. Familienmetadaten aus dem jeweiligen Entwurf.
+7. Allgemeine Qualitätsregeln.
 
-Bei einem Widerspruch wird nicht geraten. Der Konflikt wird vor Erzeugung des produktiven Katalogs redaktionell aufgelöst.
+Eine bestehende ID wird nicht für eine neue Witzprämisse umgedeutet. Eine inhaltlich neue Ausrede erhält eine neue ID. Bei einem Widerspruch wird nicht geraten; er wird vor einer neuen Katalogversion redaktionell aufgelöst.
 
 ## Stabile Mengen
 
@@ -42,7 +55,15 @@ Bei einem Widerspruch wird nicht geraten. Der Konflikt wird vor Erzeugung des pr
 - Jeder der sieben spezifischen Anlässe verwendet alle acht Stile.
 - Jede normale Anlass-Stil-Kombination besitzt mindestens sechs Texte.
 - Der Board-Zusammenbruch differenziert zusätzlich universelle Texte, ein ungelöstes Board und einen gelösten deutlichen Ausreißer.
-- Kein Text wird allein zur Reduktion des Katalogumfangs entfernt.
+- Kein Text wurde allein zur Reduktion des Katalogumfangs entfernt.
+
+## Qualitätsdurchgang
+
+Der Hinweis, dass ein Text nicht bloß den Trigger wiederholen soll, wurde als verbindliche Regel übernommen. Ein Text benötigt grundsätzlich eine Ursache, Verteidigung, Umdeutung, Schuldverschiebung, Relativierung oder absurde Begründung.
+
+Bewusst erhalten bleiben Ausnahmen, bei denen extreme Kürze, Überhöhung oder unangemessene Stilsicherheit selbst die Pointe bilden. Das betrifft insbesondere knappe norddeutsche und überdramatische Varianten.
+
+Der Tagesausreißer-Block wurde vollständig nach diesem Maßstab geschärft. Weitere beschreibende Langsamkeits- und Allgemeintexte wurden gezielt überarbeitet. Die verbindlichen Einzeländerungen stehen in `excuse-catalog-review-pass-1.md`.
 
 ## Compiler-Invarianten
 
@@ -60,21 +81,29 @@ Bei einem Widerspruch wird nicht geraten. Der Konflikt wird vor Erzeugung des pr
 - Textlängen innerhalb der Discord-/Schemaschranke,
 - Anwendung des Qualitätsdurchgangs und der allgemeinen Themenzuordnung.
 
-Vorgesehene Befehle:
+Befehle für spätere Katalogänderungen:
 
 ```text
 python tools/build_excuse_catalog.py
 python tools/build_excuse_catalog.py --check
 ```
 
-## Noch ausstehende technische Katalogisierung
+## Abnahme
 
-- den Compiler auf dem vollständigen Repository ausführen,
-- erzeugtes `src/main/resources/excuses/catalog.json` committen,
-- gegebenenfalls vom Compiler gemeldete Dubletten oder Metadatenkonflikte redaktionell auflösen,
-- produktiven Loader und Coverage-Prüfung ausführen,
-- Standardbuild vollständig ausführen.
+Der Compiler hat den vollständigen Katalog ohne Mengen-, Dubletten-, Terminologie-, Bedingungs- oder Platzhalterfehler erzeugt.
+
+`ProductionExcuseCatalogTest` lädt denselben Snapshot über den produktiven Java-Loader und prüft:
+
+- Version und exakt 564 Templates,
+- eindeutige IDs und Texte,
+- Familien- und Stilabdeckung,
+- mindestens sechs Texte je Anlass und Stil,
+- erlaubte Terminologie und Mentions,
+- Gewichte und Auswahlstatus,
+- die verbindlichen redaktionellen Überarbeitungen.
+
+Der abschließende Standardbuild lief mit **558 Tests ohne Fehler** erfolgreich. Das PostgreSQL-Integrationsprofil war ebenfalls vollständig grün.
 
 ## Paketstatus
 
-Die **redaktionelle Texterstellung**, der erste Qualitätsdurchgang, die Themenzuordnung und der deterministische Compiler sind abgeschlossen. Paket 8A bleibt offen, bis der produktive JSON-Katalog erzeugt, validiert und im Standardbuild erfolgreich geprüft wurde.
+**Paket 8A ist abgeschlossen.** Die redaktionelle Texterstellung, der Qualitätsdurchgang, die Themenzuordnung, der deterministische Compiler, der produktive JSON-Katalog und die Laufzeitvalidierung sind vollständig umgesetzt.
