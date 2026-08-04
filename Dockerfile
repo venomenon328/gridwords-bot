@@ -21,9 +21,8 @@ LABEL org.opencontainers.image.title="gridwords-bot" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.created="${BUILD_DATE}"
 
-RUN apt-get update \
-    && apt-get install --no-install-recommends -y curl \
-    && rm -rf /var/lib/apt/lists/* \
+# curl is part of the pinned Temurin runtime image and is required by the container healthcheck.
+RUN command -v curl >/dev/null \
     && groupadd --system --gid 10001 gridwords \
     && useradd --system --uid 10001 --gid gridwords --home-dir /app --shell /usr/sbin/nologin gridwords
 
