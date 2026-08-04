@@ -4,19 +4,23 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 ## Aktueller Stand
 
-Der funktionale Umfang bis einschließlich Inkrement 10 sowie der Zwischeninkremente 10.4, 10.5 und 10.6 ist implementiert, gemergt, automatisiert geprüft und auf einem separaten Discord-Testserver real abgenommen.
+Der funktionale Umfang bis einschließlich **Inkrement 11** ist implementiert, gemergt, automatisiert geprüft, auf einem separaten Discord-Testserver real abgenommen und produktiv ausgerollt.
 
-Der Quellstand trägt die Projektversion `1.0.0`. Der Umfang bis 10.6 bildet die feature-complete Basis für Version 1.0.x beziehungsweise 1.1.0. Ein produktiver Rollout und die manuelle Veröffentlichung nach GHCR bleiben bewusste separate Releasevorgänge.
+Der aktuelle Produktionsrelease ist **Version 1.2.0**. Er basiert auf dem nach `main` gemergten Inkrement 11 und aktiviert die kontextabhängigen Ausreden bewusst über die serverseitige, nicht versionierte Laufzeitkonfiguration.
 
-Der final abgenommene Stand umfasst:
+Der abgenommene Stand umfasst:
 
-- 502 Standardtests ohne externe Infrastruktur,
+- 582 Standardtests ohne externe Infrastruktur,
 - eine grüne PostgreSQL-Integrationsmatrix mit echtem PostgreSQL,
 - grüne GitHub-CI für Standardbuild und Datenbankintegration,
 - ein erfolgreiches Produktionscontainer-, Compose-, Backup-, Restore-, Resume- und Rollback-Gate,
-- eine bestandene reale Discord-Abnahme für Commands, Single-Game-Teilnahme, Tagesstatus, Menüs, Reminder, Recovery und Reports.
+- reale Discord-Abnahmen für Commands, spielbezogene Teilnahme, Tagesstatus, Menüs, Reminder, Recovery, Reports und kontextabhängige Ausreden,
+- einen erfolgreichen produktiven Rollout des unveränderlichen SHA-Images.
 
-Das Abnahmeprotokoll steht unter [`docs/operations/10.6-game-specific-participation-acceptance.md`](docs/operations/10.6-game-specific-participation-acceptance.md).
+Abnahmeprotokolle:
+
+- [`docs/operations/10.6-game-specific-participation-acceptance.md`](docs/operations/10.6-game-specific-participation-acceptance.md)
+- [`docs/operations/11-contextual-excuses-acceptance.md`](docs/operations/11-contextual-excuses-acceptance.md)
 
 ## Fachlicher Funktionsumfang
 
@@ -40,33 +44,36 @@ Der Bot unterstützt insbesondere:
 - getrennte GridWords-/QuadWords-Nenner in Wochen- und Monatsberichten,
 - interaktive, je Spiel getrennte Auswahlmenüs in Tagesstatusnachrichten,
 - ausschließlich ephemere, lesende Ergebnisdetails,
+- optionale kontextabhängige Ausreden bei klar definierten auffälligen Ergebnissen,
+- jeweils drei private Ausredenvorschläge, einen einmaligen Stilwechsel, Auswahl oder Verzicht,
+- Übernahme ausschließlich des gewählten Textes in dieselbe kanonische Ergebnisnachricht,
+- Ablauf, Cooldown und Wiederholungsschutz für Ausreden,
 - Claim-, Lease-, Retry-, Recovery-, Supersession- und Duplikatschutz,
 - keine Discord-I/O innerhalb von Datenbanktransaktionen.
 
 Standardzeitzone ist `Europe/Berlin`.
 
-Die früher vorgemerkten allgemeinen Inkremente für Statistik-/Konfigurations-Commands und regelbasierte Kommentare werden nicht weiterverfolgt. Als nächste bewusst priorisierte Produkterweiterung ist **Inkrement 11 – Kontextabhängige Ausreden** aus Issue #42 fachlich vorbereitet. Eine gewählte Ausrede wird persistiert und ohne Stilbezeichnung in dieselbe kanonische Ergebnisnachricht gerendert.
+Die früher vorgemerkten allgemeinen Inkremente für Statistik-/Konfigurations-Commands und generische regelbasierte Kommentare werden nicht weiterverfolgt. Nach Abschluss von Inkrement 11 ist derzeit kein weiteres Produktinkrement verbindlich eingeplant; neue Erweiterungen benötigen ein eigenes priorisiertes Issue und eine neue fachliche Entscheidung.
 
 ## Projektdokumentation
 
 - [`docs/anforderungsspezifikation.md`](docs/anforderungsspezifikation.md) – fachliche Grundanforderungen
 - [`docs/requirements/series-model.md`](docs/requirements/series-model.md) – Seriensemantik
 - [`docs/requirements/dynamic-player-model.md`](docs/requirements/dynamic-player-model.md) – dynamische Spieler und historisches Ausgangsmodell
-- [`docs/requirements/game-specific-participation.md`](docs/requirements/game-specific-participation.md) – verbindliche spielbezogene Teilnahme ab Zwischeninkrement 10.6
+- [`docs/requirements/game-specific-participation.md`](docs/requirements/game-specific-participation.md) – spielbezogene Teilnahme
 - [`docs/requirements/excuses.md`](docs/requirements/excuses.md) – kontextabhängige Ausreden, Auswahl, Persistenz und Wiederholungsschutz
 - [`docs/requirements/daily-status-reminders.md`](docs/requirements/daily-status-reminders.md) – Tagesstatus, Reminder und Cleanup
 - [`docs/requirements/periodic-reports.md`](docs/requirements/periodic-reports.md) – Wochen- und Monatsberichte
 - [`docs/requirements/production-deployment.md`](docs/requirements/production-deployment.md) – Produktions- und Deploymentweg
 - [`docs/architecture.md`](docs/architecture.md) – Architektur und Modulgrenzen
-- [`docs/implementation-plan.md`](docs/implementation-plan.md) – Inkremente und Status
+- [`docs/implementation-plan.md`](docs/implementation-plan.md) – abgeschlossene Inkremente und künftige Priorisierung
 - [`docs/development-guide.md`](docs/development-guide.md) – lokaler Build, Docker und Tests
 - [`docs/increments/10-periodic-reports.md`](docs/increments/10-periodic-reports.md) – Inkrement 10
 - [`docs/increments/10.4-day-close-reminder-retention-cleanup.md`](docs/increments/10.4-day-close-reminder-retention-cleanup.md) – Tagesabschluss und Bereinigung
 - [`docs/increments/10.5-interactive-result-details.md`](docs/increments/10.5-interactive-result-details.md) – interaktive Ergebnisdetails
-- [`docs/increments/10.6-game-specific-participation.md`](docs/increments/10.6-game-specific-participation.md) – Entwicklungspakete für unabhängige Spielteilnahme
-- [`docs/increments/11-contextual-excuses.md`](docs/increments/11-contextual-excuses.md) – Entwicklungspakete für kontextabhängige Ausreden
-- [`docs/operations/10.6-game-specific-participation-acceptance.md`](docs/operations/10.6-game-specific-participation-acceptance.md) – automatisierte und reale Abschlussabnahme
-- [`docs/operations/`](docs/operations/) – Betrieb, Deployment, Backup und Fehlerdiagnose
+- [`docs/increments/10.6-game-specific-participation.md`](docs/increments/10.6-game-specific-participation.md) – unabhängige Spielteilnahme
+- [`docs/increments/11-contextual-excuses.md`](docs/increments/11-contextual-excuses.md) – abgeschlossenes Inkrement 11
+- [`docs/operations/`](docs/operations/) – Abnahmen, Betrieb, Deployment, Backup und Fehlerdiagnose
 - [`docs/adr/`](docs/adr/) – Architekturentscheidungen
 - [`AGENTS.md`](AGENTS.md) – Arbeitsregeln für Codex und Reviews
 
@@ -114,7 +121,11 @@ TIME_ZONE=Europe/Berlin
 
 EXCUSE_GENERATOR_CONTEXTUAL_ENABLED=false
 EXCUSE_OFFER_LIFETIME=PT15M
+EXCUSE_EXPIRATION_PAGE_SIZE=25
+EXCUSE_EXPIRATION_MAX_PAGES=4
 ```
+
+Der versionierte Default der Ausreden bleibt bewusst deaktiviert. Für einen lokalen Discord-Test kann `EXCUSE_GENERATOR_CONTEXTUAL_ENABLED=true` in der nicht versionierten `.env` gesetzt werden.
 
 ## Lokale Validierung
 
@@ -154,6 +165,7 @@ DISCORD_ENABLED=true
 DISCORD_GUILD_ID=DEINE_TEST_GUILD_ID
 DISCORD_CHANNEL_ID=DEINE_TEST_CHANNEL_ID
 ADMIN_USER_IDS=DEINE_DISCORD_USER_ID
+EXCUSE_GENERATOR_CONTEXTUAL_ENABLED=true
 ```
 
 Dann:
@@ -169,11 +181,11 @@ Liquibase verwendet dieselben Migrationen wie die Integrationstests und der Prod
 
 Der Produktionscontainer wird aus dem versionierten `Dockerfile` gebaut und läuft als Nicht-Root-Benutzer mit Java 21.
 
-Die normale GitHub-CI führt bei jedem relevanten Feature-Push und Pull Request Standardbuild und PostgreSQL-Integration aus. Der separate Workflow `Container image` bleibt bei Draft-Pull-Requests übersprungen und wird auf dem finalen Commit durch **Ready for review** ausgelöst. Pushes auf `main` und manuelle Runs prüfen den vollständigen Container- und Betriebsweg weiterhin.
+Die normale GitHub-CI führt Standardbuild und PostgreSQL-Integration aus. Der Workflow `Container image` prüft zusätzlich das Produktionsimage sowie Compose-, Backup-, Restore-, Resume- und Rollbackpfade.
 
-Eine Veröffentlichung nach `ghcr.io/venomenon328/gridwords-bot` erfolgt ausschließlich durch den bewusst manuell gestarteten Workflow `Container image` auf `main` mit einem neuen SemVer-Tag. Pull Requests veröffentlichen niemals ein Image.
+Eine Veröffentlichung nach `ghcr.io/venomenon328/gridwords-bot` erfolgt ausschließlich durch einen bewusst manuell gestarteten Workflow auf `main` mit einem neuen SemVer-Tag. Pull Requests veröffentlichen niemals ein Image.
 
-Release Candidates werden gegen den Discord-Testserver geprüft. Nach erfolgreicher Abnahme wird ausschließlich derselbe freigegebene Commit im separaten Produktionsschritt veröffentlicht und ausgerollt. Ein erneuter Workflow-Build ist ein neuer Build desselben Commits; eine byte-identische Promotion setzt voraus, dass das lokal getestete Image erhalten und direkt veröffentlicht wird.
+Release Candidates werden mit einer separaten Discord-Testanwendung und einer isolierten PostgreSQL-Datenbank geprüft. Nach erfolgreicher Abnahme wird ausschließlich der freigegebene Commit über einen unveränderlichen SHA-Tag ausgerollt.
 
 ## Datenbankzugriff mit DBeaver
 
@@ -199,7 +211,7 @@ Die Produktionsdatenbank besitzt keinen öffentlichen Hostport. Administrativer 
 
 - Standardtests ohne Netzwerk, Token, Datenbank oder Container,
 - PostgreSQL-Integration mit echtem PostgreSQL über das Profil `database-integration`,
-- vollständiger Liquibase-Neuaufbau und Upgrade eines Schemas vor Zwischeninkrement 10.6,
+- vollständiger Liquibase-Neuaufbau und Upgrade bestehender Schemas,
 - Discord-Adaptertests an der JDA-Grenze ohne echte Verbindung,
 - reale PNG-Fixtures für den QuadWords-Bildparser,
 - feste injizierte `Clock` für zeitabhängige Tests,
