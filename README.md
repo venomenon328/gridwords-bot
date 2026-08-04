@@ -8,6 +8,8 @@ Der funktionale Umfang bis einschließlich **Inkrement 11** ist implementiert, g
 
 Der aktuelle Produktionsrelease ist **Version 1.2.0**. Er basiert auf dem nach `main` gemergten Inkrement 11 und aktiviert die kontextabhängigen Ausreden bewusst über die serverseitige, nicht versionierte Laufzeitkonfiguration.
 
+**Inkrement 12 – Rekorde und Rekordmeldungen** ist als nächstes Produktinkrement fachlich und architektonisch vorbereitet. Issue #58, die verbindliche Rekordspezifikation, ADR 0018 und zehn Entwicklungspakete liegen vor; Implementierung und Zielversion sind noch offen.
+
 Der abgenommene Stand umfasst:
 
 - 582 Standardtests ohne externe Infrastruktur,
@@ -53,7 +55,7 @@ Der Bot unterstützt insbesondere:
 
 Standardzeitzone ist `Europe/Berlin`.
 
-Die früher vorgemerkten allgemeinen Inkremente für Statistik-/Konfigurations-Commands und generische regelbasierte Kommentare werden nicht weiterverfolgt. Nach Abschluss von Inkrement 11 ist derzeit kein weiteres Produktinkrement verbindlich eingeplant; neue Erweiterungen benötigen ein eigenes priorisiertes Issue und eine neue fachliche Entscheidung.
+Die früher vorgemerkten allgemeinen Inkremente für Statistik-/Konfigurations-Commands und generische regelbasierte Kommentare werden nicht weiterverfolgt. Als nächstes verbindlich vorbereitetes Produktinkrement folgt Inkrement 12 mit einem ausdrücklich begrenzten Rekordkern statt einer allgemeinen Kommentar- oder Regelplattform.
 
 ## Projektdokumentation
 
@@ -62,17 +64,19 @@ Die früher vorgemerkten allgemeinen Inkremente für Statistik-/Konfigurations-C
 - [`docs/requirements/dynamic-player-model.md`](docs/requirements/dynamic-player-model.md) – dynamische Spieler und historisches Ausgangsmodell
 - [`docs/requirements/game-specific-participation.md`](docs/requirements/game-specific-participation.md) – spielbezogene Teilnahme
 - [`docs/requirements/excuses.md`](docs/requirements/excuses.md) – kontextabhängige Ausreden, Auswahl, Persistenz und Wiederholungsschutz
+- [`docs/requirements/records.md`](docs/requirements/records.md) – verbindliche Ergebnis-, Serien-, Meldungs- und Korrektursemantik für Rekorde
 - [`docs/requirements/daily-status-reminders.md`](docs/requirements/daily-status-reminders.md) – Tagesstatus, Reminder und Cleanup
 - [`docs/requirements/periodic-reports.md`](docs/requirements/periodic-reports.md) – Wochen- und Monatsberichte
 - [`docs/requirements/production-deployment.md`](docs/requirements/production-deployment.md) – Produktions- und Deploymentweg
 - [`docs/architecture.md`](docs/architecture.md) – Architektur und Modulgrenzen
-- [`docs/implementation-plan.md`](docs/implementation-plan.md) – abgeschlossene Inkremente und künftige Priorisierung
+- [`docs/implementation-plan.md`](docs/implementation-plan.md) – abgeschlossene und vorbereitete Inkremente
 - [`docs/development-guide.md`](docs/development-guide.md) – lokaler Build, Docker und Tests
 - [`docs/increments/10-periodic-reports.md`](docs/increments/10-periodic-reports.md) – Inkrement 10
 - [`docs/increments/10.4-day-close-reminder-retention-cleanup.md`](docs/increments/10.4-day-close-reminder-retention-cleanup.md) – Tagesabschluss und Bereinigung
 - [`docs/increments/10.5-interactive-result-details.md`](docs/increments/10.5-interactive-result-details.md) – interaktive Ergebnisdetails
 - [`docs/increments/10.6-game-specific-participation.md`](docs/increments/10.6-game-specific-participation.md) – unabhängige Spielteilnahme
 - [`docs/increments/11-contextual-excuses.md`](docs/increments/11-contextual-excuses.md) – abgeschlossenes Inkrement 11
+- [`docs/increments/12-records.md`](docs/increments/12-records.md) – vorbereitete Entwicklungspakete für Inkrement 12
 - [`docs/operations/`](docs/operations/) – Abnahmen, Betrieb, Deployment, Backup und Fehlerdiagnose
 - [`docs/adr/`](docs/adr/) – Architekturentscheidungen
 - [`AGENTS.md`](AGENTS.md) – Arbeitsregeln für Codex und Reviews
