@@ -26,6 +26,12 @@ import java.util.stream.Collectors;
 /** Executes authorized ephemeral picks, rerolls, and decline without touching Discord directly. */
 public final class ExcuseInteractionService implements ExcuseInteractionUseCase {
 
+    private static final de.venomenon.gridwordsbot.port.in.ExcuseExpirationUseCase NO_EXPIRATION =
+            new de.venomenon.gridwordsbot.port.in.ExcuseExpirationUseCase() {
+                @Override public int reconcile() { return 0; }
+                @Override public boolean expireIfDue(long gameResultId) { return false; }
+            };
+
     private final ExcuseStateStore states;
     private final ExcuseCatalog catalog;
     private final ExcuseSelector selector;
@@ -33,6 +39,7 @@ public final class ExcuseInteractionService implements ExcuseInteractionUseCase 
     private final CanonicalRefreshWakeUp refreshWakeUp;
     private final ExcuseInteractionAuthorizer authorizer;
     private final ExcuseAvailableContextResolver contextResolver;
+    private final de.venomenon.gridwordsbot.port.in.ExcuseExpirationUseCase expirations;
 
     public ExcuseInteractionService(
             long configuredGuildId,
@@ -46,6 +53,23 @@ public final class ExcuseInteractionService implements ExcuseInteractionUseCase 
             ExcuseSelector selector,
             Clock clock,
             CanonicalRefreshWakeUp refreshWakeUp) {
+        this(configuredGuildId, configuredChannelId, results, players, submissions, states, eligibilityPolicy,
+                catalog, selector, clock, refreshWakeUp, NO_EXPIRATION);
+    }
+
+    public ExcuseInteractionService(
+            long configuredGuildId,
+            long configuredChannelId,
+            GameResultStore results,
+            PlayerStore players,
+            SubmissionStore submissions,
+            ExcuseStateStore states,
+            de.venomenon.gridwordsbot.domain.excuse.ExcuseEligibilityPolicy eligibilityPolicy,
+            ExcuseCatalog catalog,
+            ExcuseSelector selector,
+            Clock clock,
+            CanonicalRefreshWakeUp refreshWakeUp,
+            de.venomenon.gridwordsbot.port.in.ExcuseExpirationUseCase expirations) {
         this.states = Objects.requireNonNull(states, "states");
         this.catalog = Objects.requireNonNull(catalog, "catalog");
         this.selector = Objects.requireNonNull(selector, "selector");
@@ -54,6 +78,7 @@ public final class ExcuseInteractionService implements ExcuseInteractionUseCase 
         this.authorizer = new ExcuseInteractionAuthorizer(
                 configuredGuildId, configuredChannelId, results, submissions, states, clock);
         this.contextResolver = new ExcuseAvailableContextResolver(players, eligibilityPolicy);
+        this.expirations = Objects.requireNonNull(expirations, "expirations");
     }
 
     @Override
@@ -84,10 +109,7 @@ public final class ExcuseInteractionService implements ExcuseInteractionUseCase 
         try {
             Optional<ExcuseSelection> created = states.loadOrCreateStyleRerollOptions(
                     request.action().gameResultId(), request.action().contextGeneration(),
-                    () -> selector.select(
-                                    catalog,
-                                    authorized.eligibility().context(),
-                                    ExcuseSelectionRequest.styleReroll(request.style(), shownTemplateIds))
+                    () -> selectStyleReroll(authorized, request.style(), shownTemplateIds)
                             .orElseThrow(NoRerollOptions::new));
             return created.<Result>map(selection -> new Options(selection.options(), List.of()))
                     .orElseGet(() -> new Rejected(Reason.REROLL_UNAVAILABLE));
@@ -138,16 +160,22 @@ public final class ExcuseInteractionService implements ExcuseInteractionUseCase 
                 case OFFER_UNAVAILABLE -> Reason.OFFER_UNAVAILABLE;
             }));
         }
+        if (result instanceof ExcuseInteractionAuthorizer.Expired expired) {
+            expirations.expireIfDue(expired.gameResultId());
+            return new Authorization(null, new Rejected(Reason.OFFER_UNAVAILABLE));
+        }
         ExcuseInteractionAuthorizer.Authorized authorized = (ExcuseInteractionAuthorizer.Authorized) result;
         ExcuseEligibility eligibility = contextResolver.resolve(authorized.gameResult(), authorized.state()).orElse(null);
         if (eligibility == null) {
             return new Authorization(null, new Rejected(Reason.OFFER_UNAVAILABLE));
         }
-        return new Authorization(new AuthorizedContext(authorized.state(), eligibility), null);
+        return new Authorization(new AuthorizedContext(authorized.gameResult().playerId(), authorized.state(), eligibility), null);
     }
 
     private List<ExcuseStyle> availableStyles(AuthorizedContext authorized) {
-        return selector.availableStyles(catalog, authorized.eligibility().context(), shownTemplateIds(authorized));
+        Set<String> excluded = new java.util.LinkedHashSet<>(shownTemplateIds(authorized));
+        recentSelections(authorized).stream().findFirst().ifPresent(entry -> excluded.add(entry.templateId()));
+        return selector.availableStyles(catalog, authorized.eligibility().context(), excluded);
     }
 
     private Set<String> shownTemplateIds(AuthorizedContext authorized) {
@@ -155,6 +183,34 @@ public final class ExcuseInteractionService implements ExcuseInteractionUseCase 
         return states.findOptions(authorized.state().gameResultId(), generation).stream()
                 .map(ExcuseOption::templateId)
                 .collect(Collectors.toUnmodifiableSet());
+    }
+
+    private Optional<ExcuseSelection> selectStyleReroll(
+            AuthorizedContext authorized, ExcuseStyle style, Set<String> shownTemplateIds) {
+        List<de.venomenon.gridwordsbot.domain.excuse.ExcuseSelectionHistoryEntry> history = recentSelections(authorized);
+        Set<de.venomenon.gridwordsbot.domain.excuse.ExcuseTopic> discouragedTopics = history.stream()
+                .map(de.venomenon.gridwordsbot.domain.excuse.ExcuseSelectionHistoryEntry::topic)
+                .collect(Collectors.toUnmodifiableSet());
+        List<String> soft = history.stream().skip(1)
+                .map(de.venomenon.gridwordsbot.domain.excuse.ExcuseSelectionHistoryEntry::templateId).toList();
+        for (int remainingSoft = soft.size(); remainingSoft >= 0; remainingSoft--) {
+            Set<String> excluded = new java.util.LinkedHashSet<>(shownTemplateIds);
+            if (!history.isEmpty()) {
+                excluded.add(history.getFirst().templateId());
+            }
+            excluded.addAll(soft.subList(0, remainingSoft));
+            Optional<ExcuseSelection> selected = selector.select(catalog, authorized.eligibility().context(),
+                    new ExcuseSelectionRequest(ExcuseRound.STYLE_REROLL, Optional.of(style), excluded, discouragedTopics));
+            if (selected.isPresent()) {
+                return selected;
+            }
+        }
+        return Optional.empty();
+    }
+
+    private List<de.venomenon.gridwordsbot.domain.excuse.ExcuseSelectionHistoryEntry> recentSelections(
+            AuthorizedContext authorized) {
+        return states.findRecentSelections(authorized.playerId(), 10);
     }
 
     private void wakeUp(long gameResultId) {
@@ -165,7 +221,7 @@ public final class ExcuseInteractionService implements ExcuseInteractionUseCase 
         }
     }
 
-    private record AuthorizedContext(ExcuseState state, ExcuseEligibility eligibility) {
+    private record AuthorizedContext(long playerId, ExcuseState state, ExcuseEligibility eligibility) {
     }
 
     private record Authorization(AuthorizedContext authorized, Rejected rejected) {

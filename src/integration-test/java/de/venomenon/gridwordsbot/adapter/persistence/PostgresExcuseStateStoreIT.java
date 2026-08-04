@@ -147,6 +147,26 @@ class PostgresExcuseStateStoreIT {
     }
 
     @Test
+    void expirationIsAtomicAtTheBoundaryAndConcurrentWorkersCreateOneRefreshGeneration() throws Exception {
+        long resultId = availableResult(GameType.GRIDWORDS, LocalDate.of(2026, 8, 1), NOW.minusSeconds(60), NOW);
+
+        assertThat(transaction(() -> store.expireAndRequestCanonicalRefresh(resultId, NOW.minusSeconds(1)))).isEmpty();
+        assertThat(store.find(resultId).orElseThrow().status()).isEqualTo(ExcuseStatus.AVAILABLE);
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            List<Optional<ExcuseState>> outcomes = executor.invokeAll(List.<Callable<Optional<ExcuseState>>>of(
+                    () -> transaction(() -> store.expireAndRequestCanonicalRefresh(resultId, NOW)),
+                    () -> transaction(() -> store.expireAndRequestCanonicalRefresh(resultId, NOW))))
+                    .stream().map(this::result).toList();
+            assertThat(outcomes).filteredOn(Optional::isPresent).hasSize(1);
+        }
+
+        assertThat(store.find(resultId).orElseThrow().status()).isEqualTo(ExcuseStatus.EXPIRED);
+        assertThat(refreshRequired(resultId)).isTrue();
+        assertThat(refreshGeneration(resultId)).isEqualTo(1L);
+    }
+
+    @Test
     void roundTripsFrozenOfferFactsAndReplacesOnlyTheCurrentAvailableContext() {
         long resultId = result(PLAYER_ID, GameType.GRIDWORDS, LocalDate.of(2026, 8, 1));
         source(resultId, PLAYER_ID);
@@ -158,7 +178,7 @@ class PostgresExcuseStateStoreIT {
                 offer(resultId, PLAYER_ID, GameType.GRIDWORDS, NOW, NOW.plusSeconds(600)), initial));
         transaction(() -> store.storeInitialOptions(resultId, 1, options(ExcuseRound.INITIAL, "initial")));
 
-        ExcuseState revalidated = transaction(() -> store.revalidate(new ExcuseRevalidation(
+        ExcuseState revalidated = transaction(() -> store.revalidateAndRequestCanonicalRefresh(new ExcuseRevalidation(
                 resultId,
                 ExcuseRevalidation.Outcome.REPLACE_AVAILABLE_CONTEXT,
                 new ExcuseOfferContext(
@@ -174,6 +194,8 @@ class PostgresExcuseStateStoreIT {
         assertThat(revalidated.offer().orElseThrow().contextGeneration()).isEqualTo(2);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM game_result_excuse_option WHERE game_result_id = ?", Integer.class,
                 resultId)).isZero();
+        assertThat(refreshRequired(resultId)).isTrue();
+        assertThat(refreshGeneration(resultId)).isEqualTo(1L);
     }
 
     @Test

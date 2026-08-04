@@ -11,6 +11,7 @@ import de.venomenon.gridwordsbot.application.excuse.ExcuseInteractionService;
 import de.venomenon.gridwordsbot.application.excuse.ExcuseOpenService;
 import de.venomenon.gridwordsbot.port.in.ExcuseInteractionUseCase;
 import de.venomenon.gridwordsbot.port.in.ExcuseOpenUseCase;
+import de.venomenon.gridwordsbot.port.in.ExcuseExpirationUseCase;
 import de.venomenon.gridwordsbot.port.out.CanonicalMessageGateway;
 import de.venomenon.gridwordsbot.port.out.ChannelMessageRetirementStore;
 import de.venomenon.gridwordsbot.port.out.DailyResultDetailsQuery;
@@ -104,6 +105,7 @@ class DatabaseInboundConfigurationTest {
 
             assertThat(context.getBean(ExcuseOpenUseCase.class)).isInstanceOf(ExcuseOpenService.class);
             assertThat(context.getBean(ExcuseInteractionUseCase.class)).isInstanceOf(ExcuseInteractionService.class);
+            assertThat(context.getBean(ExcuseExpirationUseCase.class)).isNotNull();
             assertThat(context.getBean(ExcuseInteractionListener.class)).isNotNull();
         }
     }

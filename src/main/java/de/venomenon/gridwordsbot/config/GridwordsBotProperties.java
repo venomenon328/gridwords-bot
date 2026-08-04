@@ -39,16 +39,22 @@ public record GridwordsBotProperties(Discord discord, Schedule schedule, Storage
         }
     }
     public record Storage(int rawImageRetentionHours) { }
-    public record Excuses(boolean enabled, Duration offerLifetime) {
+    public record Excuses(boolean enabled, Duration offerLifetime, int expirationPageSize, int expirationMaxPages) {
         @ConstructorBinding
         public Excuses {
             Objects.requireNonNull(offerLifetime, "offerLifetime");
             if (offerLifetime.isZero() || offerLifetime.isNegative()) {
                 throw new IllegalArgumentException("offerLifetime must be positive");
             }
+            if (expirationPageSize < 1 || expirationMaxPages < 1) {
+                throw new IllegalArgumentException("excuse expiration limits must be positive");
+            }
+        }
+        public Excuses(boolean enabled, Duration offerLifetime) {
+            this(enabled, offerLifetime, 25, 4);
         }
         public static Excuses defaults() {
-            return new Excuses(false, Duration.ofMinutes(15));
+            return new Excuses(false, Duration.ofMinutes(15), 25, 4);
         }
     }
 }

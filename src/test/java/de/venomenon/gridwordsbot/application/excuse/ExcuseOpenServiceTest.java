@@ -20,6 +20,7 @@ import de.venomenon.gridwordsbot.domain.excuse.ExcuseOption;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseReason;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseRound;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseSelection;
+import de.venomenon.gridwordsbot.domain.excuse.ExcuseSelectionHistoryEntry;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseSelector;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseState;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseStatus;
@@ -141,10 +142,39 @@ class ExcuseOpenServiceTest {
         Fixture fixture = new Fixture();
         when(fixture.states.find(RESULT_ID)).thenReturn(Optional.of(state(
                 ExcuseStatus.AVAILABLE, NOW)));
+        when(fixture.expirations.expireIfDue(RESULT_ID)).thenReturn(true);
 
         assertThat(fixture.service.open(request()))
                 .isEqualTo(new ExcuseOpenUseCase.Rejected(ExcuseOpenUseCase.Reason.OFFER_UNAVAILABLE));
         verify(fixture.states, never()).loadOrCreateInitialOptions(any(Long.class), any(Integer.class), any());
+        verify(fixture.expirations).expireIfDue(RESULT_ID);
+    }
+
+    @Test
+    void keepsTheLatestSelectionHardExcludedAndReleasesOlderSoftExclusionsFromOldestFirst() {
+        Fixture fixture = new Fixture();
+        when(fixture.states.loadOrCreateInitialOptions(eq(RESULT_ID), eq(1), any())).thenAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            Supplier<ExcuseSelection> factory = invocation.getArgument(2, Supplier.class);
+            return Optional.of(factory.get());
+        });
+        when(fixture.states.findRecentSelections(AUTHOR_ID, 10)).thenReturn(List.of(
+                new ExcuseSelectionHistoryEntry("hard", ExcuseTopic.GENERAL, NOW.minusSeconds(1)),
+                new ExcuseSelectionHistoryEntry("soft-new", ExcuseTopic.TECHNICAL_FAILURE, NOW.minusSeconds(2)),
+                new ExcuseSelectionHistoryEntry("soft-old", ExcuseTopic.RESPONSIBILITY, NOW.minusSeconds(3))));
+        when(fixture.selector.select(any(), any(), any())).thenReturn(Optional.empty(), Optional.of(selection()));
+
+        assertThat(fixture.service.open(request())).isInstanceOf(ExcuseOpenUseCase.Options.class);
+
+        ArgumentCaptor<de.venomenon.gridwordsbot.domain.excuse.ExcuseSelectionRequest> requests =
+                ArgumentCaptor.forClass(de.venomenon.gridwordsbot.domain.excuse.ExcuseSelectionRequest.class);
+        verify(fixture.selector, org.mockito.Mockito.times(2)).select(any(), any(), requests.capture());
+        assertThat(requests.getAllValues().getFirst().excludedTemplateIds())
+                .containsExactlyInAnyOrder("hard", "soft-new", "soft-old");
+        assertThat(requests.getAllValues().get(1).excludedTemplateIds())
+                .containsExactlyInAnyOrder("hard", "soft-new");
+        assertThat(requests.getAllValues().get(1).discouragedTopics())
+                .containsExactlyInAnyOrder(ExcuseTopic.GENERAL, ExcuseTopic.TECHNICAL_FAILURE, ExcuseTopic.RESPONSIBILITY);
     }
 
     @Test
@@ -255,6 +285,8 @@ class ExcuseOpenServiceTest {
         final ExcuseEligibilityPolicy policy = mock(ExcuseEligibilityPolicy.class);
         final ExcuseSelector selector = mock(ExcuseSelector.class);
         final ExcuseCatalog catalog = mock(ExcuseCatalog.class);
+        final de.venomenon.gridwordsbot.port.in.ExcuseExpirationUseCase expirations = mock(
+                de.venomenon.gridwordsbot.port.in.ExcuseExpirationUseCase.class);
         final ExcuseOpenService service = newService();
         final ExcuseOpenService restartedService = newService();
 
@@ -269,7 +301,8 @@ class ExcuseOpenServiceTest {
                     policy,
                     catalog,
                     selector,
-                    Clock.fixed(NOW, ZoneOffset.UTC));
+                    Clock.fixed(NOW, ZoneOffset.UTC),
+                    expirations);
         }
 
         Fixture() {

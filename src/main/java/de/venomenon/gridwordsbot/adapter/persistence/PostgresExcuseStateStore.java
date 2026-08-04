@@ -131,6 +131,17 @@ public class PostgresExcuseStateStore implements ExcuseStateStore {
     @Override
     @Transactional
     public Optional<ExcuseState> revalidate(ExcuseRevalidation revalidation) {
+        return revalidateInternal(revalidation, false);
+    }
+
+    @Override
+    @Transactional
+    public Optional<ExcuseState> revalidateAndRequestCanonicalRefresh(ExcuseRevalidation revalidation) {
+        return revalidateInternal(revalidation, true);
+    }
+
+    private Optional<ExcuseState> revalidateInternal(
+            ExcuseRevalidation revalidation, boolean requestCanonicalRefresh) {
         Objects.requireNonNull(revalidation, "revalidation");
         Optional<ExcuseState> locked = findForUpdate(revalidation.gameResultId());
         if (locked.isEmpty()) {
@@ -178,6 +189,9 @@ public class PostgresExcuseStateStore implements ExcuseStateStore {
                 }
                 updateOfferContext(revalidation.gameResultId(), revalidation.offerContext(), now);
             }
+        }
+        if (requestCanonicalRefresh) {
+            requestCanonicalRefresh(revalidation.gameResultId(), now);
         }
         return find(revalidation.gameResultId());
     }
@@ -368,6 +382,30 @@ public class PostgresExcuseStateStore implements ExcuseStateStore {
         if (requestCanonicalRefresh) {
             requestCanonicalRefresh(gameResultId, now);
         }
+        return find(gameResultId);
+    }
+
+    @Override
+    @Transactional
+    public Optional<ExcuseState> expireAndRequestCanonicalRefresh(long gameResultId, Instant expiredAt) {
+        requirePositive(gameResultId, "gameResultId");
+        Objects.requireNonNull(expiredAt, "expiredAt");
+        Optional<ExcuseState> locked = findForUpdate(gameResultId);
+        if (locked.isEmpty() || locked.get().status() != ExcuseStatus.AVAILABLE
+                || locked.get().offer().isEmpty()
+                || expiredAt.isBefore(locked.get().offer().orElseThrow().expiresAt())) {
+            return Optional.empty();
+        }
+        Instant now = clock.instant();
+        int changed = jdbc.update("""
+                UPDATE game_result_excuse
+                SET status = 'EXPIRED', updated_at = ?
+                WHERE game_result_id = ? AND status = 'AVAILABLE' AND expires_at <= ?
+                """, utc(now), gameResultId, utc(expiredAt));
+        if (changed != 1) {
+            return Optional.empty();
+        }
+        requestCanonicalRefresh(gameResultId, now);
         return find(gameResultId);
     }
 

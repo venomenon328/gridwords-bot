@@ -74,9 +74,11 @@ final class ExcuseInteractionAuthorizer {
             return new Rejected(Reason.CONTEXT_MISMATCH);
         }
         ExcuseState state = states.find(gameResultId).orElse(null);
-        if (state == null || state.status() != ExcuseStatus.AVAILABLE
-                || state.offer().isEmpty() || !clock.instant().isBefore(state.offer().orElseThrow().expiresAt())) {
+        if (state == null || state.status() != ExcuseStatus.AVAILABLE || state.offer().isEmpty()) {
             return new Rejected(Reason.OFFER_UNAVAILABLE);
+        }
+        if (!clock.instant().isBefore(state.offer().orElseThrow().expiresAt())) {
+            return new Expired(gameResultId);
         }
         if (contextGeneration != null
                 && state.offer().orElseThrow().contextGeneration() != contextGeneration) {
@@ -132,7 +134,7 @@ final class ExcuseInteractionAuthorizer {
         }
     }
 
-    sealed interface Result permits Authorized, Rejected {
+    sealed interface Result permits Authorized, Rejected, Expired {
     }
 
     record Authorized(GameResultStore.StoredGameResult gameResult, ExcuseState state) implements Result {
@@ -145,6 +147,14 @@ final class ExcuseInteractionAuthorizer {
     record Rejected(Reason reason) implements Result {
         Rejected {
             Objects.requireNonNull(reason, "reason");
+        }
+    }
+
+    record Expired(long gameResultId) implements Result {
+        Expired {
+            if (gameResultId <= 0) {
+                throw new IllegalArgumentException("gameResultId must be positive");
+            }
         }
     }
 
