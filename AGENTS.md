@@ -9,15 +9,16 @@ Lies vor der Implementierung mindestens:
 1. `docs/anforderungsspezifikation.md` – verbindliche fachliche Grundanforderungen und Versionsgrenzen
 2. `docs/requirements/series-model.md` – verbindliche Präzisierung und Änderung der Serien-, Tagesstatus- und Berichtssemantik
 3. `docs/requirements/dynamic-player-model.md` – dynamische Spieler, bisherige globale Teilnahmezeiträume und Reminder-Opt-out
-4. `docs/requirements/game-specific-participation.md`, wenn die Aufgabe Teilnahme, Shares, Commands, Serien, Tagesstatus, Reminder, Ergebnisdetails, Ausreden oder Berichte ab Zwischeninkrement 10.6 betrifft
+4. `docs/requirements/game-specific-participation.md`, wenn die Aufgabe Teilnahme, Shares, Commands, Serien, Tagesstatus, Reminder, Ergebnisdetails, Ausreden, Rekorde oder Berichte ab Zwischeninkrement 10.6 betrifft
 5. `docs/requirements/daily-status-reminders.md` – Tagesstatus, Scheduler und Reminder-Auslieferung
 6. `docs/requirements/periodic-reports.md`, wenn die Aufgabe Wochen-/Monatsberichte, Periodenstatistiken oder Report-Delivery betrifft
 7. `docs/requirements/excuses.md`, wenn die Aufgabe Ausreden, kanonische Ergebnis-Komponenten, Ausredeninteraktionen, Kataloge oder Wiederholungsschutz betrifft
-8. `docs/architecture.md` – verbindliche Architektur, Modulgrenzen und Abläufe
-9. `docs/development-guide.md` – Build, Tests, Secrets und Arbeitsweise
-10. `docs/implementation-plan.md` – Reihenfolge der Inkremente
-11. `docs/requirements/production-deployment.md`, wenn die Aufgabe Build, Container, Deployment, Secrets, Backups oder Produktion betrifft
-12. vorhandene ADRs unter `docs/adr/`, wenn die Aufgabe die dort behandelten Entscheidungen berührt; für periodische Reports insbesondere ADR 0014, für spielbezogene Teilnahme ADR 0016 und für Ausreden ADR 0017
+8. `docs/requirements/records.md`, wenn die Aufgabe Rekorde, Rekordereignisse, Serienabschlussmeldungen, den Vortags-Cutoff oder `/records` betrifft
+9. `docs/architecture.md` – verbindliche Architektur, Modulgrenzen und Abläufe
+10. `docs/development-guide.md` – Build, Tests, Secrets und Arbeitsweise
+11. `docs/implementation-plan.md` – Reihenfolge der Inkremente
+12. `docs/requirements/production-deployment.md`, wenn die Aufgabe Build, Container, Deployment, Secrets, Backups oder Produktion betrifft
+13. vorhandene ADRs unter `docs/adr/`, wenn die Aufgabe die dort behandelten Entscheidungen berührt; für periodische Reports insbesondere ADR 0014, für spielbezogene Teilnahme ADR 0016, für Ausreden ADR 0017 und für Rekorde ADR 0018
 
 Bei Widersprüchen gilt:
 
@@ -80,7 +81,8 @@ Jeder Schritt muss nach einem Absturz oder erneut zugestellten Event gefahrlos f
 - Fachliche Zeitzone ist `Europe/Berlin`.
 - Keine Verwendung von `LocalDate.now()` oder `Instant.now()` in fachlichem Code; `Clock` injizieren.
 - Das Datum im Share-Ergebnis ist der Spieltag.
-- Heute und gestern sind das einzige zulässige automatische Nachtragsfenster.
+- Zwischen 00:00 und 05:59:59 Uhr sind der aktuelle und der unmittelbar vorherige Spieltag für neue Ergebnisse zulässig; ab 06:00 Uhr nur noch der aktuelle Spieltag. Bestehende Ergebnisse bleiben nach den Korrekturregeln berichtigbar.
+- Der 06:00-Cutoff folgt der fachlichen lokalen Uhrzeit und nicht dem tatsächlichen Laufzeitpunkt des Cleanup-Schedulers.
 - Wochen- und Monatsberichte verwenden ausschließlich vollständig abgeschlossene Kalenderperioden und einen expliziten Periodenend-Stichtag.
 
 ### Spielbezogene Teilnahme ab Zwischeninkrement 10.6
@@ -111,6 +113,24 @@ Jeder Schritt muss nach einem Absturz oder erneut zugestellten Event gefahrlos f
 - Eine Ausredeninteraction editiert die öffentliche Discord-Nachricht niemals direkt. Zustandsübergang und dauerhafter kanonischer Refresh-Auftrag werden atomar persistiert.
 - Create und Edit der kanonischen Nachricht übertragen Embed und Action Rows gemeinsam; ein terminaler Ausredenzustand darf keinen veralteten Button zurücklassen.
 - Inkrement 11 führt kein allgemeines Kommentar-, Event- oder Plugin-Framework ein.
+
+### Rekorde ab Inkrement 12
+
+- Verbindlich sind `docs/requirements/records.md`, ADR 0018 und der Paketplan unter `docs/increments/12-records.md`.
+- `game_result` und historische Teilnahmezeiträume bleiben kanonische Quelle; `record_state` ist nur materialisierte Projektion und Konkurrenzanker.
+- Rekorddefinitionen sind expliziter versionierter Anwendungscode. Es gibt keine Datenbank-DSL und keine frei konfigurierbare Regelmaschine.
+- Aktueller Rekordzustand, Auditereignis und Discord-Meldungsprojektion sind getrennte persistente Ebenen.
+- Ergebnisrekorde verwenden ausschließlich gelöste Ergebnisse und genau die drei Definitionen wenigste Versuche, schnellste Lösung und langsamste erfolgreiche Lösung.
+- Positive Serienrekorde verwenden die bestehenden fünf persönlichen und vier gemeinsamen Serien. Negative Serienrekorde leiten ausschließlich X-Durststrecken und Tage ohne perfekten Tag zusätzlich ab.
+- Serienläufe bleiben aus Ergebnissen und Teilnahmezeiträumen abgeleitet; keine mutierten Rekord-Serienzähler als zweite Wahrheit.
+- Historischer Bootstrap, Import, Backfill, unverändertes Replay und administrative Reparatur bleiben öffentlich still.
+- Eine normale Live-Korrektur kann Rekordmeldungen erzeugen, editieren, teilweise reduzieren oder vollständig löschen.
+- Keine öffentliche Aberkennungsnachricht. Falsche Projektionen werden reconciled.
+- Zusammengehörige Rekordfakten werden aggregiert; keine Einzelmeldung pro Definition.
+- Öffentliche Meldungen sind bis zum erfolgreichen Bootstrap der aktiven Definitionsversion gesperrt.
+- `/records` liest aktuelle Rekordprojektionen, antwortet ephemer und scannt nicht bei jedem Aufruf die gesamte Historie.
+- Ein späteres Achievement-System darf gültige Rekordereignisse lesen, aber weder Discord-Texte parsen noch Rekordlogik duplizieren.
+- Inkrement 12 führt keinen externen Message Broker, keinen generischen internen Event-Bus und kein universelles Messaging-Framework ein.
 
 ### Serienmodell
 
@@ -184,6 +204,9 @@ Jeder Schritt muss nach einem Absturz oder erneut zugestellten Event gefahrlos f
 - Ausredenänderungen benötigen getrennte Tests für alle absoluten Schwellen und direkten Untergrenzen, den QuadWords-Boardabstand 2 gegenüber 3, boardlose Ergebnisse, mindestens zwei andere Tagesresultate, spielbezogene Teilnehmermengen, Cooldown, Wiederholungsschutz und injizierte Zufallsquelle.
 - Ausredenpersistenz benötigt Backfill-, Constraint-, Auswahl-, Ablauf-, Korrektur-, Konkurrenz- und atomare Refreshtests gegen echtes PostgreSQL.
 - Ausredeninteraktionen benötigen Autorisierungs-, Message-ID-, Generation-, Runde-, Position-, Ablauf-, Doppelklick-, Worker-Queue- und Restartfälle. Stil darf in keiner kanonischen Ausgabe erscheinen.
+- Rekordänderungen benötigen getrennte Tests für alle Ergebnisdefinitionen und Scopes, Mindesthistorien, stille Ursprünge, positive und negative Serienläufe, Gleichstand, Near Miss, 06:00-Cutoff, Bootstrap, Korrektur und Aggregation.
+- Rekordpersistenz benötigt Upgrade-, Constraint-, Konkurrenz-, Invalidierungs-, Bootstrap-, Claim-, Lease-, Retry-, Restart-, Edit- und Delete-Tests gegen echtes PostgreSQL.
+- Rekord-Discord-Adaptertests benötigen Create-, Edit-, Teilreduktion-, Delete-, Fingerprint-, Timeout-, unbekannter-Ausgang-, externe-Löschung-, Pagination- und Mentionsfälle.
 - Tests dürfen keine echte Discord-Verbindung öffnen.
 - Zeitabhängige Tests verwenden eine feste `Clock`.
 - Fehlerpfade und Idempotenz sind ebenso zu testen wie der Happy Path.
@@ -261,6 +284,9 @@ Für lokale manuelle Ausführung gelten die Befehle aus `README.md`, `docs/devel
 - Paketweise Inkremente verwenden den jeweils aktuellen Plan unter `docs/increments/`; keine späteren Pakete oder Folge-Issues vorziehen.
 - Für Issue #42 gilt die Reihenfolge aus `docs/increments/11-contextual-excuses.md`; keine spätere Interaktions-, Persistenz- oder Katalogstufe provisorisch vorziehen.
 - Der Implementierungs-PR für Inkrement 11 bleibt Draft, bis Standardbuild, PostgreSQL-Profil und reale Discord-Abnahme einschließlich Auswahl, Stil-Neuwurf, Ablauf, Neustart und Korrektur vollständig sind.
+- Für Issue #58 gilt die Reihenfolge aus `docs/increments/12-records.md`; keine Persistenz-, Live-, Delivery- oder Command-Stufe provisorisch in ein früheres Paket ziehen.
+- Paket-PRs aus Inkrement 12 erfüllen ihre eigenen Unit- und Integrationskriterien; Paket 12.10 ersetzt keine zuvor notwendigen Tests.
+- Der vollständige Implementierungs-PR beziehungsweise Releasezweig für Inkrement 12 bleibt Draft, bis Standardbuild, PostgreSQL-Profil, Bootstrap, Konkurrenz, Korrektur, Delivery-Recovery, `/records` und reale Discord-Abnahme vollständig sind.
 
 ## 9. Abschlussbericht für Codex-Aufgaben
 
