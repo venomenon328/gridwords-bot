@@ -8,6 +8,7 @@ import de.venomenon.gridwordsbot.adapter.discord.inbound.DiscordParticipationCom
 import de.venomenon.gridwordsbot.application.canonical.CanonicalGridWordsPublicationService;
 import de.venomenon.gridwordsbot.application.canonical.GridWordsSourceDeletionService;
 import de.venomenon.gridwordsbot.application.cleanup.DailyChannelCleanupService;
+import de.venomenon.gridwordsbot.port.in.ExcuseExpirationUseCase;
 import net.dv8tion.jda.api.JDA;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.ApplicationArguments;
@@ -21,6 +22,7 @@ final class DatabaseInboundStartup implements ApplicationRunner {
     private final ObjectProvider<DailyResultDetailsInteractionListener> resultDetailsProvider;
     private final ObjectProvider<ExcuseOpenInteractionListener> excuseOpenProvider;
     private final ObjectProvider<ExcuseInteractionListener> excuseInteractionProvider;
+    private final ObjectProvider<ExcuseExpirationUseCase> excuseExpirationProvider;
     private final ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider;
     private final ObjectProvider<GridWordsSourceDeletionService> deletionProvider;
     private final ObjectProvider<DailyChannelCleanupService> cleanupProvider;
@@ -42,9 +44,22 @@ final class DatabaseInboundStartup implements ApplicationRunner {
             ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider,
             ObjectProvider<GridWordsSourceDeletionService> deletionProvider,
             ObjectProvider<DailyChannelCleanupService> cleanupProvider) {
+        this(jdaProvider, listenerProvider, commandProvider, resultDetailsProvider, excuseOpenProvider,
+                excuseInteractionProvider, absentExcuseExpirations(), canonicalProvider, deletionProvider, cleanupProvider);
+    }
+    DatabaseInboundStartup(ObjectProvider<JDA> jdaProvider, ObjectProvider<DiscordInboundListener> listenerProvider,
+            ObjectProvider<DiscordParticipationCommandListener> commandProvider,
+            ObjectProvider<DailyResultDetailsInteractionListener> resultDetailsProvider,
+            ObjectProvider<ExcuseOpenInteractionListener> excuseOpenProvider,
+            ObjectProvider<ExcuseInteractionListener> excuseInteractionProvider,
+            ObjectProvider<ExcuseExpirationUseCase> excuseExpirationProvider,
+            ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider,
+            ObjectProvider<GridWordsSourceDeletionService> deletionProvider,
+            ObjectProvider<DailyChannelCleanupService> cleanupProvider) {
         this.jdaProvider = jdaProvider; this.listenerProvider = listenerProvider; this.commandProvider = commandProvider;
         this.resultDetailsProvider = resultDetailsProvider; this.excuseOpenProvider = excuseOpenProvider;
-        this.excuseInteractionProvider = excuseInteractionProvider; this.canonicalProvider = canonicalProvider;
+        this.excuseInteractionProvider = excuseInteractionProvider; this.excuseExpirationProvider = excuseExpirationProvider;
+        this.canonicalProvider = canonicalProvider;
         this.deletionProvider = deletionProvider; this.cleanupProvider = cleanupProvider;
     }
     DatabaseInboundStartup(ObjectProvider<JDA> jdaProvider, ObjectProvider<DiscordInboundListener> listenerProvider,
@@ -79,9 +94,14 @@ final class DatabaseInboundStartup implements ApplicationRunner {
     private static ObjectProvider<ExcuseInteractionListener> absentExcuseInteractions() {
         return new ObjectProvider<>() { @Override public ExcuseInteractionListener getObject() { return null; } };
     }
+    private static ObjectProvider<ExcuseExpirationUseCase> absentExcuseExpirations() {
+        return new ObjectProvider<>() { @Override public ExcuseExpirationUseCase getObject() { return null; } };
+    }
     @Override public void run(ApplicationArguments arguments) {
         DailyChannelCleanupService cleanup = cleanupProvider.getIfAvailable();
         if (cleanup != null) cleanup.reconcile();
+        ExcuseExpirationUseCase expirations = excuseExpirationProvider.getIfAvailable();
+        if (expirations != null) expirations.reconcile();
         CanonicalGridWordsPublicationService canonical = canonicalProvider.getIfAvailable(); if (canonical != null) canonical.resumeOpenPublications();
         GridWordsSourceDeletionService deletion = deletionProvider.getIfAvailable(); if (deletion != null) deletion.resumeOpenDeletions();
         JDA jda = jdaProvider.getIfAvailable(); DiscordInboundListener listener = listenerProvider.getIfAvailable();

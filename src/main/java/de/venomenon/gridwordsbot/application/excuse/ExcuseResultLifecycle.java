@@ -94,7 +94,7 @@ public final class ExcuseResultLifecycle {
 
         ExcuseEligibility eligibility = evaluate(result, originalReceivedAt, participation, null);
         ExcuseOfferContext offerContext = ExcuseOfferContext.initial(originalReceivedAt, eligibility);
-        if (!eligibility.eligible() || !hasThreeRenderableTemplates(eligibility)) {
+        if (!eligibility.eligible() || !hasThreeRenderableTemplates(eligibility, result.playerId())) {
             states.initializeNotOffered(result.id());
             return;
         }
@@ -127,12 +127,13 @@ public final class ExcuseResultLifecycle {
         ExcuseOfferContext currentContext = frozenContext.withCurrentFingerprint(eligibility);
 
         if (state.status() == ExcuseStatus.AVAILABLE) {
-            ExcuseRevalidation.Outcome outcome = !eligibility.eligible() || !hasThreeRenderableTemplates(eligibility)
+            ExcuseRevalidation.Outcome outcome = !eligibility.eligible()
+                    || !hasThreeRenderableTemplates(eligibility, result.playerId())
                     ? ExcuseRevalidation.Outcome.INVALIDATE
                     : currentContext.contextFingerprint().equals(frozenContext.contextFingerprint())
                             ? ExcuseRevalidation.Outcome.KEEP_AVAILABLE
                             : ExcuseRevalidation.Outcome.REPLACE_AVAILABLE_CONTEXT;
-            states.revalidate(new ExcuseRevalidation(result.id(), outcome, currentContext));
+            states.revalidateAndRequestCanonicalRefresh(new ExcuseRevalidation(result.id(), outcome, currentContext));
             return;
         }
 
@@ -144,7 +145,7 @@ public final class ExcuseResultLifecycle {
                         .flatMap(template -> renderer.render(template, eligibility.context()))
                         .filter(selection.renderedText()::equals))
                         .isPresent();
-        states.revalidate(new ExcuseRevalidation(
+        states.revalidateAndRequestCanonicalRefresh(new ExcuseRevalidation(
                 result.id(), selectedTextStillMatches
                         ? ExcuseRevalidation.Outcome.KEEP_SELECTED
                         : ExcuseRevalidation.Outcome.INVALIDATE,
@@ -165,10 +166,14 @@ public final class ExcuseResultLifecycle {
                 result.playerId(), result.parsedResult(), receivedAt, participation, prior, false), frozenComparison);
     }
 
-    private boolean hasThreeRenderableTemplates(ExcuseEligibility eligibility) {
+    private boolean hasThreeRenderableTemplates(ExcuseEligibility eligibility, long playerId) {
+        java.util.Set<String> hardExcluded = states.findRecentSelections(playerId, 1).stream()
+                .map(de.venomenon.gridwordsbot.domain.excuse.ExcuseSelectionHistoryEntry::templateId)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
         long candidates = catalog.templates().stream()
                 .filter(ExcuseTemplate::selectable)
                 .filter(template -> template.supports(eligibility.context()))
+                .filter(template -> !hardExcluded.contains(template.id()))
                 .filter(template -> renderer.render(template, eligibility.context()).isPresent())
                 .count();
         return candidates >= 3;

@@ -42,6 +42,11 @@ public interface ExcuseStateStore {
         throw new UnsupportedOperationException("excuse revalidation is not available");
     }
 
+    /** Revalidates an active offer or selection and durably requests canonical refresh in one transaction. */
+    default Optional<ExcuseState> revalidateAndRequestCanonicalRefresh(ExcuseRevalidation revalidation) {
+        throw new UnsupportedOperationException("atomic excuse revalidation refresh is not available");
+    }
+
     /** A convenience read; callers requiring concurrency safety must use initializeAvailable. */
     boolean cooldownSatisfied(long playerId, GameType gameType, Instant offeredAt);
 
@@ -102,6 +107,11 @@ public interface ExcuseStateStore {
     default Optional<ExcuseState> declineAndRequestCanonicalRefresh(
             long gameResultId, int contextGeneration, Instant declinedAt) {
         throw new UnsupportedOperationException("atomic excuse decline refresh is not available");
+    }
+
+    /** Expires one due available offer and durably requests its canonical refresh in the same transaction. */
+    default Optional<ExcuseState> expireAndRequestCanonicalRefresh(long gameResultId, Instant expiredAt) {
+        throw new UnsupportedOperationException("atomic excuse expiration refresh is not available");
     }
 
     /** Returns a bounded, deterministic list of active offers whose expiry is due. */

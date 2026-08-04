@@ -138,15 +138,32 @@ class ExcuseInteractionServiceTest {
         verify(fixture.states).selectAndRequestCanonicalRefresh(any());
     }
 
+    @Test
+    void expiredFollowUpAtomicallyHandsOffExpirationInsteadOfTouchingAnOption() {
+        Fixture fixture = new Fixture();
+        when(fixture.states.find(RESULT_ID)).thenReturn(Optional.of(state(ExcuseStatus.AVAILABLE, false, NOW)));
+        when(fixture.expirations.expireIfDue(RESULT_ID)).thenReturn(true);
+
+        assertThat(fixture.service.decline(action()))
+                .isEqualTo(new ExcuseInteractionUseCase.Rejected(ExcuseInteractionUseCase.Reason.OFFER_UNAVAILABLE));
+
+        verify(fixture.expirations).expireIfDue(RESULT_ID);
+        verify(fixture.states, never()).declineAndRequestCanonicalRefresh(any(Long.class), any(Integer.class), any());
+    }
+
     private static ExcuseInteractionUseCase.ActionRequest action() {
         return new ExcuseInteractionUseCase.ActionRequest(GUILD_ID, CHANNEL_ID, RESULT_ID, AUTHOR_ID, 1);
     }
 
     private static ExcuseState state(ExcuseStatus status, boolean rerollUsed) {
+        return state(status, rerollUsed, NOW.plusSeconds(60));
+    }
+
+    private static ExcuseState state(ExcuseStatus status, boolean rerollUsed, Instant expiresAt) {
         ExcuseEligibility eligibility = eligibility();
         return new ExcuseState(RESULT_ID, status,
                 Optional.of(new ExcuseOfferMetadata(501L, "test-v1", "context-v1", 1,
-                        NOW.minusSeconds(60), NOW.plusSeconds(60))),
+                        NOW.minusSeconds(60), expiresAt)),
                 Optional.of(ExcuseOfferContext.initial(NOW.minusSeconds(30), eligibility)), rerollUsed,
                 Optional.empty(), NOW.minusSeconds(60), NOW.minusSeconds(60));
     }
@@ -207,8 +224,11 @@ class ExcuseInteractionServiceTest {
         final ExcuseEligibilityPolicy policy = mock(ExcuseEligibilityPolicy.class);
         final ExcuseSelector selector = mock(ExcuseSelector.class);
         final CanonicalRefreshWakeUp refreshWakeUp = mock(CanonicalRefreshWakeUp.class);
+        final de.venomenon.gridwordsbot.port.in.ExcuseExpirationUseCase expirations = mock(
+                de.venomenon.gridwordsbot.port.in.ExcuseExpirationUseCase.class);
         final ExcuseInteractionService service = new ExcuseInteractionService(GUILD_ID, CHANNEL_ID, results, players,
-                submissions, states, policy, mock(ExcuseCatalog.class), selector, Clock.fixed(NOW, ZoneOffset.UTC), refreshWakeUp);
+                submissions, states, policy, mock(ExcuseCatalog.class), selector, Clock.fixed(NOW, ZoneOffset.UTC), refreshWakeUp,
+                expirations);
 
         Fixture() {
             when(results.findById(RESULT_ID)).thenReturn(Optional.of(result()));

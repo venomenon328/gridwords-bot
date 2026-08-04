@@ -16,6 +16,7 @@ import de.venomenon.gridwordsbot.application.player.PersonalStatusService;
 import de.venomenon.gridwordsbot.application.player.PlayerParticipationService;
 import de.venomenon.gridwordsbot.application.excuse.ExcuseInteractionService;
 import de.venomenon.gridwordsbot.application.excuse.ExcuseOpenService;
+import de.venomenon.gridwordsbot.application.excuse.ExcuseExpirationService;
 import de.venomenon.gridwordsbot.application.status.DailyResultDetailsService;
 import de.venomenon.gridwordsbot.application.status.DailyStatusRefreshService;
 import de.venomenon.gridwordsbot.application.submission.ProcessSharedResultService;
@@ -25,6 +26,7 @@ import de.venomenon.gridwordsbot.parser.quadwords.QuadWordsShareParser;
 import de.venomenon.gridwordsbot.port.in.DailyResultDetailsUseCase;
 import de.venomenon.gridwordsbot.port.in.ExcuseOpenUseCase;
 import de.venomenon.gridwordsbot.port.in.ExcuseInteractionUseCase;
+import de.venomenon.gridwordsbot.port.in.ExcuseExpirationUseCase;
 import de.venomenon.gridwordsbot.port.in.PersonalStatusUseCase;
 import de.venomenon.gridwordsbot.port.in.PlayerParticipationUseCase;
 import de.venomenon.gridwordsbot.port.in.ProcessSharedResultUseCase;
@@ -144,12 +146,13 @@ class DatabaseInboundConfiguration {
             ExcuseStateStore states,
             de.venomenon.gridwordsbot.domain.excuse.ExcuseCatalog catalog,
             de.venomenon.gridwordsbot.domain.excuse.ExcuseSelector selector,
-            Clock clock) {
+            Clock clock,
+            ExcuseExpirationUseCase expirations) {
         return new ExcuseOpenService(
                 properties.discord().guildId(), properties.discord().channelId(), results, players, submissions, states,
                 new de.venomenon.gridwordsbot.domain.excuse.ExcuseEligibilityPolicy(
                         de.venomenon.gridwordsbot.domain.excuse.ExcuseEligibilityThresholds.defaults()),
-                catalog, selector, clock);
+                catalog, selector, clock, expirations);
     }
 
     @Bean
@@ -175,12 +178,34 @@ class DatabaseInboundConfiguration {
             de.venomenon.gridwordsbot.domain.excuse.ExcuseCatalog catalog,
             de.venomenon.gridwordsbot.domain.excuse.ExcuseSelector selector,
             Clock clock,
-            CanonicalRefreshWakeUp refreshWakeUp) {
+            CanonicalRefreshWakeUp refreshWakeUp,
+            ExcuseExpirationUseCase expirations) {
         return new ExcuseInteractionService(
                 properties.discord().guildId(), properties.discord().channelId(), results, players, submissions, states,
                 new de.venomenon.gridwordsbot.domain.excuse.ExcuseEligibilityPolicy(
                         de.venomenon.gridwordsbot.domain.excuse.ExcuseEligibilityThresholds.defaults()),
-                catalog, selector, clock, refreshWakeUp);
+                catalog, selector, clock, refreshWakeUp, expirations);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "gridwords.excuses", name = "enabled", havingValue = "false", matchIfMissing = true)
+    ExcuseExpirationUseCase disabledExcuseExpirationUseCase() {
+        return new ExcuseExpirationUseCase() {
+            @Override public int reconcile() { return 0; }
+            @Override public boolean expireIfDue(long gameResultId) { return false; }
+        };
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "gridwords.excuses", name = "enabled", havingValue = "true")
+    ExcuseExpirationUseCase enabledExcuseExpirationUseCase(
+            ExcuseStateStore states,
+            CanonicalRefreshWakeUp refreshWakeUp,
+            Clock clock,
+            GridwordsBotProperties properties) {
+        return new ExcuseExpirationService(
+                states, refreshWakeUp, clock,
+                properties.excuses().expirationPageSize(), properties.excuses().expirationMaxPages());
     }
 
     @Bean
@@ -358,10 +383,11 @@ class DatabaseInboundConfiguration {
             ObjectProvider<DailyResultDetailsInteractionListener> resultDetails,
             ObjectProvider<ExcuseOpenInteractionListener> excuseOpen,
             ObjectProvider<ExcuseInteractionListener> excuseInteractions,
+            ObjectProvider<ExcuseExpirationUseCase> excuseExpirations,
             ObjectProvider<CanonicalGridWordsPublicationService> canonical,
             ObjectProvider<GridWordsSourceDeletionService> deletion,
             ObjectProvider<DailyChannelCleanupService> cleanup) {
         return new DatabaseInboundStartup(
-                jda, listener, commands, resultDetails, excuseOpen, excuseInteractions, canonical, deletion, cleanup);
+                jda, listener, commands, resultDetails, excuseOpen, excuseInteractions, excuseExpirations, canonical, deletion, cleanup);
     }
 }
