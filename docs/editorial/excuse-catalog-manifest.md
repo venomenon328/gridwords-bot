@@ -22,6 +22,8 @@ Dieses Manifest ist der Einstiegspunkt für Inkrement 11, Paket 8A. Es konsolidi
 | `excuse-catalog-quality-guidelines.md` | verbindlicher Qualitätsmaßstab für Ausredenfunktion, Stil, Tatsachensicherheit und Dubletten |
 | `excuse-catalog-review-pass-1.md` | verbindliche Textersetzungen und Ergebnis des ersten Qualitätsdurchgangs |
 | `excuse-catalog-general-topic-map.md` | endgültige `ExcuseTopic`-Zuordnung der 144 allgemeinen Texte |
+| `../requirements/excuse-catalog-volume.md` | fachlich abgenommener Umfang von 564 Templates; ersetzt die frühere Größenordnung von 70 bis 90 |
+| `../../tools/build_excuse_catalog.py` | deterministische Erzeugung und Prüfung von `catalog.json` |
 
 ## Präzedenz bei der Katalogisierung
 
@@ -42,18 +44,37 @@ Bei einem Widerspruch wird nicht geraten. Der Konflikt wird vor Erzeugung des pr
 - Der Board-Zusammenbruch differenziert zusätzlich universelle Texte, ein ungelöstes Board und einen gelösten deutlichen Ausreißer.
 - Kein Text wird allein zur Reduktion des Katalogumfangs entfernt.
 
+## Compiler-Invarianten
+
+`tools/build_excuse_catalog.py` prüft vor der Ausgabe mindestens:
+
+- genau 564 Templates und die festgelegten Familienmengen,
+- genau 18 allgemeine Texte je Stil,
+- mindestens sechs Texte je Anlass und Stil,
+- eindeutige IDs,
+- keine exakten oder normalisierten Textdubletten,
+- ausschließlich bekannte Themen, Bedingungen und Platzhalter,
+- `{worstBoard}` nur bei nachweislich eindeutig schlechtestem Board,
+- keine unerwünschten Mentions,
+- keine sichtbare Verwendung von „Raster“,
+- Textlängen innerhalb der Discord-/Schemaschranke,
+- Anwendung des Qualitätsdurchgangs und der allgemeinen Themenzuordnung.
+
+Vorgesehene Befehle:
+
+```text
+python tools/build_excuse_catalog.py
+python tools/build_excuse_catalog.py --check
+```
+
 ## Noch ausstehende technische Katalogisierung
 
-- alle 564 Einträge in `src/main/resources/excuses/catalog.json` überführen,
-- Version festlegen,
-- allgemeine Themenzuordnung anwenden,
-- Ersetzungen aus Qualitätsdurchgang 1 anwenden,
-- exakte Dubletten verhindern,
-- normalisierte Ähnlichkeiten und gleiche Prämissen prüfen,
-- IDs, Spiele, Spezifität, Gewicht, Bedingungen und Platzhalter validieren,
+- den Compiler auf dem vollständigen Repository ausführen,
+- erzeugtes `src/main/resources/excuses/catalog.json` committen,
+- gegebenenfalls vom Compiler gemeldete Dubletten oder Metadatenkonflikte redaktionell auflösen,
 - produktiven Loader und Coverage-Prüfung ausführen,
 - Standardbuild vollständig ausführen.
 
 ## Paketstatus
 
-Die **redaktionelle Texterstellung** ist abgeschlossen. Paket 8A bleibt offen, bis der produktive JSON-Katalog erzeugt, validiert und im Standardbuild erfolgreich geprüft wurde.
+Die **redaktionelle Texterstellung**, der erste Qualitätsdurchgang, die Themenzuordnung und der deterministische Compiler sind abgeschlossen. Paket 8A bleibt offen, bis der produktive JSON-Katalog erzeugt, validiert und im Standardbuild erfolgreich geprüft wurde.
