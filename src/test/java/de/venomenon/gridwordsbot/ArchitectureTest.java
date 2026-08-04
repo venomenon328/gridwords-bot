@@ -45,6 +45,21 @@ class ArchitectureTest {
                     "org.hibernate..");
 
     @ArchTest
+    static final ArchRule recordDomainOnlyDependsOnDomainAndJdk = noClasses()
+            .that().resideInAPackage("..domain.record..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    "..application..",
+                    "..port..",
+                    "..adapter..",
+                    "..config..",
+                    "org.springframework..",
+                    "net.dv8tion.jda..",
+                    "tools.jackson..",
+                    "jakarta.persistence..",
+                    "javax.persistence..",
+                    "org.hibernate..");
+
+    @ArchTest
     static final ArchRule excuseTypesDoNotUseGlobalParticipationCompatibility = noClasses()
             .that().haveSimpleNameStartingWith("Excuse")
             .should().dependOnClassesThat().haveFullyQualifiedName(
