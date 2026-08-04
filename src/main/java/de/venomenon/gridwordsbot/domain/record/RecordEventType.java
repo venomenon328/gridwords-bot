@@ -1,0 +1,11 @@
+package de.venomenon.gridwordsbot.domain.record;
+
+public enum RecordEventType {
+    RECORD_INITIALIZED,
+    RESULT_RECORD_BROKEN,
+    SERIES_RECORD_CROSSED,
+    SERIES_RECORD_TIED_AT_END,
+    SERIES_RECORD_NEAR_MISSED_AT_END,
+    RECORD_SERIES_FINISHED,
+    RECORD_EVENT_INVALIDATED
+}
