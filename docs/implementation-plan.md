@@ -1,6 +1,6 @@
 # Implementierungsplan
 
-Dieser Plan fasst die Umsetzung der Anforderungsspezifikation zusammen und verweist für die verbindlichen Details auf die jeweiligen Requirements-, ADR- und Inkrementdokumente.
+Dieser Plan fasst die abgeschlossenen Produktinkremente zusammen und verweist für verbindliche Details auf Requirements, ADRs und Inkrementdokumente.
 
 ## Leitprinzipien
 
@@ -9,10 +9,10 @@ Dieser Plan fasst die Umsetzung der Anforderungsspezifikation zusammen und verwe
 - Der Standardbuild bleibt ohne Docker, PostgreSQL und Discord-Token ausführbar.
 - Persistenzänderungen werden mit echtem PostgreSQL geprüft.
 - Discord-I/O findet nicht innerhalb von Datenbanktransaktionen statt.
-- Sichtbare Nachrichtenänderungen werden durch persistente Claims, Leases, Retry- und Recovery-Zustände abgesichert.
+- Sichtbare Nachrichtenänderungen werden durch persistente Zustände, Claims, Leases, Retry und Recovery abgesichert.
 - Originalnachrichten werden erst nach vollständig persistierter kanonischer Veröffentlichung gelöscht.
-- Produktionsdeployments verwenden reproduzierbare Containerimages, serverseitige Secrets und Backups vor Updates.
-- GHCR-Veröffentlichungen erfolgen ausschließlich bewusst manuell; Pull Requests und Pushes auf `main` prüfen das Image nur.
+- Produktionsdeployments verwenden unveränderliche Containerimages, serverseitige Secrets und Backups vor Updates.
+- GHCR-Veröffentlichungen erfolgen ausschließlich bewusst manuell.
 - Große Inkremente werden in kleine, einzeln reviewbare Pakete zerlegt.
 
 ## Abgeschlossene Inkremente
@@ -57,7 +57,7 @@ Quelllöschung erst nach persistierter Veröffentlichung sowie Retry- und Startu
 
 **Status:** abgeschlossen; PR #14 gemergt und real abgenommen.
 
-Reiner Java-Bildparser für vier normalisierte Boards ohne OCR oder ML. Details: `docs/increments/06-quadwords-image-parser.md` beziehungsweise die zugehörigen Requirements und ADRs.
+Reiner Java-Bildparser für vier normalisierte Boards ohne OCR oder ML.
 
 ### Inkrement 7 – Kanonische QuadWords-Konsolidierung
 
@@ -77,15 +77,11 @@ Vier Boards als kompaktes 2×2-Layout mit stabiler horizontaler Ausrichtung.
 
 Dynamische Spielerprofile, historisch stabile Teilnahmezeiträume, Self-Service-/Admin-Commands und Reminder-Opt-out.
 
-Verbindlich: `docs/requirements/dynamic-player-model.md`.
-
 ### Inkrement 8 – Tagesstatus und Erinnerungen
 
 **Status:** abgeschlossen und real abgenommen.
 
 Persistente Tagesstatusnachricht, vollständige Seriensemantik, Reminder und idempotente Reconciliation.
-
-Verbindlich: `docs/requirements/daily-status-reminders.md`.
 
 ### Inkrement 9 – Produktionsdeployment und Betriebshärtung
 
@@ -93,63 +89,29 @@ Verbindlich: `docs/requirements/daily-status-reminders.md`.
 
 Nicht-Root-Container, PostgreSQL 16, internes Netz, Healthchecks, Backups, Restore, Resume, Rollback und explizites Deployment.
 
-Verbindlich:
-
-- `docs/requirements/production-deployment.md`
-- `docs/increments/09-production-deployment-hardening.md`
-- `docs/operations/`
-
 ### Inkrement 10 – Wochen- und Monatsberichte
 
 **Status:** abgeschlossen und automatisiert vollständig geprüft.
 
 Abgeleitete, idempotent ausgelieferte Wochen- und Monatsberichte mit historischer Teilnehmer- und Seriensemantik.
 
-Verbindlich:
-
-- `docs/requirements/periodic-reports.md`
-- `docs/increments/10-periodic-reports.md`
-- ADR 0014
-
 ### Zwischeninkrement 10.4 – Tagesabschluss und Channel-Bereinigung
 
 **Status:** abgeschlossen; Issue #30 geschlossen und PR #35 gemergt.
 
-Der tägliche Cleanup um 06:00 Uhr finalisiert zuerst den Vortag, pensioniert danach kanonische Ergebnis- und Reminder-Nachrichten und erzeugt beziehungsweise reconciliiert den heutigen Tagesstatus. Reminder laufen standardmäßig um 16:00 und 22:00 Uhr.
-
-Verbindlich:
-
-- `docs/increments/10.4-day-close-reminder-retention-cleanup.md`
-- ADR 0015
+Der tägliche Cleanup finalisiert den Vortag, pensioniert alte kanonische Ergebnis- und Reminder-Nachrichten und reconciliert den aktuellen Tagesstatus.
 
 ### Zwischeninkrement 10.5 – Interaktive Ergebnisdetails
 
-**Status:** abgeschlossen; Issue #34 geschlossen und PR #36 gemergt. Die reale Discord-Abnahme wurde gemeinsam mit Zwischeninkrement 10.6 auf dem separaten Testserver durchgeführt.
+**Status:** abgeschlossen; Issue #34 geschlossen und PR #36 gemergt; reale Discord-Abnahme bestanden.
 
-Tagesstatusnachrichten enthalten spielbezogene Auswahlmenüs für ausschließlich lesende, ephemere GridWords- und QuadWords-Ergebnisdetails. Komponenten sind persistent rekonstruierbar und serverseitig gegen Message-ID, Spieltag, Teilnehmermenge und Optionsseite abgesichert.
-
-Verbindlich: `docs/increments/10.5-interactive-result-details.md`.
+Tagesstatusnachrichten enthalten spielbezogene Auswahlmenüs für ausschließlich lesende, ephemere Ergebnisdetails.
 
 ### Zwischeninkrement 10.6 – Spielbezogene Teilnahme
 
-**Status:** abgeschlossen; Issue #39 geschlossen und PR #41 gemergt. Automatisierte Prüfung, Produktionscontainer-Gate und reale Discord-Abnahme sind bestanden.
+**Status:** abgeschlossen; Issue #39 geschlossen und PR #41 gemergt; automatisierte Prüfung, Produktionscontainer-Gate und reale Discord-Abnahme bestanden.
 
-Spieler können unabhängig an GridWords, QuadWords, beiden Spielen oder keinem Spiel teilnehmen. Historische Teilnahmezeiträume werden pro Spieltyp geführt. Reminder, gemeinsame spielbezogene Serien, Tagesstatusmenüs und Berichtsnenner verwenden jeweils die passende Teilnehmermenge. Komplett und perfekt bleiben Zwei-Spiele-Metriken.
-
-Umgesetzt und abgenommen sind insbesondere:
-
-- spielbezogene Domänentypen und PostgreSQL-Zeiträume,
-- verlustfreier Backfill bestehender globaler Historie auf beide Spiele,
-- atomare `both`-Mutationen und Share-Aktivierung nur des validierten Spieltyps,
-- Commands und persönliche Statusprojektionen mit getrennter Teilnahme,
-- alle neun Serien auf `G(d)`, `Q(d)`, `U(d)` und `B(d)`,
-- eindeutiger Tagesstatus und je Spiel getrennte Ergebnisdetailmenüs,
-- Reminder-Audience ausschließlich für teilgenommene fehlende Spiele,
-- Wochen- und Monatsberichte mit getrennten Spielnennern,
-- Compatibility-Audit und ArchUnit-Grenze gegen globale Teilnahme in produktiven Projektionen,
-- reale Discord-Abnahme gemäß `docs/operations/10.6-game-specific-participation-acceptance.md`.
-
-Der finale Stand besitzt 502 grüne Standardtests, eine grüne PostgreSQL-Integrationsmatrix und ein erfolgreiches vollständiges Produktionsimage-, Compose-, Backup-, Restore-, Resume- und Rollback-Gate. Eine GHCR-Veröffentlichung und ein Produktionsdeployment bleiben bewusste separate Releasevorgänge.
+Spieler können unabhängig an GridWords, QuadWords, beiden Spielen oder keinem Spiel teilnehmen. Reminder, Serien, Tagesstatusmenüs und Berichtsnenner verwenden die jeweils passende historisch wirksame Teilnehmermenge.
 
 Verbindlich:
 
@@ -157,19 +119,50 @@ Verbindlich:
 - `docs/increments/10.6-game-specific-participation.md`
 - `docs/operations/10.6-game-specific-participation-acceptance.md`
 - ADR 0016
-- Issue #39
 
-## Feature-complete Versionsbasis
+### Inkrement 11 – Kontextabhängige Ausreden
 
-Der Funktionsumfang bis einschließlich Inkrement 10 und der Zwischeninkremente 10.x bildet die feature-complete Basis für Version 1.0.x beziehungsweise 1.1.0.
+**Status:** abgeschlossen; Issue #42 geschlossen, PR #46 nach `main` gemergt, Release 1.2.0 veröffentlicht und produktiv ausgerollt.
 
-Neue Inkremente sind keine Voraussetzung für diese Versionsbasis, sondern bewusst priorisierte optionale Produkterweiterungen. Produktive Veröffentlichung und Deployment bleiben von der fachlichen Feature-Vollständigkeit getrennte Freigabeschritte.
+Bei klar definierten auffälligen Ergebnissen kann der Ergebnisautor freiwillig drei private redaktionelle Ausreden öffnen, einmal den Stil wechseln, eine Ausrede auswählen oder verzichten. Nur der gewählte Text erscheint in derselben kanonischen Ergebnisnachricht. Ablauf, Cooldown, Wiederholungsschutz, Korrekturen und Recovery sind persistent abgesichert.
 
-## Release Candidate 1.0.0 / 1.1.0
+Abgeschlossen sind insbesondere:
 
-**Status:** Quellumfang implementiert, gemergt, automatisiert geprüft und real abgenommen; manuelle GHCR-Veröffentlichung und Produktionsdeployment erfolgen als getrennte Freigabeschritte.
+- reine Ausredendomäne und validierter Katalog,
+- Ergebnis-, Zeit-, Board- und Tageskontext,
+- persistenter Zustand, Optionen und Auswahlhistorie,
+- einmalige Angebotsentscheidung bei einem neuen Ergebnis,
+- öffentlicher Öffnungsbutton und autorisierter ephemerer Flow,
+- drei Vorschläge, einmaliger Stilwechsel, Auswahl und Verzicht,
+- Ablauf, Korrekturrevalidierung, Boardanreicherung und Restart-Recovery,
+- produktiver Katalog `2026.08.04.1` mit 564 auswählbaren Templates,
+- reale Discord-Abnahme,
+- vollständiges Produktionsimage-, Compose-, Backup-, Restore-, Resume- und Rollback-Gate,
+- produktiver Rollout mit aktiviertem Feature.
 
-Ein Release Candidate verwendet eine separate Discord-Testanwendung, einen separaten Testserver/-channel und eine isolierte PostgreSQL-Datenbank. Nach erfolgreicher Abnahme darf ausschließlich der freigegebene Commit veröffentlicht werden. Ein erneuter Workflow-Build gilt als neuer Build dieses Commits; byte-identische Promotion ist nur möglich, wenn das getestete Image erhalten und direkt veröffentlicht wird.
+Verbindlich:
+
+- `docs/requirements/excuses.md`
+- `docs/increments/11-contextual-excuses.md`
+- `docs/operations/11-contextual-excuses-acceptance.md`
+- ADR 0017
+- Issue #42
+
+## Versionsstände
+
+### Version 1.0.x
+
+Grundlegender produktionsfähiger Bot mit Parsern, kanonischen Ergebnisnachrichten, dynamischen Spielern, Tagesstatus, Reminder, Cleanup und Reports.
+
+### Version 1.1.0
+
+Spielbezogene Teilnahme an GridWords, QuadWords oder beiden Spielen.
+
+### Version 1.2.0
+
+Kontextabhängige Ausreden mit privater Auswahl und Übernahme des gewählten Textes in die kanonische Ergebnisnachricht.
+
+**Status:** veröffentlicht und produktiv deployt.
 
 ## Obsolet gewordene frühere Roadmap-Platzhalter
 
@@ -178,28 +171,15 @@ Die früher vorgemerkten Folgeinkremente
 - „Statistik- und Konfigurations-Commands“ und
 - „Regelbasierte Kommentare“ als generischer Sammelumfang
 
-werden nicht weiterverfolgt. Sie waren keine umgesetzten oder abgenommenen Anforderungen. Einzelne Ideen daraus können später nur über neue, ausdrücklich priorisierte Issues mit eigener Fachentscheidung zurückkehren.
+werden nicht weiterverfolgt. Sie waren keine umgesetzten oder abgenommenen Anforderungen. Einzelne Ideen daraus können nur über neue, ausdrücklich priorisierte Issues mit eigener Fachentscheidung zurückkehren.
 
-## Zur Umsetzung vorgesehen
+## Aktive Roadmap
 
-### Inkrement 11 – Kontextabhängige Ausreden
+Derzeit ist kein weiteres Produktinkrement verbindlich zur Umsetzung vorgesehen.
 
-**Status:** fachlich vorbereitet; Issue #42 offen. Paket 0 richtet Requirement, ADR, Roadmap, Architektur und Arbeitsregeln auf das neue Inkrement 11 aus.
+Achievements, Rekordmeldungen und weitere Unterhaltungsfeatures sind mögliche spätere Erweiterungen, gelten aber erst nach einem eigenen priorisierten Issue, einer fachlichen Spezifikation und einem neuen Inkrementplan als Roadmap.
 
-Bei seltenen absoluten Ergebnis-, Zeit-, Board- oder bisherigen Tagesausreißern kann der Ergebnisautor freiwillig aus drei ephemeren redaktionellen Ausreden wählen, einmal nach einem Stil neu würfeln oder verzichten. Eine Auswahl wird persistiert und als ausschließlich sichtbarer Ausredentext ohne Stilbezeichnung in dieselbe kanonische Ergebnisnachricht gerendert.
-
-Verbindlich:
-
-- `docs/requirements/excuses.md`
-- `docs/increments/11-contextual-excuses.md`
-- ADR 0017
-- Issue #42
-
-Die Umsetzung erfolgt paketweise über Ausredendomäne und Katalogmechanik, Angebots- und Boardkontext, PostgreSQL-Zustand, einmalige Ergebnisintegration, kanonische Komponenten, ephemere Auswahl, Lifecycle-Härtung, redaktionellen Vollkatalog sowie Gesamtintegration und reale Discord-Abnahme.
-
-Der Implementierungsbranch `feature/contextual-excuses` wird nach Merge des Dokumentationspakets frisch vom aktuellen `main` erstellt.
-
-## Definition of Done
+## Definition of Done für künftige Inkremente
 
 - Issue- und Paketabnahmekriterien erfüllt,
 - Standardbuild grün,
@@ -209,5 +189,4 @@ Der Implementierungsbranch `feature/contextual-excuses` wird nach Merge des Doku
 - Dokumentation aktuell,
 - notwendiger manueller Discord-Smoke-Test erfolgreich,
 - bei Betriebsänderungen Backup-, Restore-, Upgrade- und Rollbackweg geprüft,
-- bei Reportänderungen reale Darstellung und Duplikatsicherheit geprüft,
 - produktiver Release erst nach erfolgreicher RC-Abnahme.
