@@ -5,6 +5,8 @@ import static org.mockito.Mockito.mock;
 
 import de.venomenon.gridwordsbot.application.canonical.CanonicalGridWordsPublicationService;
 import de.venomenon.gridwordsbot.application.canonical.GridWordsSourceDeletionService;
+import de.venomenon.gridwordsbot.adapter.discord.inbound.ExcuseOpenInteractionListener;
+import de.venomenon.gridwordsbot.port.in.ExcuseOpenUseCase;
 import de.venomenon.gridwordsbot.port.out.CanonicalMessageGateway;
 import de.venomenon.gridwordsbot.port.out.ChannelMessageRetirementStore;
 import de.venomenon.gridwordsbot.port.out.DailyResultDetailsQuery;
@@ -60,6 +62,10 @@ class DatabaseInboundConfigurationTest {
             assertThat(context.getBean(GridWordsSourceDeletionService.class)).isNotNull();
             assertThat(context.getBean(PublicationRetryScheduler.class)).isNotNull();
             assertThat(context.getBean(CanonicalGridWordsPublicationService.class)).isNotNull();
+            assertThat(context.getBean(ExcuseOpenInteractionListener.class)).isNotNull();
+            assertThat(context.getBean(ExcuseOpenUseCase.class).open(
+                    new ExcuseOpenUseCase.Request(11L, 12L, 13L, 14L, 15L)))
+                    .isEqualTo(new ExcuseOpenUseCase.Rejected(ExcuseOpenUseCase.Reason.FEATURE_DISABLED));
         }
     }
 

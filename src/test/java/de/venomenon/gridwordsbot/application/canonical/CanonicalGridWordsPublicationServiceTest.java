@@ -22,6 +22,7 @@ import de.venomenon.gridwordsbot.domain.model.QuadWordsBoard;
 import de.venomenon.gridwordsbot.domain.model.QuadWordsBoards;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
 import de.venomenon.gridwordsbot.port.out.CanonicalMessageGateway;
+import de.venomenon.gridwordsbot.port.out.ExcuseStateStore;
 import de.venomenon.gridwordsbot.port.out.GameResultStore;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
 import de.venomenon.gridwordsbot.port.out.PublicationRetryScheduler;
@@ -915,6 +916,47 @@ class CanonicalGridWordsPublicationServiceTest {
         assertThat(message.getValue().personalPerfect()).isEmpty();
         assertThat(message.getValue().sharedComplete()).isEmpty();
         assertThat(message.getValue().sharedPerfect()).isEmpty();
+    }
+
+    @Test
+    void lostMessageRecoveryRecreatesTheCurrentAvailableExcuseButton() {
+        ExcuseStateStore excuses = mock(ExcuseStateStore.class);
+        service = new CanonicalGridWordsPublicationService(
+                results,
+                players,
+                submissions,
+                discord,
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                ZoneId.of("Europe/Berlin"),
+                retryScheduler,
+                ignored -> { },
+                excuses);
+        useResult(gridResult(RESULT, TOBIAS, OptionalLong.of(88L), 3));
+        stored(SubmissionStore.SubmissionState.RESULT_STORED);
+        when(excuses.find(RESULT)).thenReturn(Optional.of(new de.venomenon.gridwordsbot.domain.excuse.ExcuseState(
+                RESULT,
+                de.venomenon.gridwordsbot.domain.excuse.ExcuseStatus.AVAILABLE,
+                Optional.of(new de.venomenon.gridwordsbot.domain.excuse.ExcuseOfferMetadata(
+                        SOURCE, "test-v1", "context-v1", 1, NOW, NOW.plusSeconds(60))),
+                false,
+                Optional.empty(),
+                NOW,
+                NOW)));
+        GameResultStore.PublicationClaim claim = claim("00000000-0000-0000-0000-000000000033");
+        when(results.claimCanonicalPublication(eq(RESULT), any())).thenReturn(Optional.of(claim));
+        doThrow(new CanonicalMessageGateway.UnknownMessageException())
+                .when(discord)
+                .edit(eq(12L), eq(88L), any());
+        when(discord.findByPublicationKey(anyLong(), any())).thenReturn(OptionalLong.empty());
+        when(discord.create(anyLong(), any())).thenReturn(99L);
+        when(submissions.completeCanonicalPublication(SOURCE, RESULT, 99L, claim.token())).thenReturn(true);
+        ArgumentCaptor<CanonicalResultMessage> message = ArgumentCaptor.forClass(CanonicalResultMessage.class);
+
+        assertThat(service.publish(SOURCE)).isTrue();
+
+        verify(discord).create(eq(12L), message.capture());
+        assertThat(message.getValue().components())
+                .containsExactly(new CanonicalMessageComponent.ExcuseOpen(RESULT));
     }
 
     private SubmissionStore.StoredSubmission stored(SubmissionStore.SubmissionState state) {

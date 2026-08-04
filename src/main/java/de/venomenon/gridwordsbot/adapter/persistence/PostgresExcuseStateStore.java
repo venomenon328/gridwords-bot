@@ -8,6 +8,7 @@ import de.venomenon.gridwordsbot.domain.excuse.ExcuseOptionSelection;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseRound;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseRevalidation;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseSelectionHistoryEntry;
+import de.venomenon.gridwordsbot.domain.excuse.ExcuseSelection;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseSelectionSnapshot;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseState;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseStatus;
@@ -28,6 +29,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -196,6 +198,39 @@ public class PostgresExcuseStateStore implements ExcuseStateStore {
 
     @Override
     @Transactional
+    public Optional<ExcuseSelection> loadOrCreateInitialOptions(
+            long gameResultId, int contextGeneration, Supplier<ExcuseSelection> optionsFactory) {
+        requirePositive(gameResultId, "gameResultId");
+        requirePositive(contextGeneration, "contextGeneration");
+        Objects.requireNonNull(optionsFactory, "optionsFactory");
+        Optional<ExcuseState> locked = findForUpdate(gameResultId);
+        if (locked.isEmpty()) {
+            return Optional.empty();
+        }
+        ExcuseState state = locked.get();
+        if (state.status() != ExcuseStatus.AVAILABLE
+                || state.offer().orElseThrow().contextGeneration() != contextGeneration
+                || !clock.instant().isBefore(state.offer().orElseThrow().expiresAt())) {
+            return Optional.empty();
+        }
+        List<ExcuseOption> existing = initialOptions(gameResultId, contextGeneration);
+        if (!existing.isEmpty()) {
+            if (existing.size() != 3) {
+                throw new IllegalStateException("persisted initial excuse options are incomplete");
+            }
+            return Optional.of(new ExcuseSelection(ExcuseRound.INITIAL, existing));
+        }
+        ExcuseSelection created = Objects.requireNonNull(optionsFactory.get(), "optionsFactory result");
+        if (created.round() != ExcuseRound.INITIAL) {
+            throw new IllegalArgumentException("initial option factory must create the initial round");
+        }
+        validateOptions(ExcuseRound.INITIAL, created.options());
+        insertOptions(gameResultId, contextGeneration, created.options(), clock.instant());
+        return Optional.of(created);
+    }
+
+    @Override
+    @Transactional
     public Optional<ExcuseState> storeStyleRerollOptions(
             long gameResultId, int contextGeneration, List<ExcuseOption> options) {
         return storeOptions(gameResultId, contextGeneration, ExcuseRound.STYLE_REROLL, options);
@@ -309,15 +344,7 @@ public class PostgresExcuseStateStore implements ExcuseStateStore {
             return Optional.empty();
         }
         Instant now = clock.instant();
-        for (ExcuseOption option : options) {
-            jdbc.update("""
-                    INSERT INTO game_result_excuse_option (
-                        game_result_id, context_generation, round, position, template_id, style, topic,
-                        rendered_text, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, gameResultId, contextGeneration, option.round().name(), option.position(), option.templateId(),
-                    option.style().name(), option.topic().name(), option.renderedText(), utc(now));
-        }
+        insertOptions(gameResultId, contextGeneration, options, now);
         if (expectedRound == ExcuseRound.STYLE_REROLL) {
             int changed = jdbc.update("""
                     UPDATE game_result_excuse
@@ -341,6 +368,28 @@ public class PostgresExcuseStateStore implements ExcuseStateStore {
                 WHERE excuse.game_result_id = ?
                 FOR UPDATE OF excuse
                 """, this::state, gameResultId).stream().findFirst();
+    }
+
+    private List<ExcuseOption> initialOptions(long gameResultId, int contextGeneration) {
+        return jdbc.query("""
+                SELECT round, position, template_id, style, topic, rendered_text
+                FROM game_result_excuse_option
+                WHERE game_result_id = ? AND context_generation = ? AND round = 'INITIAL'
+                ORDER BY position
+                """, (rs, row) -> option(rs), gameResultId, contextGeneration);
+    }
+
+    private void insertOptions(
+            long gameResultId, int contextGeneration, List<ExcuseOption> options, Instant createdAt) {
+        for (ExcuseOption option : options) {
+            jdbc.update("""
+                    INSERT INTO game_result_excuse_option (
+                        game_result_id, context_generation, round, position, template_id, style, topic,
+                        rendered_text, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, gameResultId, contextGeneration, option.round().name(), option.position(), option.templateId(),
+                    option.style().name(), option.topic().name(), option.renderedText(), utc(createdAt));
+        }
     }
 
     private boolean cooldownSatisfiedInternal(long playerId, GameType gameType, Instant offeredAt) {

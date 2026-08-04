@@ -3,12 +3,14 @@ package de.venomenon.gridwordsbot.adapter.discord.canonical;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.venomenon.gridwordsbot.application.canonical.CanonicalResultMessage;
+import de.venomenon.gridwordsbot.application.canonical.CanonicalMessageComponent;
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.model.NormalizedBoard;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
@@ -28,6 +30,8 @@ import net.dv8tion.jda.api.entities.MessageHistory;
 import net.dv8tion.jda.api.entities.SelfUser;
 import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
+import net.dv8tion.jda.api.components.actionrow.ActionRow;
+import net.dv8tion.jda.api.components.buttons.Button;
 import net.dv8tion.jda.api.exceptions.ErrorResponseException;
 import net.dv8tion.jda.api.requests.ErrorResponse;
 import net.dv8tion.jda.api.requests.RestAction;
@@ -46,6 +50,7 @@ class JdaCanonicalMessageGatewayTest {
         Message sent = mock(Message.class);
         when(jda.getTextChannelById(12L)).thenReturn(channel);
         when(channel.sendMessageEmbeds(any(MessageEmbed.class))).thenReturn(create);
+        when(create.setComponents(anyCollection())).thenReturn(create);
         when(create.setAllowedMentions(any())).thenReturn(create);
         when(create.complete()).thenReturn(sent);
         when(sent.getIdLong()).thenReturn(99L);
@@ -61,10 +66,52 @@ class JdaCanonicalMessageGatewayTest {
         when(channel.retrieveMessageById(99L)).thenReturn(lookup);
         when(lookup.complete()).thenReturn(original);
         when(original.editMessageEmbeds(any(MessageEmbed.class))).thenReturn(edit);
+        when(edit.setComponents(anyCollection())).thenReturn(edit);
         when(edit.setAllowedMentions(any())).thenReturn(edit);
         gateway.edit(12L, 99L, message());
 
         verify(edit).setAllowedMentions(Collections.emptyList());
+    }
+
+    @Test
+    void sendsTheAvailableButtonAndRemovesItWhenTheCanonicalProjectionBecomesEmpty() {
+        JDA jda = mock(JDA.class);
+        TextChannel channel = mock(TextChannel.class);
+        MessageCreateAction create = mock(MessageCreateAction.class);
+        Message sent = mock(Message.class);
+        when(jda.getTextChannelById(12L)).thenReturn(channel);
+        when(channel.sendMessageEmbeds(any(MessageEmbed.class))).thenReturn(create);
+        when(create.setComponents(anyCollection())).thenReturn(create);
+        when(create.setAllowedMentions(any())).thenReturn(create);
+        when(create.complete()).thenReturn(sent);
+        when(sent.getIdLong()).thenReturn(99L);
+
+        new JdaCanonicalMessageGateway(jda).create(12L, messageWithOpenButton());
+
+        ArgumentCaptor<java.util.Collection<ActionRow>> created = ArgumentCaptor.forClass(java.util.Collection.class);
+        verify(create).setComponents(created.capture());
+        assertThat(created.getValue()).singleElement().satisfies(row ->
+                assertThat(row.getComponents()).singleElement().satisfies(component -> {
+                    Button button = (Button) component;
+                    assertThat(button.getCustomId()).isEqualTo("excuse:v1:open:20");
+                    assertThat(button.getLabel()).isEqualTo("Ausrede wählen");
+                }));
+
+        RestAction<Message> lookup = mock(RestAction.class);
+        Message original = mock(Message.class);
+        MessageEditAction edit = mock(MessageEditAction.class);
+        when(channel.retrieveMessageById(99L)).thenReturn(lookup);
+        when(lookup.complete()).thenReturn(original);
+        when(original.getEmbeds()).thenReturn(List.of());
+        when(original.editMessageEmbeds(any(MessageEmbed.class))).thenReturn(edit);
+        when(edit.setComponents(anyCollection())).thenReturn(edit);
+        when(edit.setAllowedMentions(any())).thenReturn(edit);
+
+        new JdaCanonicalMessageGateway(jda).edit(12L, 99L, message());
+
+        ArgumentCaptor<java.util.Collection<ActionRow>> edited = ArgumentCaptor.forClass(java.util.Collection.class);
+        verify(edit).setComponents(edited.capture());
+        assertThat(edited.getValue()).isEmpty();
     }
 
     @Test
@@ -78,6 +125,7 @@ class JdaCanonicalMessageGatewayTest {
                 true, true, true, true));
         when(jda.getTextChannelById(12L)).thenReturn(channel);
         when(channel.sendMessageEmbeds(any(MessageEmbed.class))).thenReturn(create);
+        when(create.setComponents(anyCollection())).thenReturn(create);
         when(create.setAllowedMentions(any())).thenReturn(create);
         when(create.complete()).thenReturn(sent);
         when(sent.getIdLong()).thenReturn(99L);
@@ -175,5 +223,14 @@ class JdaCanonicalMessageGatewayTest {
                 new de.venomenon.gridwordsbot.application.canonical.CanonicalExcuseProjection.Selected(
                         "Der Text bleibt unver\u00e4ndert."),
                 "gridwords-result-20");
+    }
+
+    private static CanonicalResultMessage messageWithOpenButton() {
+        CanonicalResultMessage base = message();
+        return new CanonicalResultMessage(
+                base.playerDisplayName(), base.gameType(), base.gameDate(), base.outcome(), base.duration(),
+                base.board(), base.streaks(), base.personalComplete(), base.personalPerfect(), base.sharedComplete(),
+                base.sharedPerfect(), base.quadWordsBoards(), base.excuse(),
+                List.of(new CanonicalMessageComponent.ExcuseOpen(20L)), base.publicationKey());
     }
 }

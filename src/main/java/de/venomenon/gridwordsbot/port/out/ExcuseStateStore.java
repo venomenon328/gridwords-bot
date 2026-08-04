@@ -4,6 +4,7 @@ import de.venomenon.gridwordsbot.domain.excuse.ExcuseOffer;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseOfferContext;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseOption;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseOptionSelection;
+import de.venomenon.gridwordsbot.domain.excuse.ExcuseSelection;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseSelectionHistoryEntry;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseState;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseRevalidation;
@@ -11,6 +12,7 @@ import de.venomenon.gridwordsbot.domain.model.GameType;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * Persistent boundary for one excuse state per game result. Implementations serialize positive
@@ -43,6 +45,15 @@ public interface ExcuseStateStore {
     boolean cooldownSatisfied(long playerId, GameType gameType, Instant offeredAt);
 
     Optional<ExcuseState> storeInitialOptions(long gameResultId, int contextGeneration, List<ExcuseOption> options);
+
+    /**
+     * Locks one available context generation, returns its three existing initial options, or invokes the pure factory
+     * and persists exactly three new options before returning them. This is the only first-open persistence path.
+     */
+    default Optional<ExcuseSelection> loadOrCreateInitialOptions(
+            long gameResultId, int contextGeneration, Supplier<ExcuseSelection> optionsFactory) {
+        throw new UnsupportedOperationException("initial option load-or-create is not available");
+    }
 
     /** Persists all three reroll options and consumes the one allowed reroll atomically. */
     Optional<ExcuseState> storeStyleRerollOptions(long gameResultId, int contextGeneration, List<ExcuseOption> options);

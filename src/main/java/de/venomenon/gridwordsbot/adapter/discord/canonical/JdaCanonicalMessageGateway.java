@@ -21,6 +21,7 @@ public final class JdaCanonicalMessageGateway implements CanonicalMessageGateway
     private final JDA jda;
     private final CanonicalPublicationContextStore publicationContextStore;
     private final CanonicalEmbedRenderer renderer = new CanonicalEmbedRenderer();
+    private final CanonicalComponentRenderer componentRenderer = new CanonicalComponentRenderer();
 
     public JdaCanonicalMessageGateway(JDA jda) {
         this(jda, CanonicalPublicationContextStore.none());
@@ -35,6 +36,7 @@ public final class JdaCanonicalMessageGateway implements CanonicalMessageGateway
     public long create(long channelId, CanonicalResultMessage message) {
         return channel(channelId)
                 .sendMessageEmbeds(renderer.render(withHistoricalContext(message)))
+                .setComponents(componentRenderer.render(message))
                 .setAllowedMentions(List.of())
                 .complete()
                 .getIdLong();
@@ -46,6 +48,7 @@ public final class JdaCanonicalMessageGateway implements CanonicalMessageGateway
             Message original = channel(channelId).retrieveMessageById(messageId).complete();
             MessageEmbed existingEmbed = original.getEmbeds().stream().findFirst().orElse(null);
             original.editMessageEmbeds(renderer.renderForEdit(withHistoricalContext(message), existingEmbed))
+                    .setComponents(componentRenderer.render(message))
                     .setAllowedMentions(List.of())
                     .complete();
         } catch (ErrorResponseException exception) {
@@ -132,6 +135,7 @@ public final class JdaCanonicalMessageGateway implements CanonicalMessageGateway
                         message.streaks().sharedPerfect()),
                 message.quadWordsBoards(),
                 message.excuse(),
+                message.components(),
                 message.publicationKey());
     }
 

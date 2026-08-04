@@ -10,6 +10,7 @@ import de.venomenon.gridwordsbot.domain.excuse.ExcuseOption;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseOptionSelection;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseRound;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseRevalidation;
+import de.venomenon.gridwordsbot.domain.excuse.ExcuseSelection;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseState;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseStatus;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseStyle;
@@ -28,6 +29,7 @@ import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import liquibase.integration.spring.SpringLiquibase;
 import org.junit.jupiter.api.BeforeAll;
@@ -190,6 +192,38 @@ class PostgresExcuseStateStoreIT {
                 SELECT count(*) FROM game_result_excuse_option
                 WHERE game_result_id = ? AND round = 'INITIAL'
                 """, Integer.class, resultId)).isZero();
+    }
+
+    @Test
+    void concurrentInitialOpensCreateExactlyOnePersistedRoundAndThenReuseIt() throws Exception {
+        long resultId = availableResult(GameType.GRIDWORDS, LocalDate.of(2026, 8, 1), NOW, NOW.plusSeconds(600));
+        ExcuseSelection created = new ExcuseSelection(ExcuseRound.INITIAL, options(ExcuseRound.INITIAL, "created"));
+        AtomicInteger factoryCalls = new AtomicInteger();
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            List<Optional<ExcuseSelection>> outcomes = executor.invokeAll(List.<Callable<Optional<ExcuseSelection>>>of(
+                    () -> transaction(() -> store.loadOrCreateInitialOptions(resultId, 1, () -> {
+                        factoryCalls.incrementAndGet();
+                        return created;
+                    })),
+                    () -> transaction(() -> store.loadOrCreateInitialOptions(resultId, 1, () -> {
+                        factoryCalls.incrementAndGet();
+                        return created;
+                    }))))
+                    .stream().map(this::result).toList();
+
+            assertThat(outcomes).containsOnly(Optional.of(created));
+        }
+
+        assertThat(factoryCalls).hasValue(1);
+        assertThat(jdbc.queryForObject("""
+                SELECT count(*) FROM game_result_excuse_option
+                WHERE game_result_id = ? AND context_generation = 1 AND round = 'INITIAL'
+                """, Integer.class, resultId)).isEqualTo(3);
+        PostgresExcuseStateStore restarted = new PostgresExcuseStateStore(
+                jdbc, Clock.fixed(NOW, ZoneOffset.UTC), BERLIN);
+        assertThat(transaction(() -> restarted.loadOrCreateInitialOptions(resultId, 1,
+                () -> { throw new AssertionError("existing initial options must be reused"); }))).contains(created);
     }
 
     @Test
