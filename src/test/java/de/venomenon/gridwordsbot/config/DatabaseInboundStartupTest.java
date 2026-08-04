@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import de.venomenon.gridwordsbot.adapter.discord.inbound.DailyResultDetailsInteractionListener;
 import de.venomenon.gridwordsbot.adapter.discord.inbound.DiscordInboundListener;
 import de.venomenon.gridwordsbot.adapter.discord.inbound.DiscordParticipationCommandListener;
+import de.venomenon.gridwordsbot.adapter.discord.inbound.ExcuseOpenInteractionListener;
 import de.venomenon.gridwordsbot.application.canonical.CanonicalGridWordsPublicationService;
 import de.venomenon.gridwordsbot.application.canonical.GridWordsSourceDeletionService;
 import de.venomenon.gridwordsbot.application.cleanup.DailyChannelCleanupService;
@@ -27,6 +28,7 @@ class DatabaseInboundStartupTest {
         JDA jda = mock(JDA.class);
         DiscordInboundListener inbound = mock(DiscordInboundListener.class);
         DailyResultDetailsInteractionListener resultDetails = mock(DailyResultDetailsInteractionListener.class);
+        ExcuseOpenInteractionListener excuseOpen = mock(ExcuseOpenInteractionListener.class);
         DiscordParticipationCommandListener commands = mock(DiscordParticipationCommandListener.class);
 
         new DatabaseInboundStartup(
@@ -34,6 +36,7 @@ class DatabaseInboundStartupTest {
                 provider(inbound),
                 provider(commands),
                 provider(resultDetails),
+                provider(excuseOpen),
                 provider(canonical),
                 provider(deletion),
                 provider(cleanup))
@@ -45,6 +48,7 @@ class DatabaseInboundStartupTest {
         order.verify(deletion).resumeOpenDeletions();
         order.verify(jda).addEventListener(inbound);
         order.verify(jda).addEventListener(resultDetails);
+        order.verify(jda).addEventListener(excuseOpen);
         order.verify(jda).addEventListener(commands);
         order.verify(commands).registerCommands(jda);
     }

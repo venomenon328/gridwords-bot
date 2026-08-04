@@ -426,6 +426,10 @@ public final class CanonicalGridWordsPublicationService {
                 playerId,
                 clock.instant().atZone(zoneId).toLocalDate());
 
+        CanonicalExcuseProjection excuse = excuseProjection(result.id());
+        java.util.List<CanonicalMessageComponent> components = excuse instanceof CanonicalExcuseProjection.Available
+                ? java.util.List.of(new CanonicalMessageComponent.ExcuseOpen(result.id()))
+                : java.util.List.of();
         return new CanonicalResultMessage(
                 players.findByDiscordUserId(playerId).orElseThrow().displayName(),
                 result.parsedResult().gameType(),
@@ -439,7 +443,8 @@ public final class CanonicalGridWordsPublicationService {
                 contextual(streaks.sharedComplete(), publicationContext.sharedCompleteEstablished()),
                 contextual(streaks.sharedPerfect(), publicationContext.sharedPerfectEstablished()),
                 result.parsedResult().quadWordsBoards(),
-                excuseProjection(result.id()),
+                excuse,
+                components,
                 result.parsedResult().gameType().name().toLowerCase(java.util.Locale.ROOT)
                         + "-result-" + result.id());
     }
