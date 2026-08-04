@@ -1,8 +1,8 @@
 package de.venomenon.gridwordsbot.domain.record;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
-import static org.assertj.core.api.Assertions.assertThatUnsupportedOperationException;
 
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
@@ -23,7 +23,8 @@ class RecordDefinitionCatalogTest {
         assertThat(first.definitions().stream().map(RecordDefinition::key))
                 .doesNotHaveDuplicates()
                 .containsExactlyElementsOf(expectedKeys());
-        assertThatUnsupportedOperationException().isThrownBy(() -> first.definitions().clear());
+        assertThatExceptionOfType(UnsupportedOperationException.class)
+                .isThrownBy(() -> first.definitions().clear());
     }
 
     @Test
