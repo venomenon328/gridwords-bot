@@ -1,6 +1,6 @@
 # Inkrement 11: Kontextabhängige Ausreden
 
-**Status:** fachlich vorbereitet; Paket 0 ist Gegenstand des Dokumentations-PRs  
+**Status:** Paket 1 bis 8A sowie die Paket-7-Recovery-Korrektur sind integriert; Paket 8B dokumentiert die Gesamtregression und wartet auf die reale Discord-Abnahme.
 **Issue:** #42  
 **Vorgesehener Implementierungsbranch:** `feature/contextual-excuses`  
 **Reihenfolge:** nach dem vollständig abgeschlossenen Zwischeninkrement 10.6
@@ -96,14 +96,14 @@ Achievements, Rekordmeldungen und weitere Unterhaltungsfeatures dürfen später 
 ## Paketübersicht
 
 - [x] Paket 0 – Requirement, ADR, Inkrementplan, Roadmap und Arbeitsregeln
-- [ ] Paket 1 – Ausredendomäne, Katalogmechanik, Validierung und Zufallsquelle
-- [ ] Paket 2 – Angebotsgründe, Kontextanalyse, Boardanalyse und Tagesausreißer
-- [ ] Paket 3 – Liquibase-Schema, PostgreSQL-Zustand, Optionen und Verlauf
-- [ ] Paket 4 – Einmalige Ergebnisintegration, Korrekturrevalidierung und kanonische Projektion
-- [ ] Paket 5 – Kanonische Komponenten, Codec und autorisierter Öffnungsflow
-- [ ] Paket 6 – Vorschläge, Stil-Neuwurf, Auswahl, Verzicht und Refresh-Handoff
-- [ ] Paket 7 – Ablauf, Recovery, Konkurrenz, Boardanreicherung und Wiederholungsschutz
-- [ ] Paket 8A – Redaktioneller Vollkatalog
+- [x] Paket 1 – Ausredendomäne, Katalogmechanik, Validierung und Zufallsquelle
+- [x] Paket 2 – Angebotsgründe, Kontextanalyse, Boardanalyse und Tagesausreißer
+- [x] Paket 3 – Liquibase-Schema, PostgreSQL-Zustand, Optionen und Verlauf
+- [x] Paket 4 – Einmalige Ergebnisintegration, Korrekturrevalidierung und kanonische Projektion
+- [x] Paket 5 – Kanonische Komponenten, Codec und autorisierter Öffnungsflow
+- [x] Paket 6 – Vorschläge, Stil-Neuwurf, Auswahl, Verzicht und Refresh-Handoff
+- [x] Paket 7 – Ablauf, Recovery, Konkurrenz, Boardanreicherung und Wiederholungsschutz einschließlich Recovery-Korrektur PR #54
+- [x] Paket 8A – Redaktioneller Vollkatalog `2026.08.04.1`
 - [ ] Paket 8B – Gesamtintegration, reale Abnahme und Abschluss
 
 Die Pakete werden in dieser Reihenfolge umgesetzt. Paket 8A kann nach Stabilisierung des Katalogschemas aus Paket 1 redaktionell vorbereitet werden, wird aber erst gemeinsam mit Paket 8B vollständig integriert.
@@ -584,6 +584,8 @@ content: add excuse catalog
 ```
 
 ## Paket 8B – Gesamtintegration, reale Abnahme und Abschluss
+
+**Status:** automatisierte Gesamtregression und Abschlussdokumentation vorbereitet; reale Abnahme noch ausstehend. Der Nachweis wird in `docs/operations/11-contextual-excuses-acceptance.md` geführt.
 
 ### Ziel
 

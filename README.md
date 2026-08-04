@@ -4,7 +4,7 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 ## Aktueller Stand
 
-Der funktionale Umfang bis einschließlich Inkrement 10 sowie der Zwischeninkremente 10.4, 10.5 und 10.6 ist implementiert, gemergt, automatisiert geprüft und auf einem separaten Discord-Testserver real abgenommen.
+Der funktionale Umfang bis einschließlich Inkrement 10 sowie der Zwischeninkremente 10.4, 10.5 und 10.6 ist implementiert, gemergt, automatisiert geprüft und auf einem separaten Discord-Testserver real abgenommen. Inkrement 11 ist technisch integriert und weiterhin standardmäßig deaktiviert; die reale Discord-Abnahme für Paket 8B bleibt der getrennte Freigabeschritt.
 
 Der Quellstand trägt die Projektversion `1.0.0`. Der Umfang bis 10.6 bildet die feature-complete Basis für Version 1.0.x beziehungsweise 1.1.0. Ein produktiver Rollout und die manuelle Veröffentlichung nach GHCR bleiben bewusste separate Releasevorgänge.
 
@@ -41,11 +41,12 @@ Der Bot unterstützt insbesondere:
 - interaktive, je Spiel getrennte Auswahlmenüs in Tagesstatusnachrichten,
 - ausschließlich ephemere, lesende Ergebnisdetails,
 - Claim-, Lease-, Retry-, Recovery-, Supersession- und Duplikatschutz,
-- keine Discord-I/O innerhalb von Datenbanktransaktionen.
+- keine Discord-I/O innerhalb von Datenbanktransaktionen,
+- optionale kontextabhängige Ausreden: genau drei ephemere Vorschläge, ein Stil-Neuwurf, Auswahl oder Verzicht und ausschließlich kanonische Refresh-/Recovery-Delivery.
 
 Standardzeitzone ist `Europe/Berlin`.
 
-Die früher vorgemerkten allgemeinen Inkremente für Statistik-/Konfigurations-Commands und regelbasierte Kommentare werden nicht weiterverfolgt. Als nächste bewusst priorisierte Produkterweiterung ist **Inkrement 11 – Kontextabhängige Ausreden** aus Issue #42 fachlich vorbereitet. Eine gewählte Ausrede wird persistiert und ohne Stilbezeichnung in dieselbe kanonische Ergebnisnachricht gerendert.
+Die früher vorgemerkten allgemeinen Inkremente für Statistik-/Konfigurations-Commands und regelbasierte Kommentare werden nicht weiterverfolgt. **Inkrement 11 – Kontextabhängige Ausreden** aus Issue #42 ist technisch integriert: Eine gewählte Ausrede wird persistiert und ohne Stilbezeichnung in dieselbe kanonische Ergebnisnachricht gerendert. Das Feature bleibt bis zum bewusst dokumentierten Rollout deaktiviert.
 
 ## Projektdokumentation
 
@@ -66,6 +67,7 @@ Die früher vorgemerkten allgemeinen Inkremente für Statistik-/Konfigurations-C
 - [`docs/increments/10.6-game-specific-participation.md`](docs/increments/10.6-game-specific-participation.md) – Entwicklungspakete für unabhängige Spielteilnahme
 - [`docs/increments/11-contextual-excuses.md`](docs/increments/11-contextual-excuses.md) – Entwicklungspakete für kontextabhängige Ausreden
 - [`docs/operations/10.6-game-specific-participation-acceptance.md`](docs/operations/10.6-game-specific-participation-acceptance.md) – automatisierte und reale Abschlussabnahme
+- [`docs/operations/11-contextual-excuses-acceptance.md`](docs/operations/11-contextual-excuses-acceptance.md) – Gesamtregression und reale Abnahme der Ausreden
 - [`docs/operations/`](docs/operations/) – Betrieb, Deployment, Backup und Fehlerdiagnose
 - [`docs/adr/`](docs/adr/) – Architekturentscheidungen
 - [`AGENTS.md`](AGENTS.md) – Arbeitsregeln für Codex und Reviews
@@ -111,6 +113,11 @@ DAILY_CLEANUP_TIME=06:00
 WEEKLY_REPORT_TIME=08:00
 MONTHLY_REPORT_TIME=08:15
 TIME_ZONE=Europe/Berlin
+
+EXCUSES_ENABLED=false
+EXCUSE_OFFER_LIFETIME=PT15M
+EXCUSE_EXPIRATION_PAGE_SIZE=25
+EXCUSE_EXPIRATION_MAX_PAGES=4
 ```
 
 ## Lokale Validierung
@@ -152,6 +159,14 @@ DISCORD_GUILD_ID=DEINE_TEST_GUILD_ID
 DISCORD_CHANNEL_ID=DEINE_TEST_CHANNEL_ID
 ADMIN_USER_IDS=DEINE_DISCORD_USER_ID
 ```
+
+Für die Ausreden-Abnahme ausschließlich in der separaten Testanwendung und deren isolierter Testdatenbank ergänzen:
+
+```properties
+EXCUSES_ENABLED=true
+```
+
+Die produktive Konfiguration behält `EXCUSES_ENABLED=false`; ein Token oder eine Test-ID gehört nie in eine versionierte Datei.
 
 Dann:
 

@@ -44,6 +44,16 @@ class GridwordsBotPropertiesTest {
     }
 
     @Test
+    void keepsContextualExcusesDisabledUntilTheyAreExplicitlyEnabledInAnIsolatedTestConfiguration() {
+        contextRunner.run(context -> {
+            GridwordsBotProperties properties = context.getBean(GridwordsBotProperties.class);
+
+            assertThat(properties.excuses())
+                    .isEqualTo(new GridwordsBotProperties.Excuses(false, java.time.Duration.ofMinutes(15), 25, 4));
+        });
+    }
+
+    @Test
     void rejectsEqualReminderTimes() {
         assertThatThrownBy(() -> schedule(LocalTime.of(18, 0), LocalTime.of(18, 0)))
                 .isInstanceOf(IllegalArgumentException.class);

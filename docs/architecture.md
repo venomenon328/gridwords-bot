@@ -417,11 +417,15 @@ SELECTED(renderedText)
 
 `AVAILABLE` erzeugt einen öffentlichen Button in derselben Ergebnisnachricht. `SELECTED` erzeugt ausschließlich den Text am Ende der bestehenden Beschreibung; Stil und Metadaten bleiben unsichtbar. Create und Edit übertragen Embed und Action Rows gemeinsam.
 
-Der JDA-Interaction-Listener bestätigt sofort ephemer, validiert Guild, Channel, aktuelle kanonische Message-ID, Ergebnisautor, Status, Ablauf, Kontextgeneration und persistierte Option und delegiert an einen begrenzten Worker. Die Auswahlantworten bleiben ephemer.
+Der JDA-Interaction-Listener bestätigt sofort ephemer und delegiert an einen begrenzten Worker. Die Auswahlantworten bleiben ephemer.
+
+Nur der öffentliche Open-Klick vergleicht seine Event-Message-ID mit der aktuellen kanonischen Ergebnisnachricht. Pick, Stil-Neuwurf und Verzicht kommen aus einer ephemeren Nachricht und autorisieren sich deshalb ausschließlich über Guild, Channel, Actor, Ergebnis, Status, Ablauf, Generation sowie die persistierte Runde und Position.
 
 Eine Interaction führt keinen direkten öffentlichen Discord-Edit aus. Auswahl, Verzicht, Ablauf und Invalidierung persistieren ihren Zustandsübergang gemeinsam mit einem dauerhaften Auftrag an die bereits vorhandene kanonische Refresh-Generation. Die kanonische Publication-, Retry-, Recovery-, Duplikat- und Retirement-Pipeline bleibt die einzige öffentliche Deliverygrenze.
 
 Ein Startup-/Schedulerdienst setzt fällige `AVAILABLE`-Zustände idempotent auf `EXPIRED` und fordert denselben Refresh an. In-Memory-Sessions sind keine Quelle der Wahrheit. Details regeln `docs/requirements/excuses.md` und ADR 0017.
+
+Die Startup-Recovery findet dauerhafte Refreshaufträge auch für die aktuelle publizierte Quelle in `ORIGINAL_MESSAGE_DELETED` und `COMPLETED`. `SUPERSEDED`-Quellen und Ergebnisse hinter einer nicht aktiven Retirement-Fence bleiben ausgeschlossen; die Recovery editiert eine vorhandene kanonische Message oder folgt ausschließlich dem vorhandenen Recreate-Pfad.
 
 ## 13. Tests
 

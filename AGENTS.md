@@ -107,9 +107,11 @@ Jeder Schritt muss nach einem Absturz oder erneut zugestellten Event gefahrlos f
 - Tatsächlich gezeigte Optionen werden vor der ephemeren Ausgabe persistiert. Auswahl ist nur aus der aktuellen persistierten Runde und Kontextgeneration zulässig.
 - Template-, Stil-, Themen- und gerenderter Text-Snapshot werden bei Auswahl gespeichert. Der gewählte Text wird niemals stillschweigend umformuliert.
 - Stilnamen erscheinen ausschließlich ephemer. In der kanonischen Ergebnisnachricht steht nach Auswahl nur der Text, ohne Stil, Überschrift oder Ausredenlabel.
-- Der Ergebnisautor ist der einzige berechtigte Actor. Guild, Channel, aktuelle kanonische Message-ID, Ergebnis-ID, Status, Ablauf, Generation, Runde und Position werden serverseitig validiert.
+- Der Ergebnisautor ist der einzige berechtigte Actor. Nur der öffentliche Open-Klick validiert seine Event-Message-ID gegen die aktuelle kanonische Message; ephemere Folgeinteraktionen validieren Guild, Channel, Ergebnis-ID, Status, Ablauf, Generation, Runde und Position ausschließlich serverseitig.
 - Eine Ausredeninteraction editiert die öffentliche Discord-Nachricht niemals direkt. Zustandsübergang und dauerhafter kanonischer Refresh-Auftrag werden atomar persistiert.
 - Create und Edit der kanonischen Nachricht übertragen Embed und Action Rows gemeinsam; ein terminaler Ausredenzustand darf keinen veralteten Button zurücklassen.
+- Dauerhafte kanonische Refresh-Recovery findet die aktuelle publizierte Quelle auch in `ORIGINAL_MESSAGE_DELETED` und `COMPLETED`; `SUPERSEDED` und nicht aktive Retirement-Fences dürfen nie wieder veröffentlicht werden.
+- Paket 8B darf keine Fachlogik oder den Katalog `2026.08.04.1` ändern. PR #46 und Issue #42 bleiben bis zur dokumentierten realen Abnahme mit separater Testanwendung und Testdatenbank offen; `EXCUSES_ENABLED` bleibt produktiv `false`.
 - Inkrement 11 führt kein allgemeines Kommentar-, Event- oder Plugin-Framework ein.
 
 ### Serienmodell

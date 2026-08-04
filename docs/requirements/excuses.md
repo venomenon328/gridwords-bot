@@ -592,6 +592,10 @@ EXCUSE_QUADWORDS_SLOW_DURATION=PT8M
 
 Weitere fachliche Schwellen dürfen ebenfalls typisiert konfigurierbar sein, behalten aber die in diesem Dokument festgelegten Defaults. Es gibt im MVP keinen Runtime- oder Slash-Command zur Änderung.
 
+### 16.1 Rollout-Grenze
+
+`EXCUSES_ENABLED` bleibt in jeder produktiven Konfiguration `false`, bis eine getrennte Discord-Testanwendung mit isolierter PostgreSQL-Datenbank die dokumentierte reale Abnahme bestanden hat. Die Aktivierung gehört ausschließlich in diese nicht versionierte Testkonfiguration; sie ist weder ein Produktions-Rollout noch eine fachliche Schalteroberfläche.
+
 ## 17. Nicht Bestandteil von Inkrement 11
 
 - generative KI oder externe Text-API,

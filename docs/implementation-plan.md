@@ -184,7 +184,7 @@ werden nicht weiterverfolgt. Sie waren keine umgesetzten oder abgenommenen Anfor
 
 ### Inkrement 11 – Kontextabhängige Ausreden
 
-**Status:** fachlich vorbereitet; Issue #42 offen. Paket 0 richtet Requirement, ADR, Roadmap, Architektur und Arbeitsregeln auf das neue Inkrement 11 aus.
+**Status:** technisch integriert; Paket 8B dokumentiert die Gesamtregression und wartet auf die reale Discord-Abnahme. Issue #42 bleibt bis zu deren Abschluss offen.
 
 Bei seltenen absoluten Ergebnis-, Zeit-, Board- oder bisherigen Tagesausreißern kann der Ergebnisautor freiwillig aus drei ephemeren redaktionellen Ausreden wählen, einmal nach einem Stil neu würfeln oder verzichten. Eine Auswahl wird persistiert und als ausschließlich sichtbarer Ausredentext ohne Stilbezeichnung in dieselbe kanonische Ergebnisnachricht gerendert.
 
@@ -195,9 +195,9 @@ Verbindlich:
 - ADR 0017
 - Issue #42
 
-Die Umsetzung erfolgt paketweise über Ausredendomäne und Katalogmechanik, Angebots- und Boardkontext, PostgreSQL-Zustand, einmalige Ergebnisintegration, kanonische Komponenten, ephemere Auswahl, Lifecycle-Härtung, redaktionellen Vollkatalog sowie Gesamtintegration und reale Discord-Abnahme.
+Die Umsetzung erfolgte paketweise über Ausredendomäne und Katalogmechanik, Angebots- und Boardkontext, PostgreSQL-Zustand, einmalige Ergebnisintegration, kanonische Komponenten, ephemere Auswahl, Lifecycle-Härtung und den redaktionellen Vollkatalog. Paket 8B führt die Gesamtregression und die reale Discord-Abnahme gemäß `docs/operations/11-contextual-excuses-acceptance.md` zusammen.
 
-Der Implementierungsbranch `feature/contextual-excuses` wird nach Merge des Dokumentationspakets frisch vom aktuellen `main` erstellt.
+Der Integrationsbranch ist `feature/contextual-excuses`. Das Produktionsfeature bleibt bis zum getrennten Rollout standardmäßig deaktiviert.
 
 ## Definition of Done
 
