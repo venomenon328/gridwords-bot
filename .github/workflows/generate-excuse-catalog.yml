@@ -1,0 +1,57 @@
+name: Generate reviewed excuse catalog
+
+on:
+  push:
+    branches:
+      - feature/contextual-excuses
+    paths:
+      - "docs/editorial/**"
+      - "tools/build_excuse_catalog.py"
+      - ".github/workflows/generate-excuse-catalog.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/contextual-excuses
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Generate and verify catalog
+        run: |
+          python tools/build_excuse_catalog.py
+          python tools/build_excuse_catalog.py --check
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Verify standard build with generated catalog
+        run: mvn --batch-mode --no-transfer-progress clean verify
+
+      - name: Commit generated catalog
+        shell: bash
+        run: |
+          if [[ -z "$(git status --porcelain -- src/main/resources/excuses/catalog.json)" ]]; then
+            echo "Catalog is already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/main/resources/excuses/catalog.json
+          git commit -m "content: generate excuse catalog"
+          git push origin HEAD:feature/contextual-excuses
