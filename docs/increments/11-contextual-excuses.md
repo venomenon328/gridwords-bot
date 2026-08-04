@@ -61,6 +61,14 @@ Das vollständige Protokoll steht unter:
 
 - `docs/operations/11-contextual-excuses-acceptance.md`
 
+## Historischer Paketplan
+
+Der während der Umsetzung verbindliche detaillierte Paket-, Test- und Abnahmeplan bleibt zu Dokumentationszwecken erhalten:
+
+- `docs/increments/archive/11-contextual-excuses-package-plan.md`
+
+Die vorliegende Datei beschreibt den endgültigen abgenommenen Zustand und ist für den aktuellen Projektstatus maßgeblich.
+
 ## Verbindliche Dokumente
 
 - `docs/requirements/excuses.md`
