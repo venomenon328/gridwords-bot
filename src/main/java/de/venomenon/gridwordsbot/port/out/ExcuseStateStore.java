@@ -8,6 +8,7 @@ import de.venomenon.gridwordsbot.domain.excuse.ExcuseSelection;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseSelectionHistoryEntry;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseState;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseRevalidation;
+import de.venomenon.gridwordsbot.domain.excuse.ExcuseRound;
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import java.time.Instant;
 import java.util.List;
@@ -61,6 +62,13 @@ public interface ExcuseStateStore {
      */
     default List<ExcuseOption> findOptions(long gameResultId, int contextGeneration) {
         throw new UnsupportedOperationException("option lookup is not available");
+    }
+
+    /** Returns only the persisted round that is currently actionable for this offer. */
+    default List<ExcuseOption> findActiveOptions(long gameResultId, int contextGeneration, ExcuseRound round) {
+        return findOptions(gameResultId, contextGeneration).stream()
+                .filter(option -> option.round() == round)
+                .toList();
     }
 
     /** Persists all three reroll options and consumes the one allowed reroll atomically. */

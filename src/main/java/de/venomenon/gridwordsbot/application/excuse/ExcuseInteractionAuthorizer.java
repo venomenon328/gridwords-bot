@@ -8,7 +8,7 @@ import de.venomenon.gridwordsbot.port.out.SubmissionStore;
 import java.time.Clock;
 import java.util.Objects;
 
-/** Shared server-side boundary for every ephemeral excuse interaction. */
+/** Shared server-side boundary for public open and ephemeral follow-up interactions. */
 final class ExcuseInteractionAuthorizer {
 
     private final long configuredGuildId;
@@ -36,45 +36,66 @@ final class ExcuseInteractionAuthorizer {
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
-    Result authorize(Request request) {
-        Objects.requireNonNull(request, "request");
-        if (request.guildId() != configuredGuildId || request.channelId() != configuredChannelId) {
+    Result authorizeOpen(OpenRequest request) {
+        return authorize(request.guildId(), request.channelId(), request.gameResultId(), request.actorId(),
+                request.contextGeneration(), request.canonicalMessageId());
+    }
+
+    Result authorizeFollowUp(FollowUpRequest request) {
+        return authorize(request.guildId(), request.channelId(), request.gameResultId(), request.actorId(),
+                request.contextGeneration(), null);
+    }
+
+    private Result authorize(
+            long guildId,
+            long channelId,
+            long gameResultId,
+            long actorId,
+            Integer contextGeneration,
+            Long expectedCanonicalMessageId) {
+        if (guildId != configuredGuildId || channelId != configuredChannelId) {
             return new Rejected(Reason.CONTEXT_MISMATCH);
         }
-        GameResultStore.StoredGameResult result = results.findById(request.gameResultId()).orElse(null);
+        GameResultStore.StoredGameResult result = results.findById(gameResultId).orElse(null);
         if (result == null) {
             return new Rejected(Reason.CONTEXT_MISMATCH);
         }
-        if (result.playerId() != request.actorId()) {
+        if (result.playerId() != actorId) {
             return new Rejected(Reason.NOT_RESULT_AUTHOR);
         }
         if (result.canonicalMessageId().isEmpty()
-                || result.canonicalMessageId().getAsLong() != request.canonicalMessageId()) {
+                || expectedCanonicalMessageId != null
+                && result.canonicalMessageId().getAsLong() != expectedCanonicalMessageId) {
             return new Rejected(Reason.CONTEXT_MISMATCH);
         }
         SubmissionStore.CanonicalRefreshCandidate publication = submissions
-                .findCurrentCanonicalPublicationCandidate(request.gameResultId()).orElse(null);
-        if (publication == null || !isCurrentPublishedContext(publication.submission(), request)) {
+                .findCurrentCanonicalPublicationCandidate(gameResultId).orElse(null);
+        if (publication == null || !isCurrentPublishedContext(publication.submission(), guildId, channelId, gameResultId, actorId)) {
             return new Rejected(Reason.CONTEXT_MISMATCH);
         }
-        ExcuseState state = states.find(request.gameResultId()).orElse(null);
+        ExcuseState state = states.find(gameResultId).orElse(null);
         if (state == null || state.status() != ExcuseStatus.AVAILABLE
                 || state.offer().isEmpty() || !clock.instant().isBefore(state.offer().orElseThrow().expiresAt())) {
             return new Rejected(Reason.OFFER_UNAVAILABLE);
         }
-        if (request.contextGeneration() != null
-                && state.offer().orElseThrow().contextGeneration() != request.contextGeneration()) {
+        if (contextGeneration != null
+                && state.offer().orElseThrow().contextGeneration() != contextGeneration) {
             return new Rejected(Reason.OFFER_UNAVAILABLE);
         }
         return new Authorized(result, state);
     }
 
-    private static boolean isCurrentPublishedContext(SubmissionStore.StoredSubmission submission, Request request) {
-        if (submission.guildId() != request.guildId()
-                || submission.channelId() != request.channelId()
-                || submission.authorPlayerId() != request.actorId()
+    private static boolean isCurrentPublishedContext(
+            SubmissionStore.StoredSubmission submission,
+            long guildId,
+            long channelId,
+            long gameResultId,
+            long actorId) {
+        if (submission.guildId() != guildId
+                || submission.channelId() != channelId
+                || submission.authorPlayerId() != actorId
                 || submission.gameResultId().isEmpty()
-                || submission.gameResultId().orElseThrow() != request.gameResultId()) {
+                || submission.gameResultId().orElseThrow() != gameResultId) {
             return false;
         }
         return submission.state() == SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED
@@ -82,15 +103,27 @@ final class ExcuseInteractionAuthorizer {
                 || submission.state() == SubmissionStore.SubmissionState.COMPLETED;
     }
 
-    record Request(
+    record OpenRequest(
             long guildId,
             long channelId,
             long canonicalMessageId,
             long gameResultId,
             long actorId,
             Integer contextGeneration) {
-        Request {
+        OpenRequest {
             if (guildId <= 0 || channelId <= 0 || canonicalMessageId <= 0 || gameResultId <= 0 || actorId <= 0) {
+                throw new IllegalArgumentException("Discord and result IDs must be positive");
+            }
+            if (contextGeneration != null && contextGeneration < 1) {
+                throw new IllegalArgumentException("contextGeneration must be positive when provided");
+            }
+        }
+    }
+
+    record FollowUpRequest(
+            long guildId, long channelId, long gameResultId, long actorId, Integer contextGeneration) {
+        FollowUpRequest {
+            if (guildId <= 0 || channelId <= 0 || gameResultId <= 0 || actorId <= 0) {
                 throw new IllegalArgumentException("Discord and result IDs must be positive");
             }
             if (contextGeneration != null && contextGeneration < 1) {

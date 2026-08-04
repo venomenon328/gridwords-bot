@@ -5,6 +5,7 @@ import de.venomenon.gridwordsbot.domain.excuse.ExcuseEligibility;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseEligibilityPolicy;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseEligibilityRequest;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseSelectionRequest;
+import de.venomenon.gridwordsbot.domain.excuse.ExcuseRound;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseSelector;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseState;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseStatus;
@@ -50,8 +51,8 @@ public final class ExcuseOpenService implements ExcuseOpenUseCase {
     @Override
     public Result open(Request request) {
         Objects.requireNonNull(request, "request");
-        ExcuseInteractionAuthorizer.Result authorization = authorizer.authorize(
-                new ExcuseInteractionAuthorizer.Request(
+        ExcuseInteractionAuthorizer.Result authorization = authorizer.authorizeOpen(
+                new ExcuseInteractionAuthorizer.OpenRequest(
                         request.guildId(), request.channelId(), request.canonicalMessageId(), request.gameResultId(),
                         request.actorId(), null));
         if (authorization instanceof ExcuseInteractionAuthorizer.Rejected rejected) {
@@ -62,17 +63,26 @@ public final class ExcuseOpenService implements ExcuseOpenUseCase {
         if (eligibility == null) {
             return rejected(Reason.OFFER_UNAVAILABLE);
         }
+        int generation = authorized.state().offer().orElseThrow().contextGeneration();
+        if (authorized.state().rerollUsed()) {
+            java.util.List<de.venomenon.gridwordsbot.domain.excuse.ExcuseOption> options = states.findActiveOptions(
+                    request.gameResultId(), generation, ExcuseRound.STYLE_REROLL);
+            if (options.size() != 3) {
+                return rejected(Reason.OFFER_UNAVAILABLE);
+            }
+            return new Options(generation, options, java.util.List.of());
+        }
         try {
             return states.loadOrCreateInitialOptions(
                             request.gameResultId(),
-                            authorized.state().offer().orElseThrow().contextGeneration(),
+                            generation,
                             () -> selector.select(
                                             catalog,
                                             eligibility.context(),
                                             ExcuseSelectionRequest.initial(java.util.Set.of(), java.util.Set.of()))
                                     .orElseThrow(NoInitialOptions::new))
                     .<Result>map(selection -> new Options(
-                            authorized.state().offer().orElseThrow().contextGeneration(),
+                            generation,
                             selection.options(),
                             selector.availableStyles(
                                     catalog,

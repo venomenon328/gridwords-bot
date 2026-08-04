@@ -103,13 +103,9 @@ public final class ExcuseInteractionService implements ExcuseInteractionUseCase 
             return authorization.rejected();
         }
         AuthorizedContext authorized = authorization.authorized();
-        ExcuseRound expectedRound = authorized.state().rerollUsed()
-                ? ExcuseRound.STYLE_REROLL : ExcuseRound.INITIAL;
-        if (request.round() != expectedRound) {
-            return new Rejected(Reason.OPTION_UNAVAILABLE);
-        }
         Optional<ExcuseState> selected = states.selectAndRequestCanonicalRefresh(new ExcuseOptionSelection(
-                request.action().gameResultId(), request.action().contextGeneration(), request.position(), clock.instant()));
+                request.action().gameResultId(), request.action().contextGeneration(), request.round(), request.position(),
+                clock.instant()));
         if (selected.isEmpty()) {
             return new Rejected(Reason.OPTION_UNAVAILABLE);
         }
@@ -132,8 +128,8 @@ public final class ExcuseInteractionService implements ExcuseInteractionUseCase 
     }
 
     private Authorization authorize(ActionRequest request) {
-        ExcuseInteractionAuthorizer.Result result = authorizer.authorize(new ExcuseInteractionAuthorizer.Request(
-                request.guildId(), request.channelId(), request.canonicalMessageId(), request.gameResultId(), request.actorId(),
+        ExcuseInteractionAuthorizer.Result result = authorizer.authorizeFollowUp(new ExcuseInteractionAuthorizer.FollowUpRequest(
+                request.guildId(), request.channelId(), request.gameResultId(), request.actorId(),
                 request.contextGeneration()));
         if (result instanceof ExcuseInteractionAuthorizer.Rejected rejected) {
             return new Authorization(null, new Rejected(switch (rejected.reason()) {

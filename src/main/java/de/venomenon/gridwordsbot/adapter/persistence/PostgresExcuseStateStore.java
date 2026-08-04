@@ -301,12 +301,15 @@ public class PostgresExcuseStateStore implements ExcuseStateStore {
             return Optional.empty();
         }
         ExcuseRound currentRound = state.rerollUsed() ? ExcuseRound.STYLE_REROLL : ExcuseRound.INITIAL;
+        if (selection.round() != currentRound) {
+            return Optional.empty();
+        }
         Optional<ExcuseOption> option = jdbc.query("""
                 SELECT round, position, template_id, style, topic, rendered_text
                 FROM game_result_excuse_option
                 WHERE game_result_id = ? AND context_generation = ? AND round = ? AND position = ?
                 """, (rs, row) -> option(rs), selection.gameResultId(), selection.contextGeneration(),
-                currentRound.name(), selection.position()).stream().findFirst();
+                selection.round().name(), selection.position()).stream().findFirst();
         if (option.isEmpty()) {
             return Optional.empty();
         }
@@ -317,7 +320,7 @@ public class PostgresExcuseStateStore implements ExcuseStateStore {
                 SET status = 'SELECTED', selected_round = ?, selected_position = ?, selected_template_id = ?,
                     selected_style = ?, selected_topic = ?, selected_rendered_text = ?, selected_at = ?, updated_at = ?
                 WHERE game_result_id = ? AND status = 'AVAILABLE' AND context_generation = ?
-                """, currentRound.name(), persisted.position(), persisted.templateId(), persisted.style().name(),
+                """, selection.round().name(), persisted.position(), persisted.templateId(), persisted.style().name(),
                 persisted.topic().name(), persisted.renderedText(), utc(selection.selectedAt()), utc(now),
                 selection.gameResultId(), selection.contextGeneration());
         if (changed != 1) {
@@ -458,6 +461,14 @@ public class PostgresExcuseStateStore implements ExcuseStateStore {
                 WHERE game_result_id = ? AND context_generation = ?
                 ORDER BY CASE round WHEN 'INITIAL' THEN 1 WHEN 'STYLE_REROLL' THEN 2 END, position
                 """, (rs, row) -> option(rs), gameResultId, contextGeneration);
+    }
+
+    @Override
+    public List<ExcuseOption> findActiveOptions(long gameResultId, int contextGeneration, ExcuseRound round) {
+        requirePositive(gameResultId, "gameResultId");
+        requirePositive(contextGeneration, "contextGeneration");
+        Objects.requireNonNull(round, "round");
+        return optionsForRound(gameResultId, contextGeneration, round);
     }
 
     private List<ExcuseOption> optionsForRound(long gameResultId, int contextGeneration, ExcuseRound round) {

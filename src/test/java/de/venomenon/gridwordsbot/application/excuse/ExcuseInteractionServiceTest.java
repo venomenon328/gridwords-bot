@@ -103,7 +103,10 @@ class ExcuseInteractionServiceTest {
         assertThat(fixture.service.pick(new ExcuseInteractionUseCase.PickRequest(
                 action(), ExcuseRound.INITIAL, 2))).isEqualTo(ExcuseInteractionUseCase.Selected.INSTANCE);
 
-        verify(fixture.states).selectAndRequestCanonicalRefresh(any());
+        ArgumentCaptor<de.venomenon.gridwordsbot.domain.excuse.ExcuseOptionSelection> selection =
+                ArgumentCaptor.forClass(de.venomenon.gridwordsbot.domain.excuse.ExcuseOptionSelection.class);
+        verify(fixture.states).selectAndRequestCanonicalRefresh(selection.capture());
+        assertThat(selection.getValue().round()).isEqualTo(ExcuseRound.INITIAL);
         verify(fixture.states, never()).select(any());
         verify(fixture.refreshWakeUp).wakeUp(RESULT_ID);
     }
@@ -117,14 +120,26 @@ class ExcuseInteractionServiceTest {
         verify(fixture.refreshWakeUp).wakeUp(RESULT_ID);
 
         ExcuseInteractionUseCase.ActionRequest foreign = new ExcuseInteractionUseCase.ActionRequest(
-                GUILD_ID, CHANNEL_ID, MESSAGE_ID, RESULT_ID, AUTHOR_ID + 1, 1);
+                GUILD_ID, CHANNEL_ID, RESULT_ID, AUTHOR_ID + 1, 1);
         assertThat(fixture.service.decline(foreign))
                 .isEqualTo(new ExcuseInteractionUseCase.Rejected(ExcuseInteractionUseCase.Reason.NOT_RESULT_AUTHOR));
         verify(fixture.states, never()).decline(any(Long.class), any(Integer.class), any());
     }
 
+    @Test
+    void followUpAuthorizesTheCurrentServerSideCanonicalPublicationWithoutAnEphemeralMessageId() {
+        Fixture fixture = new Fixture();
+        when(fixture.states.selectAndRequestCanonicalRefresh(any())).thenReturn(Optional.of(selectedState()));
+
+        assertThat(fixture.service.pick(new ExcuseInteractionUseCase.PickRequest(
+                new ExcuseInteractionUseCase.ActionRequest(GUILD_ID, CHANNEL_ID, RESULT_ID, AUTHOR_ID, 1),
+                ExcuseRound.INITIAL, 1))).isEqualTo(ExcuseInteractionUseCase.Selected.INSTANCE);
+
+        verify(fixture.states).selectAndRequestCanonicalRefresh(any());
+    }
+
     private static ExcuseInteractionUseCase.ActionRequest action() {
-        return new ExcuseInteractionUseCase.ActionRequest(GUILD_ID, CHANNEL_ID, MESSAGE_ID, RESULT_ID, AUTHOR_ID, 1);
+        return new ExcuseInteractionUseCase.ActionRequest(GUILD_ID, CHANNEL_ID, RESULT_ID, AUTHOR_ID, 1);
     }
 
     private static ExcuseState state(ExcuseStatus status, boolean rerollUsed) {

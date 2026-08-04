@@ -18,9 +18,9 @@ public interface ExcuseInteractionUseCase {
     Result decline(ActionRequest request);
 
     record ActionRequest(
-            long guildId, long channelId, long canonicalMessageId, long gameResultId, long actorId, int contextGeneration) {
+            long guildId, long channelId, long gameResultId, long actorId, int contextGeneration) {
         public ActionRequest {
-            if (guildId <= 0 || channelId <= 0 || canonicalMessageId <= 0 || gameResultId <= 0 || actorId <= 0
+            if (guildId <= 0 || channelId <= 0 || gameResultId <= 0 || actorId <= 0
                     || contextGeneration < 1) {
                 throw new IllegalArgumentException("Discord IDs, result ID, and context generation must be positive");
             }

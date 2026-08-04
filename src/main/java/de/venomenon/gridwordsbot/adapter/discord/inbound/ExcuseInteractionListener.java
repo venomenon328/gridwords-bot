@@ -121,14 +121,14 @@ public final class ExcuseInteractionListener extends ListenerAdapter {
     private ExcuseInteractionUseCase.ActionRequest action(
             ButtonInteractionEvent event, long resultId, int contextGeneration) {
         return new ExcuseInteractionUseCase.ActionRequest(
-                event.getGuild().getIdLong(), event.getChannel().getIdLong(), event.getMessageIdLong(), resultId,
+                event.getGuild().getIdLong(), event.getChannel().getIdLong(), resultId,
                 event.getUser().getIdLong(), contextGeneration);
     }
 
     private ExcuseInteractionUseCase.ActionRequest action(
             StringSelectInteractionEvent event, long resultId, int contextGeneration) {
         return new ExcuseInteractionUseCase.ActionRequest(
-                event.getGuild().getIdLong(), event.getChannel().getIdLong(), event.getMessageIdLong(), resultId,
+                event.getGuild().getIdLong(), event.getChannel().getIdLong(), resultId,
                 event.getUser().getIdLong(), contextGeneration);
     }
 

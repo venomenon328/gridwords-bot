@@ -234,7 +234,8 @@ class ExcuseResultLifecycleIntegrationIT {
 
     private void select(long resultId, List<ExcuseOption> options) {
         transaction(() -> states.storeInitialOptions(resultId, 1, options));
-        transaction(() -> states.select(new ExcuseOptionSelection(resultId, 1, 1, NOW.plusSeconds(1))));
+        transaction(() -> states.select(new ExcuseOptionSelection(
+                resultId, 1, ExcuseRound.INITIAL, 1, NOW.plusSeconds(1))));
     }
 
     private static GameResultStore.GameResultUpsert result(int attempts, Duration duration) {

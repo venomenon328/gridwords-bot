@@ -7,6 +7,7 @@ import java.util.Objects;
 public record ExcuseOptionSelection(
         long gameResultId,
         int contextGeneration,
+        ExcuseRound round,
         int position,
         Instant selectedAt) {
 
@@ -17,6 +18,7 @@ public record ExcuseOptionSelection(
         if (contextGeneration < 1) {
             throw new IllegalArgumentException("contextGeneration must be positive");
         }
+        Objects.requireNonNull(round, "round");
         if (position < 1 || position > 3) {
             throw new IllegalArgumentException("position must be between 1 and 3");
         }

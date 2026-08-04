@@ -27,8 +27,10 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import liquibase.integration.spring.SpringLiquibase;
@@ -108,12 +110,13 @@ class PostgresExcuseStateStoreIT {
     @Test
     void selectUsesOnlyPersistedCurrentOptionsAndCopiesTheirSnapshots() {
         long resultId = availableResult(GameType.GRIDWORDS, LocalDate.of(2026, 8, 1), NOW, NOW.plusSeconds(600));
-        assertThat(transaction(() -> store.select(new ExcuseOptionSelection(resultId, 1, 1, NOW.plusSeconds(1)))))
+        assertThat(transaction(() -> store.select(new ExcuseOptionSelection(
+                resultId, 1, ExcuseRound.INITIAL, 1, NOW.plusSeconds(1)))))
                 .isEmpty();
 
         transaction(() -> store.storeInitialOptions(resultId, 1, options(ExcuseRound.INITIAL, "initial")));
         ExcuseState selected = transaction(() -> store.select(
-                new ExcuseOptionSelection(resultId, 1, 2, NOW.plusSeconds(1)))).orElseThrow();
+                new ExcuseOptionSelection(resultId, 1, ExcuseRound.INITIAL, 2, NOW.plusSeconds(1)))).orElseThrow();
 
         assertThat(selected.status()).isEqualTo(ExcuseStatus.SELECTED);
         assertThat(selected.selection().orElseThrow())
@@ -130,7 +133,8 @@ class PostgresExcuseStateStoreIT {
         transaction(() -> store.storeInitialOptions(selectedResult, 1, options(ExcuseRound.INITIAL, "selected")));
 
         assertThat(transaction(() -> store.selectAndRequestCanonicalRefresh(
-                new ExcuseOptionSelection(selectedResult, 1, 1, NOW.plusSeconds(1))))).isPresent();
+                new ExcuseOptionSelection(
+                        selectedResult, 1, ExcuseRound.INITIAL, 1, NOW.plusSeconds(1))))).isPresent();
         assertThat(refreshRequired(selectedResult)).isTrue();
         assertThat(refreshGeneration(selectedResult)).isEqualTo(1L);
 
@@ -260,8 +264,61 @@ class PostgresExcuseStateStoreIT {
                 """, Integer.class, resultId)).isEqualTo(3);
 
         ExcuseState selected = transaction(() -> store.select(
-                new ExcuseOptionSelection(resultId, 1, 1, NOW.plusSeconds(1)))).orElseThrow();
+                new ExcuseOptionSelection(
+                        resultId, 1, ExcuseRound.STYLE_REROLL, 1, NOW.plusSeconds(1)))).orElseThrow();
         assertThat(selected.selection().orElseThrow().templateId()).isEqualTo("reroll.1");
+    }
+
+    @Test
+    void reopenAfterRestartUsesOnlyThePersistedStyleRerollRound() {
+        long resultId = availableResult(GameType.GRIDWORDS, LocalDate.of(2026, 8, 1), NOW, NOW.plusSeconds(600));
+        transaction(() -> store.storeInitialOptions(resultId, 1, options(ExcuseRound.INITIAL, "initial")));
+        transaction(() -> store.storeStyleRerollOptions(resultId, 1, options(ExcuseRound.STYLE_REROLL, "reroll")));
+
+        PostgresExcuseStateStore restarted = new PostgresExcuseStateStore(
+                jdbc, Clock.fixed(NOW, ZoneOffset.UTC), BERLIN);
+
+        assertThat(transaction(() -> restarted.findActiveOptions(resultId, 1, ExcuseRound.STYLE_REROLL)))
+                .extracting(ExcuseOption::round, ExcuseOption::templateId)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(ExcuseRound.STYLE_REROLL, "reroll.1"),
+                        org.assertj.core.groups.Tuple.tuple(ExcuseRound.STYLE_REROLL, "reroll.2"),
+                        org.assertj.core.groups.Tuple.tuple(ExcuseRound.STYLE_REROLL, "reroll.3"));
+        assertThat(transaction(() -> restarted.findActiveOptions(resultId, 1, ExcuseRound.INITIAL))).hasSize(3);
+    }
+
+    @Test
+    void staleInitialPickLosesToAConcurrentStyleRerollUnderTheDatabaseRowLock() throws Exception {
+        long resultId = availableResult(GameType.GRIDWORDS, LocalDate.of(2026, 8, 1), NOW, NOW.plusSeconds(600));
+        transaction(() -> store.storeInitialOptions(resultId, 1, options(ExcuseRound.INITIAL, "initial")));
+        CountDownLatch rerollLocked = new CountDownLatch(1);
+        CountDownLatch releaseReroll = new CountDownLatch(1);
+        ExcuseSelection reroll = new ExcuseSelection(ExcuseRound.STYLE_REROLL, options(ExcuseRound.STYLE_REROLL, "reroll"));
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            java.util.concurrent.Future<Optional<ExcuseSelection>> rerollOutcome = executor.submit(() -> transaction(() ->
+                    store.loadOrCreateStyleRerollOptions(resultId, 1, () -> {
+                        rerollLocked.countDown();
+                        await(releaseReroll);
+                        return reroll;
+                    })));
+            assertThat(rerollLocked.await(5, TimeUnit.SECONDS)).isTrue();
+            java.util.concurrent.Future<Optional<ExcuseState>> staleInitialPick = executor.submit(() -> transaction(() ->
+                    store.selectAndRequestCanonicalRefresh(new ExcuseOptionSelection(
+                            resultId, 1, ExcuseRound.INITIAL, 1, NOW.plusSeconds(1)))));
+
+            releaseReroll.countDown();
+
+            assertThat(result(rerollOutcome)).contains(reroll);
+            assertThat(result(staleInitialPick)).isEmpty();
+        }
+
+        assertThat(store.find(resultId).orElseThrow()).satisfies(state -> {
+            assertThat(state.status()).isEqualTo(ExcuseStatus.AVAILABLE);
+            assertThat(state.rerollUsed()).isTrue();
+        });
+        assertThat(refreshRequired(resultId)).isFalse();
+        assertThat(refreshGeneration(resultId)).isZero();
     }
 
     @Test
@@ -271,7 +328,8 @@ class PostgresExcuseStateStoreIT {
 
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
             List<Optional<ExcuseState>> outcomes = executor.invokeAll(List.<Callable<Optional<ExcuseState>>>of(
-                    () -> transaction(() -> store.select(new ExcuseOptionSelection(resultId, 1, 1, NOW.plusSeconds(1)))),
+                    () -> transaction(() -> store.select(new ExcuseOptionSelection(
+                            resultId, 1, ExcuseRound.INITIAL, 1, NOW.plusSeconds(1)))),
                     () -> transaction(() -> store.decline(resultId, 1, NOW.plusSeconds(1)))))
                     .stream().map(this::result).toList();
             assertThat(outcomes).filteredOn(Optional::isPresent).hasSize(1);
@@ -288,7 +346,8 @@ class PostgresExcuseStateStoreIT {
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
             List<Optional<ExcuseState>> outcomes = executor.invokeAll(List.<Callable<Optional<ExcuseState>>>of(
                     () -> transaction(() -> store.selectAndRequestCanonicalRefresh(
-                            new ExcuseOptionSelection(resultId, 1, 1, NOW.plusSeconds(1)))),
+                            new ExcuseOptionSelection(
+                                    resultId, 1, ExcuseRound.INITIAL, 1, NOW.plusSeconds(1)))),
                     () -> transaction(() -> store.declineAndRequestCanonicalRefresh(resultId, 1, NOW.plusSeconds(1)))))
                     .stream().map(this::result).toList();
             assertThat(outcomes).filteredOn(Optional::isPresent).hasSize(1);
@@ -387,7 +446,8 @@ class PostgresExcuseStateStoreIT {
     private long selectedResult(GameType gameType, LocalDate date, String prefix, Instant offeredAt) {
         long resultId = availableResult(gameType, date, offeredAt, offeredAt.plusSeconds(600));
         transaction(() -> store.storeInitialOptions(resultId, 1, options(ExcuseRound.INITIAL, prefix)));
-        return transaction(() -> store.select(new ExcuseOptionSelection(resultId, 1, 1, offeredAt.plusSeconds(1))))
+        return transaction(() -> store.select(new ExcuseOptionSelection(
+                resultId, 1, ExcuseRound.INITIAL, 1, offeredAt.plusSeconds(1))))
                 .orElseThrow().gameResultId();
     }
 
@@ -461,6 +521,17 @@ class PostgresExcuseStateStoreIT {
         try {
             return future.get();
         } catch (Exception exception) {
+            throw new AssertionError(exception);
+        }
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(5, TimeUnit.SECONDS)) {
+                throw new AssertionError("timed out waiting for concurrent transaction");
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
             throw new AssertionError(exception);
         }
     }

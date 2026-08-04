@@ -147,6 +147,21 @@ class ExcuseOpenServiceTest {
         verify(fixture.states, never()).loadOrCreateInitialOptions(any(Long.class), any(Integer.class), any());
     }
 
+    @Test
+    void reopensThePersistedStyleRerollRoundAfterRestartWithoutOfferingAnotherReroll() {
+        Fixture fixture = new Fixture();
+        when(fixture.states.find(RESULT_ID)).thenReturn(Optional.of(state(
+                ExcuseStatus.AVAILABLE, NOW.plusSeconds(60), true)));
+        List<ExcuseOption> reroll = rerollOptions();
+        when(fixture.states.findActiveOptions(RESULT_ID, 1, ExcuseRound.STYLE_REROLL)).thenReturn(reroll);
+
+        ExcuseOpenUseCase.Result reopened = fixture.restartedService.open(request());
+
+        assertThat(reopened).isEqualTo(new ExcuseOpenUseCase.Options(1, reroll, List.of()));
+        verify(fixture.states).findActiveOptions(RESULT_ID, 1, ExcuseRound.STYLE_REROLL);
+        verify(fixture.states, never()).loadOrCreateInitialOptions(any(Long.class), any(Integer.class), any());
+    }
+
     @SuppressWarnings({"rawtypes", "unchecked"})
     private static ArgumentCaptor<Supplier<ExcuseSelection>> supplierCaptor() {
         return ArgumentCaptor.forClass(Supplier.class);
@@ -157,13 +172,17 @@ class ExcuseOpenServiceTest {
     }
 
     private static ExcuseState state(ExcuseStatus status, Instant expiresAt) {
+        return state(status, expiresAt, false);
+    }
+
+    private static ExcuseState state(ExcuseStatus status, Instant expiresAt, boolean rerollUsed) {
         ExcuseEligibility eligibility = eligibility();
         return new ExcuseState(
                 RESULT_ID,
                 status,
                 Optional.of(new ExcuseOfferMetadata(501L, "test-v1", "context-v1", 1, NOW.minusSeconds(60), expiresAt)),
                 Optional.of(ExcuseOfferContext.initial(NOW.minusSeconds(30), eligibility)),
-                false,
+                rerollUsed,
                 Optional.empty(),
                 NOW.minusSeconds(60),
                 NOW.minusSeconds(60));
@@ -188,6 +207,16 @@ class ExcuseOpenServiceTest {
                         ExcuseTopic.LONG_TERM_PLAN, "Text zwei"),
                 new ExcuseOption(ExcuseRound.INITIAL, 3, "test.three", ExcuseStyle.LEGAL,
                         ExcuseTopic.RESPONSIBILITY, "Text drei")));
+    }
+
+    private static List<ExcuseOption> rerollOptions() {
+        return List.of(
+                new ExcuseOption(ExcuseRound.STYLE_REROLL, 1, "reroll.one", ExcuseStyle.COSMIC,
+                        ExcuseTopic.GENERAL, "Neu eins"),
+                new ExcuseOption(ExcuseRound.STYLE_REROLL, 2, "reroll.two", ExcuseStyle.COSMIC,
+                        ExcuseTopic.GENERAL, "Neu zwei"),
+                new ExcuseOption(ExcuseRound.STYLE_REROLL, 3, "reroll.three", ExcuseStyle.COSMIC,
+                        ExcuseTopic.GENERAL, "Neu drei"));
     }
 
     private static GameResultStore.StoredGameResult result() {
@@ -225,17 +254,23 @@ class ExcuseOpenServiceTest {
         final ExcuseStateStore states = mock(ExcuseStateStore.class);
         final ExcuseEligibilityPolicy policy = mock(ExcuseEligibilityPolicy.class);
         final ExcuseSelector selector = mock(ExcuseSelector.class);
-        final ExcuseOpenService service = new ExcuseOpenService(
-                GUILD_ID,
-                CHANNEL_ID,
-                results,
-                players,
-                submissions,
-                states,
-                policy,
-                mock(ExcuseCatalog.class),
-                selector,
-                Clock.fixed(NOW, ZoneOffset.UTC));
+        final ExcuseCatalog catalog = mock(ExcuseCatalog.class);
+        final ExcuseOpenService service = newService();
+        final ExcuseOpenService restartedService = newService();
+
+        private ExcuseOpenService newService() {
+            return new ExcuseOpenService(
+                    GUILD_ID,
+                    CHANNEL_ID,
+                    results,
+                    players,
+                    submissions,
+                    states,
+                    policy,
+                    catalog,
+                    selector,
+                    Clock.fixed(NOW, ZoneOffset.UTC));
+        }
 
         Fixture() {
             when(results.findById(RESULT_ID)).thenReturn(Optional.of(result()));

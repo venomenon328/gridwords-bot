@@ -32,6 +32,7 @@ class ExcuseInteractionListenerTest {
     private static final long GUILD_ID = 11L;
     private static final long CHANNEL_ID = 12L;
     private static final long MESSAGE_ID = 13L;
+    private static final long EPHEMERAL_MESSAGE_ID = 99L;
     private static final long RESULT_ID = 14L;
     private static final long ACTOR_ID = 15L;
 
@@ -56,7 +57,7 @@ class ExcuseInteractionListenerTest {
     @Test
     void selectionConfirmsEphemerallyAfterTheUseCaseHasHandedOffTheRefresh() {
         ExcuseInteractionUseCase interactions = mock(ExcuseInteractionUseCase.class);
-        Fixture fixture = fixture("excuse:v1:pick:" + RESULT_ID + ":1:INITIAL:2");
+        Fixture fixture = fixture("excuse:v1:pick:" + RESULT_ID + ":1:INITIAL:2", EPHEMERAL_MESSAGE_ID);
         when(interactions.pick(new ExcuseInteractionUseCase.PickRequest(request(), ExcuseRound.INITIAL, 2)))
                 .thenReturn(ExcuseInteractionUseCase.Selected.INSTANCE);
 
@@ -84,11 +85,16 @@ class ExcuseInteractionListenerTest {
     }
 
     private static ExcuseInteractionUseCase.ActionRequest request() {
-        return new ExcuseInteractionUseCase.ActionRequest(GUILD_ID, CHANNEL_ID, MESSAGE_ID, RESULT_ID, ACTOR_ID, 1);
+        return new ExcuseInteractionUseCase.ActionRequest(GUILD_ID, CHANNEL_ID, RESULT_ID, ACTOR_ID, 1);
     }
 
     @SuppressWarnings("unchecked")
     private static Fixture fixture(String componentId) {
+        return fixture(componentId, MESSAGE_ID);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Fixture fixture(String componentId, long messageId) {
         ButtonInteractionEvent event = mock(ButtonInteractionEvent.class, Mockito.RETURNS_DEEP_STUBS);
         ReplyCallbackAction deferred = mock(ReplyCallbackAction.class);
         InteractionHook hook = mock(InteractionHook.class);
@@ -97,7 +103,7 @@ class ExcuseInteractionListenerTest {
         when(event.isFromGuild()).thenReturn(true);
         when(event.getGuild().getIdLong()).thenReturn(GUILD_ID);
         when(event.getChannel().getIdLong()).thenReturn(CHANNEL_ID);
-        when(event.getMessageIdLong()).thenReturn(MESSAGE_ID);
+        when(event.getMessageIdLong()).thenReturn(messageId);
         when(event.getUser().getIdLong()).thenReturn(ACTOR_ID);
         when(event.deferReply(true)).thenReturn(deferred);
         doAnswer(invocation -> {
