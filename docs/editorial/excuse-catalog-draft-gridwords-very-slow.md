@@ -9,6 +9,7 @@ Dieses Dokument setzt den redaktionellen Arbeitsstand aus `docs/editorial/excuse
 - Die Dauer des Spiels ist nicht mit einer späten Einreichung gleichzusetzen. Kein Text behauptet eine Abgabe am Tagesende.
 - Im sichtbaren Sprachgebrauch des Bots wird vom **Grid** gesprochen, nicht vom Raster.
 - Bewusst knappe norddeutsche und bewusst überdramatische Texte sind stilprägend.
+- Der bloße Hinweis auf eine lange Dauer reicht nicht; jeder nicht bewusst als Stilpointe gesetzte Text muss die Dauer begründen, verteidigen oder umdeuten.
 
 ## Standardmetadaten
 
@@ -45,7 +46,7 @@ selectable: true
 - `gridwords-very-slow.technical.03` – Die Verarbeitung lief synchron auf einer Ressource, die offensichtlich nicht für Echtzeitbetrieb ausgelegt war.
 - `gridwords-very-slow.technical.04` – Zwischen den Eingaben entstand eine bemerkenswerte Menge kognitiver I/O-Wartezeit.
 - `gridwords-very-slow.technical.05` – Der Grid-Job blockierte länger als erwartet, ohne dabei offiziell abgestürzt zu sein.
-- `gridwords-very-slow.technical.06` – Die Antwortzeit lag oberhalb des üblichen Toleranzfensters, fachlich blieb das System jedoch ansprechbar.
+- `gridwords-very-slow.technical.06` – Die Antwortzeit lag oberhalb des üblichen Toleranzfensters, weil das System jede unbrauchbare Idee gewissenhaft einzeln prüfen musste.
 - `gridwords-very-slow.technical.07` – Mehrere Heuristiken liefen in Serie, obwohl Parallelisierung dringend angezeigt gewesen wäre.
 - `gridwords-very-slow.technical.08` – Das Performanceprofil weist auf einen Engpass zwischen Buchstabenerkennung und Entscheidungsfindung hin.
 
@@ -65,7 +66,7 @@ selectable: true
 - `gridwords-very-slow.bureaucratic.03` – Eine beschleunigte Bearbeitung war wegen fortlaufender innerer Rückfragen nicht möglich.
 - `gridwords-very-slow.bureaucratic.04` – Die Lösungssachbearbeitung wurde durch ungeklärte Zuständigkeiten zwischen Buchstabenprüfung und Wortfreigabe verzögert.
 - `gridwords-very-slow.bureaucratic.05` – Die verlängerte Verfahrensdauer ist auf eine ungewöhnlich gründliche Aktenlage zurückzuführen.
-- `gridwords-very-slow.bureaucratic.06` – Der Vorgang befand sich über einen erheblichen Zeitraum im erweiterten Bearbeitungsmodus.
+- `gridwords-very-slow.bureaucratic.06` – Der Vorgang befand sich über einen erheblichen Zeitraum im erweiterten Bearbeitungsmodus, weil eine kürzere Prüfung gegen interne Sorgfaltspflichten verstoßen hätte.
 - `gridwords-very-slow.bureaucratic.07` – Mehrere Zwischenbescheide waren erforderlich, bevor eine abschließende Bearbeitung möglich wurde.
 - `gridwords-very-slow.bureaucratic.08` – Die ungewöhnliche Dauer wurde dokumentiert und gilt damit vorläufig als organisatorisch erklärt.
 
@@ -101,8 +102,8 @@ selectable: true
 ## Sportlich
 
 - `gridwords-very-slow.sporting.01` – Wir mussten über die volle Distanz und noch ein gutes Stück darüber gehen.
-- `gridwords-very-slow.sporting.02` – Das Tempo war niedrig, die Belastung trotzdem hoch.
-- `gridwords-very-slow.sporting.03` – Die Partie hatte deutlich mehr zähe Phasen als geplant.
+- `gridwords-very-slow.sporting.02` – Das Tempo war niedrig, weil das Grid jeden Ansatz in einen zähen Zweikampf verwandelte.
+- `gridwords-very-slow.sporting.03` – Die Partie hatte deutlich mehr zähe Phasen als geplant, weil das Grid sämtliche einfachen Räume zugestellt hatte.
 - `gridwords-very-slow.sporting.04` – Wir haben lange nach verwertbaren Ansätzen gesucht und dabei kaum einfache Räume gefunden.
 - `gridwords-very-slow.sporting.05` – Der Spielaufbau war geduldig. Sehr geduldig.
 - `gridwords-very-slow.sporting.06` – In der Entscheidungsfindung fehlte über weite Strecken die nötige Geschwindigkeit.
