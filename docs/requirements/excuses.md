@@ -582,7 +582,7 @@ Die Konfiguration wird typisiert gebunden. Verstreute Umgebungszugriffe sind nic
 Vorgesehene Defaults:
 
 ```text
-EXCUSES_ENABLED=false
+EXCUSE_GENERATOR_CONTEXTUAL_ENABLED=false
 EXCUSE_OFFER_LIFETIME=PT15M
 EXCUSE_COOLDOWN_DAYS=3
 EXCUSE_LATE_SUBMISSION_TIME=23:30

@@ -10,7 +10,10 @@ import org.springframework.stereotype.Component;
 /** A frequent trigger over bounded, durable expiry work; it is never the source of truth. */
 @Component
 @Profile("database")
-@ConditionalOnProperty(prefix = "gridwords.excuses", name = "enabled", havingValue = "true")
+@ConditionalOnProperty(
+        prefix = "gridwords.excuse-generator",
+        name = "contextual-enabled",
+        havingValue = "true")
 final class ExcuseExpirationScheduler {
 
     private final ExcuseExpirationUseCase expirations;

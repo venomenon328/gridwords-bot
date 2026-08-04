@@ -3,7 +3,7 @@ package de.venomenon.gridwordsbot.adapter.persistence;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseDailyResult;
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
-import de.venomenon.gridwordsbot.port.out.ExcuseDailyResultQuery;
+import de.venomenon.gridwordsbot.port.out.PriorValidResultQuery;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -22,7 +22,7 @@ import org.springframework.stereotype.Repository;
  */
 @Repository
 @Profile("database")
-public final class PostgresExcuseDailyResultQuery implements ExcuseDailyResultQuery {
+public class PostgresExcuseDailyResultQuery implements PriorValidResultQuery {
 
     private final JdbcTemplate jdbc;
 

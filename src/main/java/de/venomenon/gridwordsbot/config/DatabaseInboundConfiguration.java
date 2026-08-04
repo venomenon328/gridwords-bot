@@ -131,13 +131,20 @@ class DatabaseInboundConfiguration {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "gridwords.excuses", name = "enabled", havingValue = "false", matchIfMissing = true)
+    @ConditionalOnProperty(
+            prefix = "gridwords.excuse-generator",
+            name = "contextual-enabled",
+            havingValue = "false",
+            matchIfMissing = true)
     ExcuseOpenUseCase disabledExcuseOpenUseCase() {
         return request -> new ExcuseOpenUseCase.Rejected(ExcuseOpenUseCase.Reason.FEATURE_DISABLED);
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "gridwords.excuses", name = "enabled", havingValue = "true")
+    @ConditionalOnProperty(
+            prefix = "gridwords.excuse-generator",
+            name = "contextual-enabled",
+            havingValue = "true")
     ExcuseOpenUseCase enabledExcuseOpenUseCase(
             GridwordsBotProperties properties,
             GameResultStore results,
@@ -156,7 +163,11 @@ class DatabaseInboundConfiguration {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "gridwords.excuses", name = "enabled", havingValue = "false", matchIfMissing = true)
+    @ConditionalOnProperty(
+            prefix = "gridwords.excuse-generator",
+            name = "contextual-enabled",
+            havingValue = "false",
+            matchIfMissing = true)
     ExcuseInteractionUseCase disabledExcuseInteractionUseCase() {
         return new ExcuseInteractionUseCase() {
             private final Rejected disabled = new Rejected(Reason.FEATURE_DISABLED);
@@ -168,7 +179,10 @@ class DatabaseInboundConfiguration {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "gridwords.excuses", name = "enabled", havingValue = "true")
+    @ConditionalOnProperty(
+            prefix = "gridwords.excuse-generator",
+            name = "contextual-enabled",
+            havingValue = "true")
     ExcuseInteractionUseCase enabledExcuseInteractionUseCase(
             GridwordsBotProperties properties,
             GameResultStore results,
@@ -188,7 +202,11 @@ class DatabaseInboundConfiguration {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "gridwords.excuses", name = "enabled", havingValue = "false", matchIfMissing = true)
+    @ConditionalOnProperty(
+            prefix = "gridwords.excuse-generator",
+            name = "contextual-enabled",
+            havingValue = "false",
+            matchIfMissing = true)
     ExcuseExpirationUseCase disabledExcuseExpirationUseCase() {
         return new ExcuseExpirationUseCase() {
             @Override public int reconcile() { return 0; }
@@ -197,7 +215,10 @@ class DatabaseInboundConfiguration {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "gridwords.excuses", name = "enabled", havingValue = "true")
+    @ConditionalOnProperty(
+            prefix = "gridwords.excuse-generator",
+            name = "contextual-enabled",
+            havingValue = "true")
     ExcuseExpirationUseCase enabledExcuseExpirationUseCase(
             ExcuseStateStore states,
             CanonicalRefreshWakeUp refreshWakeUp,
@@ -209,17 +230,10 @@ class DatabaseInboundConfiguration {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "gridwords.excuses", name = "enabled", havingValue = "true")
-    de.venomenon.gridwordsbot.domain.excuse.ExcuseCatalog excuseCatalog() {
-        return new de.venomenon.gridwordsbot.adapter.catalog.JsonExcuseCatalogLoader(
-                tools.jackson.databind.json.JsonMapper.builder().build(),
-                new de.venomenon.gridwordsbot.domain.excuse.ExcuseCatalogValidator(),
-                de.venomenon.gridwordsbot.domain.excuse.ExcuseCatalogCoverage.production())
-                .loadResource(getClass().getClassLoader(), "excuses/catalog.json");
-    }
-
-    @Bean
-    @ConditionalOnProperty(prefix = "gridwords.excuses", name = "enabled", havingValue = "true")
+    @ConditionalOnProperty(
+            prefix = "gridwords.excuse-generator",
+            name = "contextual-enabled",
+            havingValue = "true")
     de.venomenon.gridwordsbot.domain.excuse.ExcuseSelector excuseSelector() {
         return new de.venomenon.gridwordsbot.domain.excuse.ExcuseSelector(
                 new de.venomenon.gridwordsbot.domain.excuse.ExcuseTemplateRenderer(),

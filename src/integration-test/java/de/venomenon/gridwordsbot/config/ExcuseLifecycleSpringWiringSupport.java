@@ -5,11 +5,13 @@ import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.model.NormalizedBoard;
 import de.venomenon.gridwordsbot.domain.model.ParsedGameResult;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
+import de.venomenon.gridwordsbot.application.excuse.ExcuseLifecycle;
 import de.venomenon.gridwordsbot.port.out.ExcuseStateStore;
 import de.venomenon.gridwordsbot.port.out.GameResultStore;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
 import de.venomenon.gridwordsbot.port.out.SubmissionStore;
 import java.time.Duration;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -53,6 +55,12 @@ abstract class ExcuseLifecycleSpringWiringSupport {
     @Autowired
     private JdbcTemplate jdbc;
 
+    @Autowired
+    private Clock clock;
+
+    @Autowired
+    private ExcuseLifecycle lifecycle;
+
     @BeforeEach
     void resetDatabase() {
         jdbc.execute("TRUNCATE TABLE player RESTART IDENTITY CASCADE");
@@ -60,8 +68,8 @@ abstract class ExcuseLifecycleSpringWiringSupport {
     }
 
     ExcuseStatus storeQualifyingResult() {
-        Instant receivedAt = Instant.now();
-        LocalDate gameDate = LocalDate.now(BERLIN);
+        Instant receivedAt = clock.instant();
+        LocalDate gameDate = LocalDate.now(clock.withZone(BERLIN));
         submissions.register(new SubmissionStore.SubmissionRegistration(
                 SOURCE_MESSAGE_ID,
                 78_003L,
@@ -94,5 +102,9 @@ abstract class ExcuseLifecycleSpringWiringSupport {
                         "gridwords-v1")));
         long resultId = stored.gameResultId().orElseThrow();
         return excuses.find(resultId).orElseThrow().status();
+    }
+
+    ExcuseLifecycle lifecycle() {
+        return lifecycle;
     }
 }

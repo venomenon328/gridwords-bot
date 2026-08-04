@@ -3,10 +3,10 @@ package de.venomenon.gridwordsbot.adapter.persistence;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import de.venomenon.gridwordsbot.application.excuse.ExcuseResultLifecycle;
+import de.venomenon.gridwordsbot.application.excuse.ContextualExcuseLifecycle;
+import de.venomenon.gridwordsbot.application.excuse.ExcuseLifecycle;
+import de.venomenon.gridwordsbot.application.excuse.NoOpExcuseLifecycle;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseCatalog;
-import de.venomenon.gridwordsbot.domain.excuse.ExcuseEligibilityPolicy;
-import de.venomenon.gridwordsbot.domain.excuse.ExcuseEligibilityThresholds;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseOption;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseOptionSelection;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseRound;
@@ -73,14 +73,14 @@ class ExcuseResultLifecycleIntegrationIT {
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
         jdbc = new JdbcTemplate(dataSource);
         states = new PostgresExcuseStateStore(jdbc, clock, BERLIN);
-        ExcuseResultLifecycle lifecycle = ExcuseResultLifecycle.enabled(
-                states,
-                (playerId, gameType, gameDate, participants) -> List.of(),
-                new ExcuseEligibilityPolicy(ExcuseEligibilityThresholds.defaults()),
-                catalog(),
+        ExcuseLifecycle lifecycle = new ContextualExcuseLifecycle(
+                (playerId, gameType, gameDate, participants) -> List.of(), BERLIN);
+        adapter = new PostgresPersistenceAdapter(
+                jdbc,
                 clock,
-                Duration.ofMinutes(15));
-        adapter = new PostgresPersistenceAdapter(jdbc, clock, BERLIN, lifecycle);
+                BERLIN,
+                lifecycle,
+                new ExcuseLifecycle.Context(states, catalog(), clock, Duration.ofMinutes(15)));
         transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
     }
 
@@ -126,8 +126,11 @@ class ExcuseResultLifecycleIntegrationIT {
     @Test
     void replayDoesNotUpgradeANegativeDecisionAfterTheFeatureIsEnabled() {
         PostgresPersistenceAdapter disabledAdapter = new PostgresPersistenceAdapter(
-                jdbc, Clock.fixed(NOW, ZoneOffset.UTC), BERLIN, ExcuseResultLifecycle.disabled(
-                        states, Clock.fixed(NOW, ZoneOffset.UTC)));
+                jdbc,
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                BERLIN,
+                NoOpExcuseLifecycle.INSTANCE,
+                ExcuseLifecycle.Context.noOp(states));
         disabledAdapter.register(new SubmissionStore.SubmissionRegistration(
                 904L, 12L, 13L, 7001L, "share", List.of(), NOW));
         SubmissionStore.ResultStorage storage = new SubmissionStore.ResultStorage(904L, result(6, Duration.ofMinutes(5)));
@@ -205,8 +208,11 @@ class ExcuseResultLifecycleIntegrationIT {
     @Test
     void disabledFeaturePersistsTheNegativeInitialDecision() {
         PostgresPersistenceAdapter disabledAdapter = new PostgresPersistenceAdapter(
-                jdbc, Clock.fixed(NOW, ZoneOffset.UTC), BERLIN, ExcuseResultLifecycle.disabled(
-                        states, Clock.fixed(NOW, ZoneOffset.UTC)));
+                jdbc,
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                BERLIN,
+                NoOpExcuseLifecycle.INSTANCE,
+                ExcuseLifecycle.Context.noOp(states));
         disabledAdapter.register(new SubmissionStore.SubmissionRegistration(
                 913L, 12L, 13L, 7001L, "share", List.of(), NOW));
 

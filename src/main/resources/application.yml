@@ -36,8 +36,9 @@ gridwords:
     time-zone: ${TIME_ZONE:Europe/Berlin}
   storage:
     raw-image-retention-hours: ${RAW_IMAGE_RETENTION_HOURS:48}
+  excuse-generator:
+    contextual-enabled: ${EXCUSE_GENERATOR_CONTEXTUAL_ENABLED:false}
   excuses:
-    enabled: ${EXCUSES_ENABLED:false}
     offer-lifetime: ${EXCUSE_OFFER_LIFETIME:PT15M}
     expiration-page-size: ${EXCUSE_EXPIRATION_PAGE_SIZE:25}
     expiration-max-pages: ${EXCUSE_EXPIRATION_MAX_PAGES:4}

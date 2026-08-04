@@ -9,14 +9,20 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 @ConfigurationProperties(prefix = "gridwords")
-public record GridwordsBotProperties(Discord discord, Schedule schedule, Storage storage, Excuses excuses) {
+public record GridwordsBotProperties(
+        Discord discord,
+        Schedule schedule,
+        Storage storage,
+        ExcuseGenerator excuseGenerator,
+        Excuses excuses) {
     @ConstructorBinding
     public GridwordsBotProperties {
+        excuseGenerator = excuseGenerator == null ? ExcuseGenerator.defaults() : excuseGenerator;
         excuses = excuses == null ? Excuses.defaults() : excuses;
     }
 
     public GridwordsBotProperties(Discord discord, Schedule schedule, Storage storage) {
-        this(discord, schedule, storage, Excuses.defaults());
+        this(discord, schedule, storage, ExcuseGenerator.defaults(), Excuses.defaults());
     }
     public record Discord(boolean enabled, String token, long guildId, long channelId, List<Long> adminUserIds) { }
     public record Schedule(LocalTime firstReminder, LocalTime secondReminder, LocalTime weeklyReport,
@@ -39,7 +45,12 @@ public record GridwordsBotProperties(Discord discord, Schedule schedule, Storage
         }
     }
     public record Storage(int rawImageRetentionHours) { }
-    public record Excuses(boolean enabled, Duration offerLifetime, int expirationPageSize, int expirationMaxPages) {
+    public record ExcuseGenerator(boolean contextualEnabled) {
+        public static ExcuseGenerator defaults() {
+            return new ExcuseGenerator(false);
+        }
+    }
+    public record Excuses(Duration offerLifetime, int expirationPageSize, int expirationMaxPages) {
         @ConstructorBinding
         public Excuses {
             Objects.requireNonNull(offerLifetime, "offerLifetime");
@@ -50,11 +61,11 @@ public record GridwordsBotProperties(Discord discord, Schedule schedule, Storage
                 throw new IllegalArgumentException("excuse expiration limits must be positive");
             }
         }
-        public Excuses(boolean enabled, Duration offerLifetime) {
-            this(enabled, offerLifetime, 25, 4);
+        public Excuses(Duration offerLifetime) {
+            this(offerLifetime, 25, 4);
         }
         public static Excuses defaults() {
-            return new Excuses(false, Duration.ofMinutes(15), 25, 4);
+            return new Excuses(Duration.ofMinutes(15), 25, 4);
         }
     }
 }
