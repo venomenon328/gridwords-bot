@@ -148,6 +148,21 @@ Verbindlich:
 - ADR 0017
 - Issue #42
 
+## Vorbereitetes Inkrement
+
+### Inkrement 12 – Rekorde und Rekordmeldungen
+
+**Status:** fachlich und architektonisch vorbereitet; Issue #58 offen; Umsetzung in zehn Paketen geplant.
+
+Das Inkrement führt historisch korrekte persönliche, serverweite individuelle und gemeinsame Rekorde ein. Ergebnisrekorde unterscheiden wenigste Versuche, schnellste Lösung und langsamste erfolgreiche Lösung. Serienrekorde umfassen die bestehenden positiven Serien sowie X-Durststrecken und Tage ohne perfekten Tag. Öffentliche Meldungen werden aggregiert, zuverlässig ausgeliefert und nach Ergebniskorrekturen editiert oder gelöscht. Ein ephemerer `/records`-Command macht den aktuellen Stand überprüfbar.
+
+Verbindlich:
+
+- `docs/requirements/records.md`
+- `docs/increments/12-records.md`
+- ADR 0018
+- Issue #58
+
 ## Versionsstände
 
 ### Version 1.0.x
@@ -164,6 +179,8 @@ Kontextabhängige Ausreden mit privater Auswahl und Übernahme des gewählten Te
 
 **Status:** veröffentlicht und produktiv deployt.
 
+Eine Zielversion für Inkrement 12 wird erst im Rahmen der RC- und Releasevorbereitung festgelegt.
+
 ## Obsolet gewordene frühere Roadmap-Platzhalter
 
 Die früher vorgemerkten Folgeinkremente
@@ -175,9 +192,9 @@ werden nicht weiterverfolgt. Sie waren keine umgesetzten oder abgenommenen Anfor
 
 ## Aktive Roadmap
 
-Derzeit ist kein weiteres Produktinkrement verbindlich zur Umsetzung vorgesehen.
+Inkrement 12 – Rekorde und Rekordmeldungen – ist das nächste verbindlich vorbereitete Produktinkrement. Die Umsetzung folgt den zehn Paketen in `docs/increments/12-records.md`.
 
-Achievements, Rekordmeldungen und weitere Unterhaltungsfeatures sind mögliche spätere Erweiterungen, gelten aber erst nach einem eigenen priorisierten Issue, einer fachlichen Spezifikation und einem neuen Inkrementplan als Roadmap.
+Achievements bleiben eine mögliche spätere Erweiterung. Sie dürfen auf den in Inkrement 12 eingeführten fachlichen Rekordereignissen und Gültigkeitsänderungen aufbauen, benötigen aber ein eigenes priorisiertes Issue, eine fachliche Spezifikation und einen eigenen Inkrementplan.
 
 ## Definition of Done für künftige Inkremente
 
