@@ -125,6 +125,24 @@ class PostgresExcuseStateStoreIT {
     }
 
     @Test
+    void selectionAndDeclinePersistTheCanonicalRefreshRequestInTheSameTransaction() {
+        long selectedResult = availableResult(GameType.GRIDWORDS, LocalDate.of(2026, 8, 1), NOW, NOW.plusSeconds(600));
+        transaction(() -> store.storeInitialOptions(selectedResult, 1, options(ExcuseRound.INITIAL, "selected")));
+
+        assertThat(transaction(() -> store.selectAndRequestCanonicalRefresh(
+                new ExcuseOptionSelection(selectedResult, 1, 1, NOW.plusSeconds(1))))).isPresent();
+        assertThat(refreshRequired(selectedResult)).isTrue();
+        assertThat(refreshGeneration(selectedResult)).isEqualTo(1L);
+
+        insertPlayer(PLAYER_ID + 9);
+        long declinedResult = availableResult(PLAYER_ID + 9, GameType.QUADWORDS, LocalDate.of(2026, 8, 2), NOW, NOW.plusSeconds(600));
+        assertThat(transaction(() -> store.declineAndRequestCanonicalRefresh(
+                declinedResult, 1, NOW.plusSeconds(1)))).isPresent();
+        assertThat(refreshRequired(declinedResult)).isTrue();
+        assertThat(refreshGeneration(declinedResult)).isEqualTo(1L);
+    }
+
+    @Test
     void roundTripsFrozenOfferFactsAndReplacesOnlyTheCurrentAvailableContext() {
         long resultId = result(PLAYER_ID, GameType.GRIDWORDS, LocalDate.of(2026, 8, 1));
         source(resultId, PLAYER_ID);
@@ -260,6 +278,23 @@ class PostgresExcuseStateStoreIT {
         }
         assertThat(store.find(resultId).orElseThrow().status())
                 .isIn(ExcuseStatus.SELECTED, ExcuseStatus.DECLINED);
+    }
+
+    @Test
+    void concurrentTerminalActionsCreateAtMostOneCanonicalRefreshGeneration() throws Exception {
+        long resultId = availableResult(GameType.GRIDWORDS, LocalDate.of(2026, 8, 1), NOW, NOW.plusSeconds(600));
+        transaction(() -> store.storeInitialOptions(resultId, 1, options(ExcuseRound.INITIAL, "initial")));
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            List<Optional<ExcuseState>> outcomes = executor.invokeAll(List.<Callable<Optional<ExcuseState>>>of(
+                    () -> transaction(() -> store.selectAndRequestCanonicalRefresh(
+                            new ExcuseOptionSelection(resultId, 1, 1, NOW.plusSeconds(1)))),
+                    () -> transaction(() -> store.declineAndRequestCanonicalRefresh(resultId, 1, NOW.plusSeconds(1)))))
+                    .stream().map(this::result).toList();
+            assertThat(outcomes).filteredOn(Optional::isPresent).hasSize(1);
+        }
+        assertThat(refreshGeneration(resultId)).isEqualTo(1L);
+        assertThat(refreshRequired(resultId)).isTrue();
     }
 
     @Test
@@ -399,6 +434,16 @@ class PostgresExcuseStateStoreIT {
                 INSERT INTO player (discord_user_id, display_name, active, administrator, reminder_opt_in, created_at, updated_at)
                 VALUES (?, 'Player', TRUE, FALSE, TRUE, ?, ?)
                 """, playerId, Timestamp.from(NOW), Timestamp.from(NOW));
+    }
+
+    private boolean refreshRequired(long gameResultId) {
+        return jdbc.queryForObject("SELECT canonical_refresh_required FROM game_result WHERE id = ?", Boolean.class,
+                gameResultId);
+    }
+
+    private long refreshGeneration(long gameResultId) {
+        return jdbc.queryForObject("SELECT canonical_refresh_generation FROM game_result WHERE id = ?", Long.class,
+                gameResultId);
     }
 
     private static List<ExcuseOption> options(ExcuseRound round, String prefix) {

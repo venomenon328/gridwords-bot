@@ -12,7 +12,6 @@ import net.dv8tion.jda.api.interactions.InteractionHook;
 /** Thin JDA edge for the canonical excuse button; persistence and authorization stay in the use case. */
 public final class ExcuseOpenInteractionListener extends ListenerAdapter {
 
-    private static final String PREFIX = "excuse:";
     private static final String BUSY = "Der Bot ist gerade ausgelastet. Bitte versuche es erneut.";
     private static final String UNAVAILABLE = "Diese Ausrede ist nicht verfügbar oder nicht mehr aktuell.";
     private static final String FORBIDDEN = "Diesen Button kann nur der Ergebnisautor verwenden.";
@@ -35,7 +34,8 @@ public final class ExcuseOpenInteractionListener extends ListenerAdapter {
 
     @Override
     public void onButtonInteraction(ButtonInteractionEvent event) {
-        if (!event.getComponentId().startsWith(PREFIX)) {
+        ExcuseComponentCodec.Open component = codec.decodeOpen(event.getComponentId()).orElse(null);
+        if (component == null) {
             return;
         }
         if (!event.isFromGuild()
@@ -45,25 +45,23 @@ public final class ExcuseOpenInteractionListener extends ListenerAdapter {
         }
         event.deferReply(true).queue(hook -> {
             try {
-                executor.execute(() -> reply(event, hook));
+                executor.execute(() -> reply(event, hook, component));
             } catch (RejectedExecutionException exception) {
                 hook.editOriginal(BUSY).queue();
             }
         });
     }
 
-    private void reply(ButtonInteractionEvent event, InteractionHook hook) {
+    private void reply(ButtonInteractionEvent event, InteractionHook hook, ExcuseComponentCodec.Open component) {
         try {
-            ExcuseComponentCodec.Open component = codec.decodeOpen(event.getComponentId()).orElse(null);
-            if (component == null) {
-                hook.editOriginal(UNAVAILABLE).queue();
-                return;
-            }
             ExcuseOpenUseCase.Result result = open.open(new ExcuseOpenUseCase.Request(
                     event.getGuild().getIdLong(), event.getChannel().getIdLong(), event.getMessageIdLong(),
                     component.gameResultId(), event.getUser().getIdLong()));
             if (result instanceof ExcuseOpenUseCase.Options options) {
-                hook.editOriginalEmbeds(renderer.render(options.options())).queue();
+                ExcuseOpenEmbedRenderer.EphemeralView view = renderer.options(
+                        component.gameResultId(), options.contextGeneration(),
+                        options.options(), options.availableRerollStyles());
+                hook.editOriginalEmbeds(view.embed()).setComponents(view.components()).queue();
                 return;
             }
             ExcuseOpenUseCase.Rejected rejected = (ExcuseOpenUseCase.Rejected) result;

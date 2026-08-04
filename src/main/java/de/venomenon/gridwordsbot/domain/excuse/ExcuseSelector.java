@@ -90,6 +90,33 @@ public final class ExcuseSelector {
         return Optional.of(new ExcuseSelection(request.round(), options));
     }
 
+    /**
+     * Returns styles that can produce a complete reroll round without consuming the injected
+     * random source. This keeps the visible style menu deterministic and side-effect free.
+     */
+    public List<ExcuseStyle> availableStyles(
+            ExcuseCatalog catalog,
+            ExcuseContext context,
+            Set<String> excludedTemplateIds) {
+        Objects.requireNonNull(catalog, "catalog");
+        Objects.requireNonNull(context, "context");
+        Set<String> excluded = Set.copyOf(Objects.requireNonNull(excludedTemplateIds, "excludedTemplateIds"));
+        return catalog.templates().stream()
+                .filter(ExcuseTemplate::selectable)
+                .filter(template -> template.supports(context))
+                .filter(template -> !excluded.contains(template.id()))
+                .filter(template -> renderer.render(template, context).isPresent())
+                .collect(java.util.stream.Collectors.groupingBy(
+                        ExcuseTemplate::style,
+                        () -> new EnumMap<>(ExcuseStyle.class),
+                        java.util.stream.Collectors.counting()))
+                .entrySet().stream()
+                .filter(entry -> entry.getValue() >= OPTION_COUNT)
+                .map(Map.Entry::getKey)
+                .sorted(Comparator.comparingInt(Enum::ordinal))
+                .toList();
+    }
+
     private Candidate chooseStyleFirst(
             List<Candidate> candidates,
             Set<ExcuseStyle> usedStyles,

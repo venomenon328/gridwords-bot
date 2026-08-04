@@ -57,14 +57,24 @@ class ExcuseOpenInteractionListenerTest {
     }
 
     @Test
-    void rejectsUnknownCodecVersionsAfterTheEphemeralDeferWithoutCallingTheUseCase() {
+    void ignoresUnknownCodecVersionsWithoutAcknowledgingThemSoTheirOwnDispatcherCanRespond() {
         ExcuseOpenUseCase open = mock(ExcuseOpenUseCase.class);
         Fixture fixture = fixture("excuse:v2:open:" + RESULT_ID, GUILD_ID, CHANNEL_ID);
 
         listener(Runnable::run, open).onButtonInteraction(fixture.event());
 
-        verify(fixture.hook()).editOriginal("Diese Ausrede ist nicht verfügbar oder nicht mehr aktuell.");
-        verify(fixture.edit()).queue();
+        verify(fixture.event(), never()).deferReply(true);
+        verifyNoInteractions(open);
+    }
+
+    @Test
+    void ignoresFollowUpExcuseActionsWithoutAcknowledgingThemTwice() {
+        ExcuseOpenUseCase open = mock(ExcuseOpenUseCase.class);
+        Fixture fixture = fixture("excuse:v1:decline:" + RESULT_ID + ":1", GUILD_ID, CHANNEL_ID);
+
+        listener(Runnable::run, open).onButtonInteraction(fixture.event());
+
+        verify(fixture.event(), never()).deferReply(true);
         verifyNoInteractions(open);
     }
 
@@ -138,6 +148,7 @@ class ExcuseOpenInteractionListenerTest {
         }).when(deferred).queue(any());
         when(hook.editOriginal(anyString())).thenReturn(edit);
         when(hook.editOriginalEmbeds(any(MessageEmbed[].class))).thenReturn(edit);
+        when(edit.setComponents(any(List.class))).thenReturn(edit);
         return new Fixture(event, hook, edit);
     }
 
