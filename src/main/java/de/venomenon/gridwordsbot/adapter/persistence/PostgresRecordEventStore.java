@@ -8,6 +8,7 @@ import de.venomenon.gridwordsbot.domain.record.RecordEventValidity;
 import de.venomenon.gridwordsbot.domain.record.RecordStateKey;
 import de.venomenon.gridwordsbot.domain.record.RecordValue;
 import de.venomenon.gridwordsbot.port.out.RecordEventStore;
+import de.venomenon.gridwordsbot.port.out.RecordEventIdempotencyConflictException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Clock;
@@ -35,7 +36,7 @@ public final class PostgresRecordEventStore implements RecordEventStore {
                 previous.kind(),previous.attempts(),previous.durationMillis(),previous.streakLength(),previous.streakStart(),previous.streakEnd(),next.kind(),next.attempts(),next.durationMillis(),next.streakLength(),next.streakStart(),next.streakEnd(),
                 draft.previousSource().map(source -> source.sourceType().name()).orElse(null),draft.previousSource().map(RecordJdbcMapping::sourceKey).orElse(null),draft.newSource().sourceType().name(),RecordJdbcMapping.sourceKey(draft.newSource()),draft.triggerKey(),draft.processingOrigin().name(),RecordJdbcMapping.utc(draft.detectedAt()),RecordJdbcMapping.utc(now),RecordJdbcMapping.utc(now));
         RecordEventSnapshot persisted=findByIdempotency(draft.idempotencyKey()).orElseThrow(() -> new IllegalStateException("appended record event is missing"));
-        if (inserted==0 && !persisted.draft().equals(draft)) throw new IllegalStateException("conflicting record event idempotency key");
+        if (inserted==0 && !persisted.draft().equals(draft)) throw new RecordEventIdempotencyConflictException(draft.idempotencyKey());
         return new RecordEventAppendResult(inserted==1,persisted);
     }
     @Override public Optional<RecordEventSnapshot> find(UUID eventId) { return jdbc.query(select()+" WHERE event_id=?",(rs,row)->snapshot(rs),eventId).stream().findFirst(); }

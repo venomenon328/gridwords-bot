@@ -38,7 +38,11 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import liquibase.integration.spring.SpringLiquibase;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -90,14 +94,16 @@ class PostgresRecordPersistenceStoreIT {
     }
     @Test void stateInitializesOnceAndUsesCompareAndSetWithoutLostUpdates() throws Exception {
         RecordStateKey key = stateKey(); RecordStateWrite first = write(3, Duration.ofSeconds(70));
-        try (var pool = Executors.newFixedThreadPool(2)) {
-            var outcomes = pool.invokeAll(List.of(() -> states.initialize(key, first), () -> states.initialize(key, first))).stream().map(future -> { try { return future.get(); } catch (Exception error) { throw new AssertionError(error); } }).toList();
-            assertThat(outcomes).filteredOn(outcome -> outcome instanceof de.venomenon.gridwordsbot.domain.record.RecordStateInitialization.Created).hasSize(1);
-        }
-        assertThat(states.update(new RecordStateUpdate(key, RecordLockVersion.initial(), write(2, Duration.ofSeconds(60)))).status()).isEqualTo(de.venomenon.gridwordsbot.domain.record.RecordStateUpdateResult.Status.UPDATED);
+        var initialized = concurrently(() -> states.initialize(key, first), () -> states.initialize(key, first));
+        assertThat(initialized).filteredOn(outcome -> outcome instanceof de.venomenon.gridwordsbot.domain.record.RecordStateInitialization.Created).hasSize(1);
+        RecordStateWrite better = write(2, Duration.ofSeconds(60)); RecordStateWrite best = write(1, Duration.ofSeconds(50));
+        var racedUpdates = concurrently(() -> states.update(new RecordStateUpdate(key, RecordLockVersion.initial(), better)), () -> states.update(new RecordStateUpdate(key, RecordLockVersion.initial(), best)));
+        assertThat(racedUpdates).extracting(de.venomenon.gridwordsbot.domain.record.RecordStateUpdateResult::status)
+                .containsExactlyInAnyOrder(de.venomenon.gridwordsbot.domain.record.RecordStateUpdateResult.Status.UPDATED, de.venomenon.gridwordsbot.domain.record.RecordStateUpdateResult.Status.VERSION_CONFLICT);
+        var current = states.find(key).orElseThrow();
+        assertThat(states.update(new RecordStateUpdate(key, current.lockVersion(), better)).status()).isEqualTo(
+                current.value().equals(better.value()) ? de.venomenon.gridwordsbot.domain.record.RecordStateUpdateResult.Status.UNCHANGED : de.venomenon.gridwordsbot.domain.record.RecordStateUpdateResult.Status.UPDATED);
         assertThat(states.update(new RecordStateUpdate(key, RecordLockVersion.initial(), first)).status()).isEqualTo(de.venomenon.gridwordsbot.domain.record.RecordStateUpdateResult.Status.VERSION_CONFLICT);
-        assertThat(states.update(new RecordStateUpdate(key, new RecordLockVersion(1), write(2, Duration.ofSeconds(60)))).status()).isEqualTo(de.venomenon.gridwordsbot.domain.record.RecordStateUpdateResult.Status.UNCHANGED);
-        assertThat(states.find(key).orElseThrow().value()).isEqualTo(new AttemptsDurationRecordValue(2, Duration.ofSeconds(60)));
     }
     @Test void allTypedStateValuesAndSourcesRoundTripLosslessly() {
         RecordStateKey durationKey = new RecordStateKey(1,new RecordDefinitionKey("result.gridwords.fastest.personal"),RecordDefinitionVersion.RECORDS_V1,new RecordScope.Personal(1));
@@ -110,6 +116,10 @@ class PostgresRecordPersistenceStoreIT {
     @Test void eventIdempotencyInvalidationAndSupersessionRemainDurable() {
         RecordEventDraft draft = eventDraft();
         assertThat(events.append(draft).appended()).isTrue(); assertThat(events.append(draft).appended()).isFalse();
+        RecordEventDraft conflictingReplay = new RecordEventDraft(UUID.randomUUID(), draft.idempotencyKey(), stateKey(), RecordEventType.RESULT_RECORD_BROKEN,
+                Optional.empty(), new AttemptsDurationRecordValue(1, Duration.ofSeconds(59)), Optional.empty(), Optional.of(1L), Optional.empty(),
+                draft.newSource(), draft.triggerKey(), draft.processingOrigin(), draft.detectedAt());
+        assertThatThrownBy(() -> events.append(conflictingReplay)).isInstanceOf(de.venomenon.gridwordsbot.port.out.RecordEventIdempotencyConflictException.class);
         RecordEventDraft successor = new RecordEventDraft(UUID.randomUUID(),"event:result:2:v0",stateKey(),RecordEventType.RESULT_RECORD_BROKEN,Optional.empty(),new AttemptsDurationRecordValue(1,Duration.ofSeconds(50)),Optional.empty(),Optional.of(1L),Optional.empty(),new RecordSourceReference.GameResult(2,0,1,GameType.GRIDWORDS,LocalDate.of(2026,8,5)),"result:2:v0",RecordProcessingOrigin.LIVE_SUBMISSION,NOW);
         events.append(successor);
         assertThat(events.supersede(draft.eventId(), successor.eventId(), NOW.plusSeconds(1))).isTrue();
@@ -143,6 +153,27 @@ class PostgresRecordPersistenceStoreIT {
         assertThat(announcements.markExternallyRemoved(key, removal.token(), NOW.plusSeconds(2))).isTrue();
         assertThat(announcements.find(key).orElseThrow().messages()).containsExactly(new RecordAnnouncementMessage(0,100), new RecordAnnouncementMessage(1,101));
         assertThat(announcements.registerOrUpdate(registration).state()).isEqualTo(de.venomenon.gridwordsbot.domain.record.RecordWorkState.EXTERNALLY_REMOVED);
+    }
+    @Test void concurrentAnnouncementClaimsHaveOneWinnerAndStaleTokensAreFenced() throws Exception {
+        UUID event = events.append(eventDraft()).snapshot().draft().eventId();
+        RecordAnnouncementKey key = new RecordAnnouncementKey(1, 2, "result:1:v0:claim-race");
+        announcements.registerOrUpdate(new RecordAnnouncementRegistration(key, RecordAnnouncementSubject.player(1), RecordAnnouncementPhase.LIVE_EVALUATION, RecordAnnouncementProjection.CREATE, "records-renderer-v1", "c".repeat(64), List.of(event)));
+        var claims = concurrently(() -> announcements.claim(key, request(NOW, NOW.plusSeconds(10))), () -> announcements.claim(key, request(NOW, NOW.plusSeconds(10))));
+        assertThat(claims).filteredOn(Optional::isPresent).hasSize(1);
+        UUID winner = claims.stream().flatMap(Optional::stream).findFirst().orElseThrow().token();
+        assertThat(announcements.markSynchronized(key, UUID.randomUUID(), NOW.plusSeconds(1))).isFalse();
+        assertThat(announcements.markSynchronized(key, winner, NOW.plusSeconds(1))).isTrue();
+        assertThat(announcements.claim(key, request(NOW.plusSeconds(2), NOW.plusSeconds(12)))).isEmpty();
+    }
+    @SafeVarargs private static <T> List<T> concurrently(Callable<T>... operations) throws Exception {
+        CountDownLatch ready = new CountDownLatch(operations.length); CountDownLatch start = new CountDownLatch(1);
+        try (ExecutorService pool = Executors.newFixedThreadPool(operations.length)) {
+            var futures = java.util.Arrays.stream(operations).map(operation -> pool.submit(() -> {
+                ready.countDown(); if (!start.await(10, TimeUnit.SECONDS)) throw new IllegalStateException("race start timed out"); return operation.call();
+            })).toList();
+            assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue(); start.countDown();
+            return futures.stream().map(future -> { try { return future.get(10, TimeUnit.SECONDS); } catch (Exception error) { throw new AssertionError(error); } }).toList();
+        }
     }
     private static RecordStateKey stateKey() { return new RecordStateKey(1,new RecordDefinitionKey("result.gridwords.fewest-attempts.personal"),RecordDefinitionVersion.RECORDS_V1,new RecordScope.Personal(1)); }
     private static RecordStateWrite write(int attempts,Duration duration) { return new RecordStateWrite(Optional.of(1L),new AttemptsDurationRecordValue(attempts,duration),new RecordSourceReference.GameResult(1,0,1,GameType.GRIDWORDS,LocalDate.of(2026,8,4)),false); }

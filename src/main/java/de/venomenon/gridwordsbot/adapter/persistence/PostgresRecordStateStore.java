@@ -29,7 +29,13 @@ public final class PostgresRecordStateStore implements RecordStateStore {
         int inserted = jdbc.update("""
                 INSERT INTO record_state (guild_id,definition_key,definition_version,scope_type,scope_key,holder_player_id,value_kind,attempts,duration_millis,streak_length,streak_start_date,streak_end_date,
                     source_type,source_game_result_id,source_game_result_version,source_game_player_id,source_game_type,source_game_date,source_streak_metric,source_streak_owner_type,source_streak_owner_player_id,source_streak_start_date,running,lock_version,created_at,updated_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?) ON CONFLICT (guild_id,definition_key,definition_version,scope_type,scope_key) DO NOTHING
+                VALUES (
+                    ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?,
+                    0, ?, ?)
+                ON CONFLICT (guild_id,definition_key,definition_version,scope_type,scope_key) DO NOTHING
                 """, concat(new Object[] {key.guildId(), key.definitionKey().value(), key.definitionVersion().value(), key.scope().type().name(), key.scopeKey()}, value, new Object[] {RecordJdbcMapping.utc(now), RecordJdbcMapping.utc(now)}));
         RecordStateSnapshot snapshot = find(key).orElseThrow(() -> new IllegalStateException("initialized record state is missing"));
         return inserted == 1 ? new RecordStateInitialization.Created(snapshot) : new RecordStateInitialization.Existing(snapshot);

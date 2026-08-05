@@ -26,7 +26,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 /** PostgreSQL delivery projection store.  It persists intent only and performs no external I/O. */
-public final class PostgresRecordAnnouncementStore implements RecordAnnouncementStore {
+public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore {
     private final JdbcTemplate jdbc; private final Clock clock;
     public PostgresRecordAnnouncementStore(JdbcTemplate jdbc,Clock clock){this.jdbc=java.util.Objects.requireNonNull(jdbc,"jdbc");this.clock=java.util.Objects.requireNonNull(clock,"clock");}
     @Override @Transactional public RecordAnnouncementSnapshot registerOrUpdate(RecordAnnouncementRegistration registration) {
