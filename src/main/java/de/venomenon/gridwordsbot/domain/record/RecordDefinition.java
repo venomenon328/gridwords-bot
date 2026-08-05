@@ -44,4 +44,14 @@ public record RecordDefinition<V extends RecordValue>(
     public RecordComparison compare(V candidate, V current) {
         return comparator.compare(candidate, current);
     }
+
+    public RecordComparison compareValues(RecordValue candidate, RecordValue current) {
+        Objects.requireNonNull(candidate, "candidate");
+        Objects.requireNonNull(current, "current");
+        if (!comparator.valueType().isInstance(candidate) || !comparator.valueType().isInstance(current)) {
+            throw new IllegalArgumentException("record values do not match definition value type");
+        }
+        return comparator.compare(
+                comparator.valueType().cast(candidate), comparator.valueType().cast(current));
+    }
 }
