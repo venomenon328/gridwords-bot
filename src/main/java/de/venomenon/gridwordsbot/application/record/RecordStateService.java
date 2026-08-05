@@ -52,6 +52,9 @@ public class RecordStateService {
         String stable = bootstrapKey + ":" + state.key().definitionKey().value() + ":" + state.key().scopeKey();
         UUID eventId = UUID.nameUUIDFromBytes(stable.getBytes(StandardCharsets.UTF_8));
         RecordStateWrite write = candidate.write();
+        if (!eventStore.findByTriggerKey(state.key().guildId(), stable).isEmpty()) {
+            return true;
+        }
         eventStore.append(new RecordEventDraft(eventId, "record-initialized:" + stable, state.key(),
                 RecordEventType.RECORD_INITIALIZED, Optional.empty(), write.value(), Optional.empty(), write.holderPlayerId(),
                 Optional.empty(), write.source(), stable, RecordProcessingOrigin.BOOTSTRAP, detectedAt));
@@ -66,7 +69,8 @@ public class RecordStateService {
         for (int attempts = 0; attempts < 3; attempts++) {
             Optional<RecordStateSnapshot> current = stateStore.find(candidate.key());
             if (current.isEmpty()) {
-                return initializeSilently(candidate, bootstrapKey, detectedAt) ? RebuildResult.CREATED : RebuildResult.RETRY_EXHAUSTED;
+                if (initializeSilently(candidate, bootstrapKey, detectedAt)) return RebuildResult.CREATED;
+                continue;
             }
             RecordStateSnapshot state = current.orElseThrow();
             if (same(state, candidate.write()) || stateIsAtLeastAsGood(state, candidate.write())) return RebuildResult.UNCHANGED;
@@ -113,7 +117,22 @@ public class RecordStateService {
                 .filter(found -> found.definitionVersion().equals(state.key().definitionVersion()))
                 .orElseThrow(() -> new IllegalStateException("record state references an unknown active definition"));
         RecordComparison comparison = definition.compareValues(candidate.value(), state.value());
-        return comparison != RecordComparison.BETTER;
+        if (comparison == RecordComparison.WORSE) return true;
+        if (comparison == RecordComparison.BETTER) return false;
+        return canonicalSourceOrder(state.source(), candidate.source()) <= 0;
+    }
+    private static int canonicalSourceOrder(RecordSourceReference left, RecordSourceReference right) {
+        if (left instanceof RecordSourceReference.GameResult l && right instanceof RecordSourceReference.GameResult r) {
+            int date = l.gameDate().compareTo(r.gameDate());
+            return date != 0 ? date : Long.compare(l.resultId(), r.resultId());
+        }
+        if (left instanceof RecordSourceReference.StreakRun l && right instanceof RecordSourceReference.StreakRun r) {
+            int metric = l.metric().compareTo(r.metric());
+            if (metric != 0) return metric;
+            int start = l.startDate().compareTo(r.startDate());
+            return start != 0 ? start : l.owner().toString().compareTo(r.owner().toString());
+        }
+        return left.sourceType().compareTo(right.sourceType());
     }
     public enum RebuildResult { CREATED, REPLACED, REMOVED, UNCHANGED, RETRY_EXHAUSTED }
 }
