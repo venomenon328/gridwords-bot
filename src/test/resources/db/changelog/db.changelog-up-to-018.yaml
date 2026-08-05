@@ -1,0 +1,19 @@
+databaseChangeLog:
+  - include: { file: 001-persistence-schema.sql, relativeToChangelogFile: true }
+  - include: { file: 002-canonical-publication.sql, relativeToChangelogFile: true }
+  - include: { file: 003-canonical-publication-ownership.sql, relativeToChangelogFile: true }
+  - include: { file: 004-submission-publication-context.sql, relativeToChangelogFile: true }
+  - include: { file: 005-submission-supersession.sql, relativeToChangelogFile: true }
+  - include: { file: 006-canonical-refresh-reconciliation.sql, relativeToChangelogFile: true }
+  - include: { file: 007-canonical-delivery-attempts.sql, relativeToChangelogFile: true }
+  - include: { file: 008-gridwords-source-deletion.sql, relativeToChangelogFile: true }
+  - include: { file: 009-quadwords-boards.sql, relativeToChangelogFile: true }
+  - include: { file: 010-dynamic-player-participation.sql, relativeToChangelogFile: true }
+  - include: { file: 011-daily-status-reminders.sql, relativeToChangelogFile: true }
+  - include: { file: 012-periodic-report-delivery.sql, relativeToChangelogFile: true }
+  - include: { file: 013-boardless-quadwords.sql, relativeToChangelogFile: true }
+  - include: { file: 014-daily-channel-cleanup.sql, relativeToChangelogFile: true }
+  - include: { file: 015-game-specific-participation.sql, relativeToChangelogFile: true }
+  - include: { file: 016-excuse-interactions.sql, relativeToChangelogFile: true }
+  - include: { file: 017-excuse-offer-context.sql, relativeToChangelogFile: true }
+  - include: { file: 018-record-persistence.sql, relativeToChangelogFile: true }

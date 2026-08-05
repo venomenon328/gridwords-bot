@@ -3,6 +3,7 @@ package de.venomenon.gridwordsbot.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Duration;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import org.junit.jupiter.api.Test;
@@ -41,6 +42,7 @@ class GridwordsBotPropertiesTest {
             assertThat(properties.schedule().timeZone()).isEqualTo(ZoneId.of("Europe/Berlin"));
             assertThat(properties.storage().rawImageRetentionHours()).isEqualTo(48);
             assertThat(properties.excuseGenerator().contextualEnabled()).isFalse();
+            assertThat(properties.records()).isEqualTo(GridwordsBotProperties.Records.defaults());
         });
     }
 
@@ -49,6 +51,47 @@ class GridwordsBotPropertiesTest {
         contextRunner.withPropertyValues("gridwords.excuse-generator.contextual-enabled=true")
                 .run(context -> assertThat(context.getBean(GridwordsBotProperties.class)
                         .excuseGenerator().contextualEnabled()).isTrue());
+    }
+
+    @Test
+    void bindsRecordBootstrapOperationalDurations() {
+        contextRunner.withPropertyValues(
+                        "gridwords.records.bootstrap-poll-delay=PT17S",
+                        "gridwords.records.bootstrap-lease-duration=PT43S",
+                        "gridwords.records.bootstrap-retry-backoff=PT29S")
+                .run(context -> assertThat(context.getBean(GridwordsBotProperties.class).records())
+                        .isEqualTo(new GridwordsBotProperties.Records(
+                                Duration.ofSeconds(17), Duration.ofSeconds(43), Duration.ofSeconds(29))));
+    }
+
+    @Test
+    void rejectsNonPositiveRecordBootstrapDurations() {
+        assertThatThrownBy(() -> new GridwordsBotProperties.Records(Duration.ZERO, Duration.ofSeconds(1), Duration.ofSeconds(1)))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new GridwordsBotProperties.Records(Duration.ofSeconds(1), Duration.ofSeconds(-1), Duration.ofSeconds(1)))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new GridwordsBotProperties.Records(Duration.ofSeconds(1), Duration.ofSeconds(1), Duration.ZERO))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void rejectsSubMillisecondRecordBootstrapPollDelay() {
+        assertThatThrownBy(() -> new GridwordsBotProperties.Records(
+                        Duration.ofNanos(1), Duration.ofSeconds(1), Duration.ofSeconds(1)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("bootstrapPollDelay must be at least PT0.001S");
+    }
+
+    @Test
+    void rejectsNonPositiveRecordBootstrapDurationDuringPropertyBinding() {
+        contextRunner.withPropertyValues("gridwords.records.bootstrap-lease-duration=PT0S")
+                .run(context -> assertThat(context.getStartupFailure()).isNotNull());
+    }
+
+    @Test
+    void rejectsSubMillisecondPollDelayDuringPropertyBinding() {
+        contextRunner.withPropertyValues("gridwords.records.bootstrap-poll-delay=PT0.000000001S")
+                .run(context -> assertThat(context.getStartupFailure()).isNotNull());
     }
 
     @Test

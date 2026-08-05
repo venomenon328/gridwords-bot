@@ -30,6 +30,11 @@ import de.venomenon.gridwordsbot.domain.record.StreakRecordMetric;
 import de.venomenon.gridwordsbot.domain.record.StreakRecordValue;
 import de.venomenon.gridwordsbot.domain.record.RecordWorkFailure;
 import de.venomenon.gridwordsbot.domain.record.RecordWorkFailureCategory;
+import de.venomenon.gridwordsbot.application.record.RecordStateService;
+import de.venomenon.gridwordsbot.domain.record.RecordBootstrapProjection;
+import de.venomenon.gridwordsbot.domain.record.RecordDefinitionCatalog;
+import de.venomenon.gridwordsbot.port.out.RecordEventStore;
+import de.venomenon.gridwordsbot.port.out.RecordTransactionRunner;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -50,6 +55,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -104,6 +111,67 @@ class PostgresRecordPersistenceStoreIT {
         assertThat(states.update(new RecordStateUpdate(key, current.lockVersion(), better)).status()).isEqualTo(
                 current.value().equals(better.value()) ? de.venomenon.gridwordsbot.domain.record.RecordStateUpdateResult.Status.UNCHANGED : de.venomenon.gridwordsbot.domain.record.RecordStateUpdateResult.Status.UPDATED);
         assertThat(states.update(new RecordStateUpdate(key, RecordLockVersion.initial(), first)).status()).isEqualTo(de.venomenon.gridwordsbot.domain.record.RecordStateUpdateResult.Status.VERSION_CONFLICT);
+    }
+    @Test void stateAndBootstrapAnchorRollbackTogetherInOneRealTransaction() {
+        TransactionTemplate template = new TransactionTemplate(new DataSourceTransactionManager(jdbc.getDataSource()));
+        RecordTransactionRunner transactions = new RecordTransactionRunner() {
+            @Override public <T> T inTransaction(java.util.function.Supplier<T> work) {
+                return template.execute(status -> work.get());
+            }
+        };
+        RecordEventStore failingEvents = new RecordEventStore() {
+            @Override public de.venomenon.gridwordsbot.domain.record.RecordEventAppendResult append(RecordEventDraft draft) {
+                events.append(draft);
+                throw new IllegalStateException("simulated failure after append");
+            }
+            @Override public Optional<de.venomenon.gridwordsbot.domain.record.RecordEventSnapshot> find(UUID id) { return events.find(id); }
+            @Override public List<de.venomenon.gridwordsbot.domain.record.RecordEventSnapshot> findByTriggerKey(long guild, String trigger) { return events.findByTriggerKey(guild, trigger); }
+            @Override public boolean invalidate(UUID id, Instant at) { return events.invalidate(id, at); }
+            @Override public boolean supersede(UUID id, UUID successor, Instant at) { return events.supersede(id, successor, at); }
+        };
+        RecordStateService service = new RecordStateService(states, failingEvents, transactions, RecordDefinitionCatalog.recordsV1());
+        RecordStateKey key = stateKey();
+        assertThatThrownBy(() -> service.initializeSilently(
+                new RecordBootstrapProjection.Candidate(key, write(2, Duration.ofSeconds(60))),
+                "1:records-v1", NOW)).isInstanceOf(IllegalStateException.class);
+        assertThat(states.find(key)).isEmpty();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM record_event", Integer.class)).isZero();
+    }
+    @Test void bootstrapAnchorIsStableAcrossRemoveAndRecreateAndNeverCreatesAnnouncementWork() {
+        TransactionTemplate template = new TransactionTemplate(new DataSourceTransactionManager(jdbc.getDataSource()));
+        RecordTransactionRunner transactions = new RecordTransactionRunner() {
+            @Override public <T> T inTransaction(java.util.function.Supplier<T> work) {
+                return template.execute(status -> work.get());
+            }
+        };
+        RecordStateService service = new RecordStateService(states, events, transactions, RecordDefinitionCatalog.recordsV1());
+        RecordStateKey key = stateKey();
+        RecordBootstrapProjection.Candidate candidate = new RecordBootstrapProjection.Candidate(key, write(2, Duration.ofSeconds(60)));
+
+        assertThat(service.initializeSilently(candidate, "1:records-v1", NOW)).isTrue();
+        assertThat(states.remove(key, states.find(key).orElseThrow().lockVersion())).isTrue();
+        assertThat(service.reconcileCanonicalTarget(candidate, "1:records-v1", NOW))
+                .isEqualTo(RecordStateService.RebuildResult.CREATED);
+
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM record_event", Integer.class)).isOne();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM record_announcement", Integer.class)).isZero();
+        assertThat(states.find(key)).isPresent();
+    }
+    @Test void stateReadPortIsDeterministicAndCasRemovalDoesNotDeleteAuditEvents() {
+        RecordStateKey first = stateKey();
+        RecordStateKey second = new RecordStateKey(1, new RecordDefinitionKey("result.gridwords.slowest-successful-solution.personal"),
+                RecordDefinitionVersion.RECORDS_V1, new RecordScope.Personal(2));
+        states.initialize(second, new RecordStateWrite(Optional.of(2L), new DurationRecordValue(Duration.ofSeconds(91)),
+                new RecordSourceReference.GameResult(12, 0, 2, GameType.GRIDWORDS, LocalDate.of(2026, 8, 2)), false));
+        states.initialize(first, write(3, Duration.ofSeconds(70)));
+        RecordEventDraft event = eventDraft();
+        events.append(event);
+        assertThat(states.findAll(1, RecordDefinitionVersion.RECORDS_V1)).extracting(state -> state.key().scopeKey())
+                .containsExactly("player:1", "player:2");
+        var snapshot = states.find(first).orElseThrow();
+        assertThat(states.remove(first, snapshot.lockVersion())).isTrue();
+        assertThat(states.find(first)).isEmpty();
+        assertThat(events.find(event.eventId())).isPresent();
     }
     @Test void allTypedStateValuesAndSourcesRoundTripLosslessly() {
         RecordStateKey durationKey = new RecordStateKey(1,new RecordDefinitionKey("result.gridwords.fastest.personal"),RecordDefinitionVersion.RECORDS_V1,new RecordScope.Personal(1));

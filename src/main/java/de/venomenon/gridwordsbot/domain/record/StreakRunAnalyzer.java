@@ -50,8 +50,8 @@ public final class StreakRunAnalyzer {
                     end = day;
                 }
                 case PENDING -> {
-                    if (!day.equals(window.asOfDate()) || window.asOfDateClosed()) {
-                        throw new IllegalStateException("pending is only valid for an open final day");
+                    if (window.dayClosed(day)) {
+                        throw new IllegalStateException("pending is only valid for an open day");
                     }
                 }
                 case VIOLATED -> {

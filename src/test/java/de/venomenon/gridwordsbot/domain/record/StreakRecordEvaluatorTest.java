@@ -94,6 +94,28 @@ class StreakRecordEvaluatorTest {
         assertTrue(evaluations.notable().isEmpty());
     }
 
+    @Test
+    void consumedHistoricalCrossingSuppressesOnlyFurtherLiveExtensionNotItsCompletion() {
+        StreakRun reference = run(1, START.minusDays(20), 7, StreakRunStatus.ENDED_BY_RESULT);
+        StreakRun running = run(1, START, 9, StreakRunStatus.RUNNING);
+        StreakRecordEvaluation personal = evaluator.evaluate(running, new StreakRecordHistorySnapshot(List.of(reference)),
+                        Set.of(), RecordProcessingOrigin.LIVE_SUBMISSION).evaluations().stream()
+                .filter(evaluation -> evaluation.comparisonScope() instanceof RecordScope.Personal).findFirst().orElseThrow();
+        StreakCrossingKey consumed = personal.crossingKey().orElseThrow();
+
+        StreakRecordEvaluation suppressed = evaluator.evaluate(running, new StreakRecordHistorySnapshot(List.of(reference)),
+                        Set.of(consumed), RecordProcessingOrigin.LIVE_SUBMISSION).evaluations().stream()
+                .filter(evaluation -> evaluation.comparisonScope() instanceof RecordScope.Personal).findFirst().orElseThrow();
+        assertEquals(StreakRecordClassification.NONE, suppressed.classification());
+
+        StreakRecordEvaluation completed = evaluator.evaluate(run(1, START, 9, StreakRunStatus.ENDED_BY_RESULT),
+                        new StreakRecordHistorySnapshot(List.of(reference)), Set.of(consumed),
+                        RecordProcessingOrigin.LIVE_SUBMISSION).evaluations().stream()
+                .filter(evaluation -> evaluation.comparisonScope() instanceof RecordScope.Personal).findFirst().orElseThrow();
+        assertEquals(StreakRecordClassification.NEW_RECORD, completed.classification());
+        assertTrue(completed.publicAnnouncementEligible());
+    }
+
     private StreakRecordEvaluation serverEvaluation(StreakRun candidate, List<StreakRun> history) {
         return evaluator.evaluate(candidate, new StreakRecordHistorySnapshot(history), Set.of(),
                         RecordProcessingOrigin.NORMAL_CORRECTION).evaluations().stream()

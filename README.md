@@ -127,9 +127,16 @@ EXCUSE_GENERATOR_CONTEXTUAL_ENABLED=false
 EXCUSE_OFFER_LIFETIME=PT15M
 EXCUSE_EXPIRATION_PAGE_SIZE=25
 EXCUSE_EXPIRATION_MAX_PAGES=4
+
+# Persistenter Rekord-Bootstrap (nur Datenbankprofil)
+RECORD_BOOTSTRAP_POLL_DELAY=PT1M
+RECORD_BOOTSTRAP_LEASE_DURATION=PT2M
+RECORD_BOOTSTRAP_RETRY_BACKOFF=PT1M
 ```
 
 Der versionierte Default der Ausreden bleibt bewusst deaktiviert. Für einen lokalen Discord-Test kann `EXCUSE_GENERATOR_CONTEXTUAL_ENABLED=true` in der nicht versionierten `.env` gesetzt werden.
+
+Der Rekord-Bootstrap pollt persistente fällige Arbeit. Der Poll-Delay muss wegen der Scheduler-Auflösung mindestens `PT0.001S` betragen; Lease und Retry-Backoff müssen positiv sein. Die Defaults entsprechen dem bisherigen Verhalten: Poll und Retry jeweils eine Minute, Lease zwei Minuten. Im Produktionsprofil stellt der ausschließlich lokal gebundene Actuator die Bootstrap-Metriken unter `/actuator/metrics/gridwords.record.bootstrap.runs` und `/actuator/metrics/gridwords.record.bootstrap.duration` bereit.
 
 ## Lokale Validierung
 
