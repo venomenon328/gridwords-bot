@@ -3,11 +3,13 @@ package de.venomenon.gridwordsbot.config;
 import de.venomenon.gridwordsbot.adapter.persistence.PostgresRecordAnnouncementStore;
 import de.venomenon.gridwordsbot.adapter.persistence.PostgresRecordBootstrapStore;
 import de.venomenon.gridwordsbot.adapter.persistence.PostgresRecordEventStore;
+import de.venomenon.gridwordsbot.adapter.persistence.PostgresRecordLiveEvaluationStore;
 import de.venomenon.gridwordsbot.adapter.persistence.PostgresRecordStateStore;
 import de.venomenon.gridwordsbot.adapter.persistence.PostgresRecordHistoryQuery;
 import de.venomenon.gridwordsbot.port.out.RecordAnnouncementStore;
 import de.venomenon.gridwordsbot.port.out.RecordBootstrapStore;
 import de.venomenon.gridwordsbot.port.out.RecordEventStore;
+import de.venomenon.gridwordsbot.port.out.RecordLiveEvaluationStore;
 import de.venomenon.gridwordsbot.port.out.RecordStateStore;
 import de.venomenon.gridwordsbot.port.out.RecordHistoryQuery;
 import de.venomenon.gridwordsbot.domain.record.RecordDefinitionCatalog;
@@ -27,13 +29,16 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.boot.ApplicationRunner;
 import io.micrometer.core.instrument.MeterRegistry;
 
-/** Wires persistence contracts only; evaluators, bootstrap scans, delivery workers, and Discord stay in later packages. */
+/** Wires persistence contracts; live evaluation logic and Discord delivery remain in later subpackages. */
 @Configuration(proxyBeanMethods = false)
 @Profile("database")
 class RecordPersistenceConfiguration {
     @Bean RecordStateStore recordStateStore(JdbcTemplate jdbc, Clock clock) { return new PostgresRecordStateStore(jdbc, clock); }
     @Bean RecordEventStore recordEventStore(JdbcTemplate jdbc, Clock clock) { return new PostgresRecordEventStore(jdbc, clock); }
     @Bean RecordBootstrapStore recordBootstrapStore(JdbcTemplate jdbc, Clock clock) { return new PostgresRecordBootstrapStore(jdbc, clock); }
+    @Bean RecordLiveEvaluationStore recordLiveEvaluationStore(JdbcTemplate jdbc, Clock clock) {
+        return new PostgresRecordLiveEvaluationStore(jdbc, clock);
+    }
     @Bean RecordAnnouncementStore recordAnnouncementStore(JdbcTemplate jdbc, Clock clock) { return new PostgresRecordAnnouncementStore(jdbc, clock); }
     @Bean RecordHistoryQuery recordHistoryQuery(JdbcTemplate jdbc) { return new PostgresRecordHistoryQuery(jdbc); }
     @Bean RecordDefinitionCatalog recordDefinitionCatalog() { return RecordDefinitionCatalog.recordsV1(); }
