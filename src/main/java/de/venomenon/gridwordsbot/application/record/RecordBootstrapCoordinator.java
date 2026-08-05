@@ -12,6 +12,7 @@ import de.venomenon.gridwordsbot.domain.record.StreakRunAnalyzer;
 import de.venomenon.gridwordsbot.port.out.RecordBootstrapStore;
 import de.venomenon.gridwordsbot.port.out.RecordHistoryQuery;
 import de.venomenon.gridwordsbot.port.out.RecordRetryableFailure;
+import de.venomenon.gridwordsbot.port.out.RecordPermanentFailure;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDate;
@@ -49,6 +50,8 @@ public class RecordBootstrapCoordinator {
                 new RecordLeaseClaimRequest(now, now.plus(leaseDuration)));
         if (claim.isEmpty()) return BootstrapRunResult.NOT_CLAIMED;
         var token = claim.orElseThrow().token();
+        java.time.Instant detectedAt = bootstrapStore.find(key).flatMap(de.venomenon.gridwordsbot.domain.record.RecordBootstrapSnapshot::startedAt)
+                .orElseThrow(() -> new IllegalStateException("claimed bootstrap has no stable startedAt"));
         try {
             if (!bootstrapStore.renewLease(key, token, leaseRequest())) return BootstrapRunResult.LOST_LEASE;
             RecordHistorySnapshot history = historyQuery.load(guildId);
@@ -56,27 +59,21 @@ public class RecordBootstrapCoordinator {
             StreakRunAnalysisWindow window = analysisWindow(history, clock);
             String bootstrapKey = guildId + ":" + key.definitionVersion().value();
             java.util.List<RecordBootstrapProjection.Candidate> targets = projection.project(guildId, history, window);
-            java.util.Set<de.venomenon.gridwordsbot.domain.record.RecordStateKey> targetKeys = targets.stream()
-                    .map(RecordBootstrapProjection.Candidate::key).collect(java.util.stream.Collectors.toUnmodifiableSet());
             for (RecordBootstrapProjection.Candidate candidate : targets) {
                 if (!bootstrapStore.renewLease(key, token, leaseRequest())) return BootstrapRunResult.LOST_LEASE;
-                if (stateService.rebuild(candidate, bootstrapKey, now) == RecordStateService.RebuildResult.RETRY_EXHAUSTED) {
+                if (stateService.rebuild(candidate, bootstrapKey, detectedAt) == RecordStateService.RebuildResult.RETRY_EXHAUSTED) {
                     throw new RecordRetryableFailure("record state CAS retry exhausted", null);
-                }
-            }
-            for (var state : stateService.states(guildId, catalog.version())) {
-                if (!targetKeys.contains(state.key())) {
-                    if (!bootstrapStore.renewLease(key, token, leaseRequest())) return BootstrapRunResult.LOST_LEASE;
-                    if (stateService.removeIfNoSource(state.key()) == RecordStateService.RebuildResult.RETRY_EXHAUSTED) {
-                        throw new RecordRetryableFailure("record state removal CAS retry exhausted", null);
-                    }
                 }
             }
             return bootstrapStore.markSucceeded(key, token, clock.instant()) ? BootstrapRunResult.SUCCEEDED : BootstrapRunResult.LOST_LEASE;
         } catch (RecordRetryableFailure ex) {
-            bootstrapStore.markRetryableFailure(key, token, new RecordWorkFailure(RecordWorkFailureCategory.RETRYABLE,
+            boolean marked = bootstrapStore.markRetryableFailure(key, token, new RecordWorkFailure(RecordWorkFailureCategory.RETRYABLE,
                     "record bootstrap retryable failure"), clock.instant().plus(Duration.ofMinutes(1)));
-            return BootstrapRunResult.RETRY_SCHEDULED;
+            return marked ? BootstrapRunResult.RETRY_SCHEDULED : BootstrapRunResult.LOST_LEASE;
+        } catch (RecordPermanentFailure ex) {
+            boolean marked = bootstrapStore.markPermanentFailure(key, token,
+                    new RecordWorkFailure(RecordWorkFailureCategory.PERMANENT, "record bootstrap permanent failure"), clock.instant());
+            return marked ? BootstrapRunResult.FAILED_PERMANENT : BootstrapRunResult.LOST_LEASE;
         }
     }
 
@@ -87,9 +84,10 @@ public class RecordBootstrapCoordinator {
                         .map(p -> p.activeFrom()).min(LocalDate::compareTo).orElse(null));
         if (earliest == null) return new StreakRunAnalysisWindow(LocalDate.of(1970, 1, 1), LocalDate.of(1970, 1, 1), true);
         var local = clock.instant().atZone(BERLIN);
-        LocalDate lastEvaluableDay = local.toLocalDate().minusDays(1);
-        if (earliest.isAfter(lastEvaluableDay)) lastEvaluableDay = earliest;
-        return new StreakRunAnalysisWindow(earliest, lastEvaluableDay, !local.toLocalTime().isBefore(LocalTime.of(6, 0)));
+        LocalDate today = local.toLocalDate();
+        LocalDate firstOpen = local.toLocalTime().isBefore(LocalTime.of(6, 0)) ? today.minusDays(1) : today;
+        if (firstOpen.isBefore(earliest)) firstOpen = earliest;
+        return new StreakRunAnalysisWindow(earliest, today, firstOpen);
     }
-    public enum BootstrapRunResult { SUCCEEDED, NOT_CLAIMED, LOST_LEASE, RETRY_SCHEDULED }
+    public enum BootstrapRunResult { SUCCEEDED, NOT_CLAIMED, LOST_LEASE, RETRY_SCHEDULED, FAILED_PERMANENT }
 }

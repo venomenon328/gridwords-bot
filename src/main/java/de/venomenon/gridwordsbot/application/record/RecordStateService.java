@@ -69,7 +69,7 @@ public class RecordStateService {
                 return initializeSilently(candidate, bootstrapKey, detectedAt) ? RebuildResult.CREATED : RebuildResult.RETRY_EXHAUSTED;
             }
             RecordStateSnapshot state = current.orElseThrow();
-            if (same(state, candidate.write())) return RebuildResult.UNCHANGED;
+            if (same(state, candidate.write()) || stateIsAtLeastAsGood(state, candidate.write())) return RebuildResult.UNCHANGED;
             RecordStateUpdateResult updated = stateStore.update(new RecordStateUpdate(candidate.key(), state.lockVersion(), candidate.write()));
             if (updated.status() == RecordStateUpdateResult.Status.UPDATED) return RebuildResult.REPLACED;
             if (updated.status() == RecordStateUpdateResult.Status.UNCHANGED) return RebuildResult.UNCHANGED;
@@ -107,6 +107,13 @@ public class RecordStateService {
     private static boolean same(RecordStateSnapshot state, RecordStateWrite write) {
         return state.holderPlayerId().equals(write.holderPlayerId()) && state.value().equals(write.value())
                 && state.source().equals(write.source()) && state.running() == write.running();
+    }
+    private boolean stateIsAtLeastAsGood(RecordStateSnapshot state, RecordStateWrite candidate) {
+        RecordDefinition<?> definition = catalog.find(state.key().definitionKey())
+                .filter(found -> found.definitionVersion().equals(state.key().definitionVersion()))
+                .orElseThrow(() -> new IllegalStateException("record state references an unknown active definition"));
+        RecordComparison comparison = definition.compareValues(candidate.value(), state.value());
+        return comparison != RecordComparison.BETTER;
     }
     public enum RebuildResult { CREATED, REPLACED, REMOVED, UNCHANGED, RETRY_EXHAUSTED }
 }
