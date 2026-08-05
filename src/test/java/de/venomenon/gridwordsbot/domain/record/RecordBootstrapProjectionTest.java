@@ -80,9 +80,39 @@ class RecordBootstrapProjectionTest {
         assertThat(((RecordSourceReference.GameResult) server.write().source()).resultId()).isEqualTo(10);
     }
 
+    @Test
+    void finiteHistoricalParticipationEndsThePersonalStreakAtItsExactBoundary() {
+        List<RecordHistorySnapshot.Result> results = List.of(
+                result(10, 7, GameType.GRIDWORDS, 0, true),
+                result(11, 7, GameType.GRIDWORDS, 1, true),
+                result(12, 7, GameType.GRIDWORDS, 2, true));
+        List<GameParticipationPeriod> participation = List.of(
+                new GameParticipationPeriod(7, GameType.GRIDWORDS, START, START.plusDays(2)));
+
+        RecordBootstrapProjection.Candidate candidate = project(
+                new RecordHistorySnapshot(results, participation),
+                new StreakRunAnalysisWindow(START, START.plusDays(2), true))
+                .stream()
+                .filter(projected -> projected.key().equals(new RecordStateKey(1,
+                        new RecordDefinitionKey("streak.gridwords-solved.personal"),
+                        RecordDefinitionVersion.RECORDS_V1, new RecordScope.Personal(7))))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(candidate.write().holderPlayerId()).contains(7L);
+        assertThat(candidate.write().value())
+                .isEqualTo(new StreakRecordValue(2, START, START.plusDays(1)));
+        assertThat(candidate.write().running()).isFalse();
+    }
+
     private static List<RecordBootstrapProjection.Candidate> project(RecordHistorySnapshot history) {
+        return project(history, new StreakRunAnalysisWindow(START, START.plusDays(9), false));
+    }
+
+    private static List<RecordBootstrapProjection.Candidate> project(
+            RecordHistorySnapshot history, StreakRunAnalysisWindow window) {
         return new RecordBootstrapProjection(RecordDefinitionCatalog.recordsV1(), new StreakRunAnalyzer()).project(
-                1, history, new StreakRunAnalysisWindow(START, START.plusDays(9), false));
+                1, history, window);
     }
 
     private static RecordHistorySnapshot.Result result(

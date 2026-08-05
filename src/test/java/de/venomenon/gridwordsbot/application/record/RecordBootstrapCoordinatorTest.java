@@ -98,6 +98,37 @@ class RecordBootstrapCoordinatorTest {
         assertThat(events.drafts).hasSize(states.states.size());
     }
 
+    @Test void bootstrapKeepsActiveDefinitionVersionSeparateFromHistoricalStates() {
+        Instant now = Instant.parse("2026-08-05T08:00:00Z");
+        RecordDefinitionVersion currentVersion = new RecordDefinitionVersion("records-v2");
+        RecordDefinitionKey definitionKey = new RecordDefinitionKey("result.gridwords.fewest-attempts.personal");
+        RecordDefinition<AttemptsDurationRecordValue> currentDefinition = new RecordDefinition<>(
+                definitionKey, currentVersion, ResultRecordMetric.FEWEST_ATTEMPTS, Optional.of(GameType.GRIDWORDS),
+                RecordScopeType.PERSONAL, RecordComparators.fewestAttempts(),
+                new RecordSourceEligibility.SolvedGameResult(GameType.GRIDWORDS),
+                new RecordAnnouncementThreshold.Result(5, 1));
+        RecordDefinitionCatalog currentCatalog = RecordDefinitionCatalog.of(currentVersion, List.of(currentDefinition));
+        MapStates states = new MapStates();
+        RecordStateKey formerKey = new RecordStateKey(1, definitionKey, RecordDefinitionVersion.RECORDS_V1,
+                new RecordScope.Personal(7));
+        states.put(formerKey, write(1, 9, GameType.GRIDWORDS));
+        RecordStateService service = new RecordStateService(states, new MemoryEvents(),
+                new RecordTransactionRunner() { public <T> T inTransaction(java.util.function.Supplier<T> work) { return work.get(); } },
+                currentCatalog);
+        RecordHistorySnapshot canonical = new RecordHistorySnapshot(List.of(new RecordHistorySnapshot.Result(
+                10, 0, 7, GameType.GRIDWORDS, LocalDate.of(2026, 8, 4),
+                new de.venomenon.gridwordsbot.domain.model.ShareOutcome.Solved(3, 6), Duration.ofSeconds(50), now)), List.of());
+        ClaimedBootstrapStore bootstrapStore = new ClaimedBootstrapStore(now);
+        RecordBootstrapCoordinator coordinator = new RecordBootstrapCoordinator(bootstrapStore, guild -> canonical,
+                service, currentCatalog, Clock.fixed(now, ZoneId.of("UTC")));
+
+        assertThat(coordinator.run(1)).isEqualTo(RecordBootstrapCoordinator.BootstrapRunResult.SUCCEEDED);
+        assertThat(bootstrapStore.registered).isEqualTo(new RecordBootstrapKey(1, currentVersion));
+        assertThat(states.find(formerKey)).isPresent();
+        assertThat(states.find(new RecordStateKey(1, definitionKey, currentVersion, new RecordScope.Personal(7))))
+                .isPresent();
+    }
+
     private static RecordStateWrite write(int attempts, long resultId, GameType game) {
         int maxAttempts = game == GameType.GRIDWORDS ? 6 : 9;
         return new RecordStateWrite(Optional.of(7L), new AttemptsDurationRecordValue(attempts, Duration.ofSeconds(50)),
@@ -106,8 +137,9 @@ class RecordBootstrapCoordinatorTest {
 
     private static final class ClaimedBootstrapStore implements RecordBootstrapStore {
         private final Instant now; private final UUID token = UUID.randomUUID();
+        private RecordBootstrapKey registered;
         ClaimedBootstrapStore(Instant now) { this.now = now; }
-        public RecordBootstrapSnapshot register(RecordBootstrapKey key) { return snapshot(key, RecordWorkState.OPEN); }
+        public RecordBootstrapSnapshot register(RecordBootstrapKey key) { registered = key; return snapshot(key, RecordWorkState.OPEN); }
         public Optional<RecordBootstrapSnapshot> find(RecordBootstrapKey key) { return Optional.of(snapshot(key, RecordWorkState.CLAIMED)); }
         public Optional<RecordLeaseClaim> claim(RecordBootstrapKey key, RecordLeaseClaimRequest request) { return Optional.of(new RecordLeaseClaim(token, request.leaseUntil())); }
         public boolean renewLease(RecordBootstrapKey key, UUID token, RecordLeaseClaimRequest request) { return this.token.equals(token); }
