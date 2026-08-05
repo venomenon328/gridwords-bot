@@ -23,6 +23,12 @@ public final class PostgresRecordStateStore implements RecordStateStore {
         return jdbc.query(select() + " WHERE guild_id=? AND definition_key=? AND definition_version=? AND scope_type=? AND scope_key=?", (rs, row) -> RecordJdbcMapping.state(rs),
                 key.guildId(), key.definitionKey().value(), key.definitionVersion().value(), key.scope().type().name(), key.scopeKey()).stream().findFirst();
     }
+    @Override public java.util.List<RecordStateSnapshot> findAll(long guildId, de.venomenon.gridwordsbot.domain.record.RecordDefinitionVersion definitionVersion) {
+        if (guildId <= 0) throw new IllegalArgumentException("guildId must be positive");
+        java.util.Objects.requireNonNull(definitionVersion, "definitionVersion");
+        return jdbc.query(select() + " WHERE guild_id=? AND definition_version=? ORDER BY definition_key,scope_key",
+                (rs, row) -> RecordJdbcMapping.state(rs), guildId, definitionVersion.value());
+    }
     @Override public RecordStateInitialization initialize(RecordStateKey key, RecordStateWrite write) {
         java.util.Objects.requireNonNull(key, "key"); java.util.Objects.requireNonNull(write, "write");
         validateScopeHolder(key, write); Instant now = clock.instant(); Object[] value = RecordJdbcMapping.stateWriteParameters(write);
@@ -71,6 +77,12 @@ public final class PostgresRecordStateStore implements RecordStateStore {
                 """, (rs, row) -> RecordJdbcMapping.state(rs), concat(new Object[] {update.key().guildId(), update.key().definitionKey().value(), update.key().definitionVersion().value(), update.key().scope().type().name(), update.key().scopeKey(), update.expectedLockVersion().value()}, value)).stream().findFirst();
         return unchanged.map(snapshot -> new RecordStateUpdateResult(RecordStateUpdateResult.Status.UNCHANGED, Optional.of(snapshot)))
                 .orElseGet(() -> new RecordStateUpdateResult(RecordStateUpdateResult.Status.VERSION_CONFLICT, Optional.empty()));
+    }
+    @Override public boolean remove(RecordStateKey key, de.venomenon.gridwordsbot.domain.record.RecordLockVersion expectedLockVersion) {
+        java.util.Objects.requireNonNull(key, "key"); java.util.Objects.requireNonNull(expectedLockVersion, "expectedLockVersion");
+        return jdbc.update("DELETE FROM record_state WHERE guild_id=? AND definition_key=? AND definition_version=? AND scope_type=? AND scope_key=? AND lock_version=?",
+                key.guildId(), key.definitionKey().value(), key.definitionVersion().value(), key.scope().type().name(),
+                key.scopeKey(), expectedLockVersion.value()) == 1;
     }
     private static String select() { return "SELECT guild_id,definition_key,definition_version,scope_type,scope_key,holder_player_id,value_kind,attempts,duration_millis,streak_length,streak_start_date,streak_end_date,source_type,source_game_result_id,source_game_result_version,source_game_player_id,source_game_type,source_game_date,source_streak_metric,source_streak_owner_type,source_streak_owner_player_id,source_streak_start_date,running,lock_version,created_at,updated_at FROM record_state"; }
     private static void validateScopeHolder(RecordStateKey key, RecordStateWrite write) {

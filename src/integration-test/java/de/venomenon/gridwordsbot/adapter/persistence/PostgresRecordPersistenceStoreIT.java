@@ -105,6 +105,22 @@ class PostgresRecordPersistenceStoreIT {
                 current.value().equals(better.value()) ? de.venomenon.gridwordsbot.domain.record.RecordStateUpdateResult.Status.UNCHANGED : de.venomenon.gridwordsbot.domain.record.RecordStateUpdateResult.Status.UPDATED);
         assertThat(states.update(new RecordStateUpdate(key, RecordLockVersion.initial(), first)).status()).isEqualTo(de.venomenon.gridwordsbot.domain.record.RecordStateUpdateResult.Status.VERSION_CONFLICT);
     }
+    @Test void stateReadPortIsDeterministicAndCasRemovalDoesNotDeleteAuditEvents() {
+        RecordStateKey first = stateKey();
+        RecordStateKey second = new RecordStateKey(1, new RecordDefinitionKey("result.gridwords.slowest-successful-solution.personal"),
+                RecordDefinitionVersion.RECORDS_V1, new RecordScope.Personal(2));
+        states.initialize(second, new RecordStateWrite(Optional.of(2L), new DurationRecordValue(Duration.ofSeconds(91)),
+                new RecordSourceReference.GameResult(12, 0, 2, GameType.GRIDWORDS, LocalDate.of(2026, 8, 2)), false));
+        states.initialize(first, write(3, Duration.ofSeconds(70)));
+        RecordEventDraft event = eventDraft();
+        events.append(event);
+        assertThat(states.findAll(1, RecordDefinitionVersion.RECORDS_V1)).extracting(state -> state.key().scopeKey())
+                .containsExactly("player:1", "player:2");
+        var snapshot = states.find(first).orElseThrow();
+        assertThat(states.remove(first, snapshot.lockVersion())).isTrue();
+        assertThat(states.find(first)).isEmpty();
+        assertThat(events.find(event.eventId())).isPresent();
+    }
     @Test void allTypedStateValuesAndSourcesRoundTripLosslessly() {
         RecordStateKey durationKey = new RecordStateKey(1,new RecordDefinitionKey("result.gridwords.fastest.personal"),RecordDefinitionVersion.RECORDS_V1,new RecordScope.Personal(1));
         states.initialize(durationKey, new RecordStateWrite(Optional.of(1L),new DurationRecordValue(Duration.ofMillis(1234)),new RecordSourceReference.GameResult(2,3,1,GameType.GRIDWORDS,LocalDate.of(2026,8,3)),false));

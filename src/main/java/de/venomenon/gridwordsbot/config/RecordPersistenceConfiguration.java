@@ -13,6 +13,8 @@ import de.venomenon.gridwordsbot.port.out.RecordHistoryQuery;
 import de.venomenon.gridwordsbot.domain.record.RecordDefinitionCatalog;
 import de.venomenon.gridwordsbot.application.record.RecordBootstrapCoordinator;
 import de.venomenon.gridwordsbot.application.record.RecordStateService;
+import de.venomenon.gridwordsbot.application.record.RecordStateReadService;
+import de.venomenon.gridwordsbot.application.record.RecordBootstrapReadService;
 import de.venomenon.gridwordsbot.port.out.RecordTransactionRunner;
 import java.time.Clock;
 import org.springframework.context.annotation.Bean;
@@ -20,6 +22,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.boot.ApplicationRunner;
 
 /** Wires persistence contracts only; evaluators, bootstrap scans, delivery workers, and Discord stay in later packages. */
 @Configuration(proxyBeanMethods = false)
@@ -37,10 +40,15 @@ class RecordPersistenceConfiguration {
         }};
     }
     @Bean RecordStateService recordStateService(RecordStateStore states, RecordEventStore events, RecordTransactionRunner transactions) {
-        return new RecordStateService(states, events, transactions);
+        return new RecordStateService(states, events, transactions, recordDefinitionCatalog());
     }
     @Bean RecordBootstrapCoordinator recordBootstrapCoordinator(RecordBootstrapStore bootstraps, RecordHistoryQuery history,
             RecordStateService states, RecordDefinitionCatalog catalog, Clock clock) {
         return new RecordBootstrapCoordinator(bootstraps, history, states, catalog, clock);
+    }
+    @Bean RecordStateReadService recordStateReadService(RecordStateStore states) { return new RecordStateReadService(states); }
+    @Bean RecordBootstrapReadService recordBootstrapReadService(RecordBootstrapStore bootstraps) { return new RecordBootstrapReadService(bootstraps); }
+    @Bean ApplicationRunner recordBootstrapStartupRunner(RecordBootstrapCoordinator coordinator, GridwordsBotProperties properties) {
+        return arguments -> coordinator.run(properties.discord().guildId());
     }
 }
