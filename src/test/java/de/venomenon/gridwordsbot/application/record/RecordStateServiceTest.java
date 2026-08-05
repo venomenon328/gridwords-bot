@@ -75,6 +75,31 @@ class RecordStateServiceTest {
     }
 
     @Test
+    void existingStateWithoutAuditGetsItsOneDeterministicAnchorRestored() {
+        Harness harness = new Harness();
+        harness.states.values.put(KEY, snapshot(candidate(3, 10), RecordLockVersion.initial()));
+
+        assertThat(service(harness).initializeSilently(candidate(3, 10), "1:records-v1", DETECTED_AT)).isFalse();
+
+        assertThat(harness.states.values).hasSize(1);
+        assertThat(harness.events.values).hasSize(1);
+    }
+
+    @Test
+    void existingStateWithADifferentInitializationAuditFailsLoudly() {
+        Harness harness = new Harness();
+        harness.states.values.put(KEY, snapshot(candidate(3, 10), RecordLockVersion.initial()));
+        String stable = "1:records-v1:" + KEY.definitionKey().value() + ":" + KEY.scopeKey();
+        harness.events.put(anchor(candidate(4, 9), stable, DETECTED_AT));
+
+        assertThatThrownBy(() -> service(harness).initializeSilently(candidate(3, 10), "1:records-v1", DETECTED_AT))
+                .isInstanceOf(RecordEventIdempotencyConflictException.class);
+
+        assertThat(harness.states.values).hasSize(1);
+        assertThat(harness.events.values).hasSize(1);
+    }
+
+    @Test
     void conflictingDeterministicAnchorIsNotSilentlyHidden() {
         Harness harness = new Harness();
         String stable = "1:records-v1:" + KEY.definitionKey().value() + ":" + KEY.scopeKey();
@@ -123,6 +148,29 @@ class RecordStateServiceTest {
         harness.events.put(audit);
 
         assertThat(service.removeIfNoSource(KEY)).isEqualTo(RecordStateService.RebuildResult.REMOVED);
+        assertThat(harness.states.find(KEY)).isEmpty();
+        assertThat(harness.events.values).containsKey(audit.idempotencyKey());
+    }
+
+    @Test
+    void canonicalRecomputeReplacesAnInvalidFormerBestWithTheNextValidSource() {
+        Harness harness = new Harness();
+        harness.states.values.put(KEY, snapshot(candidate(1, 20), RecordLockVersion.initial()));
+
+        assertThat(service(harness).reconcileCanonicalTarget(candidate(3, 10), "1:records-v1", DETECTED_AT))
+                .isEqualTo(RecordStateService.RebuildResult.REPLACED);
+        assertThat(harness.states.find(KEY).orElseThrow().source()).isEqualTo(candidate(3, 10).write().source());
+    }
+
+    @Test
+    void canonicalTargetAbsenceRemovesOnlyTheMaterializedStateAndKeepsAuditHistory() {
+        Harness harness = new Harness();
+        harness.states.values.put(KEY, snapshot(candidate(3, 10), RecordLockVersion.initial()));
+        RecordEventDraft audit = anchor(candidate(3, 10), "removed-state", DETECTED_AT);
+        harness.events.put(audit);
+
+        assertThat(service(harness).removeAbsentCanonicalTarget(KEY))
+                .isEqualTo(RecordStateService.RebuildResult.REMOVED);
         assertThat(harness.states.find(KEY)).isEmpty();
         assertThat(harness.events.values).containsKey(audit.idempotencyKey());
     }

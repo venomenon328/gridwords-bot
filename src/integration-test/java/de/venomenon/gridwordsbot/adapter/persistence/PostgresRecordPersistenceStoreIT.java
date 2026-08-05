@@ -137,6 +137,26 @@ class PostgresRecordPersistenceStoreIT {
         assertThat(states.find(key)).isEmpty();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM record_event", Integer.class)).isZero();
     }
+    @Test void bootstrapAnchorIsStableAcrossRemoveAndRecreateAndNeverCreatesAnnouncementWork() {
+        TransactionTemplate template = new TransactionTemplate(new DataSourceTransactionManager(jdbc.getDataSource()));
+        RecordTransactionRunner transactions = new RecordTransactionRunner() {
+            @Override public <T> T inTransaction(java.util.function.Supplier<T> work) {
+                return template.execute(status -> work.get());
+            }
+        };
+        RecordStateService service = new RecordStateService(states, events, transactions, RecordDefinitionCatalog.recordsV1());
+        RecordStateKey key = stateKey();
+        RecordBootstrapProjection.Candidate candidate = new RecordBootstrapProjection.Candidate(key, write(2, Duration.ofSeconds(60)));
+
+        assertThat(service.initializeSilently(candidate, "1:records-v1", NOW)).isTrue();
+        assertThat(states.remove(key, states.find(key).orElseThrow().lockVersion())).isTrue();
+        assertThat(service.reconcileCanonicalTarget(candidate, "1:records-v1", NOW))
+                .isEqualTo(RecordStateService.RebuildResult.CREATED);
+
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM record_event", Integer.class)).isOne();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM record_announcement", Integer.class)).isZero();
+        assertThat(states.find(key)).isPresent();
+    }
     @Test void stateReadPortIsDeterministicAndCasRemovalDoesNotDeleteAuditEvents() {
         RecordStateKey first = stateKey();
         RecordStateKey second = new RecordStateKey(1, new RecordDefinitionKey("result.gridwords.slowest-successful-solution.personal"),

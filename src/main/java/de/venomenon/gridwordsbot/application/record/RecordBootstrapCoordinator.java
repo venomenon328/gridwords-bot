@@ -18,7 +18,9 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /** Claims one bootstrap lease, scans outside a transaction, and materializes each state in short transactions. */
 public class RecordBootstrapCoordinator {
@@ -59,9 +61,22 @@ public class RecordBootstrapCoordinator {
             StreakRunAnalysisWindow window = analysisWindow(history, clock);
             String bootstrapKey = guildId + ":" + key.definitionVersion().value();
             java.util.List<RecordBootstrapProjection.Candidate> targets = projection.project(guildId, history, window);
+            Map<de.venomenon.gridwordsbot.domain.record.RecordStateKey, RecordBootstrapProjection.Candidate> targetsByKey =
+                    targets.stream().collect(Collectors.toUnmodifiableMap(
+                            RecordBootstrapProjection.Candidate::key, candidate -> candidate));
             for (RecordBootstrapProjection.Candidate candidate : targets) {
                 if (!bootstrapStore.renewLease(key, token, leaseRequest())) return BootstrapRunResult.LOST_LEASE;
-                if (stateService.rebuild(candidate, bootstrapKey, detectedAt) == RecordStateService.RebuildResult.RETRY_EXHAUSTED) {
+                if (stateService.reconcileCanonicalTarget(candidate, bootstrapKey, detectedAt)
+                        == RecordStateService.RebuildResult.RETRY_EXHAUSTED) {
+                    throw new RecordRetryableFailure("record state CAS retry exhausted", null);
+                }
+            }
+            for (de.venomenon.gridwordsbot.domain.record.RecordStateSnapshot current :
+                    stateService.states(guildId, key.definitionVersion())) {
+                if (targetsByKey.containsKey(current.key())) continue;
+                if (!bootstrapStore.renewLease(key, token, leaseRequest())) return BootstrapRunResult.LOST_LEASE;
+                if (stateService.removeAbsentCanonicalTarget(current.key())
+                        == RecordStateService.RebuildResult.RETRY_EXHAUSTED) {
                     throw new RecordRetryableFailure("record state CAS retry exhausted", null);
                 }
             }

@@ -60,11 +60,18 @@ public class RecordStateService {
         java.util.Objects.requireNonNull(bootstrapKey);
         java.util.Objects.requireNonNull(detectedAt);
         RecordStateInitialization initialized = stateStore.initialize(candidate.key(), candidate.write());
-        if (initialized instanceof RecordStateInitialization.Existing) return false;
         RecordStateSnapshot state = initialized.snapshot();
+        appendInitializationAnchor(state, bootstrapKey, detectedAt);
+        return initialized instanceof RecordStateInitialization.Created;
+    }
+
+    /** Validates or restores the one deterministic audit anchor even for a raced or pre-existing state. */
+    private void appendInitializationAnchor(
+            RecordStateSnapshot state,
+            String bootstrapKey,
+            Instant detectedAt) {
         String stable = bootstrapKey + ":" + state.key().definitionKey().value() + ":" + state.key().scopeKey();
         UUID eventId = UUID.nameUUIDFromBytes(stable.getBytes(StandardCharsets.UTF_8));
-        RecordStateWrite write = candidate.write();
         // Let the append port verify a replay.  A pre-existing trigger alone is
         // not enough: it may carry a different deterministic draft and must
         // surface as an idempotency conflict instead of silently masking it.
@@ -74,15 +81,14 @@ public class RecordStateService {
                 state.key(),
                 RecordEventType.RECORD_INITIALIZED,
                 Optional.empty(),
-                write.value(),
+                state.value(),
                 Optional.empty(),
-                write.holderPlayerId(),
+                state.holderPlayerId(),
                 Optional.empty(),
-                write.source(),
+                state.source(),
                 stable,
                 RecordProcessingOrigin.BOOTSTRAP,
                 detectedAt));
-        return true;
     }
 
     /** Reconciles one projection to its exact canonical source, retrying only optimistic-lock conflicts. */
@@ -115,8 +121,42 @@ public class RecordStateService {
         return RebuildResult.RETRY_EXHAUSTED;
     }
 
+    /**
+     * Applies the exact result of a complete canonical-history recomputation.
+     * This is intentionally distinct from {@link #rebuild}, whose live-safe
+     * path never lets a stale candidate lower an already better state.
+     */
+    public RebuildResult reconcileCanonicalTarget(
+            RecordBootstrapProjection.Candidate candidate,
+            String bootstrapKey,
+            Instant detectedAt) {
+        return transactions.inTransaction(() -> {
+            for (int attempts = 0; attempts < 3; attempts++) {
+                Optional<RecordStateSnapshot> current = stateStore.find(candidate.key());
+                if (current.isEmpty()) {
+                    if (initializeInTransaction(candidate, bootstrapKey, detectedAt)) return RebuildResult.CREATED;
+                    continue;
+                }
+                RecordStateSnapshot state = current.orElseThrow();
+                appendInitializationAnchor(state, bootstrapKey, detectedAt);
+                if (same(state, candidate.write())) return RebuildResult.UNCHANGED;
+                RecordStateUpdateResult updated = stateStore.update(
+                        new RecordStateUpdate(candidate.key(), state.lockVersion(), candidate.write()));
+                if (updated.status() == RecordStateUpdateResult.Status.UPDATED) return RebuildResult.REPLACED;
+                if (updated.status() == RecordStateUpdateResult.Status.UNCHANGED) return RebuildResult.UNCHANGED;
+            }
+            return RebuildResult.RETRY_EXHAUSTED;
+        });
+    }
+
     /** Removes a state only after a fresh CAS read; audit facts intentionally remain. */
     public RebuildResult removeIfNoSource(de.venomenon.gridwordsbot.domain.record.RecordStateKey key) {
+        return removeAbsentCanonicalTarget(key);
+    }
+
+    /** Removes only a key proven absent from a freshly computed canonical target set. */
+    public RebuildResult removeAbsentCanonicalTarget(
+            de.venomenon.gridwordsbot.domain.record.RecordStateKey key) {
         return transactions.inTransaction(() -> {
             for (int attempts = 0; attempts < 3; attempts++) {
                 Optional<RecordStateSnapshot> current = stateStore.find(key);

@@ -47,6 +47,19 @@ class RecordBootstrapProjectionTest {
         assertThat(candidates).anySatisfy(candidate -> {
             assertThat(candidate.key().scope()).isEqualTo(new RecordScope.Personal(7));
         });
+        RecordBootstrapProjection.Candidate retainedFormerPlayer = candidates.stream()
+                .filter(candidate -> candidate.key().equals(new RecordStateKey(1,
+                        new RecordDefinitionKey("result.gridwords.fewest-attempts.personal"),
+                        RecordDefinitionVersion.RECORDS_V1, new RecordScope.Personal(7))))
+                .findFirst().orElseThrow();
+        assertThat(retainedFormerPlayer.write().holderPlayerId()).contains(7L);
+        assertThat(retainedFormerPlayer.write().value()).isEqualTo(new AttemptsDurationRecordValue(2, Duration.ofSeconds(43)));
+        RecordBootstrapProjection.Candidate serverHolder = candidates.stream()
+                .filter(candidate -> candidate.key().equals(new RecordStateKey(1,
+                        new RecordDefinitionKey("result.gridwords.fewest-attempts.server-individual"),
+                        RecordDefinitionVersion.RECORDS_V1, new RecordScope.ServerIndividual())))
+                .findFirst().orElseThrow();
+        assertThat(serverHolder.write().holderPlayerId()).contains(7L);
         assertThat(candidates).filteredOn(candidate -> candidate.write().source() instanceof RecordSourceReference.StreakRun)
                 .allSatisfy(candidate -> assertThat(candidate.write().value()).isInstanceOf(StreakRecordValue.class));
     }
