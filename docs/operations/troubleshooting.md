@@ -22,6 +22,27 @@ cat deployment-state.env
 
 `deployment.env` und `deployment-state.env` enthalten keine Zugangsdaten, aber konkrete Betriebsinformationen. Discord-Token, Passwörter, private Schlüssel und signierte Discord-CDN-URLs dürfen niemals geteilt werden.
 
+## Rekord-Bootstrap beobachten
+
+Der Bootstrap ist erst nach einem erfolgreichen persistenten Lauf der aktiven Definitionsversion bereit. Seine Laufzeiten werden ausschließlich serverseitig konfiguriert:
+
+```text
+RECORD_BOOTSTRAP_POLL_DELAY=PT1M
+RECORD_BOOTSTRAP_LEASE_DURATION=PT2M
+RECORD_BOOTSTRAP_RETRY_BACKOFF=PT1M
+```
+
+Alle Werte müssen positive ISO-8601-Dauern sein. Die Standardwerte sind Poll `PT1M`, Lease `PT2M` und Retry-Backoff `PT1M`. Nach einer Konfigurationsänderung den Bot kontrolliert neu starten; die bereits persistierte Bootstrap-Arbeit bleibt erhalten.
+
+Metriken sind nur über die Loopback-gebundene Managementschnittstelle abrufbar:
+
+```bash
+$COMPOSE exec -T bot curl --fail --silent http://127.0.0.1:8081/actuator/metrics/gridwords.record.bootstrap.runs
+$COMPOSE exec -T bot curl --fail --silent http://127.0.0.1:8081/actuator/metrics/gridwords.record.bootstrap.duration
+```
+
+Beide Metriken haben ausschließlich die Tags `result` (`succeeded`, `not_claimed`, `lost_lease`, `retry_scheduled`, `failed_permanent`, `unknown`) und `failure_category` (`none`, `retryable`, `permanent`, `unknown`). Sie enthalten keine Guild-, Token-, State- oder Fehlermeldungswerte. `NOT_CLAIMED` ist der normale Konkurrenz-/Leerlauffall und erzeugt kein INFO-Log pro Poll. Unbekannte Fehler werden als `unknown` beobachtet, im Log mit Stacktrace sichtbar gemacht und unverändert weitergeworfen.
+
 ## Bot ist unhealthy
 
 ```bash

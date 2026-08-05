@@ -20,6 +20,14 @@ public final class RecordBootstrapProjection {
             long guildId,
             RecordHistorySnapshot history,
             StreakRunAnalysisWindow window) {
+        return projectWithRunCount(guildId, history, window).candidates();
+    }
+
+    /** Returns the immutable target set together with the number of derived source runs for operations logs. */
+    public Projection projectWithRunCount(
+            long guildId,
+            RecordHistorySnapshot history,
+            StreakRunAnalysisWindow window) {
         Objects.requireNonNull(history, "history");
         Objects.requireNonNull(window, "window");
         List<Candidate> candidates = new ArrayList<>();
@@ -74,10 +82,11 @@ public final class RecordBootstrapProjection {
                 }
             }
         }
-        return candidates.stream()
+        List<Candidate> ordered = candidates.stream()
                 .sorted(Comparator.comparing((Candidate candidate) -> candidate.key().definitionKey().value())
                         .thenComparing(candidate -> candidate.key().scopeKey()))
                 .toList();
+        return new Projection(ordered, runs.size());
     }
 
     private Optional<RecordHistorySnapshot.Result> bestResult(
@@ -170,6 +179,12 @@ public final class RecordBootstrapProjection {
         public Candidate {
             Objects.requireNonNull(key, "key");
             Objects.requireNonNull(write, "write");
+        }
+    }
+    public record Projection(List<Candidate> candidates, int derivedRunCount) {
+        public Projection {
+            candidates = List.copyOf(Objects.requireNonNull(candidates, "candidates"));
+            if (derivedRunCount < 0) throw new IllegalArgumentException("derivedRunCount must not be negative");
         }
     }
 }

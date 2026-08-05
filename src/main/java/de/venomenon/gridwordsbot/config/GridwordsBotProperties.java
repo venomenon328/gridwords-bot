@@ -14,15 +14,17 @@ public record GridwordsBotProperties(
         Schedule schedule,
         Storage storage,
         ExcuseGenerator excuseGenerator,
-        Excuses excuses) {
+        Excuses excuses,
+        Records records) {
     @ConstructorBinding
     public GridwordsBotProperties {
         excuseGenerator = excuseGenerator == null ? ExcuseGenerator.defaults() : excuseGenerator;
         excuses = excuses == null ? Excuses.defaults() : excuses;
+        records = records == null ? Records.defaults() : records;
     }
 
     public GridwordsBotProperties(Discord discord, Schedule schedule, Storage storage) {
-        this(discord, schedule, storage, ExcuseGenerator.defaults(), Excuses.defaults());
+        this(discord, schedule, storage, ExcuseGenerator.defaults(), Excuses.defaults(), Records.defaults());
     }
     public record Discord(boolean enabled, String token, long guildId, long channelId, List<Long> adminUserIds) { }
     public record Schedule(LocalTime firstReminder, LocalTime secondReminder, LocalTime weeklyReport,
@@ -66,6 +68,22 @@ public record GridwordsBotProperties(
         }
         public static Excuses defaults() {
             return new Excuses(Duration.ofMinutes(15), 25, 4);
+        }
+    }
+    /** Operational limits for the persistent record-bootstrap worker. */
+    public record Records(Duration bootstrapPollDelay, Duration bootstrapLeaseDuration, Duration bootstrapRetryBackoff) {
+        @ConstructorBinding
+        public Records {
+            requirePositive(bootstrapPollDelay, "bootstrapPollDelay");
+            requirePositive(bootstrapLeaseDuration, "bootstrapLeaseDuration");
+            requirePositive(bootstrapRetryBackoff, "bootstrapRetryBackoff");
+        }
+        public static Records defaults() {
+            return new Records(Duration.ofMinutes(1), Duration.ofMinutes(2), Duration.ofMinutes(1));
+        }
+        private static void requirePositive(Duration value, String name) {
+            Objects.requireNonNull(value, name);
+            if (value.isZero() || value.isNegative()) throw new IllegalArgumentException(name + " must be positive");
         }
     }
 }

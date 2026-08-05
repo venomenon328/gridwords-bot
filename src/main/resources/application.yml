@@ -14,6 +14,8 @@ management:
   endpoint:
     health:
       enabled: true
+    metrics:
+      enabled: true
 
 logging:
   level:
@@ -42,3 +44,7 @@ gridwords:
     offer-lifetime: ${EXCUSE_OFFER_LIFETIME:PT15M}
     expiration-page-size: ${EXCUSE_EXPIRATION_PAGE_SIZE:25}
     expiration-max-pages: ${EXCUSE_EXPIRATION_MAX_PAGES:4}
+  records:
+    bootstrap-poll-delay: ${RECORD_BOOTSTRAP_POLL_DELAY:PT1M}
+    bootstrap-lease-duration: ${RECORD_BOOTSTRAP_LEASE_DURATION:PT2M}
+    bootstrap-retry-backoff: ${RECORD_BOOTSTRAP_RETRY_BACKOFF:PT1M}

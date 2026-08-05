@@ -15,6 +15,8 @@ import de.venomenon.gridwordsbot.application.record.RecordBootstrapCoordinator;
 import de.venomenon.gridwordsbot.application.record.RecordStateService;
 import de.venomenon.gridwordsbot.application.record.RecordStateReadService;
 import de.venomenon.gridwordsbot.application.record.RecordBootstrapReadService;
+import de.venomenon.gridwordsbot.adapter.observability.MicrometerRecordBootstrapMetrics;
+import de.venomenon.gridwordsbot.port.out.RecordBootstrapMetrics;
 import de.venomenon.gridwordsbot.port.out.RecordTransactionRunner;
 import java.time.Clock;
 import org.springframework.context.annotation.Bean;
@@ -23,6 +25,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.boot.ApplicationRunner;
+import io.micrometer.core.instrument.MeterRegistry;
 
 /** Wires persistence contracts only; evaluators, bootstrap scans, delivery workers, and Discord stay in later packages. */
 @Configuration(proxyBeanMethods = false)
@@ -42,9 +45,16 @@ class RecordPersistenceConfiguration {
     @Bean RecordStateService recordStateService(RecordStateStore states, RecordEventStore events, RecordTransactionRunner transactions) {
         return new RecordStateService(states, events, transactions, recordDefinitionCatalog());
     }
+    @Bean RecordBootstrapMetrics recordBootstrapMetrics(MeterRegistry registry) { return new MicrometerRecordBootstrapMetrics(registry); }
+    @Bean(name = "recordBootstrapPollDelayMillis")
+    long recordBootstrapPollDelayMillis(GridwordsBotProperties properties) {
+        return properties.records().bootstrapPollDelay().toMillis();
+    }
     @Bean RecordBootstrapCoordinator recordBootstrapCoordinator(RecordBootstrapStore bootstraps, RecordHistoryQuery history,
-            RecordStateService states, RecordDefinitionCatalog catalog, Clock clock) {
-        return new RecordBootstrapCoordinator(bootstraps, history, states, catalog, clock);
+            RecordStateService states, RecordDefinitionCatalog catalog, Clock clock, GridwordsBotProperties properties,
+            RecordBootstrapMetrics metrics) {
+        return new RecordBootstrapCoordinator(bootstraps, history, states, catalog, clock,
+                properties.records().bootstrapLeaseDuration(), properties.records().bootstrapRetryBackoff(), metrics);
     }
     @Bean RecordStateReadService recordStateReadService(RecordStateStore states) { return new RecordStateReadService(states); }
     @Bean RecordBootstrapReadService recordBootstrapReadService(RecordBootstrapStore bootstraps) { return new RecordBootstrapReadService(bootstraps); }
