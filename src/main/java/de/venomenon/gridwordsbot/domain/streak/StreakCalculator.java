@@ -1,6 +1,5 @@
 package de.venomenon.gridwordsbot.domain.streak;
 
-import de.venomenon.gridwordsbot.domain.model.DailyGameParticipation;
 import de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod;
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.model.ParticipationPeriod;
@@ -8,11 +7,9 @@ import de.venomenon.gridwordsbot.domain.model.ParsedGameResult;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
 import java.time.LocalDate;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
-import java.util.function.Function;
+import java.util.function.BiFunction;
 
 /** Pure calendar-day calculation of all accepted, explicitly named current streaks. */
 public final class StreakCalculator {
@@ -63,158 +60,52 @@ public final class StreakCalculator {
         Objects.requireNonNull(results, "results");
         Objects.requireNonNull(participationPeriods, "participationPeriods");
         Objects.requireNonNull(asOfDate, "asOfDate");
-        Map<Long, Map<LocalDate, Map<GameType, PlayerResult>>> index = index(results);
-        Map<LocalDate, Map<GameType, PlayerResult>> ownDays = index.getOrDefault(playerId, Map.of());
+        StreakDayClassifier classifier = new StreakDayClassifier(results.stream()
+                .map(PlayerResult::asStreakGameResult).toList(), participationPeriods);
         return new StreakSummary(
-                current(asOfDate, provisionalCurrentDay,
-                        day -> activity(ownDays, participation(participationPeriods, day), playerId, day)),
-                current(asOfDate, provisionalCurrentDay,
-                        day -> complete(ownDays, participation(participationPeriods, day), playerId, day)),
-                current(asOfDate, provisionalCurrentDay,
-                        day -> solved(ownDays, participation(participationPeriods, day), playerId, day,
-                                GameType.GRIDWORDS)),
-                current(asOfDate, provisionalCurrentDay,
-                        day -> solved(ownDays, participation(participationPeriods, day), playerId, day,
-                                GameType.QUADWORDS)),
-                current(asOfDate, provisionalCurrentDay,
-                        day -> perfect(ownDays, participation(participationPeriods, day), playerId, day)),
-                current(asOfDate, provisionalCurrentDay,
-                        day -> sharedSolved(index, participationPeriods, day, GameType.GRIDWORDS)),
-                current(asOfDate, provisionalCurrentDay,
-                        day -> sharedSolved(index, participationPeriods, day, GameType.QUADWORDS)),
-                current(asOfDate, provisionalCurrentDay, day -> sharedComplete(index, participationPeriods, day)),
-                current(asOfDate, provisionalCurrentDay, day -> sharedPerfect(index, participationPeriods, day)));
+                current(asOfDate, provisionalCurrentDay, classifier::personalActivity, playerId),
+                current(asOfDate, provisionalCurrentDay, classifier::personalComplete, playerId),
+                currentSolved(asOfDate, provisionalCurrentDay, classifier, playerId, GameType.GRIDWORDS),
+                currentSolved(asOfDate, provisionalCurrentDay, classifier, playerId, GameType.QUADWORDS),
+                current(asOfDate, provisionalCurrentDay, classifier::personalPerfect, playerId),
+                currentSharedSolved(asOfDate, provisionalCurrentDay, classifier, GameType.GRIDWORDS),
+                currentSharedSolved(asOfDate, provisionalCurrentDay, classifier, GameType.QUADWORDS),
+                currentShared(asOfDate, provisionalCurrentDay, classifier::sharedComplete),
+                currentShared(asOfDate, provisionalCurrentDay, classifier::sharedPerfect));
     }
 
-    private int current(LocalDate asOfDate, boolean provisionalCurrentDay, Function<LocalDate, DayState> condition) {
-        return calendarStreaks.current(asOfDate, provisionalCurrentDay, day -> switch (condition.apply(day)) {
-            case MET -> CalendarStreakCalculator.DayState.MET;
-            case PENDING -> CalendarStreakCalculator.DayState.PENDING;
-            case VIOLATED -> CalendarStreakCalculator.DayState.VIOLATED;
+    private int current(LocalDate asOfDate, boolean provisionalCurrentDay,
+            PersonalCondition condition, long playerId) {
+        return calculateCurrent(asOfDate, provisionalCurrentDay,
+                (day, closed) -> condition.assess(playerId, day, closed));
+    }
+
+    private int currentSolved(LocalDate asOfDate, boolean provisionalCurrentDay,
+            StreakDayClassifier classifier, long playerId, GameType game) {
+        return calculateCurrent(asOfDate, provisionalCurrentDay,
+                (day, closed) -> classifier.personalSolved(playerId, day, game, closed));
+    }
+
+    private int currentSharedSolved(LocalDate asOfDate, boolean provisionalCurrentDay,
+            StreakDayClassifier classifier, GameType game) {
+        return calculateCurrent(asOfDate, provisionalCurrentDay,
+                (day, closed) -> classifier.sharedSolved(day, game, closed));
+    }
+
+    private int currentShared(LocalDate asOfDate, boolean provisionalCurrentDay, SharedCondition condition) {
+        return calculateCurrent(asOfDate, provisionalCurrentDay, condition::assess);
+    }
+
+    private int calculateCurrent(LocalDate asOfDate, boolean provisionalCurrentDay,
+            BiFunction<LocalDate, Boolean, StreakDayAssessment> condition) {
+        return calendarStreaks.current(asOfDate, provisionalCurrentDay, day -> {
+            boolean dayClosed = !day.equals(asOfDate) || !provisionalCurrentDay;
+            return switch (condition.apply(day, dayClosed).state()) {
+                case MET -> CalendarStreakCalculator.DayState.MET;
+                case PENDING -> CalendarStreakCalculator.DayState.PENDING;
+                case VIOLATED -> CalendarStreakCalculator.DayState.VIOLATED;
+            };
         });
-    }
-
-    private DayState activity(
-            Map<LocalDate, Map<GameType, PlayerResult>> days,
-            DailyGameParticipation participation,
-            long playerId,
-            LocalDate day) {
-        if (!participation.participatingPlayers().contains(playerId)) {
-            return DayState.VIOLATED;
-        }
-        boolean submittedParticipatingGame = days.getOrDefault(day, Map.of()).keySet().stream()
-                .anyMatch(gameType -> participation.playersFor(gameType).contains(playerId));
-        return submittedParticipatingGame ? DayState.MET : DayState.PENDING;
-    }
-
-    private DayState complete(
-            Map<LocalDate, Map<GameType, PlayerResult>> days,
-            DailyGameParticipation participation,
-            long playerId,
-            LocalDate day) {
-        if (!participation.bothGamesPlayers().contains(playerId)) {
-            return DayState.VIOLATED;
-        }
-        return days.getOrDefault(day, Map.of()).size() == GameType.values().length
-                ? DayState.MET
-                : DayState.PENDING;
-    }
-
-    private DayState solved(
-            Map<LocalDate, Map<GameType, PlayerResult>> days,
-            DailyGameParticipation participation,
-            long playerId,
-            LocalDate day,
-            GameType type) {
-        if (!participation.playersFor(type).contains(playerId)) {
-            return DayState.VIOLATED;
-        }
-        PlayerResult result = days.getOrDefault(day, Map.of()).get(type);
-        return result == null ? DayState.PENDING : result.solved() ? DayState.MET : DayState.VIOLATED;
-    }
-
-    private DayState perfect(
-            Map<LocalDate, Map<GameType, PlayerResult>> days,
-            DailyGameParticipation participation,
-            long playerId,
-            LocalDate day) {
-        if (!participation.bothGamesPlayers().contains(playerId)) {
-            return DayState.VIOLATED;
-        }
-        Map<GameType, PlayerResult> games = days.getOrDefault(day, Map.of());
-        if (games.size() == GameType.values().length) {
-            return games.values().stream().allMatch(PlayerResult::solved) ? DayState.MET : DayState.VIOLATED;
-        }
-        return games.values().stream().anyMatch(game -> !game.solved())
-                ? DayState.VIOLATED
-                : DayState.PENDING;
-    }
-
-    private DayState sharedSolved(
-            Map<Long, Map<LocalDate, Map<GameType, PlayerResult>>> results,
-            List<GameParticipationPeriod> periods,
-            LocalDate day,
-            GameType type) {
-        List<Long> active = List.copyOf(participation(periods, day).playersFor(type));
-        if (active.size() < 2) {
-            return DayState.VIOLATED;
-        }
-        boolean violation = active.stream()
-                .map(id -> results.getOrDefault(id, Map.of()).getOrDefault(day, Map.of()).get(type))
-                .filter(Objects::nonNull)
-                .anyMatch(result -> !result.solved());
-        boolean allSolved = active.stream()
-                .map(id -> results.getOrDefault(id, Map.of()).getOrDefault(day, Map.of()).get(type))
-                .allMatch(result -> result != null && result.solved());
-        return allSolved ? DayState.MET : violation ? DayState.VIOLATED : DayState.PENDING;
-    }
-
-    private DayState sharedComplete(
-            Map<Long, Map<LocalDate, Map<GameType, PlayerResult>>> results,
-            List<GameParticipationPeriod> periods,
-            LocalDate day) {
-        DailyGameParticipation participation = participation(periods, day);
-        List<Long> active = List.copyOf(participation.bothGamesPlayers());
-        if (active.size() < 2) {
-            return DayState.VIOLATED;
-        }
-        return active.stream().allMatch(id -> complete(
-                        results.getOrDefault(id, Map.of()), participation, id, day) == DayState.MET)
-                ? DayState.MET
-                : DayState.PENDING;
-    }
-
-    private DayState sharedPerfect(
-            Map<Long, Map<LocalDate, Map<GameType, PlayerResult>>> results,
-            List<GameParticipationPeriod> periods,
-            LocalDate day) {
-        DailyGameParticipation participation = participation(periods, day);
-        List<Long> active = List.copyOf(participation.bothGamesPlayers());
-        if (active.size() < 2) {
-            return DayState.VIOLATED;
-        }
-        boolean violation = active.stream()
-                .anyMatch(id -> perfect(
-                        results.getOrDefault(id, Map.of()), participation, id, day) == DayState.VIOLATED);
-        return active.stream().allMatch(id -> perfect(
-                        results.getOrDefault(id, Map.of()), participation, id, day) == DayState.MET)
-                ? DayState.MET
-                : violation ? DayState.VIOLATED : DayState.PENDING;
-    }
-
-    private static DailyGameParticipation participation(
-            List<GameParticipationPeriod> periods, LocalDate day) {
-        return DailyGameParticipation.fromPeriods(day, periods);
-    }
-
-    private Map<Long, Map<LocalDate, Map<GameType, PlayerResult>>> index(List<PlayerResult> results) {
-        Map<Long, Map<LocalDate, Map<GameType, PlayerResult>>> index = new HashMap<>();
-        for (PlayerResult result : results) {
-            index.computeIfAbsent(result.playerId(), ignored -> new HashMap<>())
-                    .computeIfAbsent(result.result().gameDate(), ignored -> new HashMap<>())
-                    .put(result.result().gameType(), result);
-        }
-        return index;
     }
 
     public record PlayerResult(long playerId, ParsedGameResult result) {
@@ -228,11 +119,19 @@ public final class StreakCalculator {
         boolean solved() {
             return result.outcome() instanceof ShareOutcome.Solved;
         }
+
+        StreakGameResult asStreakGameResult() {
+            return new StreakGameResult(playerId, result.gameDate(), result.gameType(), solved());
+        }
     }
 
-    private enum DayState {
-        MET,
-        PENDING,
-        VIOLATED
+    @FunctionalInterface
+    private interface PersonalCondition {
+        StreakDayAssessment assess(long playerId, LocalDate day, boolean dayClosed);
+    }
+
+    @FunctionalInterface
+    private interface SharedCondition {
+        StreakDayAssessment assess(LocalDate day, boolean dayClosed);
     }
 }
