@@ -5,7 +5,9 @@ import de.venomenon.gridwordsbot.domain.record.RecordComparison;
 import de.venomenon.gridwordsbot.domain.record.RecordDefinition;
 import de.venomenon.gridwordsbot.domain.record.RecordDefinitionCatalog;
 import de.venomenon.gridwordsbot.domain.record.RecordEventDraft;
+import de.venomenon.gridwordsbot.domain.record.RecordEventSnapshot;
 import de.venomenon.gridwordsbot.domain.record.RecordEventType;
+import de.venomenon.gridwordsbot.domain.record.RecordEventValidity;
 import de.venomenon.gridwordsbot.domain.record.RecordProcessingOrigin;
 import de.venomenon.gridwordsbot.domain.record.RecordScope;
 import de.venomenon.gridwordsbot.domain.record.RecordSourceReference;
@@ -16,6 +18,7 @@ import de.venomenon.gridwordsbot.domain.record.RecordStateUpdateResult;
 import de.venomenon.gridwordsbot.domain.record.RecordStateWrite;
 import de.venomenon.gridwordsbot.domain.record.StreakCrossingKey;
 import de.venomenon.gridwordsbot.domain.record.StreakRunIdentity;
+import de.venomenon.gridwordsbot.port.out.RecordEventIdempotencyConflictException;
 import de.venomenon.gridwordsbot.port.out.RecordEventStore;
 import de.venomenon.gridwordsbot.port.out.RecordStateStore;
 import de.venomenon.gridwordsbot.port.out.RecordTransactionRunner;
@@ -61,21 +64,77 @@ public class RecordStateService {
         java.util.Objects.requireNonNull(detectedAt);
         RecordStateInitialization initialized = stateStore.initialize(candidate.key(), candidate.write());
         RecordStateSnapshot state = initialized.snapshot();
-        appendInitializationAnchor(state, bootstrapKey, detectedAt);
+        ensureInitializationAnchor(
+                state,
+                bootstrapKey,
+                detectedAt,
+                InitializationAnchorValidation.STRICT_INITIALIZATION_REPLAY);
         return initialized instanceof RecordStateInitialization.Created;
     }
 
-    /** Validates or restores the one deterministic audit anchor even for a raced or pre-existing state. */
-    private void appendInitializationAnchor(
-            RecordStateSnapshot state,
+    private boolean initializeForReconciliation(
+            RecordBootstrapProjection.Candidate candidate,
             String bootstrapKey,
             Instant detectedAt) {
+        java.util.Objects.requireNonNull(candidate);
+        java.util.Objects.requireNonNull(bootstrapKey);
+        java.util.Objects.requireNonNull(detectedAt);
+        RecordStateInitialization initialized = stateStore.initialize(candidate.key(), candidate.write());
+        ensureInitializationAnchor(
+                initialized.snapshot(),
+                bootstrapKey,
+                detectedAt,
+                InitializationAnchorValidation.HISTORICAL_IDENTITY_ONLY);
+        return initialized instanceof RecordStateInitialization.Created;
+    }
+
+    /**
+     * Restores a missing initialization anchor and validates the immutable identity
+     * of an existing one. Reconciliation keeps the original historical payload,
+     * while a direct initialization replay remains strict.
+     */
+    private void ensureInitializationAnchor(
+            RecordStateSnapshot state,
+            String bootstrapKey,
+            Instant detectedAt,
+            InitializationAnchorValidation validation) {
         String stable = bootstrapKey + ":" + state.key().definitionKey().value() + ":" + state.key().scopeKey();
         UUID eventId = UUID.nameUUIDFromBytes(stable.getBytes(StandardCharsets.UTF_8));
-        // Let the append port verify a replay.  A pre-existing trigger alone is
-        // not enough: it may carry a different deterministic draft and must
-        // surface as an idempotency conflict instead of silently masking it.
-        eventStore.append(new RecordEventDraft(
+
+        Optional<RecordEventSnapshot> existing = eventStore.find(eventId);
+        if (existing.isPresent()) {
+            validateInitializationAnchor(
+                    existing.orElseThrow(),
+                    state,
+                    stable,
+                    eventId,
+                    detectedAt,
+                    validation);
+            return;
+        }
+
+        RecordEventDraft draft = initializationAnchor(state, stable, eventId, detectedAt);
+        RecordEventSnapshot persisted;
+        try {
+            persisted = eventStore.append(draft).snapshot();
+        } catch (RecordEventIdempotencyConflictException conflict) {
+            persisted = eventStore.find(eventId).orElseThrow(() -> conflict);
+        }
+        validateInitializationAnchor(
+                persisted,
+                state,
+                stable,
+                eventId,
+                detectedAt,
+                validation);
+    }
+
+    private static RecordEventDraft initializationAnchor(
+            RecordStateSnapshot state,
+            String stable,
+            UUID eventId,
+            Instant detectedAt) {
+        return new RecordEventDraft(
                 eventId,
                 "record-initialized:" + stable,
                 state.key(),
@@ -88,7 +147,37 @@ public class RecordStateService {
                 state.source(),
                 stable,
                 RecordProcessingOrigin.BOOTSTRAP,
-                detectedAt));
+                detectedAt);
+    }
+
+    private static void validateInitializationAnchor(
+            RecordEventSnapshot snapshot,
+            RecordStateSnapshot state,
+            String stable,
+            UUID eventId,
+            Instant detectedAt,
+            InitializationAnchorValidation validation) {
+        RecordEventDraft draft = snapshot.draft();
+        boolean valid = snapshot.validity() == RecordEventValidity.VALID
+                && draft.eventId().equals(eventId)
+                && draft.idempotencyKey().equals("record-initialized:" + stable)
+                && draft.stateKey().equals(state.key())
+                && draft.type() == RecordEventType.RECORD_INITIALIZED
+                && draft.previousValue().isEmpty()
+                && draft.previousHolderPlayerId().isEmpty()
+                && draft.previousSource().isEmpty()
+                && draft.triggerKey().equals(stable)
+                && draft.processingOrigin() == RecordProcessingOrigin.BOOTSTRAP
+                && draft.detectedAt().equals(detectedAt);
+        if (validation == InitializationAnchorValidation.STRICT_INITIALIZATION_REPLAY) {
+            valid = valid
+                    && draft.newValue().equals(state.value())
+                    && draft.newHolderPlayerId().equals(state.holderPlayerId())
+                    && draft.newSource().equals(state.source());
+        }
+        if (!valid) {
+            throw new RecordEventIdempotencyConflictException("record-initialized:" + stable);
+        }
     }
 
     /** Reconciles one projection to its exact canonical source, retrying only optimistic-lock conflicts. */
@@ -106,7 +195,7 @@ public class RecordStateService {
         for (int attempts = 0; attempts < 3; attempts++) {
             Optional<RecordStateSnapshot> current = stateStore.find(candidate.key());
             if (current.isEmpty()) {
-                if (initializeSilently(candidate, bootstrapKey, detectedAt)) return RebuildResult.CREATED;
+                if (initializeForReconciliation(candidate, bootstrapKey, detectedAt)) return RebuildResult.CREATED;
                 continue;
             }
             RecordStateSnapshot state = current.orElseThrow();
@@ -134,11 +223,15 @@ public class RecordStateService {
             for (int attempts = 0; attempts < 3; attempts++) {
                 Optional<RecordStateSnapshot> current = stateStore.find(candidate.key());
                 if (current.isEmpty()) {
-                    if (initializeInTransaction(candidate, bootstrapKey, detectedAt)) return RebuildResult.CREATED;
+                    if (initializeForReconciliation(candidate, bootstrapKey, detectedAt)) return RebuildResult.CREATED;
                     continue;
                 }
                 RecordStateSnapshot state = current.orElseThrow();
-                appendInitializationAnchor(state, bootstrapKey, detectedAt);
+                ensureInitializationAnchor(
+                        state,
+                        bootstrapKey,
+                        detectedAt,
+                        InitializationAnchorValidation.HISTORICAL_IDENTITY_ONLY);
                 if (same(state, candidate.write())) return RebuildResult.UNCHANGED;
                 RecordStateUpdateResult updated = stateStore.update(
                         new RecordStateUpdate(candidate.key(), state.lockVersion(), candidate.write()));
@@ -254,6 +347,11 @@ public class RecordStateService {
         if (left.isPresent()) return -1;
         if (right.isPresent()) return 1;
         return 0;
+    }
+
+    private enum InitializationAnchorValidation {
+        STRICT_INITIALIZATION_REPLAY,
+        HISTORICAL_IDENTITY_ONLY
     }
 
     public enum RebuildResult {
