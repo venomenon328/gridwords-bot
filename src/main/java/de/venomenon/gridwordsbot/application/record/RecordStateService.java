@@ -65,9 +65,9 @@ public class RecordStateService {
         String stable = bootstrapKey + ":" + state.key().definitionKey().value() + ":" + state.key().scopeKey();
         UUID eventId = UUID.nameUUIDFromBytes(stable.getBytes(StandardCharsets.UTF_8));
         RecordStateWrite write = candidate.write();
-        if (!eventStore.findByTriggerKey(state.key().guildId(), stable).isEmpty()) {
-            return true;
-        }
+        // Let the append port verify a replay.  A pre-existing trigger alone is
+        // not enough: it may carry a different deterministic draft and must
+        // surface as an idempotency conflict instead of silently masking it.
         eventStore.append(new RecordEventDraft(
                 eventId,
                 "record-initialized:" + stable,
@@ -192,6 +192,12 @@ public class RecordStateService {
                 && right.source() instanceof RecordSourceReference.StreakRun rightRun) {
             int metric = leftRun.metric().compareTo(rightRun.metric());
             if (metric != 0) return metric;
+            de.venomenon.gridwordsbot.domain.record.StreakRecordValue leftValue =
+                    (de.venomenon.gridwordsbot.domain.record.StreakRecordValue) left.value();
+            de.venomenon.gridwordsbot.domain.record.StreakRecordValue rightValue =
+                    (de.venomenon.gridwordsbot.domain.record.StreakRecordValue) right.value();
+            int end = leftValue.endDate().compareTo(rightValue.endDate());
+            if (end != 0) return end;
             int start = leftRun.startDate().compareTo(rightRun.startDate());
             return start != 0
                     ? start
