@@ -3,8 +3,8 @@ package de.venomenon.gridwordsbot.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.time.LocalTime;
 import java.time.Duration;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -75,8 +75,22 @@ class GridwordsBotPropertiesTest {
     }
 
     @Test
+    void rejectsSubMillisecondRecordBootstrapPollDelay() {
+        assertThatThrownBy(() -> new GridwordsBotProperties.Records(
+                        Duration.ofNanos(1), Duration.ofSeconds(1), Duration.ofSeconds(1)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("bootstrapPollDelay must be at least PT0.001S");
+    }
+
+    @Test
     void rejectsNonPositiveRecordBootstrapDurationDuringPropertyBinding() {
         contextRunner.withPropertyValues("gridwords.records.bootstrap-lease-duration=PT0S")
+                .run(context -> assertThat(context.getStartupFailure()).isNotNull());
+    }
+
+    @Test
+    void rejectsSubMillisecondPollDelayDuringPropertyBinding() {
+        contextRunner.withPropertyValues("gridwords.records.bootstrap-poll-delay=PT0.000000001S")
                 .run(context -> assertThat(context.getStartupFailure()).isNotNull());
     }
 

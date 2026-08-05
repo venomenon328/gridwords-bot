@@ -72,14 +72,22 @@ public record GridwordsBotProperties(
     }
     /** Operational limits for the persistent record-bootstrap worker. */
     public record Records(Duration bootstrapPollDelay, Duration bootstrapLeaseDuration, Duration bootstrapRetryBackoff) {
+        private static final Duration MINIMUM_POLL_DELAY = Duration.ofMillis(1);
+
         @ConstructorBinding
         public Records {
-            requirePositive(bootstrapPollDelay, "bootstrapPollDelay");
+            requireAtLeast(bootstrapPollDelay, MINIMUM_POLL_DELAY, "bootstrapPollDelay");
             requirePositive(bootstrapLeaseDuration, "bootstrapLeaseDuration");
             requirePositive(bootstrapRetryBackoff, "bootstrapRetryBackoff");
         }
         public static Records defaults() {
             return new Records(Duration.ofMinutes(1), Duration.ofMinutes(2), Duration.ofMinutes(1));
+        }
+        private static void requireAtLeast(Duration value, Duration minimum, String name) {
+            Objects.requireNonNull(value, name);
+            if (value.compareTo(minimum) < 0) {
+                throw new IllegalArgumentException(name + " must be at least " + minimum);
+            }
         }
         private static void requirePositive(Duration value, String name) {
             Objects.requireNonNull(value, name);

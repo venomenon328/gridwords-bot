@@ -12,6 +12,7 @@ import de.venomenon.gridwordsbot.domain.record.StreakRunAnalyzer;
 import de.venomenon.gridwordsbot.port.out.RecordBootstrapStore;
 import de.venomenon.gridwordsbot.port.out.RecordHistoryQuery;
 import de.venomenon.gridwordsbot.port.out.RecordBootstrapMetrics;
+import de.venomenon.gridwordsbot.port.out.RecordEventIdempotencyConflictException;
 import de.venomenon.gridwordsbot.port.out.RecordRetryableFailure;
 import de.venomenon.gridwordsbot.port.out.RecordPermanentFailure;
 import java.time.Clock;
@@ -72,10 +73,11 @@ public class RecordBootstrapCoordinator {
                     new RecordLeaseClaimRequest(now, now.plus(leaseDuration)));
             if (claim.isEmpty()) return result = BootstrapRunResult.NOT_CLAIMED;
             token = claim.orElseThrow().token();
-            var snapshot = bootstrapStore.find(key).orElseThrow(() -> new IllegalStateException("claimed bootstrap is missing"));
+            var snapshot = bootstrapStore.find(key).orElseThrow(
+                    () -> new RecordPermanentFailure("claimed bootstrap is missing", null));
             attempt = snapshot.attemptCount();
             java.time.Instant detectedAt = snapshot.startedAt()
-                    .orElseThrow(() -> new IllegalStateException("claimed bootstrap has no stable startedAt"));
+                    .orElseThrow(() -> new RecordPermanentFailure("claimed bootstrap has no stable startedAt", null));
             RecordBootstrapLog.started(guildId, key.definitionVersion().value(), snapshot.attemptCount(), leaseDuration);
             if (!bootstrapStore.renewLease(key, token, leaseRequest())) {
                 RecordBootstrapLog.lostLease(guildId, key.definitionVersion().value(), snapshot.attemptCount(), elapsed(startedNanos));
@@ -135,15 +137,23 @@ public class RecordBootstrapCoordinator {
             boolean marked = bootstrapStore.markRetryableFailure(key, token, new RecordWorkFailure(RecordWorkFailureCategory.RETRYABLE,
                     "record bootstrap retryable failure"), clock.instant().plus(retryBackoff));
             result = marked ? BootstrapRunResult.RETRY_SCHEDULED : BootstrapRunResult.LOST_LEASE;
-            RecordBootstrapLog.retryScheduled(guildId, key.definitionVersion().value(), attempt, retryBackoff, result, elapsed(startedNanos));
+            if (marked) {
+                RecordBootstrapLog.retryScheduled(guildId, key.definitionVersion().value(), attempt, retryBackoff, result, elapsed(startedNanos));
+            } else {
+                RecordBootstrapLog.lostLease(guildId, key.definitionVersion().value(), attempt, elapsed(startedNanos));
+            }
             return result;
-        } catch (RecordPermanentFailure ex) {
+        } catch (RecordPermanentFailure | RecordEventIdempotencyConflictException ex) {
             failureCategory = Optional.of(RecordWorkFailureCategory.PERMANENT);
             if (token == null) throw ex;
             boolean marked = bootstrapStore.markPermanentFailure(key, token,
                     new RecordWorkFailure(RecordWorkFailureCategory.PERMANENT, "record bootstrap permanent failure"), clock.instant());
             result = marked ? BootstrapRunResult.FAILED_PERMANENT : BootstrapRunResult.LOST_LEASE;
-            RecordBootstrapLog.permanentFailure(guildId, key.definitionVersion().value(), attempt, result, elapsed(startedNanos));
+            if (marked) {
+                RecordBootstrapLog.permanentFailure(guildId, key.definitionVersion().value(), attempt, result, elapsed(startedNanos));
+            } else {
+                RecordBootstrapLog.lostLease(guildId, key.definitionVersion().value(), attempt, elapsed(startedNanos));
+            }
             return result;
         } catch (RuntimeException ex) {
             failureCategory = Optional.of(RecordWorkFailureCategory.UNKNOWN);

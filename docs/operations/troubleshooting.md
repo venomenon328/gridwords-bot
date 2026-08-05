@@ -32,7 +32,7 @@ RECORD_BOOTSTRAP_LEASE_DURATION=PT2M
 RECORD_BOOTSTRAP_RETRY_BACKOFF=PT1M
 ```
 
-Alle Werte müssen positive ISO-8601-Dauern sein. Die Standardwerte sind Poll `PT1M`, Lease `PT2M` und Retry-Backoff `PT1M`. Nach einer Konfigurationsänderung den Bot kontrolliert neu starten; die bereits persistierte Bootstrap-Arbeit bleibt erhalten.
+Alle Werte verwenden positive ISO-8601-Dauern. Der Poll-Delay muss wegen der Scheduler-Auflösung mindestens `PT0.001S` betragen; Lease und Retry-Backoff müssen größer als null sein. Die Standardwerte sind Poll `PT1M`, Lease `PT2M` und Retry-Backoff `PT1M`. Nach einer Konfigurationsänderung den Bot kontrolliert neu starten; die bereits persistierte Bootstrap-Arbeit bleibt erhalten.
 
 Metriken sind nur über die Loopback-gebundene Managementschnittstelle abrufbar:
 
