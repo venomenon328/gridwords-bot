@@ -70,11 +70,16 @@ DECLARE
     persisted_version BIGINT;
     requested_origin VARCHAR(32);
     requested_state VARCHAR(24);
-    registered_at TIMESTAMPTZ := CURRENT_TIMESTAMP;
+    registered_at TIMESTAMPTZ;
 BEGIN
     IF NEW.processing_state <> 'RESULT_STORED' OR NEW.game_result_id IS NULL THEN
         RETURN NEW;
     END IF;
+
+    -- Keep all queue timestamps on the same application-controlled timeline.
+    -- Using the database wall clock here can make a subsequent claim appear
+    -- older than its registration when application and database clocks differ.
+    registered_at := NEW.updated_at;
 
     SELECT version
       INTO persisted_version
