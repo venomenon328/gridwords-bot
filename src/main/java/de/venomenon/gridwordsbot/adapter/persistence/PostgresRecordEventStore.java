@@ -43,8 +43,17 @@ public final class PostgresRecordEventStore implements RecordEventStore {
         if(guildId<=0) throw new IllegalArgumentException("guildId must be positive"); if(triggerKey==null||triggerKey.isBlank()) throw new IllegalArgumentException("triggerKey is invalid");
         return jdbc.query(select()+" WHERE guild_id=? AND trigger_key=? ORDER BY created_at,event_id",(rs,row)->snapshot(rs),guildId,triggerKey);
     }
-    @Override public boolean invalidate(UUID eventId,Instant invalidatedAt) { return jdbc.update("UPDATE record_event SET validity='INVALIDATED',invalidated_at=?,updated_at=? WHERE event_id=? AND validity='VALID'",RecordJdbcMapping.utc(invalidatedAt),RecordJdbcMapping.utc(clock.instant()),eventId)==1; }
-    @Override public boolean supersede(UUID eventId,UUID successor,Instant invalidatedAt) { return jdbc.update("UPDATE record_event SET validity='SUPERSEDED',invalidated_at=?,superseded_by=?,updated_at=? WHERE event_id=? AND validity='VALID' AND EXISTS (SELECT 1 FROM record_event successor WHERE successor.event_id=?)",RecordJdbcMapping.utc(invalidatedAt),successor,RecordJdbcMapping.utc(clock.instant()),eventId,successor)==1; }
+    @Override public boolean invalidate(UUID eventId,Instant invalidatedAt) {
+        java.util.Objects.requireNonNull(eventId, "eventId"); java.util.Objects.requireNonNull(invalidatedAt, "invalidatedAt");
+        return jdbc.update("UPDATE record_event SET validity='INVALIDATED',invalidated_at=?,updated_at=? WHERE event_id=? AND validity='VALID'",
+                RecordJdbcMapping.utc(invalidatedAt), RecordJdbcMapping.utc(invalidatedAt), eventId) == 1;
+    }
+    @Override public boolean supersede(UUID eventId,UUID successor,Instant invalidatedAt) {
+        java.util.Objects.requireNonNull(eventId, "eventId"); java.util.Objects.requireNonNull(successor, "successor"); java.util.Objects.requireNonNull(invalidatedAt, "invalidatedAt");
+        if (eventId.equals(successor)) throw new IllegalArgumentException("an event cannot supersede itself");
+        return jdbc.update("UPDATE record_event SET validity='SUPERSEDED',invalidated_at=?,superseded_by=?,updated_at=? WHERE event_id=? AND validity='VALID' AND EXISTS (SELECT 1 FROM record_event successor WHERE successor.event_id=? AND successor.event_id<>record_event.event_id)",
+                RecordJdbcMapping.utc(invalidatedAt), successor, RecordJdbcMapping.utc(invalidatedAt), eventId, successor) == 1;
+    }
     private Optional<RecordEventSnapshot> findByIdempotency(String key) { return jdbc.query(select()+" WHERE idempotency_key=?",(rs,row)->snapshot(rs),key).stream().findFirst(); }
     private static String select() { return "SELECT * FROM record_event"; }
     private RecordEventSnapshot snapshot(ResultSet rs) throws SQLException {

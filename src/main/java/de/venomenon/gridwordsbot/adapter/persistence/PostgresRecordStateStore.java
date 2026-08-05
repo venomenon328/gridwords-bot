@@ -36,20 +36,37 @@ public final class PostgresRecordStateStore implements RecordStateStore {
     }
     @Override public RecordStateUpdateResult update(RecordStateUpdate update) {
         java.util.Objects.requireNonNull(update, "update"); validateScopeHolder(update.key(), update.write());
-        Optional<RecordStateSnapshot> existing = find(update.key());
-        if (existing.isEmpty() || !existing.orElseThrow().lockVersion().equals(update.expectedLockVersion())) return new RecordStateUpdateResult(RecordStateUpdateResult.Status.VERSION_CONFLICT, Optional.empty());
-        if (same(update.write(), existing.orElseThrow())) return new RecordStateUpdateResult(RecordStateUpdateResult.Status.UNCHANGED, existing);
         Object[] value = RecordJdbcMapping.stateWriteParameters(update.write());
-        int changed = jdbc.update("""
+        Optional<RecordStateSnapshot> changed = jdbc.query("""
                 UPDATE record_state SET holder_player_id=?,value_kind=?,attempts=?,duration_millis=?,streak_length=?,streak_start_date=?,streak_end_date=?,
                     source_type=?,source_game_result_id=?,source_game_result_version=?,source_game_player_id=?,source_game_type=?,source_game_date=?,source_streak_metric=?,source_streak_owner_type=?,source_streak_owner_player_id=?,source_streak_start_date=?,running=?,lock_version=lock_version+1,updated_at=?
                 WHERE guild_id=? AND definition_key=? AND definition_version=? AND scope_type=? AND scope_key=? AND lock_version=?
-                """, concat(value, new Object[] {RecordJdbcMapping.utc(clock.instant()), update.key().guildId(), update.key().definitionKey().value(), update.key().definitionVersion().value(), update.key().scope().type().name(), update.key().scopeKey(), update.expectedLockVersion().value()}));
-        if (changed != 1) return new RecordStateUpdateResult(RecordStateUpdateResult.Status.VERSION_CONFLICT, Optional.empty());
-        return new RecordStateUpdateResult(RecordStateUpdateResult.Status.UPDATED, find(update.key()));
+                  AND NOT (holder_player_id IS NOT DISTINCT FROM ? AND value_kind IS NOT DISTINCT FROM ? AND attempts IS NOT DISTINCT FROM ?
+                      AND duration_millis IS NOT DISTINCT FROM ? AND streak_length IS NOT DISTINCT FROM ? AND streak_start_date IS NOT DISTINCT FROM ?
+                      AND streak_end_date IS NOT DISTINCT FROM ? AND source_type IS NOT DISTINCT FROM ? AND source_game_result_id IS NOT DISTINCT FROM ?
+                      AND source_game_result_version IS NOT DISTINCT FROM ? AND source_game_player_id IS NOT DISTINCT FROM ? AND source_game_type IS NOT DISTINCT FROM ?
+                      AND source_game_date IS NOT DISTINCT FROM ? AND source_streak_metric IS NOT DISTINCT FROM ? AND source_streak_owner_type IS NOT DISTINCT FROM ?
+                      AND source_streak_owner_player_id IS NOT DISTINCT FROM ? AND source_streak_start_date IS NOT DISTINCT FROM ? AND running IS NOT DISTINCT FROM ?)
+                RETURNING guild_id,definition_key,definition_version,scope_type,scope_key,holder_player_id,value_kind,attempts,duration_millis,streak_length,streak_start_date,streak_end_date,
+                    source_type,source_game_result_id,source_game_result_version,source_game_player_id,source_game_type,source_game_date,source_streak_metric,source_streak_owner_type,source_streak_owner_player_id,source_streak_start_date,running,lock_version,created_at,updated_at
+                """, (rs, row) -> RecordJdbcMapping.state(rs), concat(value, new Object[] {RecordJdbcMapping.utc(clock.instant()), update.key().guildId(), update.key().definitionKey().value(), update.key().definitionVersion().value(), update.key().scope().type().name(), update.key().scopeKey(), update.expectedLockVersion().value()}, value)).stream().findFirst();
+        if (changed.isPresent()) return new RecordStateUpdateResult(RecordStateUpdateResult.Status.UPDATED, changed);
+        Optional<RecordStateSnapshot> unchanged = jdbc.query("""
+                UPDATE record_state SET lock_version=lock_version
+                WHERE guild_id=? AND definition_key=? AND definition_version=? AND scope_type=? AND scope_key=? AND lock_version=?
+                  AND holder_player_id IS NOT DISTINCT FROM ? AND value_kind IS NOT DISTINCT FROM ? AND attempts IS NOT DISTINCT FROM ?
+                  AND duration_millis IS NOT DISTINCT FROM ? AND streak_length IS NOT DISTINCT FROM ? AND streak_start_date IS NOT DISTINCT FROM ?
+                  AND streak_end_date IS NOT DISTINCT FROM ? AND source_type IS NOT DISTINCT FROM ? AND source_game_result_id IS NOT DISTINCT FROM ?
+                  AND source_game_result_version IS NOT DISTINCT FROM ? AND source_game_player_id IS NOT DISTINCT FROM ? AND source_game_type IS NOT DISTINCT FROM ?
+                  AND source_game_date IS NOT DISTINCT FROM ? AND source_streak_metric IS NOT DISTINCT FROM ? AND source_streak_owner_type IS NOT DISTINCT FROM ?
+                  AND source_streak_owner_player_id IS NOT DISTINCT FROM ? AND source_streak_start_date IS NOT DISTINCT FROM ? AND running IS NOT DISTINCT FROM ?
+                RETURNING guild_id,definition_key,definition_version,scope_type,scope_key,holder_player_id,value_kind,attempts,duration_millis,streak_length,streak_start_date,streak_end_date,
+                    source_type,source_game_result_id,source_game_result_version,source_game_player_id,source_game_type,source_game_date,source_streak_metric,source_streak_owner_type,source_streak_owner_player_id,source_streak_start_date,running,lock_version,created_at,updated_at
+                """, (rs, row) -> RecordJdbcMapping.state(rs), concat(new Object[] {update.key().guildId(), update.key().definitionKey().value(), update.key().definitionVersion().value(), update.key().scope().type().name(), update.key().scopeKey(), update.expectedLockVersion().value()}, value)).stream().findFirst();
+        return unchanged.map(snapshot -> new RecordStateUpdateResult(RecordStateUpdateResult.Status.UNCHANGED, Optional.of(snapshot)))
+                .orElseGet(() -> new RecordStateUpdateResult(RecordStateUpdateResult.Status.VERSION_CONFLICT, Optional.empty()));
     }
     private static String select() { return "SELECT guild_id,definition_key,definition_version,scope_type,scope_key,holder_player_id,value_kind,attempts,duration_millis,streak_length,streak_start_date,streak_end_date,source_type,source_game_result_id,source_game_result_version,source_game_player_id,source_game_type,source_game_date,source_streak_metric,source_streak_owner_type,source_streak_owner_player_id,source_streak_start_date,running,lock_version,created_at,updated_at FROM record_state"; }
-    private static boolean same(RecordStateWrite write, RecordStateSnapshot snapshot) { return write.holderPlayerId().equals(snapshot.holderPlayerId()) && write.value().equals(snapshot.value()) && write.source().equals(snapshot.source()) && write.running() == snapshot.running(); }
     private static void validateScopeHolder(RecordStateKey key, RecordStateWrite write) {
         switch (key.scope()) {
             case de.venomenon.gridwordsbot.domain.record.RecordScope.Personal personal -> { if (write.holderPlayerId().isEmpty() || write.holderPlayerId().get() != personal.playerId()) throw new IllegalArgumentException("personal state holder must be scoped player"); }

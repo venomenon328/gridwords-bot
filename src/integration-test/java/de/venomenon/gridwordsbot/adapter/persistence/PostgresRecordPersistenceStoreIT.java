@@ -1,6 +1,8 @@
 package de.venomenon.gridwordsbot.adapter.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.record.AttemptsDurationRecordValue;
@@ -23,6 +25,9 @@ import de.venomenon.gridwordsbot.domain.record.RecordSourceReference;
 import de.venomenon.gridwordsbot.domain.record.RecordStateKey;
 import de.venomenon.gridwordsbot.domain.record.RecordStateUpdate;
 import de.venomenon.gridwordsbot.domain.record.RecordStateWrite;
+import de.venomenon.gridwordsbot.domain.record.DurationRecordValue;
+import de.venomenon.gridwordsbot.domain.record.StreakRecordMetric;
+import de.venomenon.gridwordsbot.domain.record.StreakRecordValue;
 import de.venomenon.gridwordsbot.domain.record.RecordWorkFailure;
 import de.venomenon.gridwordsbot.domain.record.RecordWorkFailureCategory;
 import java.time.Clock;
@@ -68,6 +73,21 @@ class PostgresRecordPersistenceStoreIT {
                 .contains("record_state", "record_event", "record_bootstrap", "record_announcement", "record_announcement_event", "record_announcement_message");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM information_schema.table_constraints WHERE constraint_name IN ('uq_record_state_business_key','uq_record_announcement_idempotency')", Integer.class)).isEqualTo(2);
     }
+    @Test void upgradeFromMigration017RetainsRepresentativeDataAndOnlyAddsRecordSchema() throws Exception {
+        String schema = "record_upgrade_017";
+        jdbc.execute("CREATE SCHEMA " + schema);
+        try {
+            var source = new DriverManagerDataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+            SpringLiquibase legacy = new SpringLiquibase(); legacy.setDataSource(source); legacy.setDefaultSchema(schema); legacy.setChangeLog("classpath:db/changelog/db.changelog-up-to-017.yaml"); legacy.afterPropertiesSet();
+            JdbcTemplate legacyJdbc = new JdbcTemplate(source);
+            legacyJdbc.update("INSERT INTO " + schema + ".player (discord_user_id,display_name,active,administrator,created_at,updated_at) VALUES (99,'legacy',TRUE,FALSE,?,?)", java.sql.Timestamp.from(NOW), java.sql.Timestamp.from(NOW));
+            SpringLiquibase current = new SpringLiquibase(); current.setDataSource(source); current.setDefaultSchema(schema); current.setChangeLog("classpath:db/changelog/db.changelog-master.yaml"); current.afterPropertiesSet();
+            assertThat(legacyJdbc.queryForObject("SELECT display_name FROM " + schema + ".player WHERE discord_user_id=99", String.class)).isEqualTo("legacy");
+            assertThat(legacyJdbc.queryForObject("SELECT count(*) FROM information_schema.tables WHERE table_schema=? AND table_name='record_state'", Integer.class, schema)).isOne();
+        } finally {
+            jdbc.execute("DROP SCHEMA " + schema + " CASCADE");
+        }
+    }
     @Test void stateInitializesOnceAndUsesCompareAndSetWithoutLostUpdates() throws Exception {
         RecordStateKey key = stateKey(); RecordStateWrite first = write(3, Duration.ofSeconds(70));
         try (var pool = Executors.newFixedThreadPool(2)) {
@@ -76,13 +96,27 @@ class PostgresRecordPersistenceStoreIT {
         }
         assertThat(states.update(new RecordStateUpdate(key, RecordLockVersion.initial(), write(2, Duration.ofSeconds(60)))).status()).isEqualTo(de.venomenon.gridwordsbot.domain.record.RecordStateUpdateResult.Status.UPDATED);
         assertThat(states.update(new RecordStateUpdate(key, RecordLockVersion.initial(), first)).status()).isEqualTo(de.venomenon.gridwordsbot.domain.record.RecordStateUpdateResult.Status.VERSION_CONFLICT);
+        assertThat(states.update(new RecordStateUpdate(key, new RecordLockVersion(1), write(2, Duration.ofSeconds(60)))).status()).isEqualTo(de.venomenon.gridwordsbot.domain.record.RecordStateUpdateResult.Status.UNCHANGED);
         assertThat(states.find(key).orElseThrow().value()).isEqualTo(new AttemptsDurationRecordValue(2, Duration.ofSeconds(60)));
     }
-    @Test void eventIdempotencyAndInvalidationRemainDurable() {
+    @Test void allTypedStateValuesAndSourcesRoundTripLosslessly() {
+        RecordStateKey durationKey = new RecordStateKey(1,new RecordDefinitionKey("result.gridwords.fastest.personal"),RecordDefinitionVersion.RECORDS_V1,new RecordScope.Personal(1));
+        states.initialize(durationKey, new RecordStateWrite(Optional.of(1L),new DurationRecordValue(Duration.ofMillis(1234)),new RecordSourceReference.GameResult(2,3,1,GameType.GRIDWORDS,LocalDate.of(2026,8,3)),false));
+        RecordStateKey streakKey = new RecordStateKey(1,new RecordDefinitionKey("streak.gridwords-solved.shared"),RecordDefinitionVersion.RECORDS_V1,new RecordScope.Shared());
+        states.initialize(streakKey, new RecordStateWrite(Optional.empty(),new StreakRecordValue(3,LocalDate.of(2026,8,1),LocalDate.of(2026,8,3)),new RecordSourceReference.StreakRun(StreakRecordMetric.GRIDWORDS_SOLVED,new RecordSourceReference.StreakRunOwner.Shared(),LocalDate.of(2026,8,1)),true));
+        assertThat(states.find(durationKey).orElseThrow().value()).isEqualTo(new DurationRecordValue(Duration.ofMillis(1234)));
+        assertThat(states.find(streakKey).orElseThrow().source().sourceType()).isEqualTo(de.venomenon.gridwordsbot.domain.record.RecordSourceType.STREAK_RUN);
+    }
+    @Test void eventIdempotencyInvalidationAndSupersessionRemainDurable() {
         RecordEventDraft draft = eventDraft();
         assertThat(events.append(draft).appended()).isTrue(); assertThat(events.append(draft).appended()).isFalse();
-        assertThat(events.invalidate(draft.eventId(), NOW.plusSeconds(1))).isTrue();
-        assertThat(events.find(draft.eventId()).orElseThrow().validity()).isEqualTo(de.venomenon.gridwordsbot.domain.record.RecordEventValidity.INVALIDATED);
+        RecordEventDraft successor = new RecordEventDraft(UUID.randomUUID(),"event:result:2:v0",stateKey(),RecordEventType.RESULT_RECORD_BROKEN,Optional.empty(),new AttemptsDurationRecordValue(1,Duration.ofSeconds(50)),Optional.empty(),Optional.of(1L),Optional.empty(),new RecordSourceReference.GameResult(2,0,1,GameType.GRIDWORDS,LocalDate.of(2026,8,5)),"result:2:v0",RecordProcessingOrigin.LIVE_SUBMISSION,NOW);
+        events.append(successor);
+        assertThat(events.supersede(draft.eventId(), successor.eventId(), NOW.plusSeconds(1))).isTrue();
+        assertThat(events.find(draft.eventId()).orElseThrow()).extracting(snapshot -> snapshot.validity(), snapshot -> snapshot.invalidatedAt()).containsExactly(de.venomenon.gridwordsbot.domain.record.RecordEventValidity.SUPERSEDED, Optional.of(NOW.plusSeconds(1)));
+        assertThat(events.invalidate(successor.eventId(), NOW.plusSeconds(2))).isTrue();
+        assertThat(events.find(successor.eventId()).orElseThrow().updatedAt()).isEqualTo(NOW.plusSeconds(2));
+        assertThatIllegalArgumentException().isThrownBy(() -> events.supersede(successor.eventId(), successor.eventId(), NOW.plusSeconds(3)));
         assertThat(events.findByTriggerKey(1, "result:1:v0")).hasSize(1);
     }
     @Test void bootstrapClaimsAreLeasedAndFencedByTheirExactToken() {
@@ -93,13 +127,19 @@ class PostgresRecordPersistenceStoreIT {
         assertThat(bootstraps.markRetryableFailure(key, first.token(), new RecordWorkFailure(RecordWorkFailureCategory.UNKNOWN, "stale"), NOW.plusSeconds(30))).isFalse();
         assertThat(bootstraps.markPermanentFailure(key, replacement.token(), new RecordWorkFailure(RecordWorkFailureCategory.PERMANENT, "safe"), NOW.plusSeconds(11))).isTrue();
     }
-    @Test void announcementsKeepOrderedMessageIdsAndExternallyRemovedStateTerminal() {
+    @Test void announcementsAreIdempotentAndChangedIntentReopensOnlyWhenUnclaimed() {
         UUID event = events.append(eventDraft()).snapshot().draft().eventId();
         RecordAnnouncementKey key = new RecordAnnouncementKey(1, 2, "result:1:v0:live");
         RecordAnnouncementRegistration registration = new RecordAnnouncementRegistration(key, RecordAnnouncementSubject.player(1), RecordAnnouncementPhase.LIVE_EVALUATION, RecordAnnouncementProjection.CREATE, "records-renderer-v1", "a".repeat(64), List.of(event));
         announcements.registerOrUpdate(registration); var claim = announcements.claim(key, request(NOW, NOW.plusSeconds(10))).orElseThrow();
         assertThat(announcements.replaceMessages(key, claim.token(), List.of(new RecordAnnouncementMessage(0, 100), new RecordAnnouncementMessage(1, 101)))).isTrue();
-        assertThat(announcements.markSynchronized(key, claim.token(), NOW)).isTrue(); var removal = announcements.claim(key, request(NOW.plusSeconds(1), NOW.plusSeconds(11))).orElseThrow();
+        assertThat(announcements.markSynchronized(key, claim.token(), NOW)).isTrue();
+        assertThat(announcements.registerOrUpdate(registration).state()).isEqualTo(de.venomenon.gridwordsbot.domain.record.RecordWorkState.SYNCHRONIZED);
+        assertThat(announcements.claim(key, request(NOW.plusSeconds(1), NOW.plusSeconds(11)))).isEmpty();
+        RecordAnnouncementRegistration changed = new RecordAnnouncementRegistration(key, RecordAnnouncementSubject.player(1), RecordAnnouncementPhase.LIVE_EVALUATION, RecordAnnouncementProjection.EDIT, "records-renderer-v1", "b".repeat(64), List.of(event));
+        assertThat(announcements.registerOrUpdate(changed).state()).isEqualTo(de.venomenon.gridwordsbot.domain.record.RecordWorkState.OPEN);
+        var removal = announcements.claim(key, request(NOW.plusSeconds(1), NOW.plusSeconds(11))).orElseThrow();
+        assertThatThrownBy(() -> announcements.registerOrUpdate(registration)).isInstanceOf(de.venomenon.gridwordsbot.port.out.RecordAnnouncementClaimConflictException.class);
         assertThat(announcements.markExternallyRemoved(key, removal.token(), NOW.plusSeconds(2))).isTrue();
         assertThat(announcements.find(key).orElseThrow().messages()).containsExactly(new RecordAnnouncementMessage(0,100), new RecordAnnouncementMessage(1,101));
         assertThat(announcements.registerOrUpdate(registration).state()).isEqualTo(de.venomenon.gridwordsbot.domain.record.RecordWorkState.EXTERNALLY_REMOVED);
