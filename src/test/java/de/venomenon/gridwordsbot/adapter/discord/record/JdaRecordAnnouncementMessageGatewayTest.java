@@ -1,12 +1,15 @@
 package de.venomenon.gridwordsbot.adapter.discord.record;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.venomenon.gridwordsbot.application.record.RenderedRecordAnnouncementPage;
+import de.venomenon.gridwordsbot.port.out.RecordAnnouncementMessageGateway;
 import java.util.Collections;
 import java.util.List;
 import net.dv8tion.jda.api.EmbedBuilder;
@@ -17,6 +20,8 @@ import net.dv8tion.jda.api.entities.MessageHistory;
 import net.dv8tion.jda.api.entities.SelfUser;
 import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
+import net.dv8tion.jda.api.exceptions.ErrorResponseException;
+import net.dv8tion.jda.api.requests.ErrorResponse;
 import net.dv8tion.jda.api.requests.RestAction;
 import net.dv8tion.jda.api.requests.restaction.MessageCreateAction;
 import net.dv8tion.jda.api.requests.restaction.MessageEditAction;
@@ -80,9 +85,38 @@ class JdaRecordAnnouncementMessageGatewayTest {
 
         assertThat(new JdaRecordAnnouncementMessageGateway(jda).findByPublicationKey(12L, key))
                 .containsExactly(
-                        new de.venomenon.gridwordsbot.port.out.RecordAnnouncementMessageGateway.PublishedPage(30L, 0),
-                        new de.venomenon.gridwordsbot.port.out.RecordAnnouncementMessageGateway.PublishedPage(90L, 0),
-                        new de.venomenon.gridwordsbot.port.out.RecordAnnouncementMessageGateway.PublishedPage(70L, 1));
+                        new RecordAnnouncementMessageGateway.PublishedPage(30L, 0),
+                        new RecordAnnouncementMessageGateway.PublishedPage(90L, 0),
+                        new RecordAnnouncementMessageGateway.PublishedPage(70L, 1));
+    }
+
+    @Test
+    void treatsUnknownMessageDuringDeleteAsSuccess() {
+        JDA jda = mock(JDA.class);
+        TextChannel channel = mock(TextChannel.class);
+        ErrorResponseException unknown = mock(ErrorResponseException.class);
+        when(unknown.getErrorResponse()).thenReturn(ErrorResponse.UNKNOWN_MESSAGE);
+        when(jda.getTextChannelById(12L)).thenReturn(channel);
+        when(channel.deleteMessageById(99L)).thenThrow(unknown);
+
+        JdaRecordAnnouncementMessageGateway gateway = new JdaRecordAnnouncementMessageGateway(jda);
+
+        assertThatCode(() -> gateway.delete(12L, 99L)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void classifiesMissingPermissionDuringCreateAsPermanent() {
+        JDA jda = mock(JDA.class);
+        TextChannel channel = mock(TextChannel.class);
+        ErrorResponseException missingPermission = mock(ErrorResponseException.class);
+        when(missingPermission.getErrorResponse()).thenReturn(ErrorResponse.MISSING_PERMISSIONS);
+        when(jda.getTextChannelById(12L)).thenReturn(channel);
+        when(channel.sendMessageEmbeds(any(MessageEmbed.class))).thenThrow(missingPermission);
+
+        JdaRecordAnnouncementMessageGateway gateway = new JdaRecordAnnouncementMessageGateway(jda);
+
+        assertThatThrownBy(() -> gateway.create(12L, page()))
+                .isInstanceOf(RecordAnnouncementMessageGateway.PermanentMessageException.class);
     }
 
     private static RenderedRecordAnnouncementPage page() {
