@@ -97,7 +97,8 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                     SET subject_type=?,subject_key=?,announcement_phase=?,desired_projection=?,
                         renderer_version=?,content_fingerprint=?,delivery_state='OPEN',
                         claim_token=NULL,claim_until=NULL,next_retry_at=NULL,failure_category=NULL,
-                        safe_error=NULL,updated_at=?
+                        safe_error=NULL,changed_at=CASE WHEN ?='EDIT' THEN NULL ELSE changed_at END,
+                        updated_at=?
                     WHERE guild_id=? AND channel_id=? AND idempotency_key=?
                       AND delivery_state<>'CLAIMED' AND delivery_state<>'EXTERNALLY_REMOVED'
                     """,
@@ -107,6 +108,7 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                     registration.desiredProjection().name(),
                     registration.rendererVersion(),
                     registration.contentFingerprint(),
+                    registration.desiredProjection().name(),
                     RecordJdbcMapping.utc(now),
                     key.guildId(),
                     key.channelId(),
@@ -400,8 +402,9 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
     public int suppressPendingCreates(Instant suppressedAt) {
         return jdbc.update("""
                 UPDATE record_announcement
-                SET delivery_state='SUPPRESSED',next_retry_at=NULL,failure_category=NULL,safe_error=NULL,updated_at=?
-                WHERE delivery_state IN ('OPEN','RETRYABLE') AND published_at IS NULL
+                SET delivery_state='SUPPRESSED',claim_token=NULL,claim_until=NULL,next_retry_at=NULL,
+                    failure_category=NULL,safe_error=NULL,updated_at=?
+                WHERE delivery_state IN ('OPEN','RETRYABLE','CLAIMED') AND published_at IS NULL
                   AND desired_projection='CREATE'
                 """, RecordJdbcMapping.utc(suppressedAt));
     }

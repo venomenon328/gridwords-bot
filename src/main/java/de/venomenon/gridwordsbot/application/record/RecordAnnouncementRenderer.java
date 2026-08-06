@@ -22,7 +22,7 @@ import java.util.Objects;
 
 /** Pure German renderer; it deliberately owns no JDA types or external I/O. */
 public final class RecordAnnouncementRenderer {
-    public static final String VERSION = "records-v1-discord-1";
+    public static final String VERSION = "records-v1-discord-2";
     private static final int PAGE_DESCRIPTION_LIMIT = 3_800;
 
     public RenderedRecordAnnouncement render(RecordAnnouncementRenderInput input) {
@@ -77,21 +77,25 @@ public final class RecordAnnouncementRenderer {
 
     private static String line(RecordEventSnapshot event, Map<Long, String> displays) {
         RecordEventDraft draft = event.draft();
-        String metric = metric(draft.stateKey().definitionKey().value());
+        String key = draft.stateKey().definitionKey().value();
+        String metric = metric(key);
         String scope = scope(draft.stateKey().scope(), displays);
         String value = value(draft.newValue());
         String previous = draft.previousValue().map(RecordAnnouncementRenderer::value).orElse("keine Vergleichsbasis");
         String holder = draft.newHolderPlayerId().map(id -> display(displays, id)).orElse("gemeinsam");
         String previousHolder = draft.previousHolderPlayerId().map(id -> display(displays, id)).orElse("");
         return switch (draft.type()) {
-            case RESULT_RECORD_BROKEN -> "**" + metric + " · " + scope + "**\n"
+            case RESULT_RECORD_BROKEN -> "**" + resultGame(key) + " · " + metric + " · " + scope + "**\n"
                     + holder + ": " + value + ". Vorher: " + previous + holderSuffix(previousHolder) + ".";
             case SERIES_RECORD_CROSSED -> "**" + metric + " · " + scope + "**\n"
-                    + holder + " übertrifft den bisherigen Rekord: " + value + " statt " + previous + ".";
+                    + (serverWide(draft) ? "Kandidat " : "") + holder + " übertrifft den bisherigen Rekord: "
+                    + value + " statt " + previous + holderSuffix(previousHolder) + ".";
             case RECORD_SERIES_FINISHED -> "**" + metric + " · " + scope + "**\n"
-                    + "Abschluss bei " + value + "; neuer Rekord gegenüber " + previous + ".";
+                    + "Abschluss für " + (serverWide(draft) ? "Kandidat " : "") + holder + " bei " + value
+                    + "; neuer Rekord gegenüber " + previous + holderSuffix(previousHolder) + ".";
             case SERIES_RECORD_TIED_AT_END -> "**" + metric + " · " + scope + "**\n"
-                    + "Rekord eingestellt: " + value + "." + holderSuffix(previousHolder);
+                    + (serverWide(draft) ? "Kandidat " : "") + holder + " stellt den Rekord ein: " + value + "."
+                    + holderSuffix(previousHolder);
             case SERIES_RECORD_NEAR_MISSED_AT_END -> "**" + metric + " · " + scope + "**\n"
                     + "Knapp verpasst: " + value + " statt " + previous + " (Abstand "
                     + distance(draft.newValue(), draft.previousValue().orElseThrow()) + ").";
@@ -100,7 +104,15 @@ public final class RecordAnnouncementRenderer {
     }
 
     private static String holderSuffix(String holder) {
-        return holder.isBlank() ? "" : " Zuvor: " + holder;
+        return holder.isBlank() ? "" : " Vorheriger Halter: " + holder;
+    }
+
+    private static boolean serverWide(RecordEventDraft draft) {
+        return draft.stateKey().scope() instanceof RecordScope.ServerIndividual;
+    }
+
+    private static String resultGame(String key) {
+        return key.contains("gridwords") ? "GridWords" : key.contains("quadwords") ? "QuadWords" : "Ergebnis";
     }
 
     private static String scope(RecordScope scope, Map<Long, String> displays) {

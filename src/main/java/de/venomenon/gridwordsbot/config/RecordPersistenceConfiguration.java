@@ -119,16 +119,25 @@ class RecordPersistenceConfiguration {
     @Bean RecordAnnouncementDeliveryMetrics recordAnnouncementDeliveryMetrics(MeterRegistry registry) {
         return new MicrometerRecordAnnouncementDeliveryMetrics(registry);
     }
+    @Bean(destroyMethod = "shutdown")
+    ScheduledExecutorService recordAnnouncementHeartbeatExecutor() {
+        return Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "record-announcement-heartbeat");
+            thread.setDaemon(true);
+            return thread;
+        });
+    }
     @Bean
     @ConditionalOnBean(RecordAnnouncementMessageGateway.class)
     RecordAnnouncementDeliveryCoordinator recordAnnouncementDeliveryCoordinator(
             RecordAnnouncementStore announcements, RecordEventStore events, PlayerStore players,
             RecordAnnouncementMessageGateway messages, Clock clock, RecordAnnouncementDeliveryMetrics metrics,
-            GridwordsBotProperties properties) {
+            ScheduledExecutorService recordAnnouncementHeartbeatExecutor, GridwordsBotProperties properties) {
         GridwordsBotProperties.Records records = properties.records();
         return new RecordAnnouncementDeliveryCoordinator(announcements, events, players, messages,
                 new RecordAnnouncementRenderer(), clock, records.announcementLeaseDuration(),
-                records.announcementInitialRetryBackoff(), records.announcementMaxRetryBackoff(),
+                records.announcementHeartbeatInterval(), records.announcementInitialRetryBackoff(),
+                records.announcementMaxRetryBackoff(), recordAnnouncementHeartbeatExecutor,
                 records.publicAnnouncementsEnabled(), metrics);
     }
     @Bean RecordLiveEvaluationCoordinator recordLiveEvaluationCoordinator(
