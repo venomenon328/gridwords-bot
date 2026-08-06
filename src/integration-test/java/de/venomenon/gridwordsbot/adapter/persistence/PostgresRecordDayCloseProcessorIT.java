@@ -240,6 +240,7 @@ class PostgresRecordDayCloseProcessorIT {
     private void seedSucceeded(PostgresRecordDayCloseStore work, LocalDate date, Instant claimedAt) {
         RecordDayCloseKey key = key(date);
         work.register(key);
+        // Register, claim and completion use one monotonic fixed-clock timeline.
         var claim = work.claim(key, new RecordLeaseClaimRequest(claimedAt, claimedAt.plusSeconds(60))).orElseThrow();
         assertThat(work.markSucceeded(key, claim.token(), claimedAt.plusSeconds(1))).isTrue();
     }
