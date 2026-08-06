@@ -404,13 +404,15 @@ Mindestens:
 
 ## Ziel
 
-Fehlende Tagesbedingungen werden logisch um 06:00 Uhr finalisiert. Neue Vortagsergebnisse sind danach nicht mehr zulässig; bestehende Ergebnisse bleiben korrigierbar.
+Fehlende Tagesbedingungen werden logisch um 06:00 Uhr finalisiert. Ab diesem Zeitpunkt ist jeder normale Nutzervorgang für ein Vortagsergebnis unzulässig, auch eine Korrektur, ein Retry, Replay oder Recovery eines zuvor begonnenen Vorgangs.
 
 ## Lieferumfang
 
 - präzisierte Zulässigkeitsregel:
   - vor 06:00 Uhr aktueller oder unmittelbar vorheriger Spieltag,
   - ab 06:00 Uhr nur aktueller Spieltag,
+- keine Ausnahme über Annahmezeitpunkt, bereits gespeicherten Ergebniszustand oder vor dem Cutoff begonnenen Verarbeitungsschritt,
+- vollständig terminale Vorgänge bleiben ohne weitere fachliche Verarbeitung idempotent; administrative Backfills und Reparaturen sind getrennte stille Wartungsvorgänge,
 - Cutoff unabhängig von tatsächlicher Scheduler-Ausführungszeit,
 - Day-Close-Auswertung aller durch fehlende Ergebnisse endenden positiven Serien,
 - Day-Close-Verlängerung der Serie ohne perfekten Tag,
@@ -427,7 +429,7 @@ Mindestens:
 
 - Vortag 05:59:59 zulässig, 06:00:00 nicht zulässig,
 - aktueller Spieltag bleibt ab 06:00 zulässig,
-- bestehende Vortagskorrektur bleibt möglich,
+- Vortagskorrektur, Retry, Replay und Recovery sind ab 06:00:00 ebenso unzulässig wie eine Neuerfassung,
 - verspäteter Scheduler verschiebt den fachlichen Cutoff nicht,
 - fehlendes Ergebnis beendet passende Serien genau einmal,
 - mehrere betroffene Serien desselben Spielers werden aggregierbar,

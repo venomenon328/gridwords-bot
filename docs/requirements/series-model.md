@@ -107,7 +107,7 @@ Ein am aktuellen Tag noch fehlendes Ergebnis beendet eine bis gestern laufende S
 
 Nach Ablauf des Spieltags ist eine fehlende Bedingung eine echte Lücke und beendet die betroffene Serie.
 
-Zulässige Vortagsnachträge lösen eine vollständige Neuberechnung aller betroffenen persönlichen und gemeinsamen Serien aus.
+Nur bis 05:59:59 `Europe/Berlin` zulässige Vortagsnachträge lösen eine vollständige Neuberechnung aller betroffenen persönlichen und gemeinsamen Serien aus. Ab 06:00:00 ist kein normaler Vortagsvorgang einschließlich Korrektur oder Recovery zulässig.
 
 ## 6. Eindeutige Seriennamen
 

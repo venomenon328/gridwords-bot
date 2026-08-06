@@ -11,6 +11,7 @@ import de.venomenon.gridwordsbot.port.out.ChannelMessageRetirementStore;
 import de.venomenon.gridwordsbot.port.out.DailyStatusStore;
 import de.venomenon.gridwordsbot.port.out.GameResultStore;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
+import de.venomenon.gridwordsbot.port.in.RecordDayCloseUseCase;
 import java.time.Clock;
 import net.dv8tion.jda.api.JDA;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -73,12 +74,14 @@ class DailyStatusReminderConfiguration {
             DailyStatusRefreshService status,
             ChannelMessageRetirementService retirement,
             DailyStatusStore deliveries,
+            org.springframework.beans.factory.ObjectProvider<RecordDayCloseUseCase> recordDayClose,
             Clock clock,
             GridwordsBotProperties properties) {
         return new DailyChannelCleanupService(
                 status,
                 retirement,
                 deliveries,
+                recordDayClose.getIfAvailable(() -> (guildId, date) -> 0),
                 clock,
                 properties.schedule().timeZone(),
                 properties.schedule().dailyCleanup(),

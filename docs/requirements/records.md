@@ -428,12 +428,14 @@ Die ältere pauschale Regel „heutiger oder unmittelbar vorheriger Spieltag“ 
 - Ergebnisse für den aktuellen oder den unmittelbar vorherigen Spieltag sind zulässig.
 
 ab 06:00 Europe/Berlin
-- neue Ergebnisse sind nur für den aktuellen Spieltag zulässig.
+- Ergebnisse sind nur für den aktuellen Spieltag zulässig.
 ```
 
 Der Cutoff folgt der fachlichen lokalen Uhrzeit und nicht dem tatsächlichen Startzeitpunkt des Scheduler-Jobs.
 
-Korrekturen eines bereits vorhandenen kanonischen Ergebnisses bleiben davon getrennt und dürfen auch nach dem Tagesabschluss den fachlichen Zustand berichtigen. Sie lösen dann Rekord- und Meldungs-Reconciliation aus.
+Die Regel gilt für **jeden normalen Nutzervorgang** eines Vortagsergebnisses: Neuerfassung, Korrektur, Retry, Replay und Recovery eines zuvor begonnenen Vorgangs. Weder der Annahmezeitpunkt, ein bereits gespeicherter Ergebniszustand noch ein vor 06:00 Uhr gestarteter Verarbeitungsschritt begründen ab 06:00 Uhr eine Ausnahme. Ein seltener, unmittelbar vor 06:00 Uhr begonnener Vorgang darf deshalb nach dem Cutoff abgelehnt oder unvollständig stehen bleiben.
+
+Nur ein vollständig mit der abschließenden Zustandsmaschine abgeschlossener Vorgang bleibt als terminale Idempotenz ohne weitere fachliche Verarbeitung wiederholbar. Administrative Backfills und administrative Reparaturen sind davon getrennte, ausdrücklich angestoßene stille Wartungsvorgänge; sie sind keine normalen Nutzervorgänge und erzeugen keine öffentliche Rekordmeldung.
 
 ---
 
@@ -460,7 +462,7 @@ Importe, Backfills, unveränderte Replays und technische Wiederverarbeitung aktu
 
 Rekordmeldungen sind synchronisierte Discord-Projektionen des derzeit gültigen fachlichen Zustands.
 
-Nach einer Ergebniskorrektur oder Teilnahmeberichtigung werden alle betroffenen Definitionen und Serienläufe neu abgeleitet. Anschließend gilt:
+Nach einer innerhalb der Zulässigkeitsgrenze aus Abschnitt 12 angenommenen Ergebniskorrektur oder Teilnahmeberichtigung werden alle betroffenen Definitionen und Serienläufe neu abgeleitet. Anschließend gilt:
 
 | Gewünschter Zustand | Discord-Aktion |
 |---|---|
@@ -476,7 +478,7 @@ Historische Rekordereignisse bleiben auditierbar und werden bei fachlicher Entwe
 
 ### 14.1 Abgrenzung normaler Korrekturen
 
-Eine normale Korrektur im kanonischen Ergebnislebenszyklus darf neue Meldungen erzeugen. Administrative historische Reparaturen, Importe und Backfills berichtigen dagegen nur den Zustand und bleiben öffentlich still.
+Eine normale Korrektur im kanonischen Ergebnislebenszyklus darf innerhalb der Grenze aus Abschnitt 12 neue Meldungen erzeugen. Administrative historische Reparaturen, Importe und Backfills berichtigen dagegen nur den Zustand und bleiben öffentlich still.
 
 ### 14.2 Beispiele
 
@@ -729,8 +731,8 @@ Nicht Bestandteil von Inkrement 12 sind:
 
 ### 22.4 Reconciliation und Betrieb
 
-31. Wird ein serienbeendendes `X` zu gelöst korrigiert, wird die Abschlussmeldung gelöscht oder angepasst.
-32. Wird ein rekordverlängerndes Ergebnis zu `X` korrigiert, wird die Überschreitungsmeldung gelöscht oder reduziert.
+31. Wird ein serienbeendendes `X` innerhalb der Zulässigkeitsgrenze zu gelöst korrigiert, wird die Abschlussmeldung gelöscht oder angepasst.
+32. Wird ein rekordverlängerndes Ergebnis innerhalb der Zulässigkeitsgrenze zu `X` korrigiert, wird die Überschreitungsmeldung gelöscht oder reduziert.
 33. Konkurrenz auf demselben Rekordzustand verliert keine bessere Aktualisierung.
 34. Retry und Restart erzeugen keine doppelte Discord-Meldung.
 35. Unklarer Discord-Ausgang wird über persistierten Delivery-Zustand reconciled.

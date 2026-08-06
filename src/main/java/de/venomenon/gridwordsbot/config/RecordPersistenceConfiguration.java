@@ -4,6 +4,7 @@ import de.venomenon.gridwordsbot.adapter.persistence.PostgresRecordAnnouncementS
 import de.venomenon.gridwordsbot.adapter.persistence.PostgresRecordBootstrapStore;
 import de.venomenon.gridwordsbot.adapter.persistence.PostgresRecordEventStore;
 import de.venomenon.gridwordsbot.adapter.persistence.PostgresRecordLiveEvaluationStore;
+import de.venomenon.gridwordsbot.adapter.persistence.PostgresRecordDayCloseStore;
 import de.venomenon.gridwordsbot.adapter.persistence.PostgresRecordStateStore;
 import de.venomenon.gridwordsbot.adapter.persistence.PostgresRecordHistoryQuery;
 import de.venomenon.gridwordsbot.adapter.persistence.PostgresRecordLiveHistoryQuery;
@@ -11,6 +12,7 @@ import de.venomenon.gridwordsbot.port.out.RecordAnnouncementStore;
 import de.venomenon.gridwordsbot.port.out.RecordBootstrapStore;
 import de.venomenon.gridwordsbot.port.out.RecordEventStore;
 import de.venomenon.gridwordsbot.port.out.RecordLiveEvaluationStore;
+import de.venomenon.gridwordsbot.port.out.RecordDayCloseStore;
 import de.venomenon.gridwordsbot.port.out.RecordStateStore;
 import de.venomenon.gridwordsbot.port.out.RecordHistoryQuery;
 import de.venomenon.gridwordsbot.port.out.RecordLiveHistoryQuery;
@@ -21,6 +23,8 @@ import de.venomenon.gridwordsbot.application.record.RecordStateReadService;
 import de.venomenon.gridwordsbot.application.record.RecordBootstrapReadService;
 import de.venomenon.gridwordsbot.application.record.RecordLiveEvaluationProcessor;
 import de.venomenon.gridwordsbot.application.record.RecordLiveEvaluationCoordinator;
+import de.venomenon.gridwordsbot.application.record.RecordDayCloseService;
+import de.venomenon.gridwordsbot.port.in.RecordDayCloseUseCase;
 import de.venomenon.gridwordsbot.application.record.RecordLiveEvaluationMetrics;
 import de.venomenon.gridwordsbot.adapter.observability.MicrometerRecordBootstrapMetrics;
 import de.venomenon.gridwordsbot.adapter.observability.MicrometerRecordLiveEvaluationMetrics;
@@ -47,6 +51,9 @@ class RecordPersistenceConfiguration {
     @Bean RecordBootstrapStore recordBootstrapStore(JdbcTemplate jdbc, Clock clock) { return new PostgresRecordBootstrapStore(jdbc, clock); }
     @Bean RecordLiveEvaluationStore recordLiveEvaluationStore(JdbcTemplate jdbc, Clock clock) {
         return new PostgresRecordLiveEvaluationStore(jdbc, clock);
+    }
+    @Bean RecordDayCloseStore recordDayCloseStore(JdbcTemplate jdbc, Clock clock) {
+        return new PostgresRecordDayCloseStore(jdbc, clock);
     }
     @Bean RecordAnnouncementStore recordAnnouncementStore(JdbcTemplate jdbc, Clock clock) { return new PostgresRecordAnnouncementStore(jdbc, clock); }
     @Bean RecordHistoryQuery recordHistoryQuery(JdbcTemplate jdbc) { return new PostgresRecordHistoryQuery(jdbc); }
@@ -105,6 +112,20 @@ class RecordPersistenceConfiguration {
                 records.liveEvaluationLeaseDuration(), records.liveEvaluationHeartbeatInterval(),
                 records.liveEvaluationInitialRetryBackoff(), records.liveEvaluationMaxRetryBackoff(),
                 recordLiveEvaluationHeartbeatExecutor, metrics);
+    }
+    @Bean RecordDayCloseUseCase recordDayCloseUseCase(
+            RecordDayCloseStore work,
+            RecordHistoryQuery history,
+            RecordBootstrapReadService bootstrap,
+            RecordStateService states,
+            RecordEventStore events,
+            RecordAnnouncementStore announcements,
+            RecordTransactionRunner transactions,
+            RecordDefinitionCatalog catalog,
+            Clock clock,
+            GridwordsBotProperties properties) {
+        return new RecordDayCloseService(work, history, bootstrap, states, events, announcements, transactions,
+                catalog, clock, properties.discord().channelId());
     }
     @Bean ApplicationRunner recordBootstrapStartupRunner(RecordBootstrapCoordinator coordinator, GridwordsBotProperties properties) {
         return arguments -> coordinator.run(properties.discord().guildId());

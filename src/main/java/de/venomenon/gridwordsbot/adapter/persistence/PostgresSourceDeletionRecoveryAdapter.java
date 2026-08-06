@@ -5,6 +5,7 @@ import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.OptionalLong;
+import java.util.List;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -55,5 +56,29 @@ public class PostgresSourceDeletionRecoveryAdapter implements SourceDeletionReco
             return jdbc.update(BASE_UPDATE + " AND r.id = ?", now, gameResultId.getAsLong());
         }
         return jdbc.update(BASE_UPDATE, now);
+    }
+
+    @Override
+    public List<Long> findPermanentlyFailedResultIds() {
+        return jdbc.queryForList("""
+                SELECT DISTINCT s.game_result_id
+                FROM submission s
+                JOIN game_result r ON r.id = s.game_result_id
+                WHERE s.source_delete_failure_class = 'PERMANENT'
+                  AND s.processing_state IN ('CANONICAL_MESSAGE_PUBLISHED', 'SUPERSEDED')
+                  AND r.canonical_message_id IS NOT NULL
+                  AND r.canonical_message_id <> s.source_message_id
+                  AND (
+                    r.game_type = 'GRIDWORDS'
+                    OR (
+                        r.game_type = 'QUADWORDS'
+                        AND r.quadwords_top_left_board IS NOT NULL
+                        AND r.quadwords_top_right_board IS NOT NULL
+                        AND r.quadwords_bottom_left_board IS NOT NULL
+                        AND r.quadwords_bottom_right_board IS NOT NULL
+                    )
+                  )
+                ORDER BY s.game_result_id
+                """, Long.class);
     }
 }

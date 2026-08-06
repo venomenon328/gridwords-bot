@@ -93,7 +93,7 @@ Regeln:
 
 ### 4.1 Automatische Aktivierung durch Share
 
-Ein vollständig gültiges Share aktiviert den Spieler ab dessen fachlichem `game_date`, sofern für diesen Tag kein Teilnahmezeitraum besteht. Das gilt für heute und den zulässigen Vortag. Eine solche neue oder erneute Aktivierung verwendet Reminder-Opt-out-Semantik: Reminder sind zunächst an, bis der Nutzer sie ausdrücklich ausschaltet.
+Ein vollständig gültiges Share aktiviert den Spieler ab dessen fachlichem `game_date`, sofern für diesen Tag kein Teilnahmezeitraum besteht. Das gilt für heute und nur bis 05:59:59 `Europe/Berlin` für den zulässigen Vortag. Ab 06:00:00 kann ein normaler Vortagsvorgang auch über Korrektur, Retry, Replay oder Recovery keine Aktivierung auslösen. Eine solche neue oder erneute Aktivierung verwendet Reminder-Opt-out-Semantik: Reminder sind zunächst an, bis der Nutzer sie ausdrücklich ausschaltet.
 
 ### 4.2 Self-Service-Commands
 

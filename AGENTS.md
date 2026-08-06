@@ -81,7 +81,7 @@ Jeder Schritt muss nach einem Absturz oder erneut zugestellten Event gefahrlos f
 - Fachliche Zeitzone ist `Europe/Berlin`.
 - Keine Verwendung von `LocalDate.now()` oder `Instant.now()` in fachlichem Code; `Clock` injizieren.
 - Das Datum im Share-Ergebnis ist der Spieltag.
-- Zwischen 00:00 und 05:59:59 Uhr sind der aktuelle und der unmittelbar vorherige Spieltag für neue Ergebnisse zulässig; ab 06:00 Uhr nur noch der aktuelle Spieltag. Bestehende Ergebnisse bleiben nach den Korrekturregeln berichtigbar.
+- Zwischen 00:00 und 05:59:59 Uhr sind der aktuelle und der unmittelbar vorherige Spieltag zulässig; ab 06:00 Uhr nur noch der aktuelle Spieltag. Das gilt für jeden normalen Nutzervorgang einschließlich Korrektur, Retry, Replay und Recovery eines begonnenen Vorgangs; Annahmezeitpunkt und bestehender Ergebniszustand bilden keine Ausnahme. Vollständig terminale Vorgänge bleiben idempotent; administrative Backfills und Reparaturen sind getrennte stille Wartungsvorgänge.
 - Der 06:00-Cutoff folgt der fachlichen lokalen Uhrzeit und nicht dem tatsächlichen Laufzeitpunkt des Cleanup-Schedulers.
 - Wochen- und Monatsberichte verwenden ausschließlich vollständig abgeschlossene Kalenderperioden und einen expliziten Periodenend-Stichtag.
 

@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.venomenon.gridwordsbot.application.status.DailyStatusRefreshService;
+import de.venomenon.gridwordsbot.port.in.RecordDayCloseUseCase;
 import de.venomenon.gridwordsbot.port.out.DailyStatusStore;
 import java.time.Clock;
 import java.time.Instant;
@@ -58,6 +59,25 @@ class DailyChannelCleanupServiceTest {
         order.verify(fixture.deliveries).expireOpenRemindersBefore(11L, 12L, TODAY);
         order.verify(fixture.retirement).retireReminderMessagesBefore(TODAY);
         order.verify(fixture.status).reconcile(TODAY, true);
+    }
+
+    @Test
+    void registersRecordDayCloseBeforeAnyFallibleStatusOrDiscordCleanup() {
+        DailyStatusRefreshService status = mock(DailyStatusRefreshService.class);
+        ChannelMessageRetirementService retirement = mock(ChannelMessageRetirementService.class);
+        DailyStatusStore deliveries = mock(DailyStatusStore.class);
+        RecordDayCloseUseCase dayClose = mock(RecordDayCloseUseCase.class);
+        when(status.reconcile(TODAY.minusDays(1), true)).thenReturn(false);
+        DailyChannelCleanupService service = new DailyChannelCleanupService(status, retirement, deliveries, dayClose,
+                Clock.fixed(Instant.parse("2026-07-31T04:00:00Z"), ZoneOffset.UTC), BERLIN,
+                LocalTime.of(6, 0), 11L, 12L);
+
+        service.reconcile();
+
+        InOrder order = inOrder(dayClose, status);
+        order.verify(dayClose).reconcileThrough(11L, TODAY.minusDays(1));
+        order.verify(status).reconcile(TODAY.minusDays(1), true);
+        verify(retirement, never()).retireResultMessagesBefore(TODAY);
     }
 
     private static Fixture fixture(String instant) {

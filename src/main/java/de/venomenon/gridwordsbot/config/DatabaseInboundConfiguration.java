@@ -84,6 +84,7 @@ class DatabaseInboundConfiguration {
                 new QuadWordsImageParser(),
                 clock,
                 properties.schedule().timeZone(),
+                properties.schedule().dailyCleanup(),
                 players,
                 submissions,
                 sourceMessageId -> {
@@ -368,7 +369,8 @@ class DatabaseInboundConfiguration {
                     if (deletion != null) {
                         deletion.reconcileAfterCanonicalPublication(sourceMessageId);
                     }
-                }, excuses.getIfAvailable(CanonicalGridWordsPublicationService::noExcuses))
+                }, excuses.getIfAvailable(CanonicalGridWordsPublicationService::noExcuses),
+                properties.schedule().dailyCleanup())
                 .withRetirementFence(retirement);
     }
 
@@ -379,13 +381,18 @@ class DatabaseInboundConfiguration {
             SourceMessageDeletionGateway deletionGateway,
             Clock clock,
             PublicationRetryScheduler retries,
-            ObjectProvider<SourceDeletionRecoveryStore> recovery) {
+            ObjectProvider<SourceDeletionRecoveryStore> recovery,
+            GameResultStore results,
+            GridwordsBotProperties properties) {
         return new GridWordsSourceDeletionService(
                 submissions,
                 deletionGateway,
                 clock,
                 retries,
-                recovery.getIfAvailable(() -> ignored -> 0));
+                recovery.getIfAvailable(() -> ignored -> 0),
+                results,
+                properties.schedule().timeZone(),
+                properties.schedule().dailyCleanup());
     }
 
     @Bean
