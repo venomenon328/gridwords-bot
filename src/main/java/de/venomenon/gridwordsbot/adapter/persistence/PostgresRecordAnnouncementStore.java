@@ -43,8 +43,40 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
         Optional<RecordAnnouncementSnapshot> existing = find(key);
         if (existing.isPresent()) {
             RecordAnnouncementSnapshot snapshot = existing.orElseThrow();
-            if (snapshot.state() == RecordWorkState.EXTERNALLY_REMOVED
-                    || sameRegistration(snapshot.registration(), registration)) {
+            if (snapshot.state() == RecordWorkState.EXTERNALLY_REMOVED) {
+                // A consciously removed Discord message is never re-opened,
+                // but its persisted fact set still has to mirror the current
+                // canonical audit facts for later reconciliation and /records.
+                if (!sameRegistration(snapshot.registration(), registration)) {
+                    int updated = jdbc.update("""
+                            UPDATE record_announcement
+                            SET subject_type=?,subject_key=?,announcement_phase=?,desired_projection=?,
+                                renderer_version=?,content_fingerprint=?,updated_at=?
+                            WHERE guild_id=? AND channel_id=? AND idempotency_key=?
+                              AND delivery_state='EXTERNALLY_REMOVED'
+                            """,
+                            registration.subject().type().name(), registration.subject().key(),
+                            registration.phase().name(), registration.desiredProjection().name(),
+                            registration.rendererVersion(), registration.contentFingerprint(), RecordJdbcMapping.utc(now),
+                            key.guildId(), key.channelId(), key.idempotencyKey());
+                    if (updated != 1) {
+                        RecordAnnouncementSnapshot concurrent = find(key).orElseThrow(() ->
+                                new IllegalStateException("record announcement disappeared during external reconciliation"));
+                        if (concurrent.state() != RecordWorkState.EXTERNALLY_REMOVED) {
+                            throw new IllegalStateException(
+                                    "record announcement left EXTERNALLY_REMOVED during reconciliation");
+                        }
+                        if (!sameRegistration(concurrent.registration(), registration)) {
+                            throw new IllegalStateException(
+                                    "record announcement external reconciliation made no progress");
+                        }
+                        return concurrent;
+                    }
+                    replaceFacts(id(key), registration.eventIds());
+                }
+                return find(key).orElseThrow();
+            }
+            if (sameRegistration(snapshot.registration(), registration)) {
                 return snapshot;
             }
             if (snapshot.state() == RecordWorkState.CLAIMED) {
@@ -71,7 +103,13 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                     key.channelId(),
                     key.idempotencyKey());
             if (updated != 1) {
-                throw new RecordAnnouncementClaimConflictException();
+                RecordAnnouncementSnapshot concurrent = find(key).orElseThrow(() ->
+                        new IllegalStateException("record announcement disappeared during reconciliation"));
+                if (concurrent.state() == RecordWorkState.CLAIMED
+                        || concurrent.state() == RecordWorkState.EXTERNALLY_REMOVED) {
+                    throw new RecordAnnouncementClaimConflictException();
+                }
+                throw new IllegalStateException("record announcement update made no progress");
             }
             replaceFacts(id(key), registration.eventIds());
             return find(key).orElseThrow();
@@ -98,7 +136,14 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                 RecordJdbcMapping.utc(now),
                 RecordJdbcMapping.utc(now));
         if (inserted == 0) {
-            return registerOrUpdate(registration);
+            RecordAnnouncementSnapshot concurrent = find(key).orElseThrow(() ->
+                    new IllegalStateException("conflicting record announcement is missing"));
+            if (sameRegistration(concurrent.registration(), registration)) return concurrent;
+            if (concurrent.state() == RecordWorkState.CLAIMED
+                    || concurrent.state() == RecordWorkState.EXTERNALLY_REMOVED) {
+                throw new RecordAnnouncementClaimConflictException();
+            }
+            throw new IllegalStateException("record announcement insert conflict requires a fresh reconciliation");
         }
         replaceFacts(id(key), registration.eventIds());
         return find(key).orElseThrow();
@@ -118,6 +163,17 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                         key.idempotencyKey())
                 .stream()
                 .findFirst();
+    }
+
+    @Override
+    public List<RecordAnnouncementSnapshot> findByEventId(UUID eventId) {
+        java.util.Objects.requireNonNull(eventId, "eventId");
+        return jdbc.query("""
+                SELECT announcement.* FROM record_announcement announcement
+                JOIN record_announcement_event fact ON fact.announcement_id=announcement.id
+                WHERE fact.event_id=?
+                ORDER BY announcement.id
+                """, (rs, row) -> snapshot(rs), eventId);
     }
 
     @Override

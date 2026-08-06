@@ -13,6 +13,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -43,6 +44,62 @@ public final class PostgresRecordEventStore implements RecordEventStore {
     @Override public List<RecordEventSnapshot> findByTriggerKey(long guildId,String triggerKey) {
         if(guildId<=0) throw new IllegalArgumentException("guildId must be positive"); if(triggerKey==null||triggerKey.isBlank()) throw new IllegalArgumentException("triggerKey is invalid");
         return jdbc.query(select()+" WHERE guild_id=? AND trigger_key=? ORDER BY created_at,event_id",(rs,row)->snapshot(rs),guildId,triggerKey);
+    }
+    @Override public List<RecordEventSnapshot> findBySource(long guildId, de.venomenon.gridwordsbot.domain.record.RecordSourceReference source) {
+        if (guildId <= 0) throw new IllegalArgumentException("guildId must be positive");
+        java.util.Objects.requireNonNull(source, "source");
+        return jdbc.query(select()+" WHERE guild_id=? AND new_source_type=? AND new_source_key=? ORDER BY created_at,event_id",
+                (rs,row)->snapshot(rs), guildId, source.sourceType().name(), RecordJdbcMapping.sourceKey(source));
+    }
+    @Override public List<RecordEventSnapshot> findByResultId(long guildId, long resultId) {
+        if (guildId <= 0 || resultId <= 0) throw new IllegalArgumentException("guildId and resultId must be positive");
+        return jdbc.query(select()+" WHERE guild_id=? AND new_source_type='GAME_RESULT' AND split_part(new_source_key,':',1)=? ORDER BY created_at,event_id",
+                (rs,row)->snapshot(rs), guildId, Long.toString(resultId));
+    }
+
+    @Override
+    public List<RecordEventSnapshot> findResultFamily(
+            long guildId, List<RecordStateKey> families, LocalDate affectedFrom) {
+        return findFamily(guildId, families, affectedFrom, "GAME_RESULT",
+                "split_part(new_source_key, ':', 5)::date");
+    }
+
+    @Override
+    public List<RecordEventSnapshot> findStreakFamily(
+            long guildId, List<RecordStateKey> families, LocalDate affectedFrom) {
+        return findFamily(guildId, families, affectedFrom, "STREAK_RUN", "new_streak_end_date");
+    }
+
+    private List<RecordEventSnapshot> findFamily(
+            long guildId,
+            List<RecordStateKey> families,
+            LocalDate affectedFrom,
+            String sourceType,
+            String sourceDateExpression) {
+        if (guildId <= 0) throw new IllegalArgumentException("guildId must be positive");
+        java.util.Objects.requireNonNull(families, "families");
+        java.util.Objects.requireNonNull(affectedFrom, "affectedFrom");
+        List<RecordStateKey> keys = families.stream().distinct().toList();
+        if (keys.isEmpty()) return List.of();
+        if (keys.stream().anyMatch(key -> key.guildId() != guildId)) {
+            throw new IllegalArgumentException("event family belongs to another guild");
+        }
+        String predicates = keys.stream()
+                .map(ignored -> "(definition_key=? AND definition_version=? AND scope_type=? AND scope_key=?)")
+                .collect(java.util.stream.Collectors.joining(" OR "));
+        List<Object> parameters = new java.util.ArrayList<>();
+        parameters.add(guildId);
+        parameters.add(sourceType);
+        parameters.add(affectedFrom);
+        for (RecordStateKey key : keys) {
+            parameters.add(key.definitionKey().value());
+            parameters.add(key.definitionVersion().value());
+            parameters.add(key.scope().type().name());
+            parameters.add(key.scopeKey());
+        }
+        String sql = select() + " WHERE guild_id=? AND new_source_type=? AND event_type<>'RECORD_INITIALIZED'"
+                + " AND " + sourceDateExpression + ">=? AND (" + predicates + ") ORDER BY created_at,event_id";
+        return jdbc.query(sql, (rs, row) -> snapshot(rs), parameters.toArray());
     }
     @Override public boolean invalidate(UUID eventId,Instant invalidatedAt) {
         java.util.Objects.requireNonNull(eventId, "eventId"); java.util.Objects.requireNonNull(invalidatedAt, "invalidatedAt");

@@ -112,6 +112,33 @@ class PostgresRecordPersistenceStoreIT {
                 current.value().equals(better.value()) ? de.venomenon.gridwordsbot.domain.record.RecordStateUpdateResult.Status.UNCHANGED : de.venomenon.gridwordsbot.domain.record.RecordStateUpdateResult.Status.UPDATED);
         assertThat(states.update(new RecordStateUpdate(key, RecordLockVersion.initial(), first)).status()).isEqualTo(de.venomenon.gridwordsbot.domain.record.RecordStateUpdateResult.Status.VERSION_CONFLICT);
     }
+    @Test void liveStateWriterRetriesCasAndNeverRegressesToTheStaleWorseCandidate() throws Exception {
+        RecordStateKey key = stateKey();
+        states.initialize(key, write(4, Duration.ofSeconds(80)));
+        RecordTransactionRunner direct = new RecordTransactionRunner() {
+            @Override public <T> T inTransaction(java.util.function.Supplier<T> work) { return work.get(); }
+        };
+        RecordStateService service = new RecordStateService(states, events, direct, RecordDefinitionCatalog.recordsV1());
+        RecordBootstrapProjection.Candidate better = new RecordBootstrapProjection.Candidate(key, write(3, Duration.ofSeconds(70)));
+        RecordBootstrapProjection.Candidate best = new RecordBootstrapProjection.Candidate(key, write(2, Duration.ofSeconds(60)));
+
+        concurrently(() -> service.applyLiveCandidateWithinTransaction(better),
+                () -> service.applyLiveCandidateWithinTransaction(best));
+
+        assertThat(states.find(key).orElseThrow().value())
+                .isEqualTo(new AttemptsDurationRecordValue(2, Duration.ofSeconds(60)));
+    }
+    @Test void liveStateWriterDoesNotCreateAResultDependentBootstrapAnchor() {
+        RecordTransactionRunner direct = new RecordTransactionRunner() {
+            @Override public <T> T inTransaction(java.util.function.Supplier<T> work) { return work.get(); }
+        };
+        RecordStateService service = new RecordStateService(states, events, direct, RecordDefinitionCatalog.recordsV1());
+
+        assertThat(service.applyLiveCandidateWithinTransaction(
+                new RecordBootstrapProjection.Candidate(stateKey(), write(2, Duration.ofSeconds(60)))))
+                .isEqualTo(RecordStateService.RebuildResult.CREATED);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM record_event", Integer.class)).isZero();
+    }
     @Test void stateAndBootstrapAnchorRollbackTogetherInOneRealTransaction() {
         TransactionTemplate template = new TransactionTemplate(new DataSourceTransactionManager(jdbc.getDataSource()));
         RecordTransactionRunner transactions = new RecordTransactionRunner() {
@@ -221,6 +248,17 @@ class PostgresRecordPersistenceStoreIT {
         assertThat(announcements.markExternallyRemoved(key, removal.token(), NOW.plusSeconds(2))).isTrue();
         assertThat(announcements.find(key).orElseThrow().messages()).containsExactly(new RecordAnnouncementMessage(0,100), new RecordAnnouncementMessage(1,101));
         assertThat(announcements.registerOrUpdate(registration).state()).isEqualTo(de.venomenon.gridwordsbot.domain.record.RecordWorkState.EXTERNALLY_REMOVED);
+        UUID replacementFact = events.append(new RecordEventDraft(UUID.randomUUID(), "event:replacement", stateKey(),
+                RecordEventType.RESULT_RECORD_BROKEN, Optional.empty(), new AttemptsDurationRecordValue(1, Duration.ofSeconds(40)),
+                Optional.empty(), Optional.of(1L), Optional.empty(),
+                new RecordSourceReference.GameResult(3,0,1,GameType.GRIDWORDS,LocalDate.of(2026,8,6)),
+                "result:3:v0", RecordProcessingOrigin.NORMAL_CORRECTION, NOW)).snapshot().draft().eventId();
+        var reconciled = announcements.registerOrUpdate(new RecordAnnouncementRegistration(
+                key, RecordAnnouncementSubject.player(1), RecordAnnouncementPhase.LIVE_EVALUATION,
+                RecordAnnouncementProjection.EDIT, "records-renderer-v1", "d".repeat(64), List.of(event, replacementFact)));
+        assertThat(reconciled.state()).isEqualTo(de.venomenon.gridwordsbot.domain.record.RecordWorkState.EXTERNALLY_REMOVED);
+        assertThat(reconciled.registration().eventIds()).containsExactlyInAnyOrder(event, replacementFact);
+        assertThat(announcements.claim(key, request(NOW.plusSeconds(3), NOW.plusSeconds(13)))).isEmpty();
     }
     @Test void concurrentAnnouncementClaimsHaveOneWinnerAndStaleTokensAreFenced() throws Exception {
         UUID event = events.append(eventDraft()).snapshot().draft().eventId();

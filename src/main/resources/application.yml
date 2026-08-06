@@ -48,3 +48,9 @@ gridwords:
     bootstrap-poll-delay: ${RECORD_BOOTSTRAP_POLL_DELAY:PT1M}
     bootstrap-lease-duration: ${RECORD_BOOTSTRAP_LEASE_DURATION:PT2M}
     bootstrap-retry-backoff: ${RECORD_BOOTSTRAP_RETRY_BACKOFF:PT1M}
+    live-evaluation-enabled: ${RECORD_LIVE_EVALUATION_ENABLED:true}
+    live-evaluation-poll-delay: ${RECORD_LIVE_EVALUATION_POLL_DELAY:PT10S}
+    live-evaluation-lease-duration: ${RECORD_LIVE_EVALUATION_LEASE_DURATION:PT2M}
+    live-evaluation-heartbeat-interval: ${RECORD_LIVE_EVALUATION_HEARTBEAT_INTERVAL:PT30S}
+    live-evaluation-initial-retry-backoff: ${RECORD_LIVE_EVALUATION_INITIAL_RETRY_BACKOFF:PT10S}
+    live-evaluation-max-retry-backoff: ${RECORD_LIVE_EVALUATION_MAX_RETRY_BACKOFF:PT5M}
