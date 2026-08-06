@@ -120,11 +120,13 @@ class PostgresRecordAnnouncementDeliveryRecoveryIT {
             }));
 
             assertThat(firstClaimed.await(10, TimeUnit.SECONDS)).isTrue();
-            Optional<RecordAnnouncementClaim> second = secondTx.execute(status -> secondStore.claimNext(
-                    request(NOW, NOW.plusSeconds(60)), true));
-            assertThat(second).isEmpty();
-
-            releaseFirst.countDown();
+            try {
+                Optional<RecordAnnouncementClaim> second = secondTx.execute(status -> secondStore.claimNext(
+                        request(NOW, NOW.plusSeconds(60)), true));
+                assertThat(second).isEmpty();
+            } finally {
+                releaseFirst.countDown();
+            }
             assertThat(first.get(10, TimeUnit.SECONDS)).isPresent();
         }
 
