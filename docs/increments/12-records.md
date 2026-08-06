@@ -1,7 +1,7 @@
 # Inkrement 12 – Rekorde und Rekordmeldungen
 
-**Status:** fachlich und architektonisch vorbereitet; Umsetzung offen  
-**Stand:** 4. August 2026  
+**Status:** Umsetzung läuft; Pakete 12.1 bis 12.6 abgeschlossen  
+**Stand:** 6. August 2026  
 **Umbrella-Issue:** #58  
 **Fachliche Grundlage:** [`../requirements/records.md`](../requirements/records.md)  
 **Architekturentscheidung:** [ADR 0018](../adr/0018-record-state-events-and-reconciled-announcements.md)
@@ -96,7 +96,7 @@ Jedes Paket soll einen einzeln reviewbaren Pull Request bilden. Ein Paket darf n
 
 # Paket 12.1 – Rekorddomäne und Definitionskatalog
 
-**Status:** offen  
+**Status:** umgesetzt  
 **Empfohlener Branch:** `feature/12-1-record-domain`
 
 ## Ziel
@@ -147,7 +147,7 @@ Mindestens:
 
 # Paket 12.2 – Reiner Ergebnisrekord-Evaluator
 
-**Status:** offen  
+**Status:** umgesetzt  
 **Empfohlener Branch:** `feature/12-2-result-record-evaluator`
 
 ## Ziel
@@ -193,7 +193,7 @@ Mindestens:
 
 # Paket 12.3 – Serienlaufanalyse und Abschlussklassifikation
 
-**Status:** offen  
+**Status:** umgesetzt  
 **Empfohlener Branch:** `feature/12-3-record-series-analysis`
 
 ## Ziel
@@ -250,7 +250,7 @@ Mindestens:
 
 # Paket 12.4 – Persistenzschema und PostgreSQL-Adapter
 
-**Status:** offen  
+**Status:** umgesetzt  
 **Empfohlener Branch:** `feature/12-4-record-persistence`
 
 ## Ziel
@@ -301,7 +301,7 @@ Mindestens:
 
 # Paket 12.5 – Bootstrap und konkurenzsicherer Record-State-Service
 
-**Status:** offen  
+**Status:** umgesetzt  
 **Empfohlener Branch:** `feature/12-5-record-bootstrap-state`
 
 ## Ziel
@@ -348,7 +348,7 @@ Mindestens:
 
 # Paket 12.6 – Live-Integration für Submission und Korrektur
 
-**Status:** offen  
+**Status:** umgesetzt und abgenommen  
 **Empfohlener Branch:** `feature/12-6-record-live-evaluation`
 
 ## Ziel
