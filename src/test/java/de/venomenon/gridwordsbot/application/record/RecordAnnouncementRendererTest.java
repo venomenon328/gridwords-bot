@@ -176,14 +176,15 @@ class RecordAnnouncementRendererTest {
 
     private static RecordEventSnapshot resultEvent(int index) {
         UUID id = UUID.nameUUIDFromBytes(("page-event-" + index).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        long playerId = index + 100L;
         RecordSourceReference.GameResult source = new RecordSourceReference.GameResult(
-                index + 1L, 1, 7, GameType.GRIDWORDS, LocalDate.of(2026, 8, 6));
+                index + 1L, 1, playerId, GameType.GRIDWORDS, LocalDate.of(2026, 8, 6));
         RecordEventDraft draft = new RecordEventDraft(id, "page-event:" + index, new RecordStateKey(1,
                 new RecordDefinitionKey("result.gridwords.fastest-solution.personal"),
-                RecordDefinitionVersion.RECORDS_V1, new RecordScope.Personal(7)),
+                RecordDefinitionVersion.RECORDS_V1, new RecordScope.Personal(playerId)),
                 RecordEventType.RESULT_RECORD_BROKEN,
                 Optional.of(new DurationRecordValue(Duration.ofSeconds(120 + index))),
-                new DurationRecordValue(Duration.ofSeconds(60 + index)), Optional.of(5L), Optional.of(7L),
+                new DurationRecordValue(Duration.ofSeconds(60 + index)), Optional.of(5L), Optional.of(playerId),
                 Optional.of(source), source, "page-trigger", RecordProcessingOrigin.LIVE_SUBMISSION, NOW);
         return new RecordEventSnapshot(draft, RecordEventValidity.VALID, Optional.empty(), Optional.empty(), NOW, NOW);
     }
