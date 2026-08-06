@@ -50,8 +50,8 @@ public interface RecordsQueryUseCase {
             Category category,
             Scope scope,
             Optional<String> holderDisplay,
-            RecordValue value,
-            RecordSourceReference source,
+            Optional<RecordValue> value,
+            Optional<RecordSourceReference> source,
             boolean running) {
         public Entry {
             definitionKey = Objects.requireNonNull(definitionKey, "definitionKey");
@@ -60,8 +60,11 @@ public interface RecordsQueryUseCase {
             Objects.requireNonNull(category, "category");
             Objects.requireNonNull(scope, "scope");
             holderDisplay = Objects.requireNonNull(holderDisplay, "holderDisplay");
-            Objects.requireNonNull(value, "value");
-            Objects.requireNonNull(source, "source");
+            value = Objects.requireNonNull(value, "value");
+            source = Objects.requireNonNull(source, "source");
+            if (value.isPresent() != source.isPresent()) {
+                throw new IllegalArgumentException("value and source must either both be present or both absent");
+            }
         }
     }
 
