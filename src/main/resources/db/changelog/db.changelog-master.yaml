@@ -81,3 +81,7 @@ databaseChangeLog:
   - include:
       file: 021-record-day-close.sql
       relativeToChangelogFile: true
+
+  - include:
+      file: 022-record-announcement-delivery.sql
+      relativeToChangelogFile: true

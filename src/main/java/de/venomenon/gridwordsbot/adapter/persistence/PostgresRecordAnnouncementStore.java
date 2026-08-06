@@ -1,6 +1,7 @@
 package de.venomenon.gridwordsbot.adapter.persistence;
 
 import de.venomenon.gridwordsbot.domain.record.RecordAnnouncementKey;
+import de.venomenon.gridwordsbot.domain.record.RecordAnnouncementClaim;
 import de.venomenon.gridwordsbot.domain.record.RecordAnnouncementMessage;
 import de.venomenon.gridwordsbot.domain.record.RecordAnnouncementPhase;
 import de.venomenon.gridwordsbot.domain.record.RecordAnnouncementProjection;
@@ -28,10 +29,17 @@ import org.springframework.transaction.annotation.Transactional;
 public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore {
     private final JdbcTemplate jdbc;
     private final Clock clock;
+    private final boolean publicAnnouncementsEnabled;
 
     public PostgresRecordAnnouncementStore(JdbcTemplate jdbc, Clock clock) {
+        this(jdbc, clock, true);
+    }
+
+    public PostgresRecordAnnouncementStore(
+            JdbcTemplate jdbc, Clock clock, boolean publicAnnouncementsEnabled) {
         this.jdbc = java.util.Objects.requireNonNull(jdbc, "jdbc");
         this.clock = java.util.Objects.requireNonNull(clock, "clock");
+        this.publicAnnouncementsEnabled = publicAnnouncementsEnabled;
     }
 
     @Override
@@ -43,17 +51,18 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
         Optional<RecordAnnouncementSnapshot> existing = find(key);
         if (existing.isPresent()) {
             RecordAnnouncementSnapshot snapshot = existing.orElseThrow();
-            if (snapshot.state() == RecordWorkState.EXTERNALLY_REMOVED) {
-                // A consciously removed Discord message is never re-opened,
-                // but its persisted fact set still has to mirror the current
-                // canonical audit facts for later reconciliation and /records.
+            if (snapshot.state() == RecordWorkState.EXTERNALLY_REMOVED
+                    || snapshot.state() == RecordWorkState.SUPPRESSED) {
+                // External removal and disabled-mode suppression are terminal
+                // delivery decisions. Their current fact set must still track
+                // canonical reconciliation, but neither may open a backlog.
                 if (!sameRegistration(snapshot.registration(), registration)) {
                     int updated = jdbc.update("""
                             UPDATE record_announcement
                             SET subject_type=?,subject_key=?,announcement_phase=?,desired_projection=?,
                                 renderer_version=?,content_fingerprint=?,updated_at=?
                             WHERE guild_id=? AND channel_id=? AND idempotency_key=?
-                              AND delivery_state='EXTERNALLY_REMOVED'
+                              AND delivery_state IN ('EXTERNALLY_REMOVED','SUPPRESSED')
                             """,
                             registration.subject().type().name(), registration.subject().key(),
                             registration.phase().name(), registration.desiredProjection().name(),
@@ -61,14 +70,14 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                             key.guildId(), key.channelId(), key.idempotencyKey());
                     if (updated != 1) {
                         RecordAnnouncementSnapshot concurrent = find(key).orElseThrow(() ->
-                                new IllegalStateException("record announcement disappeared during external reconciliation"));
-                        if (concurrent.state() != RecordWorkState.EXTERNALLY_REMOVED) {
+                                new IllegalStateException("record announcement disappeared during terminal reconciliation"));
+                        if (concurrent.state() != snapshot.state()) {
                             throw new IllegalStateException(
-                                    "record announcement left EXTERNALLY_REMOVED during reconciliation");
+                                    "record announcement left terminal state during reconciliation");
                         }
                         if (!sameRegistration(concurrent.registration(), registration)) {
                             throw new IllegalStateException(
-                                    "record announcement external reconciliation made no progress");
+                                    "record announcement terminal reconciliation made no progress");
                         }
                         return concurrent;
                     }
@@ -88,7 +97,8 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                     SET subject_type=?,subject_key=?,announcement_phase=?,desired_projection=?,
                         renderer_version=?,content_fingerprint=?,delivery_state='OPEN',
                         claim_token=NULL,claim_until=NULL,next_retry_at=NULL,failure_category=NULL,
-                        safe_error=NULL,updated_at=?
+                        safe_error=NULL,changed_at=CASE WHEN ?='EDIT' THEN NULL ELSE changed_at END,
+                        updated_at=?
                     WHERE guild_id=? AND channel_id=? AND idempotency_key=?
                       AND delivery_state<>'CLAIMED' AND delivery_state<>'EXTERNALLY_REMOVED'
                     """,
@@ -98,6 +108,7 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                     registration.desiredProjection().name(),
                     registration.rendererVersion(),
                     registration.contentFingerprint(),
+                    registration.desiredProjection().name(),
                     RecordJdbcMapping.utc(now),
                     key.guildId(),
                     key.channelId(),
@@ -121,7 +132,7 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                     guild_id,channel_id,idempotency_key,subject_type,subject_key,announcement_phase,
                     desired_projection,renderer_version,content_fingerprint,delivery_state,
                     attempt_count,created_at,updated_at)
-                VALUES (?,?,?,?,?,?,?,?,?,'OPEN',0,?,?)
+                VALUES (?,?,?,?,?,?,?,?,?,?,0,?,?)
                 ON CONFLICT (guild_id,channel_id,idempotency_key) DO NOTHING
                 """,
                 key.guildId(),
@@ -133,6 +144,8 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                 registration.desiredProjection().name(),
                 registration.rendererVersion(),
                 registration.contentFingerprint(),
+                publicAnnouncementsEnabled || registration.desiredProjection() != RecordAnnouncementProjection.CREATE
+                        ? "OPEN" : "SUPPRESSED",
                 RecordJdbcMapping.utc(now),
                 RecordJdbcMapping.utc(now));
         if (inserted == 0) {
@@ -140,7 +153,8 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                     new IllegalStateException("conflicting record announcement is missing"));
             if (sameRegistration(concurrent.registration(), registration)) return concurrent;
             if (concurrent.state() == RecordWorkState.CLAIMED
-                    || concurrent.state() == RecordWorkState.EXTERNALLY_REMOVED) {
+                    || concurrent.state() == RecordWorkState.EXTERNALLY_REMOVED
+                    || concurrent.state() == RecordWorkState.SUPPRESSED) {
                 throw new RecordAnnouncementClaimConflictException();
             }
             throw new IllegalStateException("record announcement insert conflict requires a fresh reconciliation");
@@ -204,6 +218,41 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                         RecordJdbcMapping.utc(request.claimedAt()))
                 .stream()
                 .findFirst();
+    }
+
+    @Override
+    @Transactional
+    public Optional<RecordAnnouncementClaim> claimNext(
+            RecordLeaseClaimRequest request, boolean deliveryEnabled) {
+        UUID token = UUID.randomUUID();
+        return jdbc.query("""
+                WITH candidate AS (
+                    SELECT id FROM record_announcement
+                    WHERE (delivery_state='OPEN'
+                        OR (delivery_state='RETRYABLE' AND next_retry_at<=?)
+                        OR (delivery_state='CLAIMED' AND claim_until<=?)
+                        OR (delivery_state='SYNCHRONIZED' AND published_at IS NOT NULL AND deleted_at IS NULL))
+                      AND (? OR published_at IS NOT NULL OR desired_projection='DELETE'
+                           OR (desired_projection='CREATE' AND published_at IS NULL AND attempt_count>0))
+                    ORDER BY updated_at, guild_id, channel_id, idempotency_key
+                    FOR UPDATE SKIP LOCKED
+                    LIMIT 1
+                )
+                UPDATE record_announcement announcement
+                SET delivery_state='CLAIMED',claim_token=?,claim_until=?,next_retry_at=NULL,
+                    attempt_count=attempt_count+1,updated_at=?
+                FROM candidate
+                WHERE announcement.id=candidate.id
+                RETURNING announcement.guild_id,announcement.channel_id,announcement.idempotency_key,
+                    announcement.claim_token,announcement.claim_until,announcement.attempt_count
+                """, (rs, row) -> new RecordAnnouncementClaim(
+                        new RecordAnnouncementKey(rs.getLong("guild_id"), rs.getLong("channel_id"),
+                                rs.getString("idempotency_key")),
+                        rs.getObject("claim_token", UUID.class), RecordJdbcMapping.instant(rs, "claim_until"),
+                        rs.getInt("attempt_count")),
+                RecordJdbcMapping.utc(request.claimedAt()), RecordJdbcMapping.utc(request.claimedAt()),
+                deliveryEnabled, token, RecordJdbcMapping.utc(request.leaseUntil()),
+                RecordJdbcMapping.utc(request.claimedAt())).stream().findFirst();
     }
 
     @Override
@@ -335,6 +384,32 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                         token,
                         RecordJdbcMapping.utc(now))
                 == 1;
+    }
+
+    @Override
+    public boolean markSuppressed(RecordAnnouncementKey key, UUID token, Instant suppressedAt) {
+        return jdbc.update("""
+                UPDATE record_announcement
+                SET delivery_state='SUPPRESSED',claim_token=NULL,claim_until=NULL,next_retry_at=NULL,
+                    failure_category=NULL,safe_error=NULL,updated_at=?
+                WHERE guild_id=? AND channel_id=? AND idempotency_key=?
+                  AND delivery_state='CLAIMED' AND claim_token=? AND claim_until>?
+                  AND published_at IS NULL AND desired_projection='CREATE'
+                """, RecordJdbcMapping.utc(suppressedAt), key.guildId(), key.channelId(), key.idempotencyKey(),
+                token, RecordJdbcMapping.utc(clock.instant())) == 1;
+    }
+
+    @Override
+    public int suppressPendingCreates(Instant suppressedAt) {
+        return jdbc.update("""
+                UPDATE record_announcement announcement
+                SET delivery_state='SUPPRESSED',claim_token=NULL,claim_until=NULL,next_retry_at=NULL,
+                    failure_category=NULL,safe_error=NULL,updated_at=?
+                WHERE delivery_state='OPEN' AND published_at IS NULL AND desired_projection='CREATE'
+                  AND attempt_count=0
+                  AND NOT EXISTS (
+                      SELECT 1 FROM record_announcement_message message WHERE message.announcement_id=announcement.id)
+                """, RecordJdbcMapping.utc(suppressedAt));
     }
 
     private boolean failure(

@@ -54,3 +54,9 @@ gridwords:
     live-evaluation-heartbeat-interval: ${RECORD_LIVE_EVALUATION_HEARTBEAT_INTERVAL:PT30S}
     live-evaluation-initial-retry-backoff: ${RECORD_LIVE_EVALUATION_INITIAL_RETRY_BACKOFF:PT10S}
     live-evaluation-max-retry-backoff: ${RECORD_LIVE_EVALUATION_MAX_RETRY_BACKOFF:PT5M}
+    public-announcements-enabled: ${RECORD_PUBLIC_ANNOUNCEMENTS_ENABLED:false}
+    announcement-poll-delay: ${RECORD_ANNOUNCEMENT_POLL_DELAY:PT10S}
+    announcement-lease-duration: ${RECORD_ANNOUNCEMENT_LEASE_DURATION:PT2M}
+    announcement-heartbeat-interval: ${RECORD_ANNOUNCEMENT_HEARTBEAT_INTERVAL:PT30S}
+    announcement-initial-retry-backoff: ${RECORD_ANNOUNCEMENT_INITIAL_RETRY_BACKOFF:PT10S}
+    announcement-max-retry-backoff: ${RECORD_ANNOUNCEMENT_MAX_RETRY_BACKOFF:PT5M}

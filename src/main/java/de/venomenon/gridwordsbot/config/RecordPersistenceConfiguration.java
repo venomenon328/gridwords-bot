@@ -28,8 +28,14 @@ import de.venomenon.gridwordsbot.port.in.RecordDayCloseUseCase;
 import de.venomenon.gridwordsbot.application.record.RecordLiveEvaluationMetrics;
 import de.venomenon.gridwordsbot.adapter.observability.MicrometerRecordBootstrapMetrics;
 import de.venomenon.gridwordsbot.adapter.observability.MicrometerRecordLiveEvaluationMetrics;
+import de.venomenon.gridwordsbot.adapter.observability.MicrometerRecordAnnouncementDeliveryMetrics;
 import de.venomenon.gridwordsbot.port.out.RecordBootstrapMetrics;
 import de.venomenon.gridwordsbot.port.out.RecordTransactionRunner;
+import de.venomenon.gridwordsbot.port.out.RecordAnnouncementMessageGateway;
+import de.venomenon.gridwordsbot.port.out.PlayerStore;
+import de.venomenon.gridwordsbot.application.record.RecordAnnouncementDeliveryCoordinator;
+import de.venomenon.gridwordsbot.application.record.RecordAnnouncementDeliveryMetrics;
+import de.venomenon.gridwordsbot.application.record.RecordAnnouncementRenderer;
 import java.time.Clock;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -41,6 +47,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 
 /** Wires record persistence, bootstrap and durable live-evaluation runtime coordination. */
 @Configuration(proxyBeanMethods = false)
@@ -55,7 +62,9 @@ class RecordPersistenceConfiguration {
     @Bean RecordDayCloseStore recordDayCloseStore(JdbcTemplate jdbc, Clock clock) {
         return new PostgresRecordDayCloseStore(jdbc, clock);
     }
-    @Bean RecordAnnouncementStore recordAnnouncementStore(JdbcTemplate jdbc, Clock clock) { return new PostgresRecordAnnouncementStore(jdbc, clock); }
+    @Bean RecordAnnouncementStore recordAnnouncementStore(JdbcTemplate jdbc, Clock clock, GridwordsBotProperties properties) {
+        return new PostgresRecordAnnouncementStore(jdbc, clock, properties.records().publicAnnouncementsEnabled());
+    }
     @Bean RecordHistoryQuery recordHistoryQuery(JdbcTemplate jdbc) { return new PostgresRecordHistoryQuery(jdbc); }
     @Bean RecordLiveHistoryQuery recordLiveHistoryQuery(JdbcTemplate jdbc) { return new PostgresRecordLiveHistoryQuery(jdbc); }
     @Bean RecordDefinitionCatalog recordDefinitionCatalog() { return RecordDefinitionCatalog.recordsV1(); }
@@ -75,6 +84,10 @@ class RecordPersistenceConfiguration {
     @Bean(name = "recordLiveEvaluationPollDelayMillis")
     long recordLiveEvaluationPollDelayMillis(GridwordsBotProperties properties) {
         return properties.records().liveEvaluationPollDelay().toMillis();
+    }
+    @Bean(name = "recordAnnouncementPollDelayMillis")
+    long recordAnnouncementPollDelayMillis(GridwordsBotProperties properties) {
+        return properties.records().announcementPollDelay().toMillis();
     }
     @Bean RecordBootstrapCoordinator recordBootstrapCoordinator(RecordBootstrapStore bootstraps, RecordHistoryQuery history,
             RecordStateService states, RecordDefinitionCatalog catalog, Clock clock, GridwordsBotProperties properties,
@@ -102,6 +115,30 @@ class RecordPersistenceConfiguration {
     }
     @Bean RecordLiveEvaluationMetrics recordLiveEvaluationMetrics(MeterRegistry registry) {
         return new MicrometerRecordLiveEvaluationMetrics(registry);
+    }
+    @Bean RecordAnnouncementDeliveryMetrics recordAnnouncementDeliveryMetrics(MeterRegistry registry) {
+        return new MicrometerRecordAnnouncementDeliveryMetrics(registry);
+    }
+    @Bean(destroyMethod = "shutdown")
+    ScheduledExecutorService recordAnnouncementHeartbeatExecutor() {
+        return Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "record-announcement-heartbeat");
+            thread.setDaemon(true);
+            return thread;
+        });
+    }
+    @Bean
+    @ConditionalOnBean(RecordAnnouncementMessageGateway.class)
+    RecordAnnouncementDeliveryCoordinator recordAnnouncementDeliveryCoordinator(
+            RecordAnnouncementStore announcements, RecordEventStore events, PlayerStore players,
+            RecordAnnouncementMessageGateway messages, Clock clock, RecordAnnouncementDeliveryMetrics metrics,
+            ScheduledExecutorService recordAnnouncementHeartbeatExecutor, GridwordsBotProperties properties) {
+        GridwordsBotProperties.Records records = properties.records();
+        return new RecordAnnouncementDeliveryCoordinator(announcements, events, players, messages,
+                new RecordAnnouncementRenderer(), clock, records.announcementLeaseDuration(),
+                records.announcementHeartbeatInterval(), records.announcementInitialRetryBackoff(),
+                records.announcementMaxRetryBackoff(), recordAnnouncementHeartbeatExecutor,
+                records.publicAnnouncementsEnabled(), metrics);
     }
     @Bean RecordLiveEvaluationCoordinator recordLiveEvaluationCoordinator(
             RecordLiveEvaluationStore work, RecordLiveEvaluationProcessor processor, Clock clock,
@@ -134,6 +171,11 @@ class RecordPersistenceConfiguration {
     @ConditionalOnProperty(
             prefix = "gridwords.records", name = "live-evaluation-enabled", havingValue = "true", matchIfMissing = true)
     ApplicationRunner recordLiveEvaluationStartupRunner(RecordLiveEvaluationCoordinator coordinator) {
+        return arguments -> coordinator.runNext();
+    }
+    @Bean
+    @ConditionalOnBean(RecordAnnouncementDeliveryCoordinator.class)
+    ApplicationRunner recordAnnouncementDeliveryStartupRunner(RecordAnnouncementDeliveryCoordinator coordinator) {
         return arguments -> coordinator.runNext();
     }
 }

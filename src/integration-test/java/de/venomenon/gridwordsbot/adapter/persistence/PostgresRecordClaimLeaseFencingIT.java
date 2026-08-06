@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.record.AttemptsDurationRecordValue;
 import de.venomenon.gridwordsbot.domain.record.RecordAnnouncementKey;
+import de.venomenon.gridwordsbot.domain.record.RecordAnnouncementClaim;
 import de.venomenon.gridwordsbot.domain.record.RecordAnnouncementMessage;
 import de.venomenon.gridwordsbot.domain.record.RecordAnnouncementPhase;
 import de.venomenon.gridwordsbot.domain.record.RecordAnnouncementProjection;
@@ -195,10 +196,14 @@ class PostgresRecordClaimLeaseFencingIT {
                         announcements, key, originalClaim.token(), originalMessages))
                 .isTrue();
 
+        JdbcTemplate takeoverJdbc = isolatedJdbc();
+        JdbcTemplate staleJdbc = isolatedJdbc();
+        TransactionTemplate takeoverTransactions = transactionsFor(takeoverJdbc);
+        TransactionTemplate staleTransactions = transactionsFor(staleJdbc);
         PostgresRecordAnnouncementStore takeoverStore =
-                new PostgresRecordAnnouncementStore(jdbc, fixedClock(NOW.plusSeconds(10)));
+                new PostgresRecordAnnouncementStore(takeoverJdbc, fixedClock(NOW.plusSeconds(10)));
         PostgresRecordAnnouncementStore staleStore =
-                new PostgresRecordAnnouncementStore(jdbc, fixedClock(NOW.plusSeconds(9)));
+                new PostgresRecordAnnouncementStore(staleJdbc, fixedClock(NOW.plusSeconds(9)));
 
         CountDownLatch takeoverHasRowLock = new CountDownLatch(1);
         CountDownLatch releaseTakeover = new CountDownLatch(1);
@@ -206,7 +211,7 @@ class PostgresRecordClaimLeaseFencingIT {
 
         try (ExecutorService pool = Executors.newFixedThreadPool(2)) {
             Future<RecordLeaseClaim> takeover = pool.submit(() ->
-                    transactions.execute(status -> {
+                    takeoverTransactions.execute(status -> {
                         RecordLeaseClaim replacement = takeoverStore
                                 .claim(
                                         key,
@@ -222,7 +227,7 @@ class PostgresRecordClaimLeaseFencingIT {
             assertThat(takeoverHasRowLock.await(10, TimeUnit.SECONDS)).isTrue();
 
             Future<Boolean> staleReplacement = pool.submit(() ->
-                    transactions.execute(status -> {
+                    staleTransactions.execute(status -> {
                         staleReplacementStarted.countDown();
                         return staleStore.replaceMessages(
                                 key,
@@ -247,13 +252,84 @@ class PostgresRecordClaimLeaseFencingIT {
         }
     }
 
+    @Test
+    void disabledRestartLeavesAttemptedClaimForCleanupReconciliation() {
+        UUID eventId = appendEvent("disable-restart");
+        RecordAnnouncementKey key = new RecordAnnouncementKey(1, 2, "result:disable-restart:live");
+        PostgresRecordAnnouncementStore firstWorker = announcementStore(NOW);
+        firstWorker.registerOrUpdate(registration(key, eventId));
+        RecordLeaseClaim claimed = firstWorker.claim(key, request(NOW, NOW.plusSeconds(60))).orElseThrow();
+
+        PostgresRecordAnnouncementStore disabledRestart = announcementStore(NOW.plusSeconds(1));
+        assertThat(disabledRestart.suppressPendingCreates(NOW.plusSeconds(1))).isZero();
+        var stillClaimed = disabledRestart.find(key).orElseThrow();
+        assertThat(stillClaimed.state()).isEqualTo(RecordWorkState.CLAIMED);
+        assertThat(stillClaimed.claimToken()).contains(claimed.token());
+        assertThat(disabledRestart.claimNext(request(NOW.plusSeconds(1), NOW.plusSeconds(61)), false)).isEmpty();
+
+        PostgresRecordAnnouncementStore afterExpiry = announcementStore(NOW.plusSeconds(61));
+        RecordAnnouncementClaim cleanupClaim = afterExpiry.claimNext(
+                request(NOW.plusSeconds(61), NOW.plusSeconds(121)), false).orElseThrow();
+        assertThat(cleanupClaim.token()).isNotEqualTo(claimed.token());
+        assertThat(afterExpiry.find(key).orElseThrow().claimToken()).contains(cleanupClaim.token());
+    }
+
+    @Test
+    void restartAfterMultipartCreateRetainsOrderedIdsAndSynchronizedProjection() {
+        UUID eventId = appendEvent("multipart-restart");
+        RecordAnnouncementKey key = new RecordAnnouncementKey(1, 2, "result:multipart-restart:live");
+        JdbcTemplate crashedJdbc = isolatedJdbc();
+        PostgresRecordAnnouncementStore crashedWorker =
+                new PostgresRecordAnnouncementStore(crashedJdbc, fixedClock(NOW));
+        crashedWorker.registerOrUpdate(registration(key, eventId));
+        RecordLeaseClaim original = crashedWorker.claim(key, request(NOW, NOW.plusSeconds(10))).orElseThrow();
+        List<RecordAnnouncementMessage> pages = List.of(
+                new RecordAnnouncementMessage(0, 100), new RecordAnnouncementMessage(1, 200));
+        assertThat(replaceMessagesInTransaction(
+                        transactionsFor(crashedJdbc), crashedWorker, key, original.token(), pages))
+                .isTrue();
+
+        PostgresRecordAnnouncementStore recoveredWorker = announcementStore(NOW.plusSeconds(11));
+        RecordAnnouncementClaim recovered = recoveredWorker.claimNext(
+                request(NOW.plusSeconds(11), NOW.plusSeconds(21)), true).orElseThrow();
+        assertThat(recoveredWorker.find(key).orElseThrow().messages()).containsExactlyElementsOf(pages);
+        assertThat(recoveredWorker.markSynchronized(key, recovered.token(), NOW.plusSeconds(11))).isTrue();
+
+        var synchronizedSnapshot = recoveredWorker.find(key).orElseThrow();
+        assertThat(synchronizedSnapshot.registration().desiredProjection())
+                .isEqualTo(RecordAnnouncementProjection.CREATE);
+        assertThat(synchronizedSnapshot.messages()).containsExactlyElementsOf(pages);
+    }
+
     private boolean replaceMessagesInTransaction(
             PostgresRecordAnnouncementStore store,
             RecordAnnouncementKey key,
             UUID token,
             List<RecordAnnouncementMessage> messages) {
+        return replaceMessagesInTransaction(transactions, store, key, token, messages);
+    }
+
+    private static boolean replaceMessagesInTransaction(
+            TransactionTemplate transactionTemplate,
+            PostgresRecordAnnouncementStore store,
+            RecordAnnouncementKey key,
+            UUID token,
+            List<RecordAnnouncementMessage> messages) {
         return Boolean.TRUE.equals(
-                transactions.execute(status -> store.replaceMessages(key, token, messages)));
+                transactionTemplate.execute(status -> store.replaceMessages(key, token, messages)));
+    }
+
+    private PostgresRecordAnnouncementStore announcementStore(Instant instant) {
+        return new PostgresRecordAnnouncementStore(isolatedJdbc(), fixedClock(instant));
+    }
+
+    private JdbcTemplate isolatedJdbc() {
+        return new JdbcTemplate(new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()));
+    }
+
+    private static TransactionTemplate transactionsFor(JdbcTemplate jdbc) {
+        return new TransactionTemplate(new DataSourceTransactionManager(jdbc.getDataSource()));
     }
 
     private UUID appendEvent(String suffix) {

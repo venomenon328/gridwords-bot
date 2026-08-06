@@ -1,6 +1,6 @@
 # Inkrement 12 – Rekorde und Rekordmeldungen
 
-**Status:** Umsetzung läuft; Pakete 12.1 bis 12.6 abgeschlossen  
+**Status:** Umsetzung läuft; Pakete 12.1 bis 12.7 abgeschlossen; Paket 12.8 in Umsetzung  
 **Stand:** 6. August 2026  
 **Umbrella-Issue:** #58  
 **Fachliche Grundlage:** [`../requirements/records.md`](../requirements/records.md)  
@@ -399,7 +399,7 @@ Mindestens:
 
 # Paket 12.7 – Tagesabschluss, Teilnahmegrenzen und 06:00-Cutoff
 
-**Status:** offen  
+**Status:** umgesetzt  
 **Empfohlener Branch:** `feature/12-7-record-day-close`
 
 ## Ziel
