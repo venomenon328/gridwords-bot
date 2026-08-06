@@ -70,18 +70,89 @@ public record GridwordsBotProperties(
             return new Excuses(Duration.ofMinutes(15), 25, 4);
         }
     }
-    /** Operational limits for the persistent record-bootstrap worker. */
-    public record Records(Duration bootstrapPollDelay, Duration bootstrapLeaseDuration, Duration bootstrapRetryBackoff) {
+    /** Operational limits for the persistent record-bootstrap and live-evaluation workers. */
+    public record Records(
+            Duration bootstrapPollDelay,
+            Duration bootstrapLeaseDuration,
+            Duration bootstrapRetryBackoff,
+            Boolean liveEvaluationEnabled,
+            Duration liveEvaluationPollDelay,
+            Duration liveEvaluationLeaseDuration,
+            Duration liveEvaluationHeartbeatInterval,
+            Duration liveEvaluationInitialRetryBackoff,
+            Duration liveEvaluationMaxRetryBackoff) {
         private static final Duration MINIMUM_POLL_DELAY = Duration.ofMillis(1);
+        private static final Duration DEFAULT_BOOTSTRAP_POLL_DELAY = Duration.ofMinutes(1);
+        private static final Duration DEFAULT_BOOTSTRAP_LEASE_DURATION = Duration.ofMinutes(2);
+        private static final Duration DEFAULT_BOOTSTRAP_RETRY_BACKOFF = Duration.ofMinutes(1);
+        private static final Duration DEFAULT_LIVE_POLL_DELAY = Duration.ofSeconds(10);
+        private static final Duration DEFAULT_LIVE_LEASE_DURATION = Duration.ofMinutes(2);
+        private static final Duration DEFAULT_LIVE_HEARTBEAT_INTERVAL = Duration.ofSeconds(30);
+        private static final Duration DEFAULT_LIVE_INITIAL_RETRY_BACKOFF = Duration.ofSeconds(10);
+        private static final Duration DEFAULT_LIVE_MAX_RETRY_BACKOFF = Duration.ofMinutes(5);
 
         @ConstructorBinding
         public Records {
+            bootstrapPollDelay = defaultIfNull(bootstrapPollDelay, DEFAULT_BOOTSTRAP_POLL_DELAY);
+            bootstrapLeaseDuration = defaultIfNull(bootstrapLeaseDuration, DEFAULT_BOOTSTRAP_LEASE_DURATION);
+            bootstrapRetryBackoff = defaultIfNull(bootstrapRetryBackoff, DEFAULT_BOOTSTRAP_RETRY_BACKOFF);
             requireAtLeast(bootstrapPollDelay, MINIMUM_POLL_DELAY, "bootstrapPollDelay");
             requirePositive(bootstrapLeaseDuration, "bootstrapLeaseDuration");
             requirePositive(bootstrapRetryBackoff, "bootstrapRetryBackoff");
+            liveEvaluationEnabled = liveEvaluationEnabled == null || liveEvaluationEnabled;
+            liveEvaluationPollDelay = defaultIfNull(liveEvaluationPollDelay, DEFAULT_LIVE_POLL_DELAY);
+            liveEvaluationLeaseDuration = defaultIfNull(liveEvaluationLeaseDuration, DEFAULT_LIVE_LEASE_DURATION);
+            liveEvaluationHeartbeatInterval = defaultIfNull(
+                    liveEvaluationHeartbeatInterval, DEFAULT_LIVE_HEARTBEAT_INTERVAL);
+            liveEvaluationInitialRetryBackoff = defaultIfNull(
+                    liveEvaluationInitialRetryBackoff, DEFAULT_LIVE_INITIAL_RETRY_BACKOFF);
+            liveEvaluationMaxRetryBackoff = defaultIfNull(
+                    liveEvaluationMaxRetryBackoff, DEFAULT_LIVE_MAX_RETRY_BACKOFF);
+            requireAtLeast(liveEvaluationPollDelay, MINIMUM_POLL_DELAY, "liveEvaluationPollDelay");
+            requirePositive(liveEvaluationLeaseDuration, "liveEvaluationLeaseDuration");
+            requirePositive(liveEvaluationHeartbeatInterval, "liveEvaluationHeartbeatInterval");
+            requirePositive(liveEvaluationInitialRetryBackoff, "liveEvaluationInitialRetryBackoff");
+            requirePositive(liveEvaluationMaxRetryBackoff, "liveEvaluationMaxRetryBackoff");
+            if (liveEvaluationHeartbeatInterval.compareTo(liveEvaluationLeaseDuration) >= 0) {
+                throw new IllegalArgumentException(
+                        "liveEvaluationHeartbeatInterval must be shorter than liveEvaluationLeaseDuration");
+            }
+            if (liveEvaluationInitialRetryBackoff.compareTo(liveEvaluationMaxRetryBackoff) > 0) {
+                throw new IllegalArgumentException(
+                        "liveEvaluationInitialRetryBackoff must not exceed liveEvaluationMaxRetryBackoff");
+            }
         }
+
+        public Records(
+                Duration bootstrapPollDelay,
+                Duration bootstrapLeaseDuration,
+                Duration bootstrapRetryBackoff) {
+            this(
+                    bootstrapPollDelay,
+                    bootstrapLeaseDuration,
+                    bootstrapRetryBackoff,
+                    true,
+                    DEFAULT_LIVE_POLL_DELAY,
+                    DEFAULT_LIVE_LEASE_DURATION,
+                    DEFAULT_LIVE_HEARTBEAT_INTERVAL,
+                    DEFAULT_LIVE_INITIAL_RETRY_BACKOFF,
+                    DEFAULT_LIVE_MAX_RETRY_BACKOFF);
+        }
+
         public static Records defaults() {
-            return new Records(Duration.ofMinutes(1), Duration.ofMinutes(2), Duration.ofMinutes(1));
+            return new Records(
+                    DEFAULT_BOOTSTRAP_POLL_DELAY,
+                    DEFAULT_BOOTSTRAP_LEASE_DURATION,
+                    DEFAULT_BOOTSTRAP_RETRY_BACKOFF,
+                    true,
+                    DEFAULT_LIVE_POLL_DELAY,
+                    DEFAULT_LIVE_LEASE_DURATION,
+                    DEFAULT_LIVE_HEARTBEAT_INTERVAL,
+                    DEFAULT_LIVE_INITIAL_RETRY_BACKOFF,
+                    DEFAULT_LIVE_MAX_RETRY_BACKOFF);
+        }
+        private static Duration defaultIfNull(Duration value, Duration fallback) {
+            return value == null ? fallback : value;
         }
         private static void requireAtLeast(Duration value, Duration minimum, String name) {
             Objects.requireNonNull(value, name);

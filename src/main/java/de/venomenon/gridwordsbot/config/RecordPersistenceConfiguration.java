@@ -20,7 +20,10 @@ import de.venomenon.gridwordsbot.application.record.RecordStateService;
 import de.venomenon.gridwordsbot.application.record.RecordStateReadService;
 import de.venomenon.gridwordsbot.application.record.RecordBootstrapReadService;
 import de.venomenon.gridwordsbot.application.record.RecordLiveEvaluationProcessor;
+import de.venomenon.gridwordsbot.application.record.RecordLiveEvaluationCoordinator;
+import de.venomenon.gridwordsbot.application.record.RecordLiveEvaluationMetrics;
 import de.venomenon.gridwordsbot.adapter.observability.MicrometerRecordBootstrapMetrics;
+import de.venomenon.gridwordsbot.adapter.observability.MicrometerRecordLiveEvaluationMetrics;
 import de.venomenon.gridwordsbot.port.out.RecordBootstrapMetrics;
 import de.venomenon.gridwordsbot.port.out.RecordTransactionRunner;
 import java.time.Clock;
@@ -31,8 +34,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.boot.ApplicationRunner;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
-/** Wires persistence contracts; live evaluation logic and Discord delivery remain in later subpackages. */
+/** Wires record persistence, bootstrap and durable live-evaluation runtime coordination. */
 @Configuration(proxyBeanMethods = false)
 @Profile("database")
 class RecordPersistenceConfiguration {
@@ -59,6 +65,10 @@ class RecordPersistenceConfiguration {
     long recordBootstrapPollDelayMillis(GridwordsBotProperties properties) {
         return properties.records().bootstrapPollDelay().toMillis();
     }
+    @Bean(name = "recordLiveEvaluationPollDelayMillis")
+    long recordLiveEvaluationPollDelayMillis(GridwordsBotProperties properties) {
+        return properties.records().liveEvaluationPollDelay().toMillis();
+    }
     @Bean RecordBootstrapCoordinator recordBootstrapCoordinator(RecordBootstrapStore bootstraps, RecordHistoryQuery history,
             RecordStateService states, RecordDefinitionCatalog catalog, Clock clock, GridwordsBotProperties properties,
             RecordBootstrapMetrics metrics) {
@@ -75,7 +85,34 @@ class RecordPersistenceConfiguration {
         return new RecordLiveEvaluationProcessor(work, history, bootstrap, states, events, announcements,
                 transactions, catalog, clock, properties.discord().channelId());
     }
+    @Bean(destroyMethod = "shutdown")
+    ScheduledExecutorService recordLiveEvaluationHeartbeatExecutor() {
+        return Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "record-live-evaluation-heartbeat");
+            thread.setDaemon(true);
+            return thread;
+        });
+    }
+    @Bean RecordLiveEvaluationMetrics recordLiveEvaluationMetrics(MeterRegistry registry) {
+        return new MicrometerRecordLiveEvaluationMetrics(registry);
+    }
+    @Bean RecordLiveEvaluationCoordinator recordLiveEvaluationCoordinator(
+            RecordLiveEvaluationStore work, RecordLiveEvaluationProcessor processor, Clock clock,
+            ScheduledExecutorService recordLiveEvaluationHeartbeatExecutor, RecordLiveEvaluationMetrics metrics,
+            GridwordsBotProperties properties) {
+        GridwordsBotProperties.Records records = properties.records();
+        return new RecordLiveEvaluationCoordinator(work, processor, clock,
+                records.liveEvaluationLeaseDuration(), records.liveEvaluationHeartbeatInterval(),
+                records.liveEvaluationInitialRetryBackoff(), records.liveEvaluationMaxRetryBackoff(),
+                recordLiveEvaluationHeartbeatExecutor, metrics);
+    }
     @Bean ApplicationRunner recordBootstrapStartupRunner(RecordBootstrapCoordinator coordinator, GridwordsBotProperties properties) {
         return arguments -> coordinator.run(properties.discord().guildId());
+    }
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "gridwords.records", name = "live-evaluation-enabled", havingValue = "true", matchIfMissing = true)
+    ApplicationRunner recordLiveEvaluationStartupRunner(RecordLiveEvaluationCoordinator coordinator) {
+        return arguments -> coordinator.runNext();
     }
 }

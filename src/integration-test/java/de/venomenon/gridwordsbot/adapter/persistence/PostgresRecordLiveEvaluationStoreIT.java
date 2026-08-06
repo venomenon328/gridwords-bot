@@ -3,6 +3,10 @@ package de.venomenon.gridwordsbot.adapter.persistence;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import de.venomenon.gridwordsbot.application.record.RecordLiveEvaluationCoordinator;
+import de.venomenon.gridwordsbot.application.record.RecordLiveEvaluationMetrics;
+import de.venomenon.gridwordsbot.application.record.RecordLiveEvaluationProcessor;
+import de.venomenon.gridwordsbot.application.record.RecordLiveEvaluationWorkProcessor;
 import de.venomenon.gridwordsbot.domain.record.RecordLeaseClaimRequest;
 import de.venomenon.gridwordsbot.domain.record.RecordLiveEvaluationClaim;
 import de.venomenon.gridwordsbot.domain.record.RecordLiveEvaluationKey;
@@ -17,6 +21,7 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
 import liquibase.integration.spring.SpringLiquibase;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -241,6 +246,100 @@ class PostgresRecordLiveEvaluationStoreIT {
     }
 
     @Test
+    void concurrentRuntimeWorkersCompleteOneClaimExactlyOnce() throws Exception {
+        long resultId = insertResultAndReceivedSubmission(1, 100, 1000);
+        transitionToResultStored(1000, resultId);
+        AtomicInteger executions = new AtomicInteger();
+        RecordLiveEvaluationWorkProcessor processor = (claim, leaseOwned) -> {
+            assertThat(leaseOwned.getAsBoolean()).isTrue();
+            executions.incrementAndGet();
+            assertThat(work.markSucceeded(claim.key(), claim.token(), NOW)).isTrue();
+            return RecordLiveEvaluationProcessor.ProcessingResult.PROCESSED;
+        };
+        try (var firstHeartbeat = Executors.newSingleThreadScheduledExecutor();
+                var secondHeartbeat = Executors.newSingleThreadScheduledExecutor();
+                var callers = Executors.newFixedThreadPool(2)) {
+            RecordLiveEvaluationCoordinator first = coordinatorAt(NOW, work, processor, firstHeartbeat);
+            RecordLiveEvaluationCoordinator second = coordinatorAt(NOW, work, processor, secondHeartbeat);
+            CountDownLatch start = new CountDownLatch(1);
+            Future<RecordLiveEvaluationCoordinator.RunResult> firstResult = callers.submit(() -> {
+                start.await();
+                return first.runNext();
+            });
+            Future<RecordLiveEvaluationCoordinator.RunResult> secondResult = callers.submit(() -> {
+                start.await();
+                return second.runNext();
+            });
+            start.countDown();
+
+            assertThat(List.of(firstResult.get(), secondResult.get()))
+                    .containsExactlyInAnyOrder(
+                            RecordLiveEvaluationCoordinator.RunResult.COMPLETED,
+                            RecordLiveEvaluationCoordinator.RunResult.NOT_CLAIMED);
+        }
+        assertThat(executions).hasValue(1);
+        assertThat(work.findAll(100, resultId)).singleElement()
+                .extracting(snapshot -> snapshot.state())
+                .isEqualTo(RecordLiveEvaluationState.SUCCEEDED);
+    }
+
+    @Test
+    void runtimeRestartReclaimsAnExpiredUnknownExecutionWithoutASecondTerminalWrite() {
+        long resultId = insertResultAndReceivedSubmission(1, 100, 1000);
+        transitionToResultStored(1000, resultId);
+        IllegalStateException unknown = new IllegalStateException("simulated process termination");
+        try (var firstHeartbeat = Executors.newSingleThreadScheduledExecutor()) {
+            RecordLiveEvaluationCoordinator failed = coordinatorAt(NOW, work,
+                    (claim, leaseOwned) -> { throw unknown; }, firstHeartbeat);
+            assertThatThrownBy(failed::runNext).isSameAs(unknown);
+        }
+        assertThat(work.findAll(100, resultId)).singleElement()
+                .extracting(snapshot -> snapshot.state())
+                .isEqualTo(RecordLiveEvaluationState.CLAIMED);
+
+        PostgresRecordLiveEvaluationStore restarted = storeAt(NOW.plusSeconds(5));
+        try (var heartbeat = Executors.newSingleThreadScheduledExecutor()) {
+            RecordLiveEvaluationCoordinator recovered = coordinatorAt(NOW.plusSeconds(5), restarted,
+                    (claim, leaseOwned) -> {
+                        assertThat(restarted.markSucceeded(claim.key(), claim.token(), NOW.plusSeconds(5))).isTrue();
+                        return RecordLiveEvaluationProcessor.ProcessingResult.PROCESSED;
+                    }, heartbeat);
+            assertThat(recovered.runNext()).isEqualTo(RecordLiveEvaluationCoordinator.RunResult.COMPLETED);
+        }
+        assertThat(restarted.findAll(100, resultId)).singleElement().satisfies(snapshot -> {
+            assertThat(snapshot.state()).isEqualTo(RecordLiveEvaluationState.SUCCEEDED);
+            assertThat(snapshot.attemptCount()).isEqualTo(2);
+        });
+    }
+
+    @Test
+    void runtimeRetryBackoffRemainsDurableAcrossFreshCoordinatorInstances() {
+        long resultId = insertResultAndReceivedSubmission(1, 100, 1000);
+        transitionToResultStored(1000, resultId);
+        try (var heartbeat = Executors.newSingleThreadScheduledExecutor()) {
+            RecordLiveEvaluationCoordinator first = coordinatorAt(NOW, work,
+                    (claim, leaseOwned) -> { throw new de.venomenon.gridwordsbot.port.out.RecordRetryableFailure("temporary", null); },
+                    heartbeat);
+            assertThat(first.runNext()).isEqualTo(RecordLiveEvaluationCoordinator.RunResult.FAILED_RETRYABLE);
+        }
+        assertThat(storeAt(NOW.plusSeconds(4)).claimNext(request(NOW.plusSeconds(4), NOW.plusSeconds(9)))).isEmpty();
+
+        PostgresRecordLiveEvaluationStore retry = storeAt(NOW.plusSeconds(5));
+        try (var heartbeat = Executors.newSingleThreadScheduledExecutor()) {
+            RecordLiveEvaluationCoordinator resumed = coordinatorAt(NOW.plusSeconds(5), retry,
+                    (claim, leaseOwned) -> {
+                        assertThat(retry.markSucceeded(claim.key(), claim.token(), NOW.plusSeconds(5))).isTrue();
+                        return RecordLiveEvaluationProcessor.ProcessingResult.PROCESSED;
+                    }, heartbeat);
+            assertThat(resumed.runNext()).isEqualTo(RecordLiveEvaluationCoordinator.RunResult.COMPLETED);
+        }
+        assertThat(retry.findAll(100, resultId)).singleElement().satisfies(snapshot -> {
+            assertThat(snapshot.state()).isEqualTo(RecordLiveEvaluationState.SUCCEEDED);
+            assertThat(snapshot.attemptCount()).isEqualTo(2);
+        });
+    }
+
+    @Test
     void submissionAndJobRegistrationRollbackTogether() {
         long resultId = insertResultAndReceivedSubmission(1, 100, 1000);
 
@@ -300,6 +399,17 @@ class PostgresRecordLiveEvaluationStoreIT {
                 """, sourceMessageId, guildId, playerId,
                 java.sql.Timestamp.from(NOW), java.sql.Timestamp.from(NOW));
         return java.util.Objects.requireNonNull(resultId);
+    }
+
+    private static RecordLiveEvaluationCoordinator coordinatorAt(
+            Instant now,
+            PostgresRecordLiveEvaluationStore store,
+            RecordLiveEvaluationWorkProcessor processor,
+            java.util.concurrent.ScheduledExecutorService heartbeat) {
+        RecordLiveEvaluationMetrics metrics = (result, duration) -> { };
+        return new RecordLiveEvaluationCoordinator(store, processor, Clock.fixed(now, ZoneOffset.UTC),
+                java.time.Duration.ofSeconds(5), java.time.Duration.ofSeconds(1),
+                java.time.Duration.ofSeconds(5), java.time.Duration.ofSeconds(20), heartbeat, metrics);
     }
 
     private void transitionToResultStored(long sourceMessageId, long resultId) {

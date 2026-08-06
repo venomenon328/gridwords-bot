@@ -34,6 +34,31 @@ import org.junit.jupiter.api.Test;
 
 class RecordLiveEvaluationProcessorTest {
     @Test
+    void lostHeartbeatFencesBeforeCanonicalReadsOrAnyRecordWrites() {
+        RecordLiveEvaluationStore work = mock(RecordLiveEvaluationStore.class);
+        RecordLiveHistoryQuery history = mock(RecordLiveHistoryQuery.class);
+        RecordBootstrapReadService bootstrap = new RecordBootstrapReadService(mock(RecordBootstrapStore.class));
+        RecordStateService states = mock(RecordStateService.class);
+        RecordEventStore events = mock(RecordEventStore.class);
+        RecordAnnouncementStore announcements = mock(RecordAnnouncementStore.class);
+        RecordLiveEvaluationClaim claim = new RecordLiveEvaluationClaim(
+                new RecordLiveEvaluationKey(1, 2, 0), RecordProcessingOrigin.LIVE_SUBMISSION,
+                UUID.randomUUID(), Instant.parse("2026-08-06T10:00:00Z"), 1);
+        RecordLiveEvaluationProcessor processor = new RecordLiveEvaluationProcessor(work, history, bootstrap, states,
+                events, announcements, directTransactions(), RecordDefinitionCatalog.recordsV1(),
+                Clock.fixed(Instant.parse("2026-08-06T09:00:00Z"), ZoneOffset.UTC), 3);
+
+        assertThat(processor.process(claim, () -> false))
+                .isEqualTo(RecordLiveEvaluationProcessor.ProcessingResult.FENCED_OUT);
+
+        verify(history, never()).loadFor(claim.key(), claim.processingOrigin());
+        verify(work, never()).fence(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+        verify(work, never()).markSucceeded(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void staleClaimMayReadOutsideTheWriteTransactionButIsFencedBeforeAnyWrite() {
         RecordLiveEvaluationStore work = mock(RecordLiveEvaluationStore.class);
         RecordLiveHistoryQuery history = mock(RecordLiveHistoryQuery.class);

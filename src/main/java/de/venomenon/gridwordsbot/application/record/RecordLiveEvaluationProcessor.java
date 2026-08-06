@@ -37,6 +37,7 @@ import de.venomenon.gridwordsbot.port.out.RecordAnnouncementStore;
 import de.venomenon.gridwordsbot.port.out.RecordEventStore;
 import de.venomenon.gridwordsbot.port.out.RecordLiveEvaluationStore;
 import de.venomenon.gridwordsbot.port.out.RecordLiveHistoryQuery;
+import de.venomenon.gridwordsbot.port.out.RecordPermanentFailure;
 import de.venomenon.gridwordsbot.port.out.RecordRetryableFailure;
 import de.venomenon.gridwordsbot.port.out.RecordTransactionRunner;
 import java.nio.charset.StandardCharsets;
@@ -53,6 +54,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.BooleanSupplier;
 
 /**
  * Processes exactly one claimed, versioned live evaluation.  Claim polling,
@@ -103,19 +105,39 @@ public final class RecordLiveEvaluationProcessor {
     }
 
     public ProcessingResult process(RecordLiveEvaluationClaim claim) {
+        return process(claim, () -> true);
+    }
+
+    /**
+     * Executes one claim while the runtime coordinator supplies the current
+     * heartbeat ownership. A lost heartbeat fences the processor before it
+     * can enter another record write transaction.
+     */
+    public ProcessingResult process(RecordLiveEvaluationClaim claim, BooleanSupplier leaseOwned) {
         java.util.Objects.requireNonNull(claim, "claim");
+        java.util.Objects.requireNonNull(leaseOwned, "leaseOwned");
         for (int attempt = 0; attempt < 3; attempt++) {
+            if (!leaseOwned.getAsBoolean()) return ProcessingResult.FENCED_OUT;
             // Canonical reads, state-generation reads and pure projection stay
             // outside the short write transaction.
             RecordHistorySnapshot canonical = history.loadFor(claim.key(), claim.processingOrigin());
+            if (!leaseOwned.getAsBoolean()) return ProcessingResult.FENCED_OUT;
             RecordHistorySnapshot.Result result = canonical.results().stream()
                     .filter(candidate -> candidate.resultId() == claim.key().gameResultId())
                     .filter(candidate -> candidate.resultVersion() == claim.key().gameResultVersion())
-                    .findFirst().orElseThrow(() -> new IllegalStateException("claimed result is absent from canonical history"));
+                    .findFirst()
+                    .orElseThrow(() -> new RecordPermanentFailure(
+                            "claimed result is absent from canonical history", null));
             EvaluationPlan plan = evaluate(claim, canonical, result,
                     states.states(claim.key().guildId(), catalog.version()));
+            if (!leaseOwned.getAsBoolean()) return ProcessingResult.FENCED_OUT;
             try {
-                return transactions.inTransaction(() -> processWithinTransaction(claim, canonical, result, plan));
+                return transactions.inTransaction(
+                        () -> processWithinTransaction(claim, canonical, result, plan, leaseOwned));
+            } catch (LostLeaseDuringCompletion ignored) {
+                // The write transaction rolled back. A stale token must not
+                // leave partially reconciled state, event or intent writes.
+                return ProcessingResult.FENCED_OUT;
             } catch (StaleCorrectionPlan ignored) {
                 // The surrounding transaction has rolled back.  A fresh
                 // canonical read and pure projection are required; the old
@@ -130,9 +152,12 @@ public final class RecordLiveEvaluationProcessor {
             RecordLiveEvaluationClaim claim,
             RecordHistorySnapshot canonical,
             RecordHistorySnapshot.Result result,
-            EvaluationPlan plan) {
+            EvaluationPlan plan,
+            BooleanSupplier leaseOwned) {
+        if (!leaseOwned.getAsBoolean()) return ProcessingResult.FENCED_OUT;
         Instant now = clock.instant();
         if (!work.fence(claim.key(), claim.token(), now)) return ProcessingResult.FENCED_OUT;
+        if (!leaseOwned.getAsBoolean()) return ProcessingResult.FENCED_OUT;
         if (requiresExactReconciliation(claim.processingOrigin())
                 && !history.isCurrent(claim.key(), claim.processingOrigin(), canonical)) {
             throw new StaleCorrectionPlan();
@@ -159,7 +184,7 @@ public final class RecordLiveEvaluationProcessor {
                 ready && claim.processingOrigin().publicAnnouncementEligible());
 
         if (!work.markSucceeded(claim.key(), claim.token(), now)) {
-            throw new IllegalStateException("live evaluation lease was lost before completion");
+            throw new LostLeaseDuringCompletion();
         }
         return ProcessingResult.PROCESSED;
     }
@@ -747,6 +772,7 @@ public final class RecordLiveEvaluationProcessor {
     }
 
     private static final class StaleCorrectionPlan extends RuntimeException { }
+    private static final class LostLeaseDuringCompletion extends RuntimeException { }
 
     public enum ProcessingResult { PROCESSED, FENCED_OUT }
 }

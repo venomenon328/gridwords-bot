@@ -65,6 +65,26 @@ class GridwordsBotPropertiesTest {
     }
 
     @Test
+    void bindsLiveEvaluationRuntimeControlsSeparatelyFromBootstrapControls() {
+        contextRunner.withPropertyValues(
+                        "gridwords.records.live-evaluation-enabled=false",
+                        "gridwords.records.live-evaluation-poll-delay=PT7S",
+                        "gridwords.records.live-evaluation-lease-duration=PT41S",
+                        "gridwords.records.live-evaluation-heartbeat-interval=PT13S",
+                        "gridwords.records.live-evaluation-initial-retry-backoff=PT3S",
+                        "gridwords.records.live-evaluation-max-retry-backoff=PT19S")
+                .run(context -> {
+                    GridwordsBotProperties.Records records = context.getBean(GridwordsBotProperties.class).records();
+                    assertThat(records.liveEvaluationEnabled()).isFalse();
+                    assertThat(records.liveEvaluationPollDelay()).isEqualTo(Duration.ofSeconds(7));
+                    assertThat(records.liveEvaluationLeaseDuration()).isEqualTo(Duration.ofSeconds(41));
+                    assertThat(records.liveEvaluationHeartbeatInterval()).isEqualTo(Duration.ofSeconds(13));
+                    assertThat(records.liveEvaluationInitialRetryBackoff()).isEqualTo(Duration.ofSeconds(3));
+                    assertThat(records.liveEvaluationMaxRetryBackoff()).isEqualTo(Duration.ofSeconds(19));
+                });
+    }
+
+    @Test
     void rejectsNonPositiveRecordBootstrapDurations() {
         assertThatThrownBy(() -> new GridwordsBotProperties.Records(Duration.ZERO, Duration.ofSeconds(1), Duration.ofSeconds(1)))
                 .isInstanceOf(IllegalArgumentException.class);
@@ -91,6 +111,18 @@ class GridwordsBotPropertiesTest {
     @Test
     void rejectsSubMillisecondPollDelayDuringPropertyBinding() {
         contextRunner.withPropertyValues("gridwords.records.bootstrap-poll-delay=PT0.000000001S")
+                .run(context -> assertThat(context.getStartupFailure()).isNotNull());
+    }
+
+    @Test
+    void rejectsInvalidLiveEvaluationHeartbeatAndBackoffBoundsDuringPropertyBinding() {
+        contextRunner.withPropertyValues(
+                        "gridwords.records.live-evaluation-lease-duration=PT10S",
+                        "gridwords.records.live-evaluation-heartbeat-interval=PT10S")
+                .run(context -> assertThat(context.getStartupFailure()).isNotNull());
+        contextRunner.withPropertyValues(
+                        "gridwords.records.live-evaluation-initial-retry-backoff=PT11S",
+                        "gridwords.records.live-evaluation-max-retry-backoff=PT10S")
                 .run(context -> assertThat(context.getStartupFailure()).isNotNull());
     }
 

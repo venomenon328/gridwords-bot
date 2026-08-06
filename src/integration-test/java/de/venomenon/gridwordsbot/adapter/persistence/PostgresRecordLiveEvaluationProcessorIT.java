@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import de.venomenon.gridwordsbot.application.record.RecordBootstrapReadService;
+import de.venomenon.gridwordsbot.application.record.RecordLiveEvaluationCoordinator;
 import de.venomenon.gridwordsbot.application.record.RecordLiveEvaluationProcessor;
 import de.venomenon.gridwordsbot.application.record.RecordStateService;
 import de.venomenon.gridwordsbot.domain.record.RecordBootstrapKey;
@@ -48,6 +49,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import liquibase.integration.spring.SpringLiquibase;
 import org.junit.jupiter.api.BeforeAll;
@@ -134,6 +136,25 @@ class PostgresRecordLiveEvaluationProcessorIT {
     }
 
     @Test
+    void runtimeCoordinatorProcessesOneDurableJobThroughTheRealProcessor() {
+        long resultId = insertReadyClaim();
+
+        try (ScheduledExecutorService heartbeatExecutor = Executors.newSingleThreadScheduledExecutor()) {
+            RecordLiveEvaluationCoordinator coordinator = new RecordLiveEvaluationCoordinator(
+                    work, processor(work), clock, java.time.Duration.ofSeconds(30), java.time.Duration.ofSeconds(1),
+                    java.time.Duration.ofSeconds(1), java.time.Duration.ofMinutes(1), heartbeatExecutor,
+                    (outcome, duration) -> { });
+
+            assertThat(coordinator.runNext()).isEqualTo(RecordLiveEvaluationCoordinator.RunResult.COMPLETED);
+        }
+
+        assertThat(work.findAll(10, resultId)).singleElement().satisfies(snapshot ->
+                assertThat(snapshot.state().name()).isEqualTo("SUCCEEDED"));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM record_state", Integer.class)).isPositive();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM record_event", Integer.class)).isPositive();
+    }
+
+    @Test
     void terminalFailureRollsBackRecordWritesButKeepsTheAlreadyCommittedCanonicalResult() {
         long resultId = insertReadyClaim();
         PostgresRecordLiveEvaluationStore failingTerminalWork = new PostgresRecordLiveEvaluationStore(jdbc, clock) {
@@ -145,9 +166,8 @@ class PostgresRecordLiveEvaluationProcessorIT {
             }
         };
 
-        assertThatThrownBy(() -> processor(failingTerminalWork).process(claim()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("lease was lost");
+        assertThat(processor(failingTerminalWork).process(claim()))
+                .isEqualTo(RecordLiveEvaluationProcessor.ProcessingResult.FENCED_OUT);
 
         assertThat(jdbc.queryForObject("SELECT count(*) FROM record_state", Integer.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM record_event", Integer.class)).isZero();
@@ -353,7 +373,8 @@ class PostgresRecordLiveEvaluationProcessorIT {
         long resultId = insertResult(1, LocalDate.of(2026, 8, 6), true, 1, 5);
         RecordLiveEvaluationClaim firstClaim = claim();
         PostgresRecordLiveEvaluationStore failOnce = terminalFailingStore();
-        assertThatThrownBy(() -> processor(failOnce).process(firstClaim)).isInstanceOf(IllegalStateException.class);
+        assertThat(processor(failOnce).process(firstClaim))
+                .isEqualTo(RecordLiveEvaluationProcessor.ProcessingResult.FENCED_OUT);
         int afterRollback = count("record_event");
 
         processor(work).process(firstClaim);
@@ -435,10 +456,17 @@ class PostgresRecordLiveEvaluationProcessorIT {
             PostgresRecordLiveEvaluationStore processorWork = failurePoint == WriteFailurePoint.TERMINAL
                     ? terminalFailingStore() : work;
 
-            assertThatThrownBy(() -> processor(processorWork, stateStore, eventStore, announcementStore,
-                    transactions, new PostgresRecordLiveHistoryQuery(jdbc), bootstraps).process(evaluationClaim))
-                    .as(failurePoint.name())
-                    .isInstanceOf(IllegalStateException.class);
+            RecordLiveEvaluationProcessor processor = processor(processorWork, stateStore, eventStore, announcementStore,
+                    transactions, new PostgresRecordLiveHistoryQuery(jdbc), bootstraps);
+            if (failurePoint == WriteFailurePoint.TERMINAL) {
+                assertThat(processor.process(evaluationClaim))
+                        .as(failurePoint.name())
+                        .isEqualTo(RecordLiveEvaluationProcessor.ProcessingResult.FENCED_OUT);
+            } else {
+                assertThatThrownBy(() -> processor.process(evaluationClaim))
+                        .as(failurePoint.name())
+                        .isInstanceOf(IllegalStateException.class);
+            }
 
             assertThat(stateFingerprint()).as(failurePoint.name()).isEqualTo(stateBefore);
             assertThat(count("record_event")).as(failurePoint.name()).isEqualTo(eventsBefore);
