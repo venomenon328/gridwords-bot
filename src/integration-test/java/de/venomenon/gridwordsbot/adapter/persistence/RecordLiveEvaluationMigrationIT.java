@@ -50,8 +50,16 @@ class RecordLiveEvaluationMigrationIT {
                     WHERE table_schema = ? AND table_name = 'record_live_evaluation'
                     """, Integer.class, schema)).isOne();
             assertThat(jdbc.queryForObject("""
-                    SELECT count(*) FROM information_schema.triggers
-                    WHERE trigger_schema = ? AND trigger_name = 'trg_submission_record_live_evaluation'
+                    SELECT count(*)
+                    FROM pg_catalog.pg_trigger trigger_definition
+                    JOIN pg_catalog.pg_class relation
+                      ON relation.oid = trigger_definition.tgrelid
+                    JOIN pg_catalog.pg_namespace namespace
+                      ON namespace.oid = relation.relnamespace
+                    WHERE namespace.nspname = ?
+                      AND relation.relname = 'submission'
+                      AND trigger_definition.tgname = 'trg_submission_record_live_evaluation'
+                      AND NOT trigger_definition.tgisinternal
                     """, Integer.class, schema)).isOne();
         } finally {
             jdbc.execute("DROP SCHEMA " + schema + " CASCADE");
