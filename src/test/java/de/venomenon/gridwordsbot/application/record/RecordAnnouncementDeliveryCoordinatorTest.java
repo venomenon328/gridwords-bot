@@ -114,6 +114,7 @@ class RecordAnnouncementDeliveryCoordinatorTest {
 
         assertThat(fixture.coordinator.runNext()).isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.SUPPRESSED);
 
+        verify(fixture.store).claimNext(any(), eq(false));
         assertThat(fixture.gateway.created).isEmpty();
         assertThat(fixture.gateway.edited).isEmpty();
         assertThat(fixture.gateway.deleted).containsExactly(100L, 200L);
@@ -129,6 +130,7 @@ class RecordAnnouncementDeliveryCoordinatorTest {
 
         assertThat(fixture.coordinator.runNext()).isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.COMPLETED);
 
+        verify(fixture.store).claimNext(any(), eq(false));
         assertThat(fixture.gateway.edited).containsExactly(100L);
         verify(fixture.store, never()).markSuppressed(any(), any(), any());
     }
@@ -141,6 +143,7 @@ class RecordAnnouncementDeliveryCoordinatorTest {
 
         assertThat(fixture.coordinator.runNext()).isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.COMPLETED);
 
+        verify(fixture.store).claimNext(any(), eq(false));
         assertThat(fixture.gateway.deleted).containsExactly(100L);
         verify(fixture.store).replaceMessages(eq(KEY), eq(TOKEN), eq(List.of()));
         verify(fixture.store, never()).markSuppressed(any(), any(), any());
