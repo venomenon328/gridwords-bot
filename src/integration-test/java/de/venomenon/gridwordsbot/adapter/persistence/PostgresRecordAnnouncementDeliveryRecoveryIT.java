@@ -141,7 +141,7 @@ class PostgresRecordAnnouncementDeliveryRecoveryIT {
         PostgresRecordAnnouncementStore activeStore = new PostgresRecordAnnouncementStore(jdbc, fixedClock(NOW), true);
         activeStore.registerOrUpdate(registration(key, eventId));
         RecordLeaseClaim original = activeStore.claim(key, request(NOW, NOW.plusSeconds(10))).orElseThrow();
-        assertThat(Boolean.TRUE.equals(new TransactionTemplate(new DataSourceTransactionManager(source)).execute(
+        assertThat(Boolean.TRUE.equals(new TransactionTemplate(new DataSourceTransactionManager(jdbc.getDataSource())).execute(
                 status -> activeStore.replaceMessages(
                         key, original.token(), List.of(new RecordAnnouncementMessage(0, 100)))))).isTrue();
 
