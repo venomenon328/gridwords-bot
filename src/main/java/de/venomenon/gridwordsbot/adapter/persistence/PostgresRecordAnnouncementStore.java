@@ -172,9 +172,7 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                         WHERE guild_id=? AND channel_id=? AND idempotency_key=?
                         """,
                         (rs, row) -> snapshot(rs),
-                        key.guildId(),
-                        key.channelId(),
-                        key.idempotencyKey())
+                        key.guildId(), key.channelId(), key.idempotencyKey())
                 .stream()
                 .findFirst();
     }
@@ -191,8 +189,7 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
     }
 
     @Override
-    public Optional<RecordLeaseClaim> claim(
-            RecordAnnouncementKey key, RecordLeaseClaimRequest request) {
+    public Optional<RecordLeaseClaim> claim(RecordAnnouncementKey key, RecordLeaseClaimRequest request) {
         UUID token = UUID.randomUUID();
         return jdbc.query(
                         """
@@ -206,18 +203,11 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                         RETURNING claim_token,claim_until
                         """,
                         (rs, row) -> new RecordLeaseClaim(
-                                rs.getObject("claim_token", UUID.class),
-                                RecordJdbcMapping.instant(rs, "claim_until")),
-                        token,
-                        RecordJdbcMapping.utc(request.leaseUntil()),
-                        RecordJdbcMapping.utc(request.claimedAt()),
-                        key.guildId(),
-                        key.channelId(),
-                        key.idempotencyKey(),
-                        RecordJdbcMapping.utc(request.claimedAt()),
-                        RecordJdbcMapping.utc(request.claimedAt()))
-                .stream()
-                .findFirst();
+                                rs.getObject("claim_token", UUID.class), RecordJdbcMapping.instant(rs, "claim_until")),
+                        token, RecordJdbcMapping.utc(request.leaseUntil()), RecordJdbcMapping.utc(request.claimedAt()),
+                        key.guildId(), key.channelId(), key.idempotencyKey(),
+                        RecordJdbcMapping.utc(request.claimedAt()), RecordJdbcMapping.utc(request.claimedAt()))
+                .stream().findFirst();
     }
 
     @Override
@@ -232,7 +222,8 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                         OR (delivery_state='RETRYABLE' AND next_retry_at<=?)
                         OR (delivery_state='CLAIMED' AND claim_until<=?)
                         OR (delivery_state='SYNCHRONIZED' AND published_at IS NOT NULL AND deleted_at IS NULL))
-                      AND (? OR published_at IS NOT NULL OR desired_projection='DELETE')
+                      AND (? OR published_at IS NOT NULL OR desired_projection='DELETE'
+                           OR (desired_projection='CREATE' AND published_at IS NULL AND attempt_count>0))
                     ORDER BY updated_at, guild_id, channel_id, idempotency_key
                     FOR UPDATE SKIP LOCKED
                     LIMIT 1
@@ -255,8 +246,7 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
     }
 
     @Override
-    public boolean renewLease(
-            RecordAnnouncementKey key, UUID token, RecordLeaseClaimRequest request) {
+    public boolean renewLease(RecordAnnouncementKey key, UUID token, RecordLeaseClaimRequest request) {
         return jdbc.update(
                         """
                         UPDATE record_announcement
@@ -264,56 +254,36 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                         WHERE guild_id=? AND channel_id=? AND idempotency_key=?
                           AND delivery_state='CLAIMED' AND claim_token=? AND claim_until>?
                         """,
-                        RecordJdbcMapping.utc(request.leaseUntil()),
-                        RecordJdbcMapping.utc(request.claimedAt()),
-                        key.guildId(),
-                        key.channelId(),
-                        key.idempotencyKey(),
-                        token,
-                        RecordJdbcMapping.utc(request.claimedAt()))
-                == 1;
+                        RecordJdbcMapping.utc(request.leaseUntil()), RecordJdbcMapping.utc(request.claimedAt()),
+                        key.guildId(), key.channelId(), key.idempotencyKey(), token,
+                        RecordJdbcMapping.utc(request.claimedAt())) == 1;
     }
 
     @Override
     @Transactional
-    public boolean replaceMessages(
-            RecordAnnouncementKey key, UUID token, List<RecordAnnouncementMessage> messages) {
-        List<RecordAnnouncementMessage> replacement =
-                List.copyOf(java.util.Objects.requireNonNull(messages, "messages"));
+    public boolean replaceMessages(RecordAnnouncementKey key, UUID token, List<RecordAnnouncementMessage> messages) {
+        List<RecordAnnouncementMessage> replacement = List.copyOf(java.util.Objects.requireNonNull(messages, "messages"));
         for (int i = 0; i < replacement.size(); i++) {
             if (replacement.get(i).position() != i) {
-                throw new IllegalArgumentException(
-                        "messages must use contiguous visible positions");
+                throw new IllegalArgumentException("messages must use contiguous visible positions");
             }
         }
-
         Instant now = clock.instant();
         Long announcementId = claimedIdForUpdate(key, token, now);
-        if (announcementId == null) {
-            return false;
-        }
-
-        jdbc.update(
-                "DELETE FROM record_announcement_message WHERE announcement_id=?",
-                announcementId);
+        if (announcementId == null) return false;
+        jdbc.update("DELETE FROM record_announcement_message WHERE announcement_id=?", announcementId);
         for (RecordAnnouncementMessage message : replacement) {
-            jdbc.update(
-                    """
+            jdbc.update("""
                     INSERT INTO record_announcement_message (
                         announcement_id,message_position,discord_message_id,created_at)
                     VALUES (?,?,?,?)
-                    """,
-                    announcementId,
-                    message.position(),
-                    message.messageId(),
-                    RecordJdbcMapping.utc(now));
+                    """, announcementId, message.position(), message.messageId(), RecordJdbcMapping.utc(now));
         }
         return true;
     }
 
     @Override
-    public boolean markSynchronized(
-            RecordAnnouncementKey key, UUID token, Instant synchronizedAt) {
+    public boolean markSynchronized(RecordAnnouncementKey key, UUID token, Instant synchronizedAt) {
         Instant now = clock.instant();
         return jdbc.update(
                         """
@@ -327,24 +297,14 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                         WHERE guild_id=? AND channel_id=? AND idempotency_key=?
                           AND delivery_state='CLAIMED' AND claim_token=? AND claim_until>?
                         """,
-                        RecordJdbcMapping.utc(synchronizedAt),
-                        RecordJdbcMapping.utc(synchronizedAt),
-                        RecordJdbcMapping.utc(synchronizedAt),
-                        RecordJdbcMapping.utc(synchronizedAt),
-                        key.guildId(),
-                        key.channelId(),
-                        key.idempotencyKey(),
-                        token,
-                        RecordJdbcMapping.utc(now))
-                == 1;
+                        RecordJdbcMapping.utc(synchronizedAt), RecordJdbcMapping.utc(synchronizedAt),
+                        RecordJdbcMapping.utc(synchronizedAt), RecordJdbcMapping.utc(synchronizedAt),
+                        key.guildId(), key.channelId(), key.idempotencyKey(), token, RecordJdbcMapping.utc(now)) == 1;
     }
 
     @Override
     public boolean markRetryableFailure(
-            RecordAnnouncementKey key,
-            UUID token,
-            RecordWorkFailure failure,
-            Instant nextRetryAt) {
+            RecordAnnouncementKey key, UUID token, RecordWorkFailure failure, Instant nextRetryAt) {
         if (failure.category() == RecordWorkFailureCategory.PERMANENT) {
             throw new IllegalArgumentException("retryable failure cannot be permanent");
         }
@@ -353,10 +313,7 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
 
     @Override
     public boolean markPermanentFailure(
-            RecordAnnouncementKey key,
-            UUID token,
-            RecordWorkFailure failure,
-            Instant completedAt) {
+            RecordAnnouncementKey key, UUID token, RecordWorkFailure failure, Instant completedAt) {
         if (failure.category() != RecordWorkFailureCategory.PERMANENT) {
             throw new IllegalArgumentException("permanent failure needs PERMANENT category");
         }
@@ -364,8 +321,7 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
     }
 
     @Override
-    public boolean markExternallyRemoved(
-            RecordAnnouncementKey key, UUID token, Instant removedAt) {
+    public boolean markExternallyRemoved(RecordAnnouncementKey key, UUID token, Instant removedAt) {
         Instant now = clock.instant();
         return jdbc.update(
                         """
@@ -375,14 +331,8 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                         WHERE guild_id=? AND channel_id=? AND idempotency_key=?
                           AND delivery_state='CLAIMED' AND claim_token=? AND claim_until>?
                         """,
-                        RecordJdbcMapping.utc(removedAt),
-                        RecordJdbcMapping.utc(removedAt),
-                        key.guildId(),
-                        key.channelId(),
-                        key.idempotencyKey(),
-                        token,
-                        RecordJdbcMapping.utc(now))
-                == 1;
+                        RecordJdbcMapping.utc(removedAt), RecordJdbcMapping.utc(removedAt),
+                        key.guildId(), key.channelId(), key.idempotencyKey(), token, RecordJdbcMapping.utc(now)) == 1;
     }
 
     @Override
@@ -401,21 +351,19 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
     @Override
     public int suppressPendingCreates(Instant suppressedAt) {
         return jdbc.update("""
-                UPDATE record_announcement
+                UPDATE record_announcement announcement
                 SET delivery_state='SUPPRESSED',claim_token=NULL,claim_until=NULL,next_retry_at=NULL,
                     failure_category=NULL,safe_error=NULL,updated_at=?
-                WHERE delivery_state IN ('OPEN','RETRYABLE','CLAIMED') AND published_at IS NULL
-                  AND desired_projection='CREATE'
+                WHERE delivery_state='OPEN' AND published_at IS NULL AND desired_projection='CREATE'
+                  AND attempt_count=0
+                  AND NOT EXISTS (
+                      SELECT 1 FROM record_announcement_message message WHERE message.announcement_id=announcement.id)
                 """, RecordJdbcMapping.utc(suppressedAt));
     }
 
     private boolean failure(
-            RecordAnnouncementKey key,
-            UUID token,
-            String state,
-            RecordWorkFailure failure,
-            Instant retryAt,
-            Instant completedAt) {
+            RecordAnnouncementKey key, UUID token, String state, RecordWorkFailure failure,
+            Instant retryAt, Instant completedAt) {
         Instant now = clock.instant();
         Instant updatedAt = completedAt == null ? now : completedAt;
         return jdbc.update(
@@ -426,17 +374,9 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                         WHERE guild_id=? AND channel_id=? AND idempotency_key=?
                           AND delivery_state='CLAIMED' AND claim_token=? AND claim_until>?
                         """,
-                        state,
-                        retryAt == null ? null : RecordJdbcMapping.utc(retryAt),
-                        failure.category().name(),
-                        failure.safeMessage(),
-                        RecordJdbcMapping.utc(updatedAt),
-                        key.guildId(),
-                        key.channelId(),
-                        key.idempotencyKey(),
-                        token,
-                        RecordJdbcMapping.utc(now))
-                == 1;
+                        state, retryAt == null ? null : RecordJdbcMapping.utc(retryAt),
+                        failure.category().name(), failure.safeMessage(), RecordJdbcMapping.utc(updatedAt),
+                        key.guildId(), key.channelId(), key.idempotencyKey(), token, RecordJdbcMapping.utc(now)) == 1;
     }
 
     private Long id(RecordAnnouncementKey key) {
@@ -446,30 +386,18 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                         FROM record_announcement
                         WHERE guild_id=? AND channel_id=? AND idempotency_key=?
                         """,
-                        (rs, row) -> rs.getLong(1),
-                        key.guildId(),
-                        key.channelId(),
-                        key.idempotencyKey())
-                .stream()
-                .findFirst()
-                .orElse(null);
+                        (rs, row) -> rs.getLong(1), key.guildId(), key.channelId(), key.idempotencyKey())
+                .stream().findFirst().orElse(null);
     }
 
     private void replaceFacts(Long announcementId, List<UUID> eventIds) {
-        if (announcementId == null) {
-            throw new IllegalStateException("registered announcement is missing");
-        }
-        jdbc.update(
-                "DELETE FROM record_announcement_event WHERE announcement_id=?",
-                announcementId);
+        if (announcementId == null) throw new IllegalStateException("registered announcement is missing");
+        jdbc.update("DELETE FROM record_announcement_event WHERE announcement_id=?", announcementId);
         for (UUID eventId : eventIds) {
-            jdbc.update(
-                    """
+            jdbc.update("""
                     INSERT INTO record_announcement_event (announcement_id,event_id)
                     VALUES (?,?)
-                    """,
-                    announcementId,
-                    eventId);
+                    """, announcementId, eventId);
         }
     }
 
@@ -481,8 +409,7 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                 && left.desiredProjection() == right.desiredProjection()
                 && left.rendererVersion().equals(right.rendererVersion())
                 && left.contentFingerprint().equals(right.contentFingerprint())
-                && new java.util.HashSet<>(left.eventIds())
-                        .equals(new java.util.HashSet<>(right.eventIds()));
+                && new java.util.HashSet<>(left.eventIds()).equals(new java.util.HashSet<>(right.eventIds()));
     }
 
     private Long claimedIdForUpdate(RecordAnnouncementKey key, UUID token, Instant now) {
@@ -494,23 +421,15 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                           AND delivery_state='CLAIMED' AND claim_token=? AND claim_until>?
                         FOR UPDATE
                         """,
-                        (rs, row) -> rs.getLong(1),
-                        key.guildId(),
-                        key.channelId(),
-                        key.idempotencyKey(),
-                        token,
+                        (rs, row) -> rs.getLong(1), key.guildId(), key.channelId(), key.idempotencyKey(), token,
                         RecordJdbcMapping.utc(now))
-                .stream()
-                .findFirst()
-                .orElse(null);
+                .stream().findFirst().orElse(null);
     }
 
     private RecordAnnouncementSnapshot snapshot(ResultSet rs) throws SQLException {
         long announcementId = rs.getLong("id");
         RecordAnnouncementKey key = new RecordAnnouncementKey(
-                rs.getLong("guild_id"),
-                rs.getLong("channel_id"),
-                rs.getString("idempotency_key"));
+                rs.getLong("guild_id"), rs.getLong("channel_id"), rs.getString("idempotency_key"));
         List<UUID> events = jdbc.query(
                 """
                 SELECT event_id
@@ -518,8 +437,7 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                 WHERE announcement_id=?
                 ORDER BY event_id
                 """,
-                (event, row) -> event.getObject(1, UUID.class),
-                announcementId);
+                (event, row) -> event.getObject(1, UUID.class), announcementId);
         List<RecordAnnouncementMessage> messages = jdbc.query(
                 """
                 SELECT message_position,discord_message_id
@@ -527,20 +445,14 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                 WHERE announcement_id=?
                 ORDER BY message_position
                 """,
-                (message, row) -> new RecordAnnouncementMessage(
-                        message.getInt(1),
-                        message.getLong(2)),
-                announcementId);
+                (message, row) -> new RecordAnnouncementMessage(message.getInt(1), message.getLong(2)), announcementId);
         RecordAnnouncementRegistration registration = new RecordAnnouncementRegistration(
                 key,
                 new RecordAnnouncementSubject(
-                        RecordAnnouncementSubject.Type.valueOf(rs.getString("subject_type")),
-                        rs.getString("subject_key")),
+                        RecordAnnouncementSubject.Type.valueOf(rs.getString("subject_type")), rs.getString("subject_key")),
                 RecordAnnouncementPhase.valueOf(rs.getString("announcement_phase")),
                 RecordAnnouncementProjection.valueOf(rs.getString("desired_projection")),
-                rs.getString("renderer_version"),
-                rs.getString("content_fingerprint"),
-                events);
+                rs.getString("renderer_version"), rs.getString("content_fingerprint"), events);
         String category = rs.getString("failure_category");
         return new RecordAnnouncementSnapshot(
                 registration,
@@ -549,17 +461,13 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                 Optional.ofNullable(RecordJdbcMapping.instant(rs, "claim_until")),
                 rs.getInt("attempt_count"),
                 Optional.ofNullable(RecordJdbcMapping.instant(rs, "next_retry_at")),
-                category == null
-                        ? Optional.empty()
-                        : Optional.of(new RecordWorkFailure(
-                                RecordWorkFailureCategory.valueOf(category),
-                                rs.getString("safe_error"))),
+                category == null ? Optional.empty() : Optional.of(new RecordWorkFailure(
+                        RecordWorkFailureCategory.valueOf(category), rs.getString("safe_error"))),
                 messages,
                 Optional.ofNullable(RecordJdbcMapping.instant(rs, "published_at")),
                 Optional.ofNullable(RecordJdbcMapping.instant(rs, "changed_at")),
                 Optional.ofNullable(RecordJdbcMapping.instant(rs, "deleted_at")),
                 Optional.ofNullable(RecordJdbcMapping.instant(rs, "externally_removed_at")),
-                RecordJdbcMapping.instant(rs, "created_at"),
-                RecordJdbcMapping.instant(rs, "updated_at"));
+                RecordJdbcMapping.instant(rs, "created_at"), RecordJdbcMapping.instant(rs, "updated_at"));
     }
 }
