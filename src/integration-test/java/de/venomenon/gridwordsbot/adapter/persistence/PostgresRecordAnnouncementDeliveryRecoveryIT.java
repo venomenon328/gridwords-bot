@@ -1,7 +1,6 @@
 package de.venomenon.gridwordsbot.adapter.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
 
 import de.venomenon.gridwordsbot.application.record.RecordAnnouncementDeliveryCoordinator;
 import de.venomenon.gridwordsbot.application.record.RecordAnnouncementRenderer;
@@ -152,10 +151,14 @@ class PostgresRecordAnnouncementDeliveryRecoveryIT {
                 new RecordAnnouncementMessageGateway.PublishedPage(200, 1)));
         ScheduledExecutorService heartbeat = Executors.newSingleThreadScheduledExecutor();
         heartbeatExecutors.add(heartbeat);
+        PlayerStore unusedPlayers = new PlayerStore() {
+            @Override public StoredPlayer upsert(PlayerUpsert request) { throw new UnsupportedOperationException(); }
+            @Override public Optional<StoredPlayer> findByDiscordUserId(long discordUserId) { return Optional.empty(); }
+        };
         RecordAnnouncementDeliveryCoordinator coordinator = new RecordAnnouncementDeliveryCoordinator(
                 disabledStore,
                 new PostgresRecordEventStore(restartedJdbc, fixedClock(restartedAt)),
-                mock(PlayerStore.class),
+                unusedPlayers,
                 gateway,
                 new RecordAnnouncementRenderer(),
                 fixedClock(restartedAt),
