@@ -59,7 +59,19 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                             registration.phase().name(), registration.desiredProjection().name(),
                             registration.rendererVersion(), registration.contentFingerprint(), RecordJdbcMapping.utc(now),
                             key.guildId(), key.channelId(), key.idempotencyKey());
-                    if (updated != 1) throw new RecordAnnouncementClaimConflictException();
+                    if (updated != 1) {
+                        RecordAnnouncementSnapshot concurrent = find(key).orElseThrow(() ->
+                                new IllegalStateException("record announcement disappeared during external reconciliation"));
+                        if (concurrent.state() != RecordWorkState.EXTERNALLY_REMOVED) {
+                            throw new IllegalStateException(
+                                    "record announcement left EXTERNALLY_REMOVED during reconciliation");
+                        }
+                        if (!sameRegistration(concurrent.registration(), registration)) {
+                            throw new IllegalStateException(
+                                    "record announcement external reconciliation made no progress");
+                        }
+                        return concurrent;
+                    }
                     replaceFacts(id(key), registration.eventIds());
                 }
                 return find(key).orElseThrow();
@@ -91,7 +103,13 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                     key.channelId(),
                     key.idempotencyKey());
             if (updated != 1) {
-                throw new RecordAnnouncementClaimConflictException();
+                RecordAnnouncementSnapshot concurrent = find(key).orElseThrow(() ->
+                        new IllegalStateException("record announcement disappeared during reconciliation"));
+                if (concurrent.state() == RecordWorkState.CLAIMED
+                        || concurrent.state() == RecordWorkState.EXTERNALLY_REMOVED) {
+                    throw new RecordAnnouncementClaimConflictException();
+                }
+                throw new IllegalStateException("record announcement update made no progress");
             }
             replaceFacts(id(key), registration.eventIds());
             return find(key).orElseThrow();
@@ -118,7 +136,14 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                 RecordJdbcMapping.utc(now),
                 RecordJdbcMapping.utc(now));
         if (inserted == 0) {
-            return registerOrUpdate(registration);
+            RecordAnnouncementSnapshot concurrent = find(key).orElseThrow(() ->
+                    new IllegalStateException("conflicting record announcement is missing"));
+            if (sameRegistration(concurrent.registration(), registration)) return concurrent;
+            if (concurrent.state() == RecordWorkState.CLAIMED
+                    || concurrent.state() == RecordWorkState.EXTERNALLY_REMOVED) {
+                throw new RecordAnnouncementClaimConflictException();
+            }
+            throw new IllegalStateException("record announcement insert conflict requires a fresh reconciliation");
         }
         replaceFacts(id(key), registration.eventIds());
         return find(key).orElseThrow();

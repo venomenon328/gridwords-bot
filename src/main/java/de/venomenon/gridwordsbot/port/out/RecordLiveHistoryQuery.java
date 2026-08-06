@@ -15,4 +15,17 @@ public interface RecordLiveHistoryQuery {
     default RecordHistorySnapshot loadFor(RecordLiveEvaluationKey key, RecordProcessingOrigin origin) {
         return loadFor(key);
     }
+
+    /**
+     * Re-reads the bounded canonical input inside the short write boundary.
+     * Implementations may replace this equality check with an equivalent
+     * revision/generation query, but must cover every row used by
+     * {@link #loadFor(RecordLiveEvaluationKey, RecordProcessingOrigin)}.
+     */
+    default boolean isCurrent(
+            RecordLiveEvaluationKey key,
+            RecordProcessingOrigin origin,
+            RecordHistorySnapshot expected) {
+        return loadFor(key, origin).equals(expected);
+    }
 }

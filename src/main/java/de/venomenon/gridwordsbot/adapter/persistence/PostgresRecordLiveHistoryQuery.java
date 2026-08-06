@@ -55,6 +55,42 @@ public final class PostgresRecordLiveHistoryQuery implements RecordLiveHistoryQu
     }
 
     /**
+     * Lightweight generation fence for an exact plan.  Result payload changes
+     * are represented by {@code game_result.version}; additions/removals are
+     * detected by the identity set, and participation rows are compared
+     * directly because they have no separate revision column.  No record or
+     * streak projection is rebuilt in the write transaction.
+     */
+    @Override
+    public boolean isCurrent(
+            RecordLiveEvaluationKey key,
+            RecordProcessingOrigin origin,
+            RecordHistorySnapshot expected) {
+        java.util.Objects.requireNonNull(key, "key");
+        java.util.Objects.requireNonNull(origin, "origin");
+        java.util.Objects.requireNonNull(expected, "expected");
+        RecordHistorySnapshot.Result target = expected.results().stream()
+                .filter(result -> result.resultId() == key.gameResultId())
+                .filter(result -> result.resultVersion() == key.gameResultVersion())
+                .findFirst().orElseThrow(() -> new IllegalArgumentException(
+                        "expected history does not contain the claimed result generation"));
+        HistoryWindow window = historyWindow(key.guildId(), target, origin);
+        List<ResultGeneration> currentResults = jdbc.query("""
+                SELECT DISTINCT r.id,r.version
+                FROM game_result r JOIN submission s ON s.game_result_id=r.id
+                WHERE s.guild_id=? AND s.processing_state IN ('RESULT_STORED','COMPLETED','FAILED_RETRYABLE','SUPERSEDED')
+                  AND ((r.game_date BETWEEN ? AND ?)
+                       OR (r.game_type=? AND r.solved=TRUE))
+                ORDER BY r.id,r.version
+                """, (rs, row) -> new ResultGeneration(rs.getLong(1), rs.getLong(2)),
+                key.guildId(), window.start(), window.end(), target.game().name());
+        List<ResultGeneration> expectedResults = expected.results().stream()
+                .map(result -> new ResultGeneration(result.resultId(), result.resultVersion()))
+                .distinct().sorted().toList();
+        return currentResults.equals(expectedResults) && periods(window).equals(expected.participationPeriods());
+    }
+
+    /**
      * A new submission needs only the submitter's two game histories, the
      * solved result history of the submitted game and players active on this
      * game day.  It never invokes the bootstrap-wide history port or loads all
@@ -77,9 +113,9 @@ public final class PostgresRecordLiveHistoryQuery implements RecordLiveHistoryQu
 
     /**
      * Exact corrections retain the complete solved comparison domain of the
-     * corrected game for result fallbacks, while streak derivation is bounded
-     * to the corrected player's participation interval.  This is deliberately
-     * not a generic guild-history read.
+     * corrected game for result fallbacks and covers the full affected guild
+     * timeline so later personal, server and shared runs can be reconciled.
+     * This path is used only for exact correction-like origins.
      */
     private List<RecordHistorySnapshot.Result> correctionResults(
             long guildId, RecordHistorySnapshot.Result target, HistoryWindow window) {
@@ -112,30 +148,22 @@ public final class PostgresRecordLiveHistoryQuery implements RecordLiveHistoryQu
         if (start == null) start = target.gameDate();
         java.time.LocalDate end = target.gameDate();
         if (originRequiresExactReconciliation(origin)) {
-            java.time.LocalDate intervalEnd = jdbc.query("""
-                    SELECT max(inactive_from) FROM player_participation_period
-                    WHERE player_id=? AND active_from<=? AND (inactive_from IS NULL OR inactive_from>=?)
-                    """, rs -> rs.next() ? rs.getObject(1, java.time.LocalDate.class) : null,
-                    target.playerId(), target.gameDate(), target.gameDate());
-            Boolean stillActive = jdbc.query("""
-                    SELECT EXISTS (
-                        SELECT 1 FROM player_participation_period
-                        WHERE player_id=? AND active_from<=? AND inactive_from IS NULL)
-                    """, rs -> rs.next() && rs.getBoolean(1), target.playerId(), target.gameDate());
+            java.time.LocalDate firstParticipation = jdbc.query(
+                    "SELECT min(active_from) FROM player_participation_period",
+                    rs -> rs.next() ? rs.getObject(1, java.time.LocalDate.class) : null);
             java.time.LocalDate lastResult = jdbc.query("""
                     SELECT max(r.game_date) FROM game_result r JOIN submission s ON s.game_result_id=r.id
                     WHERE s.guild_id=? AND s.processing_state IN ('RESULT_STORED','COMPLETED','FAILED_RETRYABLE','SUPERSEDED')
                     """, rs -> rs.next() ? rs.getObject(1, java.time.LocalDate.class) : null, guildId);
-            if (Boolean.TRUE.equals(stillActive) && lastResult != null) end = lastResult;
-            else if (intervalEnd != null && lastResult != null) end = intervalEnd.isBefore(lastResult) ? intervalEnd : lastResult;
-            else if (intervalEnd != null) end = intervalEnd;
-            else if (lastResult != null) end = lastResult;
+            if (firstParticipation != null && firstParticipation.isBefore(start)) start = firstParticipation;
+            if (lastResult != null && lastResult.isAfter(end)) end = lastResult;
         }
         return new HistoryWindow(start, end.isBefore(start) ? start : end);
     }
 
     private static boolean originRequiresExactReconciliation(RecordProcessingOrigin origin) {
         return origin == RecordProcessingOrigin.NORMAL_CORRECTION
+                || origin == RecordProcessingOrigin.REPLAY
                 || origin == RecordProcessingOrigin.IMPORT
                 || origin == RecordProcessingOrigin.BACKFILL
                 || origin == RecordProcessingOrigin.ADMINISTRATIVE_REPAIR;
@@ -162,6 +190,14 @@ public final class PostgresRecordLiveHistoryQuery implements RecordLiveHistoryQu
             java.util.Objects.requireNonNull(start, "start");
             java.util.Objects.requireNonNull(end, "end");
             if (end.isBefore(start)) throw new IllegalArgumentException("history window is reversed");
+        }
+    }
+
+    private record ResultGeneration(long resultId, long resultVersion)
+            implements Comparable<ResultGeneration> {
+        @Override public int compareTo(ResultGeneration other) {
+            int byId = Long.compare(resultId, other.resultId);
+            return byId != 0 ? byId : Long.compare(resultVersion, other.resultVersion);
         }
     }
 }

@@ -19,6 +19,9 @@ import de.venomenon.gridwordsbot.domain.record.RecordLiveEvaluationClaim;
 import de.venomenon.gridwordsbot.domain.record.RecordProcessingOrigin;
 import de.venomenon.gridwordsbot.domain.record.RecordScope;
 import de.venomenon.gridwordsbot.domain.record.RecordSourceReference;
+import de.venomenon.gridwordsbot.domain.record.RecordStateKey;
+import de.venomenon.gridwordsbot.domain.record.RecordStateSnapshot;
+import de.venomenon.gridwordsbot.domain.record.StreakRecordMetric;
 import de.venomenon.gridwordsbot.domain.record.ResultRecordEvaluation;
 import de.venomenon.gridwordsbot.domain.record.ResultRecordEvaluator;
 import de.venomenon.gridwordsbot.domain.record.ResultRecordHistorySnapshot;
@@ -47,6 +50,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -99,16 +103,25 @@ public final class RecordLiveEvaluationProcessor {
 
     public ProcessingResult process(RecordLiveEvaluationClaim claim) {
         java.util.Objects.requireNonNull(claim, "claim");
-        // Canonical reads and the pure record/series derivation intentionally
-        // precede the short write transaction.  The claim/result fence below
-        // is repeated immediately before the first write.
-        RecordHistorySnapshot canonical = history.loadFor(claim.key(), claim.processingOrigin());
-        RecordHistorySnapshot.Result result = canonical.results().stream()
-                .filter(candidate -> candidate.resultId() == claim.key().gameResultId())
-                .filter(candidate -> candidate.resultVersion() == claim.key().gameResultVersion())
-                .findFirst().orElseThrow(() -> new IllegalStateException("claimed result is absent from canonical history"));
-        EvaluationPlan plan = evaluate(claim, canonical, result);
-        return transactions.inTransaction(() -> processWithinTransaction(claim, canonical, result, plan));
+        for (int attempt = 0; attempt < 3; attempt++) {
+            // Canonical reads, state-generation reads and pure projection stay
+            // outside the short write transaction.
+            RecordHistorySnapshot canonical = history.loadFor(claim.key(), claim.processingOrigin());
+            RecordHistorySnapshot.Result result = canonical.results().stream()
+                    .filter(candidate -> candidate.resultId() == claim.key().gameResultId())
+                    .filter(candidate -> candidate.resultVersion() == claim.key().gameResultVersion())
+                    .findFirst().orElseThrow(() -> new IllegalStateException("claimed result is absent from canonical history"));
+            EvaluationPlan plan = evaluate(claim, canonical, result,
+                    states.states(claim.key().guildId(), catalog.version()));
+            try {
+                return transactions.inTransaction(() -> processWithinTransaction(claim, canonical, result, plan));
+            } catch (StaleCorrectionPlan ignored) {
+                // The surrounding transaction has rolled back.  A fresh
+                // canonical read and pure projection are required; the old
+                // exact target is never retried against a newer generation.
+            }
+        }
+        throw new IllegalStateException("correction plan changed repeatedly during record evaluation");
     }
 
     private ProcessingResult processWithinTransaction(
@@ -118,23 +131,30 @@ public final class RecordLiveEvaluationProcessor {
             EvaluationPlan plan) {
         Instant now = clock.instant();
         if (!work.fence(claim.key(), claim.token(), now)) return ProcessingResult.FENCED_OUT;
+        if (requiresExactReconciliation(claim.processingOrigin())
+                && !history.isCurrent(claim.key(), claim.processingOrigin(), canonical)) {
+            throw new StaleCorrectionPlan();
+        }
         boolean ready = bootstrap.readiness(new RecordBootstrapKey(
                 claim.key().guildId(), RecordDefinitionVersion.RECORDS_V1)) == RecordBootstrapReadiness.READY;
 
         Map<de.venomenon.gridwordsbot.domain.record.RecordStateKey, RecordStateService.StateTransition> transitions =
                 reconcileStates(claim, result, plan);
-        List<RecordEventSnapshot> invalidated = invalidatePriorResultFacts(claim, result, plan.analysis(), now);
+        List<RecordEventSnapshot> invalidated;
         List<AppendedFact> appended = new ArrayList<>();
-
-        if (result.outcome() instanceof de.venomenon.gridwordsbot.domain.model.ShareOutcome.Solved) {
-            appended.addAll(appendResultFacts(claim, canonical, result, transitions, ready, now));
-        }
-        appended.addAll(appendImmediateStreakFacts(claim, result, plan.analysis(), transitions, ready, now));
-
         if (requiresExactReconciliation(claim.processingOrigin())) {
-            appended.addAll(appendCorrectionReplacementFacts(claim, invalidated, transitions, ready, now));
+            EventReconciliation reconciliation = reconcileExactFacts(claim, result, plan, transitions, ready, now);
+            invalidated = reconciliation.invalidated();
+            appended.addAll(reconciliation.appended());
+        } else {
+            invalidated = invalidatePriorResultFacts(claim, now);
+            if (result.outcome() instanceof de.venomenon.gridwordsbot.domain.model.ShareOutcome.Solved) {
+                appended.addAll(appendResultFacts(claim, canonical, result, transitions, ready, now));
+            }
+            appended.addAll(appendImmediateStreakFacts(claim, result, plan.analysis(), transitions, ready, now));
         }
-        reconcileAnnouncements(invalidated, appended, ready);
+        reconcileAnnouncements(invalidated, appended,
+                ready && claim.processingOrigin().publicAnnouncementEligible());
 
         if (!work.markSucceeded(claim.key(), claim.token(), now)) {
             throw new IllegalStateException("live evaluation lease was lost before completion");
@@ -144,56 +164,73 @@ public final class RecordLiveEvaluationProcessor {
 
     private List<RecordEventSnapshot> invalidatePriorResultFacts(
             RecordLiveEvaluationClaim claim,
-            RecordHistorySnapshot.Result changedResult,
-            StreakRunAnalysis analysis,
             Instant now) {
         List<RecordEventSnapshot> invalidated = new ArrayList<>();
-        java.util.Map<UUID, RecordEventSnapshot> prior = new java.util.LinkedHashMap<>();
-        events.findByResultId(claim.key().guildId(), claim.key().gameResultId())
-                .forEach(event -> prior.put(event.draft().eventId(), event));
-        if (requiresExactReconciliation(claim.processingOrigin())) {
-            events.findByTriggerKey(claim.key().guildId(), trigger(claim))
-                    .forEach(event -> prior.put(event.draft().eventId(), event));
-            events.findAllByGuild(claim.key().guildId()).stream()
-                    .filter(event -> affectedStreakFact(event, analysis, changedResult))
-                    .forEach(event -> prior.put(event.draft().eventId(), event));
-        }
-        for (RecordEventSnapshot event : prior.values()) {
+        for (RecordEventSnapshot event : events.findByResultId(
+                claim.key().guildId(), claim.key().gameResultId())) {
             boolean obsoleteResult = event.draft().newSource() instanceof RecordSourceReference.GameResult source
                     && source.resultVersion() != claim.key().gameResultVersion();
-            boolean affectedStreak = requiresExactReconciliation(claim.processingOrigin())
-                    && affectedStreakFact(event, analysis, changedResult);
-            if (event.validity() == RecordEventValidity.VALID && (obsoleteResult || affectedStreak)) {
+            if (event.validity() == RecordEventValidity.VALID && obsoleteResult) {
                 if (events.invalidate(event.draft().eventId(), now)) invalidated.add(event);
             }
         }
         return invalidated;
     }
 
-    /**
-     * A correction is compared against the newly derived run identities, not
-     * only against the result trigger.  Facts that ended before the corrected
-     * day remain valid; facts at or after that day are invalidated whenever
-     * their old identity disappeared or their exact run value changed.
-     */
-    private boolean affectedStreakFact(
-            RecordEventSnapshot event,
-            StreakRunAnalysis analysis,
-            RecordHistorySnapshot.Result changedResult) {
-        if (!(event.draft().newSource() instanceof RecordSourceReference.StreakRun source)) return false;
-        if (!sameAffectedOwner(source, changedResult.playerId())) return false;
-        if (!(event.draft().newValue() instanceof de.venomenon.gridwordsbot.domain.record.StreakRecordValue oldValue)
-                || oldValue.endDate().isBefore(changedResult.gameDate())) return false;
-        return analysis.runs().stream()
-                .filter(run -> run.sourceReference().equals(source))
-                .noneMatch(run -> run.value().equals(oldValue));
-    }
+    private EventReconciliation reconcileExactFacts(
+            RecordLiveEvaluationClaim claim,
+            RecordHistorySnapshot.Result changedResult,
+            EvaluationPlan plan,
+            Map<RecordStateKey, RecordStateService.StateTransition> transitions,
+            boolean ready,
+            Instant now) {
+        List<RecordStateKey> resultFamilies = plan.affectedStateKeys().stream()
+                .filter(key -> catalog.find(key.definitionKey()).orElseThrow().metric()
+                        instanceof de.venomenon.gridwordsbot.domain.record.ResultRecordMetric)
+                .toList();
+        List<RecordStateKey> streakFamilies = plan.affectedStateKeys().stream()
+                .filter(key -> catalog.find(key.definitionKey()).orElseThrow().metric() instanceof StreakRecordMetric)
+                .toList();
+        List<RecordEventSnapshot> existing = java.util.stream.Stream.concat(
+                        events.findResultFamily(claim.key().guildId(), resultFamilies, changedResult.gameDate()).stream(),
+                        events.findStreakFamily(claim.key().guildId(), streakFamilies, changedResult.gameDate()).stream())
+                .filter(event -> event.draft().type() != RecordEventType.RECORD_INITIALIZED)
+                .toList();
+        List<PlannedFact> desired = plan.desiredFacts().stream()
+                .filter(fact -> transitions.containsKey(fact.stateKey()))
+                .toList();
+        java.util.Set<PlannedFact> matched = new java.util.HashSet<>();
+        List<RecordEventSnapshot> invalidated = new ArrayList<>();
+        for (RecordEventSnapshot event : existing) {
+            PlannedFact same = desired.stream()
+                    .filter(candidate -> !matched.contains(candidate))
+                    .filter(candidate -> candidate.sameFact(event.draft()))
+                    .findFirst().orElse(null);
+            if (same != null && event.validity() == RecordEventValidity.VALID) {
+                matched.add(same);
+            } else if (event.validity() == RecordEventValidity.VALID
+                    && events.invalidate(event.draft().eventId(), now)) {
+                invalidated.add(event);
+            }
+        }
 
-    private static boolean sameAffectedOwner(RecordSourceReference.StreakRun source, long playerId) {
-        return switch (source.owner()) {
-            case RecordSourceReference.StreakRunOwner.Player player -> player.playerId() == playerId;
-            case RecordSourceReference.StreakRunOwner.Shared ignored -> true;
-        };
+        List<AppendedFact> appended = new ArrayList<>();
+        for (PlannedFact fact : desired) {
+            if (matched.contains(fact)) continue;
+            String idempotency = fact.idempotencyKey();
+            UUID eventId = stableUuid(idempotency);
+            Optional<RecordEventSnapshot> occupied = events.find(eventId);
+            if (occupied.isPresent()) {
+                idempotency = "correction:" + claim.key().gameResultId() + ":"
+                        + claim.key().gameResultVersion() + ":" + fact.idempotencyKey();
+                eventId = stableUuid(idempotency);
+            }
+            RecordEventDraft draft = fact.toDraft(eventId, idempotency, claim.processingOrigin(), now);
+            RecordEventSnapshot snapshot = events.append(draft).snapshot();
+            appended.add(new AppendedFact(snapshot,
+                    ready && fact.announcementEligible() && claim.processingOrigin().publicAnnouncementEligible()));
+        }
+        return new EventReconciliation(invalidated, appended);
     }
 
     private List<AppendedFact> appendResultFacts(
@@ -310,13 +347,13 @@ public final class RecordLiveEvaluationProcessor {
         Map<de.venomenon.gridwordsbot.domain.record.RecordStateKey, RecordBootstrapProjection.Candidate> targets =
                 candidates.stream().collect(java.util.stream.Collectors.toMap(RecordBootstrapProjection.Candidate::key,
                         candidate -> candidate));
-        java.util.Set<de.venomenon.gridwordsbot.domain.record.RecordStateKey> keys = new java.util.HashSet<>(targets.keySet());
-        keys.addAll(states.states(claim.key().guildId(), catalog.version()).stream()
-                .filter(state -> affectedBy(state.key(), changedResult))
-                .map(de.venomenon.gridwordsbot.domain.record.RecordStateSnapshot::key).toList());
+        java.util.Set<de.venomenon.gridwordsbot.domain.record.RecordStateKey> keys = plan.affectedStateKeys();
         for (de.venomenon.gridwordsbot.domain.record.RecordStateKey key : keys) {
             RecordStateService.StateTransition transition = states.reconcileCorrectionTargetTransitionWithinTransaction(
-                    Optional.ofNullable(targets.get(key)), key);
+                    Optional.ofNullable(targets.get(key)), key, plan.expectedStates().getOrDefault(key, Optional.empty()));
+            if (transition.result() == RecordStateService.RebuildResult.STALE_PLAN) {
+                throw new StaleCorrectionPlan();
+            }
             if (transition.result() == RecordStateService.RebuildResult.RETRY_EXHAUSTED) {
                 throw new IllegalStateException("record-state optimistic update retries exhausted");
             }
@@ -328,15 +365,151 @@ public final class RecordLiveEvaluationProcessor {
     private EvaluationPlan evaluate(
             RecordLiveEvaluationClaim claim,
             RecordHistorySnapshot history,
-            RecordHistorySnapshot.Result changedResult) {
+            RecordHistorySnapshot.Result changedResult,
+            List<RecordStateSnapshot> currentStates) {
         StreakRunAnalysisWindow window = analysisWindow(history, changedResult, claim.processingOrigin());
         StreakRunAnalysis analysis = streakAnalyzer.analyze(
                 history.results().stream().map(RecordHistorySnapshot.Result::streakResult).toList(),
                 history.participationPeriods(), window);
+        Set<RecordStateKey> affectedStateKeys = affectedStateKeys(claim.key().guildId(), changedResult);
         List<RecordBootstrapProjection.Candidate> candidates = new RecordBootstrapProjection(catalog, streakAnalyzer)
                 .project(claim.key().guildId(), history, window).stream()
-                .filter(candidate -> affectedBy(candidate.key(), changedResult)).toList();
-        return new EvaluationPlan(candidates, analysis);
+                .filter(candidate -> affectedStateKeys.contains(candidate.key())).toList();
+        Map<RecordStateKey, Optional<RecordStateSnapshot>> expectedStates = affectedStateKeys.stream()
+                .collect(java.util.stream.Collectors.toUnmodifiableMap(key -> key,
+                        key -> currentStates.stream().filter(state -> state.key().equals(key)).findFirst()));
+        List<PlannedFact> desiredFacts = requiresExactReconciliation(claim.processingOrigin())
+                ? planDesiredFacts(claim, history, changedResult, analysis, affectedStateKeys)
+                : List.of();
+        return new EvaluationPlan(candidates, analysis, affectedStateKeys, expectedStates, desiredFacts);
+    }
+
+    private List<PlannedFact> planDesiredFacts(
+            RecordLiveEvaluationClaim claim,
+            RecordHistorySnapshot history,
+            RecordHistorySnapshot.Result changedResult,
+            StreakRunAnalysis analysis,
+            Set<RecordStateKey> affectedKeys) {
+        return java.util.stream.Stream.concat(
+                        planResultFacts(claim, history, changedResult, affectedKeys).stream(),
+                        planStreakFacts(claim, history, changedResult, analysis, affectedKeys).stream())
+                .sorted(Comparator.comparing(PlannedFact::triggerKey)
+                        .thenComparing(fact -> fact.stateKey().definitionKey().value())
+                        .thenComparing(fact -> fact.stateKey().scopeKey())
+                        .thenComparing(PlannedFact::idempotencyKey))
+                .toList();
+    }
+
+    private List<PlannedFact> planResultFacts(
+            RecordLiveEvaluationClaim claim,
+            RecordHistorySnapshot history,
+            RecordHistorySnapshot.Result changedResult,
+            Set<RecordStateKey> affectedKeys) {
+        List<de.venomenon.gridwordsbot.domain.record.ResultRecordObservation> prior = new ArrayList<>();
+        Map<RecordStateKey, ResultRecordStateSnapshot> simulated = new java.util.LinkedHashMap<>();
+        List<PlannedFact> facts = new ArrayList<>();
+        for (RecordHistorySnapshot.Result item : history.results().stream()
+                .filter(candidate -> candidate.game() == changedResult.game())
+                .filter(candidate -> candidate.outcome()
+                        instanceof de.venomenon.gridwordsbot.domain.model.ShareOutcome.Solved)
+                .sorted(Comparator.comparing(RecordHistorySnapshot.Result::gameDate)
+                        .thenComparing(RecordHistorySnapshot.Result::firstAcceptedAt)
+                        .thenComparingLong(RecordHistorySnapshot.Result::resultId))
+                .toList()) {
+            var observation = item.solvedObservation();
+            List<ResultRecordStateSnapshot> applicableStates = simulated.entrySet().stream()
+                    .filter(entry -> entry.getKey().scope() instanceof RecordScope.ServerIndividual
+                            || entry.getKey().scope() instanceof RecordScope.Personal personal
+                                    && personal.playerId() == item.playerId())
+                    .map(Map.Entry::getValue).toList();
+            for (ResultRecordEvaluation evaluation : resultEvaluator.evaluate(
+                    observation, new ResultRecordHistorySnapshot(prior), applicableStates,
+                    claim.processingOrigin()).evaluations()) {
+                RecordStateKey stateKey = new RecordStateKey(claim.key().guildId(), evaluation.definition().key(),
+                        evaluation.definition().definitionVersion(), evaluation.scope());
+                if (!affectedKeys.contains(stateKey)) continue;
+                if (evaluation.action()
+                        != de.venomenon.gridwordsbot.domain.record.ResultRecordEvaluationAction.UNCHANGED) {
+                    simulated.put(stateKey, evaluation.resultingState());
+                }
+                if (evaluation.action()
+                        != de.venomenon.gridwordsbot.domain.record.ResultRecordEvaluationAction.IMPROVED
+                        || item.gameDate().isBefore(changedResult.gameDate())) {
+                    continue;
+                }
+                RecordSourceReference.GameResult source = evaluation.resultingSourceReference();
+                String key = "result:" + source.resultId() + ":" + source.resultVersion() + ":"
+                        + evaluation.definition().key().value() + ":" + scopeKey(evaluation.scope());
+                facts.add(new PlannedFact(key, stateKey, RecordEventType.RESULT_RECORD_BROKEN,
+                        evaluation.previousValue(), evaluation.resultingValue(),
+                        evaluation.previousState().map(ResultRecordStateSnapshot::holderPlayerId),
+                        Optional.of(evaluation.resultingHolderPlayerId()),
+                        evaluation.previousSourceReference().map(candidate -> (RecordSourceReference) candidate),
+                        source, "live-result:" + source.resultId(), evaluation.publicAnnouncementEligible()));
+            }
+            prior.add(observation);
+        }
+        return facts;
+    }
+
+    private List<PlannedFact> planStreakFacts(
+            RecordLiveEvaluationClaim claim,
+            RecordHistorySnapshot history,
+            RecordHistorySnapshot.Result changedResult,
+            StreakRunAnalysis analysis,
+            Set<RecordStateKey> affectedKeys) {
+        List<PlannedFact> facts = new ArrayList<>();
+        for (StreakRun run : analysis.runs()) {
+            if (run.endDate().isBefore(changedResult.gameDate())) continue;
+            for (var evaluation : streakEvaluator.evaluate(run,
+                    new StreakRecordHistorySnapshot(analysis.runs()), Set.of(), claim.processingOrigin()).notable()) {
+                RecordStateKey stateKey = new RecordStateKey(claim.key().guildId(), evaluation.definition().key(),
+                        evaluation.definition().definitionVersion(), evaluation.comparisonScope());
+                if (!affectedKeys.contains(stateKey)) continue;
+                RecordHistorySnapshot.Result triggerResult = triggerResult(history, run).orElse(changedResult);
+                RecordEventType type = switch (evaluation.classification()) {
+                    case CROSSED -> RecordEventType.SERIES_RECORD_CROSSED;
+                    case TIED -> RecordEventType.SERIES_RECORD_TIED_AT_END;
+                    case NEAR_MISS -> RecordEventType.SERIES_RECORD_NEAR_MISSED_AT_END;
+                    case NEW_RECORD -> RecordEventType.RECORD_SERIES_FINISHED;
+                    case NONE -> throw new IllegalStateException("non-notable streak event");
+                };
+                String key = "streak:" + triggerResult.resultId() + ":" + triggerResult.resultVersion() + ":"
+                        + evaluation.definition().key().value() + ":" + evaluation.candidate().identity();
+                Optional<Long> holder = holder(evaluation.candidate().sourceReference());
+                Optional<RecordSourceReference> previousSource = evaluation.reference()
+                        .map(candidate -> (RecordSourceReference) candidate.sourceReference());
+                facts.add(new PlannedFact(key, stateKey, type,
+                        evaluation.reference().map(candidate -> (de.venomenon.gridwordsbot.domain.record.RecordValue)
+                                candidate.value()), evaluation.candidate().value(),
+                        evaluation.reference().flatMap(candidate -> holder(candidate.sourceReference())), holder,
+                        previousSource, evaluation.candidate().sourceReference(),
+                        "live-result:" + triggerResult.resultId(), evaluation.publicAnnouncementEligible()));
+            }
+        }
+        return facts;
+    }
+
+    private static Optional<RecordHistorySnapshot.Result> triggerResult(
+            RecordHistorySnapshot history, StreakRun run) {
+        return history.results().stream()
+                .filter(result -> result.gameDate().equals(run.endDate()))
+                .filter(result -> switch (run.identity().ownerScope()) {
+                    case RecordScope.Personal personal -> result.playerId() == personal.playerId();
+                    case RecordScope.Shared ignored -> true;
+                    case RecordScope.ServerIndividual ignored -> false;
+                })
+                .filter(result -> run.identity().metric().fixedGame()
+                        .map(game -> result.game() == game).orElse(true))
+                .max(Comparator.comparing(RecordHistorySnapshot.Result::firstAcceptedAt)
+                        .thenComparingLong(RecordHistorySnapshot.Result::resultId));
+    }
+
+    private static Optional<Long> holder(RecordSourceReference.StreakRun source) {
+        return switch (source.owner()) {
+            case RecordSourceReference.StreakRunOwner.Player player -> Optional.of(player.playerId());
+            case RecordSourceReference.StreakRunOwner.Shared ignored -> Optional.empty();
+        };
     }
 
     private static StreakRunAnalysisWindow analysisWindow(
@@ -366,41 +539,6 @@ public final class RecordLiveEvaluationProcessor {
         return new StreakRunAnalysisWindow(first, asOf, false);
     }
 
-    /**
-     * A correction invalidates obsolete facts first.  If its exact canonical
-     * target still has a source, append a successor fact in the same logical
-     * family so a previously delivered aggregate becomes an EDIT rather than a
-     * destructive DELETE followed by an unrelated CREATE.
-     */
-    private List<AppendedFact> appendCorrectionReplacementFacts(
-            RecordLiveEvaluationClaim claim,
-            List<RecordEventSnapshot> invalidated,
-            Map<de.venomenon.gridwordsbot.domain.record.RecordStateKey, RecordStateService.StateTransition> transitions,
-            boolean ready,
-            Instant now) {
-        List<AppendedFact> replacements = new ArrayList<>();
-        for (RecordEventSnapshot invalidatedEvent : invalidated) {
-            RecordEventDraft old = invalidatedEvent.draft();
-            if (old.type() == RecordEventType.RECORD_INITIALIZED) continue;
-            RecordStateService.StateTransition transition = transitions.get(old.stateKey());
-            if (transition == null || !transition.changed() || transition.after().isEmpty()) continue;
-            var state = transition.after().orElseThrow();
-            String key = "correction:" + claim.key().gameResultId() + ":" + claim.key().gameResultVersion()
-                    + ":" + old.stateKey().definitionKey().value() + ":" + old.stateKey().scopeKey();
-            RecordEventSnapshot successor = events.append(new RecordEventDraft(
-                    stableUuid(key), key, state.key(), old.type(),
-                    transition.before().map(de.venomenon.gridwordsbot.domain.record.RecordStateSnapshot::value), state.value(),
-                    transition.before().flatMap(de.venomenon.gridwordsbot.domain.record.RecordStateSnapshot::holderPlayerId),
-                    state.holderPlayerId(),
-                    transition.before().map(de.venomenon.gridwordsbot.domain.record.RecordStateSnapshot::source), state.source(),
-                    trigger(claim), claim.processingOrigin(), now)).snapshot();
-            boolean wasPublic = !announcements.findByEventId(old.eventId()).isEmpty();
-            replacements.add(new AppendedFact(successor,
-                    ready && claim.processingOrigin().publicAnnouncementEligible() && wasPublic));
-        }
-        return replacements;
-    }
-
     private boolean affectedBy(
             de.venomenon.gridwordsbot.domain.record.RecordStateKey key,
             RecordHistorySnapshot.Result changedResult) {
@@ -424,6 +562,7 @@ public final class RecordLiveEvaluationProcessor {
 
     private static boolean requiresExactReconciliation(RecordProcessingOrigin origin) {
         return origin == RecordProcessingOrigin.NORMAL_CORRECTION
+                || origin == RecordProcessingOrigin.REPLAY
                 || origin == RecordProcessingOrigin.IMPORT
                 || origin == RecordProcessingOrigin.BACKFILL
                 || origin == RecordProcessingOrigin.ADMINISTRATIVE_REPAIR;
@@ -440,7 +579,8 @@ public final class RecordLiveEvaluationProcessor {
         appended.stream().filter(AppendedFact::announcementEligible).map(AppendedFact::snapshot)
                 .filter(event -> event.validity() == RecordEventValidity.VALID)
                 .collect(java.util.stream.Collectors.groupingBy(event -> new AnnouncementBucket(
-                                phase(event.draft().type()), subject(event.draft())), java.util.LinkedHashMap::new,
+                                event.draft().triggerKey(), phase(event.draft().type()), subject(event.draft())),
+                        java.util.LinkedHashMap::new,
                         java.util.stream.Collectors.toList()))
                 .forEach((bucket, facts) -> registerNewFacts(facts, bucket));
     }
@@ -448,7 +588,7 @@ public final class RecordLiveEvaluationProcessor {
     private void registerNewFacts(List<RecordEventSnapshot> facts, AnnouncementBucket bucket) {
         String subjectKey = bucket.subject().key();
         RecordAnnouncementKey key = new RecordAnnouncementKey(facts.getFirst().draft().stateKey().guildId(), channelId,
-                triggerFromFacts(facts) + ":" + subjectKey + ":" + bucket.phase().name());
+                bucket.triggerKey() + ":" + subjectKey + ":" + bucket.phase().name());
         RecordAnnouncementSnapshot existing = announcements.find(key).orElse(null);
         List<UUID> ids = java.util.stream.Stream.concat(
                         existing == null ? java.util.stream.Stream.empty() : existing.registration().eventIds().stream()
@@ -497,7 +637,6 @@ public final class RecordLiveEvaluationProcessor {
             case RecordScope.Shared ignored -> "shared";
         };
     }
-    private static String triggerFromFacts(List<RecordEventSnapshot> facts) { return facts.getFirst().draft().triggerKey(); }
     private static RecordAnnouncementPhase phase(RecordEventType type) {
         return switch (type) {
             case RESULT_RECORD_BROKEN -> RecordAnnouncementPhase.LIVE_EVALUATION;
@@ -517,14 +656,104 @@ public final class RecordLiveEvaluationProcessor {
         catch (NoSuchAlgorithmException exception) { throw new IllegalStateException("SHA-256 is unavailable", exception); }
     }
 
-    private record AnnouncementBucket(RecordAnnouncementPhase phase, RecordAnnouncementSubject subject) { }
+    private record AnnouncementBucket(
+            String triggerKey, RecordAnnouncementPhase phase, RecordAnnouncementSubject subject) { }
     private record AppendedFact(RecordEventSnapshot snapshot, boolean announcementEligible) { }
-    private record EvaluationPlan(List<RecordBootstrapProjection.Candidate> candidates, StreakRunAnalysis analysis) {
+    private record EventReconciliation(
+            List<RecordEventSnapshot> invalidated, List<AppendedFact> appended) {
+        private EventReconciliation {
+            invalidated = List.copyOf(invalidated);
+            appended = List.copyOf(appended);
+        }
+    }
+    private record PlannedFact(
+            String idempotencyKey,
+            RecordStateKey stateKey,
+            RecordEventType type,
+            Optional<de.venomenon.gridwordsbot.domain.record.RecordValue> previousValue,
+            de.venomenon.gridwordsbot.domain.record.RecordValue newValue,
+            Optional<Long> previousHolderPlayerId,
+            Optional<Long> newHolderPlayerId,
+            Optional<RecordSourceReference> previousSource,
+            RecordSourceReference newSource,
+            String triggerKey,
+            boolean announcementEligible) {
+        private PlannedFact {
+            if (idempotencyKey == null || idempotencyKey.isBlank()) {
+                throw new IllegalArgumentException("planned event idempotency key is invalid");
+            }
+            java.util.Objects.requireNonNull(stateKey, "stateKey");
+            java.util.Objects.requireNonNull(type, "type");
+            previousValue = java.util.Objects.requireNonNull(previousValue, "previousValue");
+            java.util.Objects.requireNonNull(newValue, "newValue");
+            previousHolderPlayerId = java.util.Objects.requireNonNull(
+                    previousHolderPlayerId, "previousHolderPlayerId");
+            newHolderPlayerId = java.util.Objects.requireNonNull(newHolderPlayerId, "newHolderPlayerId");
+            previousSource = java.util.Objects.requireNonNull(previousSource, "previousSource");
+            java.util.Objects.requireNonNull(newSource, "newSource");
+            if (triggerKey == null || triggerKey.isBlank()) {
+                throw new IllegalArgumentException("planned event trigger key is invalid");
+            }
+        }
+
+        private boolean sameFact(RecordEventDraft draft) {
+            return stateKey.equals(draft.stateKey()) && type == draft.type()
+                    && previousValue.equals(draft.previousValue()) && newValue.equals(draft.newValue())
+                    && previousHolderPlayerId.equals(draft.previousHolderPlayerId())
+                    && newHolderPlayerId.equals(draft.newHolderPlayerId())
+                    && previousSource.equals(draft.previousSource()) && newSource.equals(draft.newSource())
+                    && triggerKey.equals(draft.triggerKey());
+        }
+
+        private RecordEventDraft toDraft(
+                UUID eventId,
+                String persistedIdempotencyKey,
+                RecordProcessingOrigin origin,
+                Instant detectedAt) {
+            return new RecordEventDraft(eventId, persistedIdempotencyKey, stateKey, type,
+                    previousValue, newValue, previousHolderPlayerId, newHolderPlayerId,
+                    previousSource, newSource, triggerKey, origin, detectedAt);
+        }
+    }
+    private Set<RecordStateKey> affectedStateKeys(long guildId, RecordHistorySnapshot.Result changedResult) {
+        return catalog.definitions().stream()
+                .filter(definition -> definition.metric() instanceof de.venomenon.gridwordsbot.domain.record.ResultRecordMetric
+                        ? definition.game().filter(game -> game == changedResult.game()).isPresent()
+                        : streakMetricAffected((StreakRecordMetric) definition.metric(), changedResult.game()))
+                .map(definition -> new RecordStateKey(guildId, definition.key(), definition.definitionVersion(),
+                        switch (definition.scopeType()) {
+                            case PERSONAL -> new RecordScope.Personal(changedResult.playerId());
+                            case SERVER_INDIVIDUAL -> new RecordScope.ServerIndividual();
+                            case SHARED -> new RecordScope.Shared();
+                        }))
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
+    private static boolean streakMetricAffected(
+            StreakRecordMetric metric, de.venomenon.gridwordsbot.domain.model.GameType game) {
+        return switch (metric) {
+            case ACTIVITY, COMPLETE, PERFECT, WITHOUT_PERFECT_DAY -> true;
+            case GRIDWORDS_SOLVED, GRIDWORDS_DROUGHT -> game == de.venomenon.gridwordsbot.domain.model.GameType.GRIDWORDS;
+            case QUADWORDS_SOLVED, QUADWORDS_DROUGHT -> game == de.venomenon.gridwordsbot.domain.model.GameType.QUADWORDS;
+        };
+    }
+
+    private record EvaluationPlan(
+            List<RecordBootstrapProjection.Candidate> candidates,
+            StreakRunAnalysis analysis,
+            Set<RecordStateKey> affectedStateKeys,
+            Map<RecordStateKey, Optional<RecordStateSnapshot>> expectedStates,
+            List<PlannedFact> desiredFacts) {
         private EvaluationPlan {
             candidates = List.copyOf(candidates);
             java.util.Objects.requireNonNull(analysis, "analysis");
+            affectedStateKeys = Set.copyOf(affectedStateKeys);
+            expectedStates = Map.copyOf(expectedStates);
+            desiredFacts = List.copyOf(desiredFacts);
         }
     }
+
+    private static final class StaleCorrectionPlan extends RuntimeException { }
 
     public enum ProcessingResult { PROCESSED, FENCED_OUT }
 }

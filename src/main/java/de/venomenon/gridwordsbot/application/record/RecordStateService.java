@@ -315,39 +315,62 @@ public class RecordStateService {
     public StateTransition reconcileCorrectionTargetTransitionWithinTransaction(
             Optional<RecordBootstrapProjection.Candidate> target,
             de.venomenon.gridwordsbot.domain.record.RecordStateKey key) {
+        return reconcileCorrectionTargetTransitionWithinTransaction(target, key, stateStore.find(key));
+    }
+
+    /**
+     * Applies an exact correction target only when the state generation read
+     * with the plan is still current.  A mismatch is not retried with the old
+     * target: the caller must leave the transaction and recompute from fresh
+     * canonical data.
+     */
+    public StateTransition reconcileCorrectionTargetTransitionWithinTransaction(
+            Optional<RecordBootstrapProjection.Candidate> target,
+            de.venomenon.gridwordsbot.domain.record.RecordStateKey key,
+            Optional<RecordStateSnapshot> expected) {
         java.util.Objects.requireNonNull(target, "target");
         java.util.Objects.requireNonNull(key, "key");
+        expected = java.util.Objects.requireNonNull(expected, "expected");
+        Optional<RecordStateSnapshot> current = stateStore.find(key);
+        if (!current.equals(expected)) {
+            return new StateTransition(RebuildResult.STALE_PLAN, expected, current);
+        }
         if (target.isPresent()) {
             RecordBootstrapProjection.Candidate candidate = target.orElseThrow();
             if (!candidate.key().equals(key)) throw new IllegalArgumentException("correction target key mismatch");
-            for (int attempts = 0; attempts < 3; attempts++) {
-                Optional<RecordStateSnapshot> current = stateStore.find(key);
-                if (current.isEmpty()) {
-                    RecordStateInitialization initialized = stateStore.initialize(key, candidate.write());
-                    if (initialized instanceof RecordStateInitialization.Created created) {
-                        return new StateTransition(RebuildResult.CREATED, Optional.empty(), Optional.of(created.snapshot()));
-                    }
-                    continue;
+            if (current.isEmpty()) {
+                RecordStateInitialization initialized = stateStore.initialize(key, candidate.write());
+                if (initialized instanceof RecordStateInitialization.Created created) {
+                    return new StateTransition(RebuildResult.CREATED, Optional.empty(), Optional.of(created.snapshot()));
                 }
-                RecordStateSnapshot state = current.orElseThrow();
-                if (same(state, candidate.write())) {
-                    return new StateTransition(RebuildResult.UNCHANGED, Optional.of(state), Optional.of(state));
-                }
-                RecordStateUpdateResult updated = stateStore.update(
-                        new RecordStateUpdate(key, state.lockVersion(), candidate.write()));
-                if (updated.status() == RecordStateUpdateResult.Status.UPDATED) {
-                    RecordStateSnapshot after = stateStore.find(key)
-                            .orElseThrow(() -> new IllegalStateException("updated record state is missing"));
-                    return new StateTransition(RebuildResult.REPLACED, Optional.of(state), Optional.of(after));
-                }
-                if (updated.status() == RecordStateUpdateResult.Status.UNCHANGED) {
-                    RecordStateSnapshot after = stateStore.find(key).orElse(state);
-                    return new StateTransition(RebuildResult.UNCHANGED, Optional.of(state), Optional.of(after));
-                }
+                return new StateTransition(RebuildResult.STALE_PLAN, Optional.empty(),
+                        Optional.of(initialized.snapshot()));
             }
-            return new StateTransition(RebuildResult.RETRY_EXHAUSTED, Optional.empty(), Optional.empty());
+            RecordStateSnapshot state = current.orElseThrow();
+            if (same(state, candidate.write())) {
+                return new StateTransition(RebuildResult.UNCHANGED, Optional.of(state), Optional.of(state));
+            }
+            RecordStateUpdateResult updated = stateStore.update(
+                    new RecordStateUpdate(key, state.lockVersion(), candidate.write()));
+            if (updated.status() == RecordStateUpdateResult.Status.UPDATED) {
+                RecordStateSnapshot after = updated.snapshot()
+                        .orElseThrow(() -> new IllegalStateException("updated record state is missing"));
+                return new StateTransition(RebuildResult.REPLACED, Optional.of(state), Optional.of(after));
+            }
+            if (updated.status() == RecordStateUpdateResult.Status.UNCHANGED) {
+                RecordStateSnapshot after = updated.snapshot().orElse(state);
+                return new StateTransition(RebuildResult.UNCHANGED, Optional.of(state), Optional.of(after));
+            }
+            return new StateTransition(RebuildResult.STALE_PLAN, Optional.of(state), stateStore.find(key));
         }
-        return removeAbsentCanonicalTargetTransitionWithinTransaction(key);
+        if (current.isEmpty()) {
+            return new StateTransition(RebuildResult.UNCHANGED, Optional.empty(), Optional.empty());
+        }
+        RecordStateSnapshot state = current.orElseThrow();
+        if (stateStore.remove(key, state.lockVersion())) {
+            return new StateTransition(RebuildResult.REMOVED, Optional.of(state), Optional.empty());
+        }
+        return new StateTransition(RebuildResult.STALE_PLAN, Optional.of(state), stateStore.find(key));
     }
 
     private RebuildResult removeAbsentCanonicalTargetWithinTransaction(
@@ -487,6 +510,7 @@ public class RecordStateService {
         REPLACED,
         REMOVED,
         UNCHANGED,
+        STALE_PLAN,
         RETRY_EXHAUSTED
     }
 

@@ -22,6 +22,7 @@
         <jda.version>6.4.2</jda.version>
         <archunit.version>1.4.2</archunit.version>
         <testcontainers.version>2.0.5</testcontainers.version>
+        <docker-java-jna.version>5.18.1</docker-java-jna.version>
     </properties>
 
     <dependencies>
@@ -88,6 +89,15 @@
                     <groupId>org.testcontainers</groupId>
                     <artifactId>testcontainers-junit-jupiter</artifactId>
                     <version>${testcontainers.version}</version>
+                    <scope>test</scope>
+                </dependency>
+                <!-- JDA's optional Opus binding brings JNA 4.4 at runtime. The
+                     Windows named-pipe transport used by docker-java 3.7.1
+                     requires the JNA version declared by that transport. -->
+                <dependency>
+                    <groupId>net.java.dev.jna</groupId>
+                    <artifactId>jna</artifactId>
+                    <version>${docker-java-jna.version}</version>
                     <scope>test</scope>
                 </dependency>
             </dependencies>
