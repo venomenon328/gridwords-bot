@@ -19,7 +19,7 @@ import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /** PostgreSQL implementation of the small, day-specific record close work queue. */
-public final class PostgresRecordDayCloseStore implements RecordDayCloseStore {
+public class PostgresRecordDayCloseStore implements RecordDayCloseStore {
     private final JdbcTemplate jdbc;
     private final Clock clock;
 
