@@ -107,6 +107,46 @@ class RecordAnnouncementDeliveryCoordinatorTest {
     }
 
     @Test
+    void disabledModeDeletesPersistedAndUnknownCreatePagesBeforeSuppressing() {
+        Fixture fixture = fixture(
+                RecordAnnouncementProjection.CREATE, List.of(new RecordAnnouncementMessage(0, 100)), false, false);
+        fixture.gateway.discovered = List.of(new RecordAnnouncementMessageGateway.PublishedPage(200, 0));
+
+        assertThat(fixture.coordinator.runNext()).isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.SUPPRESSED);
+
+        assertThat(fixture.gateway.created).isEmpty();
+        assertThat(fixture.gateway.edited).isEmpty();
+        assertThat(fixture.gateway.deleted).containsExactly(100L, 200L);
+        verify(fixture.store).replaceMessages(eq(KEY), eq(TOKEN), eq(List.of()));
+        verify(fixture.store).markSuppressed(eq(KEY), eq(TOKEN), any());
+    }
+
+    @Test
+    void disabledModeStillEditsAnAlreadyPublishedAnnouncement() {
+        Fixture fixture = fixture(
+                RecordAnnouncementProjection.EDIT, List.of(new RecordAnnouncementMessage(0, 100)), true, false);
+        fixture.gateway.discovered = List.of(new RecordAnnouncementMessageGateway.PublishedPage(100, 0));
+
+        assertThat(fixture.coordinator.runNext()).isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.COMPLETED);
+
+        assertThat(fixture.gateway.edited).containsExactly(100L);
+        verify(fixture.store, never()).markSuppressed(any(), any(), any());
+    }
+
+    @Test
+    void disabledModeStillDeletesAnAlreadyPublishedAnnouncement() {
+        Fixture fixture = fixture(
+                RecordAnnouncementProjection.DELETE, List.of(new RecordAnnouncementMessage(0, 100)), true, false);
+        fixture.gateway.discovered = List.of(new RecordAnnouncementMessageGateway.PublishedPage(100, 0));
+
+        assertThat(fixture.coordinator.runNext()).isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.COMPLETED);
+
+        assertThat(fixture.gateway.deleted).containsExactly(100L);
+        verify(fixture.store).replaceMessages(eq(KEY), eq(TOKEN), eq(List.of()));
+        verify(fixture.store, never()).markSuppressed(any(), any(), any());
+    }
+
+    @Test
     void synchronizedCreateReconciliationDoesNotEditAnUnchangedPublishedPage() {
         Fixture fixture = fixture(RecordAnnouncementProjection.CREATE, List.of(new RecordAnnouncementMessage(0, 100)), true);
         fixture.gateway.discovered = List.of(new RecordAnnouncementMessageGateway.PublishedPage(100, 0));
@@ -154,6 +194,12 @@ class RecordAnnouncementDeliveryCoordinatorTest {
 
     private Fixture fixture(
             RecordAnnouncementProjection projection, List<RecordAnnouncementMessage> messages, boolean published) {
+        return fixture(projection, messages, published, true);
+    }
+
+    private Fixture fixture(
+            RecordAnnouncementProjection projection, List<RecordAnnouncementMessage> messages,
+            boolean published, boolean publicAnnouncementsEnabled) {
         RecordAnnouncementStore store = mock(RecordAnnouncementStore.class);
         RecordEventStore events = mock(RecordEventStore.class);
         PlayerStore players = mock(PlayerStore.class);
@@ -166,6 +212,7 @@ class RecordAnnouncementDeliveryCoordinatorTest {
         when(store.replaceMessages(eq(KEY), eq(TOKEN), any())).thenReturn(true);
         when(store.markSynchronized(eq(KEY), eq(TOKEN), any())).thenReturn(true);
         when(store.markExternallyRemoved(eq(KEY), eq(TOKEN), any())).thenReturn(true);
+        when(store.markSuppressed(eq(KEY), eq(TOKEN), any())).thenReturn(true);
         when(events.find(EVENT_ID)).thenReturn(Optional.of(event()));
         when(players.findAllPlayers()).thenReturn(List.of(new PlayerStore.StoredPlayer(
                 7, "Ada", true, false, false, NOW, NOW)));
@@ -174,7 +221,7 @@ class RecordAnnouncementDeliveryCoordinatorTest {
         RecordAnnouncementDeliveryCoordinator coordinator = new RecordAnnouncementDeliveryCoordinator(
                 store, events, players, gateway, new RecordAnnouncementRenderer(), Clock.fixed(NOW, ZoneOffset.UTC),
                 Duration.ofSeconds(30), Duration.ofMillis(10), Duration.ofSeconds(1), Duration.ofSeconds(10),
-                executor, true, (result, duration) -> { });
+                executor, publicAnnouncementsEnabled, (result, duration) -> { });
         return new Fixture(store, gateway, coordinator);
     }
 
