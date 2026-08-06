@@ -41,6 +41,11 @@ public final class RecordsQueryService implements RecordsQueryUseCase {
     @Override
     public Result query(Query query) {
         java.util.Objects.requireNonNull(query, "query");
+        if (query.targetPlayerId().isPresent()
+                && query.targetPlayerId().get() != query.requesterPlayerId()
+                && !query.requesterAdministrator()) {
+            return new Forbidden();
+        }
         if (bootstrap.readiness(new RecordBootstrapKey(query.guildId(), catalog.version()))
                 != RecordBootstrapReadiness.READY) {
             return new Unavailable();
@@ -54,12 +59,11 @@ public final class RecordsQueryService implements RecordsQueryUseCase {
         long personalPlayerId = query.effectivePersonalPlayerId();
 
         List<Entry> entries = catalog.definitions().stream()
-                .filter(definition -> categoryMatches(definition, query.category()))
                 .filter(definition -> gameMatches(definition, query.game()))
-                .filter(definition -> scopeMatches(definition.scopeType(), query.scope()))
                 .map(definition -> entry(query.guildId(), personalPlayerId, definition, current, displays))
-                .sorted(Comparator.comparing(Entry::definitionKey)
-                        .thenComparing(entry -> entry.scope().ordinal()))
+                .sorted(Comparator.comparing((Entry entry) -> entry.category().ordinal())
+                        .thenComparing(entry -> entry.scope().ordinal())
+                        .thenComparing(Entry::definitionKey))
                 .toList();
         return new Ready(entries);
     }
@@ -96,25 +100,10 @@ public final class RecordsQueryService implements RecordsQueryUseCase {
                 snapshot != null && snapshot.running());
     }
 
-    private static boolean categoryMatches(RecordDefinition<?> definition, CategoryFilter filter) {
-        if (filter == CategoryFilter.ALL) return true;
-        boolean result = definition.metric() instanceof ResultRecordMetric;
-        return filter == CategoryFilter.RESULTS ? result : !result;
-    }
-
     private static boolean gameMatches(RecordDefinition<?> definition, GameFilter filter) {
-        if (filter == GameFilter.ALL) return true;
-        Optional<GameType> game = definition.game();
-        if (game.isEmpty()) return false;
-        return filter == GameFilter.GRIDWORDS ? game.get() == GameType.GRIDWORDS : game.get() == GameType.QUADWORDS;
-    }
-
-    private static boolean scopeMatches(RecordScopeType scope, ScopeFilter filter) {
-        return switch (filter) {
-            case ALL -> true;
-            case PERSONAL -> scope == RecordScopeType.PERSONAL;
-            case SERVER_INDIVIDUAL -> scope == RecordScopeType.SERVER_INDIVIDUAL;
-            case SHARED -> scope == RecordScopeType.SHARED;
-        };
+        if (filter == GameFilter.ALL || definition.game().isEmpty()) return true;
+        return filter == GameFilter.GRIDWORDS
+                ? definition.game().orElseThrow() == GameType.GRIDWORDS
+                : definition.game().orElseThrow() == GameType.QUADWORDS;
     }
 }
