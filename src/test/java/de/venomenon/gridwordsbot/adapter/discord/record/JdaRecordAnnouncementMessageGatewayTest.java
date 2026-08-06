@@ -24,6 +24,7 @@ import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.exceptions.ErrorResponseException;
 import net.dv8tion.jda.api.requests.ErrorResponse;
 import net.dv8tion.jda.api.requests.RestAction;
+import net.dv8tion.jda.api.requests.restaction.AuditableRestAction;
 import net.dv8tion.jda.api.requests.restaction.MessageCreateAction;
 import net.dv8tion.jda.api.requests.restaction.MessageEditAction;
 import org.junit.jupiter.api.Test;
@@ -98,7 +99,7 @@ class JdaRecordAnnouncementMessageGatewayTest {
         ErrorResponseException unknown = mock(ErrorResponseException.class);
         when(unknown.getErrorResponse()).thenReturn(ErrorResponse.UNKNOWN_MESSAGE);
         when(jda.getTextChannelById(12L)).thenReturn(channel);
-        RestAction<Void> deletion = mock(RestAction.class);
+        AuditableRestAction<Void> deletion = mock(AuditableRestAction.class);
         when(channel.deleteMessageById(99L)).thenReturn(deletion);
         doThrow(unknown).when(deletion).complete();
 
