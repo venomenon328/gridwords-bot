@@ -1,6 +1,7 @@
 package de.venomenon.gridwordsbot.application.canonical;
 
 import de.venomenon.gridwordsbot.domain.model.GameType;
+import de.venomenon.gridwordsbot.domain.model.GameDateAdmissionPolicy;
 import de.venomenon.gridwordsbot.domain.streak.StreakCalculator;
 import de.venomenon.gridwordsbot.domain.streak.StreakSummary;
 import de.venomenon.gridwordsbot.port.out.CanonicalMessageGateway;
@@ -12,6 +13,7 @@ import de.venomenon.gridwordsbot.port.out.PublicationRetryScheduler;
 import de.venomenon.gridwordsbot.port.out.SubmissionStore;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Objects;
@@ -36,6 +38,7 @@ public final class CanonicalGridWordsPublicationService {
     private final CanonicalMessageGateway discord;
     private final Clock clock;
     private final ZoneId zoneId;
+    private final GameDateAdmissionPolicy admission;
     private final StreakCalculator streakCalculator;
     private final PublicationRetryScheduler retryScheduler;
     private final LongConsumer postPublication;
@@ -87,12 +90,28 @@ public final class CanonicalGridWordsPublicationService {
             PublicationRetryScheduler retryScheduler,
             LongConsumer postPublication,
             ExcuseStateStore excuses) {
+        this(results, players, submissions, discord, clock, zoneId, retryScheduler, postPublication, excuses,
+                LocalTime.of(6, 0));
+    }
+
+    public CanonicalGridWordsPublicationService(
+            GameResultStore results,
+            PlayerStore players,
+            SubmissionStore submissions,
+            CanonicalMessageGateway discord,
+            Clock clock,
+            ZoneId zoneId,
+            PublicationRetryScheduler retryScheduler,
+            LongConsumer postPublication,
+            ExcuseStateStore excuses,
+            LocalTime dayCloseTime) {
         this.results = Objects.requireNonNull(results);
         this.players = Objects.requireNonNull(players);
         this.submissions = Objects.requireNonNull(submissions);
         this.discord = Objects.requireNonNull(discord);
         this.clock = Objects.requireNonNull(clock);
         this.zoneId = Objects.requireNonNull(zoneId);
+        this.admission = new GameDateAdmissionPolicy(clock, zoneId, dayCloseTime);
         this.streakCalculator = new StreakCalculator();
         this.retryScheduler = Objects.requireNonNull(retryScheduler);
         this.postPublication = Objects.requireNonNull(postPublication);
@@ -154,12 +173,18 @@ public final class CanonicalGridWordsPublicationService {
                 return PublicationOutcome.RETIRED;
             }
             GameResultStore.StoredGameResult result = results.findById(resultId).orElseThrow();
-            if (!isPublishable(result)) {
+            if (submission.state() == SubmissionStore.SubmissionState.COMPLETED) {
+                return PublicationOutcome.PUBLISHED;
+            }
+            if (!admission.allows(result.parsedResult().gameDate()) || !isPublishable(result)) {
                 return PublicationOutcome.NOT_PUBLISHABLE;
             }
+            // The public message is already durable in these intermediate
+            // states.  Before the cutoff, hand the operation on only to its
+            // still-open source-delete phase; after the cutoff the admission
+            // check above stops that recovery as well.
             if (submission.state() == SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED
-                    || submission.state() == SubmissionStore.SubmissionState.ORIGINAL_MESSAGE_DELETED
-                    || submission.state() == SubmissionStore.SubmissionState.COMPLETED) {
+                    || submission.state() == SubmissionStore.SubmissionState.ORIGINAL_MESSAGE_DELETED) {
                 return PublicationOutcome.PUBLISHED;
             }
 
@@ -346,7 +371,7 @@ public final class CanonicalGridWordsPublicationService {
             }
 
             GameResultStore.StoredGameResult result = results.findById(resultId).orElseThrow();
-            if (!isPublishable(result)) {
+            if (!admission.allows(result.parsedResult().gameDate()) || !isPublishable(result)) {
                 return RefreshOutcome.COMPLETED;
             }
             GameResultStore.PublicationClaim claim = results.claimCanonicalPublication(

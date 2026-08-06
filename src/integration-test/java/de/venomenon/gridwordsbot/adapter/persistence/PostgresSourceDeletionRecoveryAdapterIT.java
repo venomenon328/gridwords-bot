@@ -89,6 +89,7 @@ class PostgresSourceDeletionRecoveryAdapterIT {
                 "source message deletion was denied permanently")));
         assertTrue(persistence.findAwaitingOriginalSourceDeletion(gameType).stream()
                 .noneMatch(candidate -> candidate.sourceMessageId() == sourceMessageId));
+        assertEquals(List.of(resultId), recovery.findPermanentlyFailedResultIds());
 
         assertEquals(1, recovery.reactivatePermanentFailures(OptionalLong.of(resultId)));
         assertEquals(SubmissionStore.OriginalDeletionFailure.NONE,

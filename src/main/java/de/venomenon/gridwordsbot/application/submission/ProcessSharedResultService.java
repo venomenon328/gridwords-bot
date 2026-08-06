@@ -1,6 +1,7 @@
 package de.venomenon.gridwordsbot.application.submission;
 
 import de.venomenon.gridwordsbot.domain.model.GameType;
+import de.venomenon.gridwordsbot.domain.model.GameDateAdmissionPolicy;
 import de.venomenon.gridwordsbot.domain.model.GameParticipationSelection;
 import de.venomenon.gridwordsbot.domain.model.ParsedGameResult;
 import de.venomenon.gridwordsbot.domain.parsing.AttachmentMetadata;
@@ -19,6 +20,7 @@ import de.venomenon.gridwordsbot.port.out.PlayerStore;
 import de.venomenon.gridwordsbot.port.out.SubmissionStore;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Objects;
@@ -39,8 +41,7 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
     private final QuadWordsShareParser quadWordsParser;
     private final AttachmentContentLoader attachmentContentLoader;
     private final QuadWordsImageParser quadWordsImageParser;
-    private final Clock clock;
-    private final ZoneId timeZone;
+    private final GameDateAdmissionPolicy admission;
     private final PlayerStore playerStore;
     private final SubmissionStore submissionStore;
     private final LongPredicate canonicalPublisher;
@@ -80,12 +81,19 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
             AttachmentContentLoader attachmentContentLoader, QuadWordsImageParser quadWordsImageParser,
             Clock clock, ZoneId timeZone, PlayerStore playerStore, SubmissionStore submissionStore,
             LongPredicate canonicalPublisher, LongPredicate administrator, Consumer<LocalDate> statusRefresh) {
+        this(gridWordsParser, quadWordsParser, attachmentContentLoader, quadWordsImageParser, clock, timeZone,
+                LocalTime.of(6, 0), playerStore, submissionStore, canonicalPublisher, administrator, statusRefresh);
+    }
+
+    public ProcessSharedResultService(GridWordsShareParser gridWordsParser, QuadWordsShareParser quadWordsParser,
+            AttachmentContentLoader attachmentContentLoader, QuadWordsImageParser quadWordsImageParser,
+            Clock clock, ZoneId timeZone, LocalTime dayCloseTime, PlayerStore playerStore, SubmissionStore submissionStore,
+            LongPredicate canonicalPublisher, LongPredicate administrator, Consumer<LocalDate> statusRefresh) {
         this.gridWordsParser = Objects.requireNonNull(gridWordsParser);
         this.quadWordsParser = Objects.requireNonNull(quadWordsParser);
         this.attachmentContentLoader = Objects.requireNonNull(attachmentContentLoader);
         this.quadWordsImageParser = Objects.requireNonNull(quadWordsImageParser);
-        this.clock = Objects.requireNonNull(clock);
-        this.timeZone = Objects.requireNonNull(timeZone);
+        this.admission = new GameDateAdmissionPolicy(clock, timeZone, dayCloseTime);
         this.playerStore = Objects.requireNonNull(playerStore);
         this.submissionStore = Objects.requireNonNull(submissionStore);
         this.canonicalPublisher = Objects.requireNonNull(canonicalPublisher);
@@ -115,10 +123,17 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
             return new ProcessingResult.Rejected(
                     submission.parserErrorCode().orElse(ParseErrorCode.INVALID_IMAGE_STRUCTURE.name()));
         }
-        if (submission.state() != SubmissionStore.SubmissionState.RESULT_STORED
-                && submission.state() != SubmissionStore.SubmissionState.FAILED_RETRYABLE
-                && !isTodayOrYesterday(parsed.gameDate())) {
-            return reject(message.messageId(), OUTSIDE_ALLOWED_DATE_WINDOW);
+        if (!admission.allows(parsed.gameDate())) {
+            // RESULT_STORED and FAILED_RETRYABLE are intentionally not exempt:
+            // after logical day close neither recovery nor canonical completion
+            // of an ordinary previous-day user operation may proceed.  Such
+            // states cannot transition to PARSE_REJECTED, so they are rejected
+            // without rewriting already persisted canonical data.
+            if (submission.state() == SubmissionStore.SubmissionState.RECEIVED
+                    || submission.state() == SubmissionStore.SubmissionState.VALIDATED) {
+                return reject(message.messageId(), OUTSIDE_ALLOWED_DATE_WINDOW);
+            }
+            return new ProcessingResult.Rejected(OUTSIDE_ALLOWED_DATE_WINDOW);
         }
         if (parsed.gameType() == GameType.QUADWORDS) {
             if (submission.state() == SubmissionStore.SubmissionState.RESULT_STORED) {
@@ -222,15 +237,11 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
                 attachment.size());
     }
 
-    private boolean isTodayOrYesterday(LocalDate gameDate) {
-        LocalDate today = clock.instant().atZone(timeZone).toLocalDate();
-        return gameDate.equals(today) || gameDate.equals(today.minusDays(1));
-    }
-
     private static boolean isTerminal(SubmissionStore.StoredSubmission submission) {
-        return submission.state() == SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED
-                || submission.state() == SubmissionStore.SubmissionState.ORIGINAL_MESSAGE_DELETED
-                || submission.state() == SubmissionStore.SubmissionState.COMPLETED;
+        // A persisted canonical message is deliberately not terminal: source
+        // deletion and the final durable transition still belong to the same
+        // ordinary user operation and must not be resumed after day close.
+        return submission.state() == SubmissionStore.SubmissionState.COMPLETED;
     }
 
     private void refreshStatusSafely(LocalDate date) {

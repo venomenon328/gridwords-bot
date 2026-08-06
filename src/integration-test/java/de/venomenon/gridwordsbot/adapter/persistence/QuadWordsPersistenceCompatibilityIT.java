@@ -82,7 +82,8 @@ class QuadWordsPersistenceCompatibilityIT {
                 "select id from game_result where player_id = ? and game_type = 'QUADWORDS'",
                 Long.class,
                 playerId);
-        ProcessSharedResultService service = service(attachment -> new byte[] {1}, parsedBoards(7));
+        ProcessSharedResultService service = service(
+                Instant.parse("2026-07-29T03:00:00Z"), attachment -> new byte[] {1}, parsedBoards(7));
 
         ProcessingResult result = service.process(message(
                 sourceMessageId,
@@ -151,6 +152,13 @@ class QuadWordsPersistenceCompatibilityIT {
     private ProcessSharedResultService service(
             AttachmentContentLoader loader,
             QuadWordsImageParser.Parse parserResult) {
+        return service(NOW, loader, parserResult);
+    }
+
+    private ProcessSharedResultService service(
+            Instant processingTime,
+            AttachmentContentLoader loader,
+            QuadWordsImageParser.Parse parserResult) {
         QuadWordsImageParser parser = new QuadWordsImageParser() {
             @Override
             public Parse parse(byte[] bytes, ShareOutcome outcome) {
@@ -162,7 +170,7 @@ class QuadWordsPersistenceCompatibilityIT {
                 new QuadWordsShareParser(),
                 loader,
                 parser,
-                Clock.fixed(NOW, ZoneOffset.UTC),
+                Clock.fixed(processingTime, ZoneOffset.UTC),
                 ZoneId.of("Europe/Berlin"),
                 adapter,
                 adapter, ignored -> true);

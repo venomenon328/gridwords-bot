@@ -260,6 +260,28 @@ class ProcessSharedResultServiceTest {
     }
 
     @Test
+    void rejectsEveryNonterminalYesterdayOperationAtDayCloseButKeepsCompletedReplayIdempotent() {
+        ProcessSharedResultService beforeClose = service(
+                Clock.fixed(Instant.parse("2026-07-29T03:59:59Z"), ZoneOffset.UTC), store);
+        InboundSharedMessage yesterday = message(180L, TOBIAS, gridWords(28, 3));
+
+        assertThat(beforeClose.process(yesterday)).isEqualTo(new ProcessingResult.Accepted());
+
+        service = service(Clock.fixed(Instant.parse("2026-07-29T04:00:00Z"), ZoneOffset.UTC), store);
+        assertThat(service.process(yesterday)).isEqualTo(new ProcessingResult.Rejected(
+                ProcessSharedResultService.OUTSIDE_ALLOWED_DATE_WINDOW));
+        assertThat(service.process(message(181L, TOBIAS, gridWords(28, 2))))
+                .isEqualTo(new ProcessingResult.Rejected(ProcessSharedResultService.OUTSIDE_ALLOWED_DATE_WINDOW));
+        assertThat(service.process(message(182L, TOBIAS, gridWords(29, 2))))
+                .isEqualTo(new ProcessingResult.Accepted());
+
+        SubmissionStore.StoredSubmission stored = store.submissions.get(180L);
+        store.submissions.put(180L, InMemoryStore.with(
+                stored, SubmissionStore.SubmissionState.COMPLETED, stored.gameResultId(), stored.parserErrorCode()));
+        assertThat(service.process(yesterday)).isEqualTo(new ProcessingResult.Accepted());
+    }
+
+    @Test
     void aNewCorrectionUpdatesTheSameBusinessResult() {
         assertThat(service.process(message(19L, TOBIAS, gridWords(29, 4))))
                 .isEqualTo(new ProcessingResult.Accepted());

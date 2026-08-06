@@ -292,10 +292,10 @@ Eine Nachricht wird nur geprüft, wenn:
 
 Akzeptiert werden ausschließlich:
 
-- heutiger Spieltag oder
-- unmittelbar vorheriger Kalendertag.
+- jederzeit der heutige Spieltag oder
+- der unmittelbar vorherige Kalendertag nur zwischen 00:00:00 und 05:59:59 Uhr.
 
-Maßgeblich ist `Europe/Berlin`.
+Ab 06:00:00 ist für normale Nutzervorgänge ausschließlich der heutige Spieltag zulässig. Dies gilt ebenso für Korrektur, Retry, Replay und Recovery eines zuvor begonnenen Vortagsvorgangs; weder Annahmezeitpunkt noch ein bestehender Ergebniszustand bilden eine Ausnahme. Maßgeblich ist `Europe/Berlin`.
 
 ### 7.3 Verarbeitungsreihenfolge
 
@@ -417,7 +417,7 @@ Schlägt die Löschung danach fehl, bleibt die doppelte Darstellung bestehen und
 
 ### 8.5 Korrekturen
 
-Eine Korrektur erfolgt durch erneutes Posten eines gültigen Shares für denselben Spieler, Spieltyp und Spieltag. Der vorhandene Datensatz und die kanonische Bot-Nachricht werden aktualisiert oder sicher ersetzt; Tagesstatus und Serien werden neu berechnet.
+Eine Korrektur erfolgt innerhalb der Zulässigkeitsgrenze aus Abschnitt 7.2 durch erneutes Posten eines gültigen Shares für denselben Spieler, Spieltyp und Spieltag. Der vorhandene Datensatz und die kanonische Bot-Nachricht werden aktualisiert oder sicher ersetzt; Tagesstatus und Serien werden neu berechnet. Administrative Backfills und Reparaturen sind davon getrennte Wartungsvorgänge.
 
 ---
 
@@ -525,7 +525,7 @@ Statussymbole:
 
 ## 12. Nachträge
 
-Ergebnisse dürfen nur für heute oder gestern eingereicht werden.
+Ergebnisse dürfen jederzeit nur für heute und bis 05:59:59 `Europe/Berlin` zusätzlich für gestern eingereicht werden. Ab 06:00:00 ist jeder normale Nutzervorgang für gestern – auch Korrektur, Retry, Replay und Recovery – unzulässig.
 
 Ein zulässiger Vortagsnachtrag führt zur vollständigen Neuberechnung aller betroffenen persönlichen und gemeinsamen Serien. Bereits gesendete Erinnerungen und Berichte werden zunächst nicht rückwirkend gelöscht oder geändert.
 

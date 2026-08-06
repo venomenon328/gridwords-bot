@@ -16,7 +16,7 @@ Verbindliche Grundlagen:
 
 Alle Status-, Serien- und Reminderentscheidungen verwenden den fachlichen Spieltag in der konfigurierten Zeitzone, standardmäßig `Europe/Berlin`.
 
-- Ergebnisse sind weiterhin nur für heute oder gestern zulässig.
+- Ergebnisse sind jederzeit nur für heute und nur bis 05:59:59 `Europe/Berlin` zusätzlich für gestern zulässig. Ab 06:00:00 ist auch kein normaler Korrektur-, Retry-, Replay- oder Recovery-Vorgang für gestern zulässig.
 - Ein laufender heutiger Tag verwendet die vorläufige Seriensemantik.
 - Nach dem Tageswechsel wird gestern finalisiert; fehlende Ergebnisse sind dann echte Lücken.
 - Startup und Scheduler gleichen mindestens heute und gestern ab.
@@ -82,7 +82,7 @@ Die Berechnung verwendet für jeden historischen Tag die damals aktive Teilnehme
 
 Am aktuellen Tag beendet ein noch fehlendes Ergebnis eine bis gestern laufende Serie nicht vorzeitig. Ein bereits eingereichtes, aber nicht gelöstes Ergebnis beendet die betroffene Lösungs- und Perfektserie sofort.
 
-Nach Mitternacht wird der Vortag mit endgültiger Semantik neu berechnet und seine Statusnachricht aktualisiert. Ein später zulässiger Vortagsnachtrag löst erneut eine vollständige Berechnung aus.
+Nach Mitternacht wird der Vortag mit endgültiger Semantik neu berechnet und seine Statusnachricht aktualisiert. Ein nur bis 05:59:59 `Europe/Berlin` zulässiger Vortagsnachtrag löst erneut eine vollständige Berechnung aus; ab 06:00:00 bleibt der Vortag für normale Nutzervorgänge geschlossen.
 
 ### 2.6 Discord-Grenzen
 

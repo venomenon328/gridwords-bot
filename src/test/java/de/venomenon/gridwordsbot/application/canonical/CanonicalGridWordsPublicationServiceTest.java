@@ -240,6 +240,22 @@ class CanonicalGridWordsPublicationServiceTest {
     }
 
     @Test
+    void previousDayPublicationRecoveryIsRejectedAtTheLogicalDayClose() {
+        result = gridResultForDate(RESULT, TOBIAS, LocalDate.of(2026, 7, 28), OptionalLong.empty(), true, 3);
+        stored(SubmissionStore.SubmissionState.RESULT_STORED);
+        when(results.findById(RESULT)).thenReturn(Optional.of(result));
+        service = new CanonicalGridWordsPublicationService(
+                results, players, submissions, discord,
+                Clock.fixed(Instant.parse("2026-07-29T04:00:00Z"), ZoneOffset.UTC),
+                ZoneId.of("Europe/Berlin"), retryScheduler);
+
+        assertThat(service.publish(SOURCE)).isFalse();
+
+        verify(results, never()).claimCanonicalPublication(anyLong(), any());
+        verifyNoInteractions(discord);
+    }
+
+    @Test
     void replacesMissingCanonicalMessageUnderTheClaim() {
         result = gridResult(RESULT, TOBIAS, OptionalLong.of(88L), 3);
         when(results.findAll()).thenReturn(List.of(result));
@@ -433,6 +449,10 @@ class CanonicalGridWordsPublicationServiceTest {
 
     @Test
     void omitsZeroValuedContextualPerfectSeriesAfterTheDayStateWasEstablished() {
+        service = new CanonicalGridWordsPublicationService(
+                results, players, submissions, discord,
+                Clock.fixed(Instant.parse("2026-07-29T03:00:00Z"), ZoneOffset.UTC),
+                ZoneId.of("Europe/Berlin"), retryScheduler);
         result = gridResultForDate(RESULT, TOBIAS, LocalDate.of(2026, 7, 28), OptionalLong.empty(), true, 3);
         GameResultStore.StoredGameResult personalQuad = quadResultForDate(21L, TOBIAS, LocalDate.of(2026, 7, 28), true);
         GameResultStore.StoredGameResult georgiaGrid = gridResultForDate(22L, GEORGIA, LocalDate.of(2026, 7, 28), OptionalLong.empty(), true, 3);
