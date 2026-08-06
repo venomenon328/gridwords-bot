@@ -7,7 +7,6 @@ import de.venomenon.gridwordsbot.domain.record.RecordValue;
 import de.venomenon.gridwordsbot.domain.record.StreakRecordValue;
 import de.venomenon.gridwordsbot.port.in.RecordsQueryUseCase;
 import java.time.Duration;
-import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,6 +22,12 @@ public final class RecordsOverviewEmbedRenderer {
     public List<MessageEmbed> render(RecordsQueryUseCase.Result result, String personalDisplay) {
         Objects.requireNonNull(result, "result");
         String safePersonalDisplay = neutralize(personalDisplay);
+        if (result instanceof RecordsQueryUseCase.Forbidden) {
+            return List.of(new EmbedBuilder()
+                    .setTitle("📚 Rekorde")
+                    .setDescription("Die persönlichen Rekorde anderer Nutzer können nur Administratoren anzeigen.")
+                    .build());
+        }
         if (result instanceof RecordsQueryUseCase.Unavailable) {
             return List.of(new EmbedBuilder()
                     .setTitle("📚 Rekorde")
@@ -33,7 +38,7 @@ public final class RecordsOverviewEmbedRenderer {
         if (ready.entries().isEmpty()) {
             return List.of(new EmbedBuilder()
                     .setTitle("📚 Rekorde")
-                    .setDescription("Keine Rekordarten passen zu den gewählten Filtern.")
+                    .setDescription("Keine Rekorde passen zu der gewählten Sicht.")
                     .build());
         }
         List<String> lines = ready.entries().stream().map(this::entry).toList();
