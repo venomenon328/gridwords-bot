@@ -29,7 +29,10 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-/** Real PostgreSQL transaction boundary for the package 12.7 day-close processor. */
+/**
+ * Focused real-PostgreSQL acceptance for one normal close, chronological
+ * multi-day restart recovery and rollback after a lost terminal marker.
+ */
 @Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class PostgresRecordDayCloseProcessorIT {
