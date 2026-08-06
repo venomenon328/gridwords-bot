@@ -248,6 +248,17 @@ class PostgresRecordPersistenceStoreIT {
         assertThat(announcements.markExternallyRemoved(key, removal.token(), NOW.plusSeconds(2))).isTrue();
         assertThat(announcements.find(key).orElseThrow().messages()).containsExactly(new RecordAnnouncementMessage(0,100), new RecordAnnouncementMessage(1,101));
         assertThat(announcements.registerOrUpdate(registration).state()).isEqualTo(de.venomenon.gridwordsbot.domain.record.RecordWorkState.EXTERNALLY_REMOVED);
+        UUID replacementFact = events.append(new RecordEventDraft(UUID.randomUUID(), "event:replacement", stateKey(),
+                RecordEventType.RESULT_RECORD_BROKEN, Optional.empty(), new AttemptsDurationRecordValue(1, Duration.ofSeconds(40)),
+                Optional.empty(), Optional.of(1L), Optional.empty(),
+                new RecordSourceReference.GameResult(3,0,1,GameType.GRIDWORDS,LocalDate.of(2026,8,6)),
+                "result:3:v0", RecordProcessingOrigin.NORMAL_CORRECTION, NOW)).snapshot().draft().eventId();
+        var reconciled = announcements.registerOrUpdate(new RecordAnnouncementRegistration(
+                key, RecordAnnouncementSubject.player(1), RecordAnnouncementPhase.LIVE_EVALUATION,
+                RecordAnnouncementProjection.EDIT, "records-renderer-v1", "d".repeat(64), List.of(event, replacementFact)));
+        assertThat(reconciled.state()).isEqualTo(de.venomenon.gridwordsbot.domain.record.RecordWorkState.EXTERNALLY_REMOVED);
+        assertThat(reconciled.registration().eventIds()).containsExactlyInAnyOrder(event, replacementFact);
+        assertThat(announcements.claim(key, request(NOW.plusSeconds(3), NOW.plusSeconds(13)))).isEmpty();
     }
     @Test void concurrentAnnouncementClaimsHaveOneWinnerAndStaleTokensAreFenced() throws Exception {
         UUID event = events.append(eventDraft()).snapshot().draft().eventId();

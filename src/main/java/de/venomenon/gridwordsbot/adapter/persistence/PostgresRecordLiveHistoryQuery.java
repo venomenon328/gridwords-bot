@@ -46,12 +46,11 @@ public final class PostgresRecordLiveHistoryQuery implements RecordLiveHistoryQu
             throw new IllegalStateException("claimed canonical result version is no longer available");
         }
 
-        List<RecordHistorySnapshot.Result> results = origin == RecordProcessingOrigin.NORMAL_CORRECTION
-                ? correctionResults(key.guildId())
-                : liveResults(key.guildId(), target);
-        List<GameParticipationPeriod> periods = origin == RecordProcessingOrigin.NORMAL_CORRECTION
-                ? correctionPeriods(results)
-                : livePeriods(target.gameDate());
+        HistoryWindow window = historyWindow(key.guildId(), target, origin);
+        List<RecordHistorySnapshot.Result> results = originRequiresExactReconciliation(origin)
+                ? correctionResults(key.guildId(), target, window)
+                : liveResults(key.guildId(), target, window);
+        List<GameParticipationPeriod> periods = periods(window);
         return new RecordHistorySnapshot(results, periods);
     }
 
@@ -61,45 +60,85 @@ public final class PostgresRecordLiveHistoryQuery implements RecordLiveHistoryQu
      * game day.  It never invokes the bootstrap-wide history port or loads all
      * participation periods.
      */
-    private List<RecordHistorySnapshot.Result> liveResults(long guildId, RecordHistorySnapshot.Result target) {
+    private List<RecordHistorySnapshot.Result> liveResults(
+            long guildId, RecordHistorySnapshot.Result target, HistoryWindow window) {
         return jdbc.query("""
                 SELECT DISTINCT ON (r.id) r.id,r.version,r.player_id,r.game_type,r.game_date,r.solved,r.attempts_used,
                     r.max_attempts,r.duration_seconds,r.created_at
                 FROM game_result r JOIN submission s ON s.game_result_id=r.id
                 WHERE s.guild_id=? AND s.processing_state IN ('RESULT_STORED','COMPLETED','FAILED_RETRYABLE','SUPERSEDED')
-                  AND (r.player_id=? OR (r.game_type=? AND r.solved=TRUE))
+                  AND (
+                      (r.game_date BETWEEN ? AND ?)
+                      OR (r.game_type=? AND r.solved=TRUE)
+                  )
                 ORDER BY r.id, s.updated_at ASC
-                """, (rs, row) -> result(rs), guildId, target.playerId(), target.game().name());
+                """, (rs, row) -> result(rs), guildId, window.start(), window.end(), target.game().name());
     }
 
-    /** A correction has a wider, but still record-domain-scoped, canonical target set. */
-    private List<RecordHistorySnapshot.Result> correctionResults(long guildId) {
+    /**
+     * Exact corrections retain the complete solved comparison domain of the
+     * corrected game for result fallbacks, while streak derivation is bounded
+     * to the corrected player's participation interval.  This is deliberately
+     * not a generic guild-history read.
+     */
+    private List<RecordHistorySnapshot.Result> correctionResults(
+            long guildId, RecordHistorySnapshot.Result target, HistoryWindow window) {
         return jdbc.query("""
                 SELECT DISTINCT ON (r.id) r.id,r.version,r.player_id,r.game_type,r.game_date,r.solved,r.attempts_used,
                     r.max_attempts,r.duration_seconds,r.created_at
                 FROM game_result r JOIN submission s ON s.game_result_id=r.id
                 WHERE s.guild_id=? AND s.processing_state IN ('RESULT_STORED','COMPLETED','FAILED_RETRYABLE','SUPERSEDED')
+                  AND ((r.game_date BETWEEN ? AND ?)
+                       OR (r.game_type=? AND r.solved=TRUE))
                 ORDER BY r.id, s.updated_at ASC
-                """, (rs, row) -> result(rs), guildId);
+                """, (rs, row) -> result(rs), guildId, window.start(), window.end(), target.game().name());
     }
 
-    private List<GameParticipationPeriod> livePeriods(java.time.LocalDate gameDate) {
+    private List<GameParticipationPeriod> periods(HistoryWindow window) {
         return jdbc.query("""
                 SELECT player_id,game_type,active_from,inactive_from FROM player_participation_period
                 WHERE active_from<=? AND (inactive_from IS NULL OR inactive_from>=?)
                 ORDER BY player_id,game_type,active_from
-                """, (rs, row) -> period(rs), gameDate, gameDate);
+                """, (rs, row) -> period(rs), window.end(), window.start());
     }
 
-    private List<GameParticipationPeriod> correctionPeriods(List<RecordHistorySnapshot.Result> results) {
-        if (results.isEmpty()) return List.of();
-        java.time.LocalDate first = results.stream().map(RecordHistorySnapshot.Result::gameDate).min(java.util.Comparator.naturalOrder()).orElseThrow();
-        java.time.LocalDate last = results.stream().map(RecordHistorySnapshot.Result::gameDate).max(java.util.Comparator.naturalOrder()).orElseThrow();
-        return jdbc.query("""
-                SELECT player_id,game_type,active_from,inactive_from FROM player_participation_period
-                WHERE active_from<=? AND (inactive_from IS NULL OR inactive_from>=?)
-                ORDER BY player_id,game_type,active_from
-                """, (rs, row) -> period(rs), last, first);
+    private HistoryWindow historyWindow(
+            long guildId, RecordHistorySnapshot.Result target, RecordProcessingOrigin origin) {
+        java.time.LocalDate start = jdbc.query("""
+                SELECT min(active_from) FROM player_participation_period
+                WHERE player_id=? AND active_from<=? AND (inactive_from IS NULL OR inactive_from>=?)
+                """, rs -> rs.next() ? rs.getObject(1, java.time.LocalDate.class) : null,
+                target.playerId(), target.gameDate(), target.gameDate());
+        if (start == null) start = target.gameDate();
+        java.time.LocalDate end = target.gameDate();
+        if (originRequiresExactReconciliation(origin)) {
+            java.time.LocalDate intervalEnd = jdbc.query("""
+                    SELECT max(inactive_from) FROM player_participation_period
+                    WHERE player_id=? AND active_from<=? AND (inactive_from IS NULL OR inactive_from>=?)
+                    """, rs -> rs.next() ? rs.getObject(1, java.time.LocalDate.class) : null,
+                    target.playerId(), target.gameDate(), target.gameDate());
+            Boolean stillActive = jdbc.query("""
+                    SELECT EXISTS (
+                        SELECT 1 FROM player_participation_period
+                        WHERE player_id=? AND active_from<=? AND inactive_from IS NULL)
+                    """, rs -> rs.next() && rs.getBoolean(1), target.playerId(), target.gameDate());
+            java.time.LocalDate lastResult = jdbc.query("""
+                    SELECT max(r.game_date) FROM game_result r JOIN submission s ON s.game_result_id=r.id
+                    WHERE s.guild_id=? AND s.processing_state IN ('RESULT_STORED','COMPLETED','FAILED_RETRYABLE','SUPERSEDED')
+                    """, rs -> rs.next() ? rs.getObject(1, java.time.LocalDate.class) : null, guildId);
+            if (Boolean.TRUE.equals(stillActive) && lastResult != null) end = lastResult;
+            else if (intervalEnd != null && lastResult != null) end = intervalEnd.isBefore(lastResult) ? intervalEnd : lastResult;
+            else if (intervalEnd != null) end = intervalEnd;
+            else if (lastResult != null) end = lastResult;
+        }
+        return new HistoryWindow(start, end.isBefore(start) ? start : end);
+    }
+
+    private static boolean originRequiresExactReconciliation(RecordProcessingOrigin origin) {
+        return origin == RecordProcessingOrigin.NORMAL_CORRECTION
+                || origin == RecordProcessingOrigin.IMPORT
+                || origin == RecordProcessingOrigin.BACKFILL
+                || origin == RecordProcessingOrigin.ADMINISTRATIVE_REPAIR;
     }
 
     private static RecordHistorySnapshot.Result result(java.sql.ResultSet rs) throws java.sql.SQLException {
@@ -116,5 +155,13 @@ public final class PostgresRecordLiveHistoryQuery implements RecordLiveHistoryQu
         return new GameParticipationPeriod(rs.getLong("player_id"), GameType.valueOf(rs.getString("game_type")),
                 rs.getObject("active_from", java.time.LocalDate.class),
                 rs.getObject("inactive_from", java.time.LocalDate.class));
+    }
+
+    private record HistoryWindow(java.time.LocalDate start, java.time.LocalDate end) {
+        private HistoryWindow {
+            java.util.Objects.requireNonNull(start, "start");
+            java.util.Objects.requireNonNull(end, "end");
+            if (end.isBefore(start)) throw new IllegalArgumentException("history window is reversed");
+        }
     }
 }

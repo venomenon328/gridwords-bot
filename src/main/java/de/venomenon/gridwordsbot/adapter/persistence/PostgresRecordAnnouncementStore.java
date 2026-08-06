@@ -43,8 +43,28 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
         Optional<RecordAnnouncementSnapshot> existing = find(key);
         if (existing.isPresent()) {
             RecordAnnouncementSnapshot snapshot = existing.orElseThrow();
-            if (snapshot.state() == RecordWorkState.EXTERNALLY_REMOVED
-                    || sameRegistration(snapshot.registration(), registration)) {
+            if (snapshot.state() == RecordWorkState.EXTERNALLY_REMOVED) {
+                // A consciously removed Discord message is never re-opened,
+                // but its persisted fact set still has to mirror the current
+                // canonical audit facts for later reconciliation and /records.
+                if (!sameRegistration(snapshot.registration(), registration)) {
+                    int updated = jdbc.update("""
+                            UPDATE record_announcement
+                            SET subject_type=?,subject_key=?,announcement_phase=?,desired_projection=?,
+                                renderer_version=?,content_fingerprint=?,updated_at=?
+                            WHERE guild_id=? AND channel_id=? AND idempotency_key=?
+                              AND delivery_state='EXTERNALLY_REMOVED'
+                            """,
+                            registration.subject().type().name(), registration.subject().key(),
+                            registration.phase().name(), registration.desiredProjection().name(),
+                            registration.rendererVersion(), registration.contentFingerprint(), RecordJdbcMapping.utc(now),
+                            key.guildId(), key.channelId(), key.idempotencyKey());
+                    if (updated != 1) throw new RecordAnnouncementClaimConflictException();
+                    replaceFacts(id(key), registration.eventIds());
+                }
+                return find(key).orElseThrow();
+            }
+            if (sameRegistration(snapshot.registration(), registration)) {
                 return snapshot;
             }
             if (snapshot.state() == RecordWorkState.CLAIMED) {

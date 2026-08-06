@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.venomenon.gridwordsbot.domain.record.RecordDefinitionCatalog;
+import de.venomenon.gridwordsbot.domain.record.RecordHistorySnapshot;
 import de.venomenon.gridwordsbot.domain.record.RecordLiveEvaluationClaim;
 import de.venomenon.gridwordsbot.domain.record.RecordLiveEvaluationKey;
 import de.venomenon.gridwordsbot.domain.record.RecordProcessingOrigin;
@@ -19,12 +20,18 @@ import de.venomenon.gridwordsbot.port.out.RecordTransactionRunner;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.time.Duration;
+import java.time.LocalDate;
+import de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod;
+import de.venomenon.gridwordsbot.domain.model.GameType;
+import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class RecordLiveEvaluationProcessorTest {
     @Test
-    void staleClaimIsFencedBeforeHistoryStateEventOrAnnouncementWrites() {
+    void staleClaimMayReadOutsideTheWriteTransactionButIsFencedBeforeAnyWrite() {
         RecordLiveEvaluationStore work = mock(RecordLiveEvaluationStore.class);
         RecordLiveHistoryQuery history = mock(RecordLiveHistoryQuery.class);
         RecordBootstrapReadService bootstrap = new RecordBootstrapReadService(mock(RecordBootstrapStore.class));
@@ -35,13 +42,17 @@ class RecordLiveEvaluationProcessorTest {
                 new RecordLiveEvaluationKey(1, 2, 0), RecordProcessingOrigin.LIVE_SUBMISSION,
                 UUID.randomUUID(), Instant.parse("2026-08-06T10:00:00Z"), 1);
         when(work.fence(claim.key(), claim.token(), Instant.parse("2026-08-06T09:00:00Z"))).thenReturn(false);
+        when(history.loadFor(claim.key(), claim.processingOrigin())).thenReturn(new RecordHistorySnapshot(List.of(
+                new RecordHistorySnapshot.Result(2, 0, 1, GameType.GRIDWORDS, LocalDate.of(2026, 8, 6),
+                        new ShareOutcome.Solved(3, 6), Duration.ofSeconds(60), Instant.parse("2026-08-06T08:00:00Z"))),
+                List.of(new GameParticipationPeriod(1, GameType.GRIDWORDS, LocalDate.of(2026, 8, 1), null))));
 
         RecordLiveEvaluationProcessor processor = new RecordLiveEvaluationProcessor(work, history, bootstrap, states,
                 events, announcements, directTransactions(), RecordDefinitionCatalog.recordsV1(),
                 Clock.fixed(Instant.parse("2026-08-06T09:00:00Z"), ZoneOffset.UTC), 3);
 
         assertThat(processor.process(claim)).isEqualTo(RecordLiveEvaluationProcessor.ProcessingResult.FENCED_OUT);
-        verify(history, never()).loadFor(claim.key());
+        verify(history).loadFor(claim.key(), claim.processingOrigin());
         verify(work, never()).markSucceeded(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any());
     }

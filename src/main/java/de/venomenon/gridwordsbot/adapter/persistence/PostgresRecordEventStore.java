@@ -55,6 +55,10 @@ public final class PostgresRecordEventStore implements RecordEventStore {
         return jdbc.query(select()+" WHERE guild_id=? AND new_source_type='GAME_RESULT' AND split_part(new_source_key,':',1)=? ORDER BY created_at,event_id",
                 (rs,row)->snapshot(rs), guildId, Long.toString(resultId));
     }
+    @Override public List<RecordEventSnapshot> findAllByGuild(long guildId) {
+        if (guildId <= 0) throw new IllegalArgumentException("guildId must be positive");
+        return jdbc.query(select()+" WHERE guild_id=? ORDER BY created_at,event_id", (rs,row)->snapshot(rs), guildId);
+    }
     @Override public boolean invalidate(UUID eventId,Instant invalidatedAt) {
         java.util.Objects.requireNonNull(eventId, "eventId"); java.util.Objects.requireNonNull(invalidatedAt, "invalidatedAt");
         return jdbc.update("UPDATE record_event SET validity='INVALIDATED',invalidated_at=?,updated_at=? WHERE event_id=? AND validity='VALID'",

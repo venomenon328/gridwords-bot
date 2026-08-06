@@ -17,6 +17,8 @@ public interface RecordEventStore {
     /** Valid and historical facts emitted from one canonical result identity. */
     default List<RecordEventSnapshot> findBySource(long guildId, RecordSourceReference source) { return List.of(); }
     default List<RecordEventSnapshot> findByResultId(long guildId, long resultId) { return List.of(); }
+    /** Valid and historical facts in one guild, used only for bounded correction identity reconciliation. */
+    default List<RecordEventSnapshot> findAllByGuild(long guildId) { return List.of(); }
     boolean invalidate(UUID eventId, Instant invalidatedAt);
     boolean supersede(UUID eventId, UUID supersedingEventId, Instant invalidatedAt);
 }
