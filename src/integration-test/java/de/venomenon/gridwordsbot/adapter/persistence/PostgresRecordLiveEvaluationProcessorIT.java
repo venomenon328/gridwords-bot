@@ -272,6 +272,82 @@ class PostgresRecordLiveEvaluationProcessorIT {
     }
 
     @Test
+    void correctionAfterReentryKeepsAndFallsBackToAllTimeStreaksFromTheEarlierPeriods() {
+        insertPlayer(1);
+        insertPlayer(2);
+        insertParticipation(1, LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 10));
+        insertParticipation(2, LocalDate.of(2026, 7, 3), LocalDate.of(2026, 7, 10));
+        insertParticipation(1, LocalDate.of(2026, 8, 1), null);
+        insertParticipation(2, LocalDate.of(2026, 8, 3), null);
+        readyBootstrap();
+
+        insertSolvedRun(1, LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 9));
+        insertSolvedRun(2, LocalDate.of(2026, 7, 3), LocalDate.of(2026, 7, 9));
+        insertSolvedRun(1, LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 10));
+        insertSolvedRun(2, LocalDate.of(2026, 8, 3), LocalDate.of(2026, 8, 10));
+
+        assertStreakSource("streak.gridwords-solved.personal", "PERSONAL", "player:1",
+                LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 10));
+        assertStreakSource("streak.gridwords-solved.server-individual", "SERVER_INDIVIDUAL", "server",
+                LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 10));
+        assertStreakSource("streak.gridwords-solved.shared", "SHARED", "shared",
+                LocalDate.of(2026, 8, 3), LocalDate.of(2026, 8, 10));
+
+        long reentryEnd = resultId(1, LocalDate.of(2026, 8, 10));
+        correctResult(reentryEnd, true, 3, 60, RecordProcessingOrigin.NORMAL_CORRECTION);
+        assertThat(processor(work).process(claim()))
+                .isEqualTo(RecordLiveEvaluationProcessor.ProcessingResult.PROCESSED);
+        synchronizeAnnouncements();
+        List<UUID> supersededLaterFacts = jdbc.queryForList("""
+                SELECT DISTINCT e.event_id
+                FROM record_event e
+                JOIN record_announcement_event ae ON ae.event_id=e.event_id
+                WHERE e.validity='VALID' AND e.event_type='SERIES_RECORD_CROSSED'
+                  AND e.definition_key LIKE 'streak.gridwords-solved.%'
+                  AND e.new_streak_start_date>=DATE '2026-08-01'
+                ORDER BY e.event_id
+                """, UUID.class);
+        List<String> laterAnnouncements = jdbc.queryForList("""
+                SELECT DISTINCT a.idempotency_key
+                FROM record_announcement a
+                JOIN record_announcement_event ae ON ae.announcement_id=a.id
+                JOIN record_event e ON e.event_id=ae.event_id
+                WHERE e.validity='VALID' AND e.event_type='SERIES_RECORD_CROSSED'
+                  AND e.definition_key LIKE 'streak.gridwords-solved.%'
+                  AND e.new_streak_start_date>=DATE '2026-08-01'
+                ORDER BY a.idempotency_key
+                """, String.class);
+        assertThat(supersededLaterFacts).hasSize(3);
+        assertThat(laterAnnouncements).hasSize(2);
+
+        long corrected = resultId(1, LocalDate.of(2026, 8, 5));
+        correctResult(corrected, false, null, 99, RecordProcessingOrigin.NORMAL_CORRECTION);
+        assertThat(processor(work).process(claim()))
+                .isEqualTo(RecordLiveEvaluationProcessor.ProcessingResult.PROCESSED);
+
+        assertStreakSource("streak.gridwords-solved.personal", "PERSONAL", "player:1",
+                LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 9));
+        assertStreakSource("streak.gridwords-solved.server-individual", "SERVER_INDIVIDUAL", "server",
+                LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 9));
+        assertStreakSource("streak.gridwords-solved.shared", "SHARED", "shared",
+                LocalDate.of(2026, 7, 3), LocalDate.of(2026, 7, 9));
+        assertThat(jdbc.queryForList("""
+                SELECT event_id FROM record_event
+                WHERE event_id IN (?,?,?) AND validity='INVALIDATED'
+                ORDER BY event_id
+                """, UUID.class, supersededLaterFacts.get(0), supersededLaterFacts.get(1),
+                supersededLaterFacts.get(2))).containsExactlyInAnyOrderElementsOf(supersededLaterFacts);
+        assertThat(jdbc.queryForList("""
+                SELECT desired_projection FROM record_announcement
+                WHERE idempotency_key IN (?,?) ORDER BY idempotency_key
+                """, String.class, laterAnnouncements.get(0), laterAnnouncements.get(1)))
+                .containsExactlyInAnyOrder(
+                        RecordAnnouncementProjection.EDIT.name(),
+                        RecordAnnouncementProjection.DELETE.name());
+        assertNoDuplicateValidFacts();
+    }
+
+    @Test
     void retryAndReplayRemainIdempotentAndSilent() {
         prepareImprovingHistory(5, 1);
         long resultId = insertResult(1, LocalDate.of(2026, 8, 6), true, 1, 5);
@@ -539,16 +615,35 @@ class PostgresRecordLiveEvaluationProcessorIT {
     }
 
     private void insertPlayerAndParticipation(long playerId, LocalDate activeFrom) {
-        jdbc.update("""
-                INSERT INTO player (discord_user_id,display_name,active,administrator,reminder_opt_in,created_at,updated_at)
-                VALUES (?,?,TRUE,FALSE,FALSE,?,?)
-                """, playerId, "Player " + playerId,
-                java.sql.Timestamp.from(NOW), java.sql.Timestamp.from(NOW));
+        insertPlayer(playerId);
         jdbc.update("""
                 INSERT INTO player_participation_period (player_id,game_type,active_from,inactive_from,created_at,updated_at)
                 VALUES (?,'GRIDWORDS',?,NULL,?,?), (?,'QUADWORDS',?,NULL,?,?)
                 """, playerId, activeFrom, java.sql.Timestamp.from(NOW), java.sql.Timestamp.from(NOW),
                 playerId, activeFrom, java.sql.Timestamp.from(NOW), java.sql.Timestamp.from(NOW));
+    }
+
+    private void insertPlayer(long playerId) {
+        jdbc.update("""
+                INSERT INTO player (discord_user_id,display_name,active,administrator,reminder_opt_in,created_at,updated_at)
+                VALUES (?,?,TRUE,FALSE,FALSE,?,?)
+                """, playerId, "Player " + playerId,
+                java.sql.Timestamp.from(NOW), java.sql.Timestamp.from(NOW));
+    }
+
+    private void insertParticipation(long playerId, LocalDate activeFrom, LocalDate inactiveFrom) {
+        jdbc.update("""
+                INSERT INTO player_participation_period
+                    (player_id,game_type,active_from,inactive_from,created_at,updated_at)
+                VALUES (?,'GRIDWORDS',?,?,?,?)
+                """, playerId, activeFrom, inactiveFrom,
+                java.sql.Timestamp.from(NOW), java.sql.Timestamp.from(NOW));
+    }
+
+    private void insertSolvedRun(long playerId, LocalDate first, LocalDate last) {
+        for (LocalDate day = first; !day.isAfter(last); day = day.plusDays(1)) {
+            insertAndProcess(playerId, day, true, 3, 60);
+        }
     }
 
     private long insertResult(
@@ -650,6 +745,20 @@ class PostgresRecordLiveEvaluationProcessorIT {
                 SELECT count(*) FROM record_state
                 WHERE source_type='STREAK_RUN' AND source_streak_start_date=? AND streak_end_date=?
                 """, Integer.class, start, end);
+    }
+
+    private void assertStreakSource(
+            String definitionKey,
+            String scopeType,
+            String scopeKey,
+            LocalDate expectedStart,
+            LocalDate expectedEnd) {
+        assertThat(jdbc.queryForMap("""
+                SELECT source_streak_start_date,streak_end_date FROM record_state
+                WHERE guild_id=10 AND definition_key=? AND scope_type=? AND scope_key=?
+                """, definitionKey, scopeType, scopeKey))
+                .containsEntry("source_streak_start_date", java.sql.Date.valueOf(expectedStart))
+                .containsEntry("streak_end_date", java.sql.Date.valueOf(expectedEnd));
     }
 
     private long resultId(long playerId, LocalDate gameDate) {

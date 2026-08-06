@@ -37,6 +37,7 @@ import de.venomenon.gridwordsbot.port.out.RecordAnnouncementStore;
 import de.venomenon.gridwordsbot.port.out.RecordEventStore;
 import de.venomenon.gridwordsbot.port.out.RecordLiveEvaluationStore;
 import de.venomenon.gridwordsbot.port.out.RecordLiveHistoryQuery;
+import de.venomenon.gridwordsbot.port.out.RecordRetryableFailure;
 import de.venomenon.gridwordsbot.port.out.RecordTransactionRunner;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -121,7 +122,8 @@ public final class RecordLiveEvaluationProcessor {
                 // exact target is never retried against a newer generation.
             }
         }
-        throw new IllegalStateException("correction plan changed repeatedly during record evaluation");
+        throw new RecordRetryableFailure(
+                "record correction replan retries exhausted after three canonical generation changes", null);
     }
 
     private ProcessingResult processWithinTransaction(
@@ -516,25 +518,16 @@ public final class RecordLiveEvaluationProcessor {
             RecordHistorySnapshot history,
             RecordHistorySnapshot.Result changedResult,
             RecordProcessingOrigin origin) {
+        boolean exact = requiresExactReconciliation(origin);
         LocalDate first = history.participationPeriods().stream()
-                .filter(period -> period.playerId() == changedResult.playerId())
-                .filter(period -> period.contains(changedResult.gameDate()))
+                .filter(period -> exact || period.playerId() == changedResult.playerId()
+                        && period.contains(changedResult.gameDate()))
                 .map(de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod::activeFrom)
                 .min(Comparator.naturalOrder()).orElse(changedResult.gameDate());
         LocalDate asOf = changedResult.gameDate();
-        if (requiresExactReconciliation(origin)) {
-            boolean openParticipation = history.participationPeriods().stream()
-                    .filter(period -> period.playerId() == changedResult.playerId())
-                    .filter(period -> period.contains(changedResult.gameDate()))
-                    .anyMatch(period -> period.inactiveFrom() == null);
-            LocalDate periodEnd = history.participationPeriods().stream()
-                    .filter(period -> period.playerId() == changedResult.playerId())
-                    .filter(period -> period.contains(changedResult.gameDate()))
-                    .map(de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod::inactiveFrom)
-                    .filter(java.util.Objects::nonNull).max(Comparator.naturalOrder()).orElse(changedResult.gameDate());
-            LocalDate lastCanonical = history.results().stream().map(RecordHistorySnapshot.Result::gameDate)
+        if (exact) {
+            asOf = history.results().stream().map(RecordHistorySnapshot.Result::gameDate)
                     .max(Comparator.naturalOrder()).orElse(changedResult.gameDate());
-            asOf = openParticipation ? lastCanonical : (periodEnd.isBefore(lastCanonical) ? periodEnd : lastCanonical);
         }
         return new StreakRunAnalysisWindow(first, asOf, false);
     }
