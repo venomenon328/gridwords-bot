@@ -60,7 +60,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Registers and processes closed business days in order.  The marker is the
+ * Registers and processes closed business days in order. The marker is the
  * durable source of day-close progress; the scheduler merely calls this use
  * case and never decides the business cutoff itself.
  */
@@ -133,7 +133,7 @@ public final class RecordDayCloseService implements RecordDayCloseUseCase {
         java.util.Objects.requireNonNull(inclusiveCloseDate, "inclusiveCloseDate");
         if (bootstrap.readiness(new RecordBootstrapKey(guildId, catalog.version()))
                 != RecordBootstrapReadiness.READY) {
-            // Historical materialization owns the initial state.  A regular
+            // Historical materialization owns the initial state. A regular
             // close is retried by the existing cleanup trigger once that
             // silent bootstrap has completed.
             return 0;
@@ -149,7 +149,10 @@ public final class RecordDayCloseService implements RecordDayCloseUseCase {
             if (work.register(key).state() == de.venomenon.gridwordsbot.domain.record.RecordWorkState.SUCCEEDED) {
                 continue;
             }
-            DayCloseResult result = process(key, inclusiveCloseDate.plusDays(1));
+            // Each durable marker owns exactly one closed day. Its projection
+            // therefore ends at the following open business day and cannot
+            // materialize later catch-up days before their own markers commit.
+            DayCloseResult result = process(key, key.gameDate().plusDays(1));
             if (result != DayCloseResult.SUCCEEDED) {
                 break;
             }
@@ -174,6 +177,10 @@ public final class RecordDayCloseService implements RecordDayCloseUseCase {
                     return transactions.inTransaction(() -> completeClaim(key, claim, canonical, plan));
                 } catch (StalePlan ignored) {
                     // Re-read the canonical snapshot and all record state generations.
+                } catch (LostLeaseAfterWrites ignored) {
+                    // The exception is deliberately raised inside the transaction
+                    // so State, Event, Announcement and marker remain atomic.
+                    return DayCloseResult.LOST_LEASE;
                 }
             }
             throw new RecordRetryableFailure("day-close canonical plan changed repeatedly", null);
@@ -201,7 +208,9 @@ public final class RecordDayCloseService implements RecordDayCloseUseCase {
         reconcileStates(plan);
         List<AppendedFact> appended = appendFacts(key, plan, ready, now);
         if (ready) reconcileAnnouncements(appended);
-        if (!work.markSucceeded(key, claim.token(), now)) return DayCloseResult.LOST_LEASE;
+        if (!work.markSucceeded(key, claim.token(), now)) {
+            throw new LostLeaseAfterWrites();
+        }
         return DayCloseResult.SUCCEEDED;
     }
 
@@ -384,6 +393,9 @@ public final class RecordDayCloseService implements RecordDayCloseUseCase {
     private record AppendedFact(RecordEventSnapshot snapshot, boolean announcementEligible) { }
 
     private static final class StalePlan extends RuntimeException { }
+
+    /** Forces transaction rollback if the token is lost after record writes began. */
+    private static final class LostLeaseAfterWrites extends RuntimeException { }
 
     public enum DayCloseResult { SUCCEEDED, NOT_CLAIMED, LOST_LEASE, RETRY_SCHEDULED, FAILED_PERMANENT }
 }
