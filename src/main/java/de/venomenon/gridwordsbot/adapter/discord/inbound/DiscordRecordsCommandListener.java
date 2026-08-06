@@ -33,20 +33,11 @@ public final class DiscordRecordsCommandListener extends ListenerAdapter {
     public static SlashCommandData commandData() {
         return Commands.slash("records", "Aktuelle Rekorde anzeigen")
                 .addOptions(
+                        new OptionData(OptionType.USER, "user", "Persönliche Rekorde dieses Spielers (nur Admins)", false),
                         new OptionData(OptionType.STRING, "game", "Spiel filtern", false)
                                 .addChoice("Alle", "all")
                                 .addChoice("GridWords", "gridwords")
-                                .addChoice("QuadWords", "quadwords"),
-                        new OptionData(OptionType.STRING, "scope", "Vergleichsraum filtern", false)
-                                .addChoice("Alle", "all")
-                                .addChoice("Persönlich", "personal")
-                                .addChoice("Serverweit individuell", "server")
-                                .addChoice("Gemeinsam", "shared"),
-                        new OptionData(OptionType.USER, "user", "Spieler für persönliche Rekorde", false),
-                        new OptionData(OptionType.STRING, "category", "Rekordart filtern", false)
-                                .addChoice("Alle", "all")
-                                .addChoice("Ergebnisrekorde", "results")
-                                .addChoice("Serienrekorde", "series"));
+                                .addChoice("QuadWords", "quadwords"));
     }
 
     @Override
@@ -58,14 +49,14 @@ public final class DiscordRecordsCommandListener extends ListenerAdapter {
         User personalUser = userOption == null ? event.getUser() : userOption.getAsUser();
         Member personalMember = userOption == null ? event.getMember() : userOption.getAsMember();
         String personalDisplay = personalMember == null ? personalUser.getName() : personalMember.getEffectiveName();
+        boolean administrator = properties.discord().adminUserIds().contains(event.getUser().getIdLong());
 
         RecordsQueryUseCase.Result result = records.query(new RecordsQueryUseCase.Query(
                 event.getGuild().getIdLong(),
                 event.getUser().getIdLong(),
                 userOption == null ? Optional.empty() : Optional.of(personalUser.getIdLong()),
-                game(event.getOption("game")),
-                scope(event.getOption("scope")),
-                category(event.getOption("category"))));
+                administrator,
+                game(event.getOption("game"))));
 
         event.replyEmbeds(renderer.render(result, personalDisplay))
                 .setEphemeral(true)
@@ -79,25 +70,6 @@ public final class DiscordRecordsCommandListener extends ListenerAdapter {
             case "gridwords" -> RecordsQueryUseCase.GameFilter.GRIDWORDS;
             case "quadwords" -> RecordsQueryUseCase.GameFilter.QUADWORDS;
             default -> RecordsQueryUseCase.GameFilter.ALL;
-        };
-    }
-
-    private static RecordsQueryUseCase.ScopeFilter scope(OptionMapping option) {
-        if (option == null) return RecordsQueryUseCase.ScopeFilter.ALL;
-        return switch (option.getAsString()) {
-            case "personal" -> RecordsQueryUseCase.ScopeFilter.PERSONAL;
-            case "server" -> RecordsQueryUseCase.ScopeFilter.SERVER_INDIVIDUAL;
-            case "shared" -> RecordsQueryUseCase.ScopeFilter.SHARED;
-            default -> RecordsQueryUseCase.ScopeFilter.ALL;
-        };
-    }
-
-    private static RecordsQueryUseCase.CategoryFilter category(OptionMapping option) {
-        if (option == null) return RecordsQueryUseCase.CategoryFilter.ALL;
-        return switch (option.getAsString()) {
-            case "results" -> RecordsQueryUseCase.CategoryFilter.RESULTS;
-            case "series" -> RecordsQueryUseCase.CategoryFilter.SERIES;
-            default -> RecordsQueryUseCase.CategoryFilter.ALL;
         };
     }
 }
