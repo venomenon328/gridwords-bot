@@ -43,6 +43,30 @@ $COMPOSE exec -T bot curl --fail --silent http://127.0.0.1:8081/actuator/metrics
 
 Beide Metriken haben ausschließlich die Tags `result` (`succeeded`, `not_claimed`, `lost_lease`, `retry_scheduled`, `failed_permanent`, `unknown`) und `failure_category` (`none`, `retryable`, `permanent`, `unknown`). Sie enthalten keine Guild-, Token-, State- oder Fehlermeldungswerte. `NOT_CLAIMED` ist der normale Konkurrenz-/Leerlauffall und erzeugt kein INFO-Log pro Poll. Unbekannte Fehler werden als `unknown` beobachtet, im Log mit Stacktrace sichtbar gemacht und unverändert weitergeworfen.
 
+## Rekord-Live-Auswertung beobachten
+
+Die dauerhafte Live-Auswertung arbeitet unabhängig von der Discord-Delivery und bleibt nach Restart über Claim, Lease und Retry fortsetzbar. Die vollständige Konfiguration, Zustandssemantik und Abnahmenachweise stehen unter [Betrieb und Abnahme der Rekord-Live-Auswertung](record-live-evaluation.md).
+
+```text
+RECORD_LIVE_EVALUATION_ENABLED=true
+RECORD_LIVE_EVALUATION_POLL_DELAY=PT10S
+RECORD_LIVE_EVALUATION_LEASE_DURATION=PT2M
+RECORD_LIVE_EVALUATION_HEARTBEAT_INTERVAL=PT30S
+RECORD_LIVE_EVALUATION_INITIAL_RETRY_BACKOFF=PT10S
+RECORD_LIVE_EVALUATION_MAX_RETRY_BACKOFF=PT5M
+```
+
+Der Poll-Delay muss mindestens `PT0.001S` betragen. Lease, Heartbeat und initialer Backoff müssen positiv sein; der Heartbeat muss kürzer als die Lease sein und der maximale Backoff darf den initialen nicht unterschreiten.
+
+```bash
+$COMPOSE exec -T bot curl --fail --silent http://127.0.0.1:8081/actuator/metrics/gridwords.record.live-evaluation.runs
+$COMPOSE exec -T bot curl --fail --silent http://127.0.0.1:8081/actuator/metrics/gridwords.record.live-evaluation.duration
+```
+
+Beide Metriken besitzen ausschließlich das Tag `outcome` mit `completed`, `failed_retryable`, `failed_permanent`, `lost_lease` oder `unknown`. Sie enthalten keine Guild-, Ergebnis-, Trigger-, Token- oder Fehlerwerte.
+
+Eine abgelaufene `CLAIMED`-Lease wird automatisch übernommen. Zeilen nicht manuell auf `SUCCEEDED` setzen und Claim-Tokens oder `safe_error` nicht in Tickets kopieren. Bei `RETRYABLE` den Backoff und die Infrastrukturursache prüfen; bei `FAILED_PERMANENT` die bekannte Invariante beheben; bei `unknown` den unveränderten Stacktrace auswerten. Ein kontrollierter Restart verliert weder offene Arbeit noch das bereits persistierte Nutzerergebnis.
+
 ## Bot ist unhealthy
 
 ```bash
