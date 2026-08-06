@@ -219,27 +219,38 @@ public class RecordStateService {
             RecordBootstrapProjection.Candidate candidate,
             String bootstrapKey,
             Instant detectedAt) {
-        return transactions.inTransaction(() -> {
-            for (int attempts = 0; attempts < 3; attempts++) {
-                Optional<RecordStateSnapshot> current = stateStore.find(candidate.key());
-                if (current.isEmpty()) {
-                    if (initializeForReconciliation(candidate, bootstrapKey, detectedAt)) return RebuildResult.CREATED;
-                    continue;
-                }
-                RecordStateSnapshot state = current.orElseThrow();
-                ensureInitializationAnchor(
-                        state,
-                        bootstrapKey,
-                        detectedAt,
-                        InitializationAnchorValidation.HISTORICAL_IDENTITY_ONLY);
-                if (same(state, candidate.write())) return RebuildResult.UNCHANGED;
-                RecordStateUpdateResult updated = stateStore.update(
-                        new RecordStateUpdate(candidate.key(), state.lockVersion(), candidate.write()));
-                if (updated.status() == RecordStateUpdateResult.Status.UPDATED) return RebuildResult.REPLACED;
-                if (updated.status() == RecordStateUpdateResult.Status.UNCHANGED) return RebuildResult.UNCHANGED;
+        return transactions.inTransaction(
+                () -> reconcileCanonicalTargetWithinTransaction(candidate, bootstrapKey, detectedAt));
+    }
+
+    /**
+     * The live processor owns the surrounding short transaction.  Keeping this
+     * operation here preserves this service as the sole record-state writer
+     * without opening an independent nested transaction for every state.
+     */
+    public RebuildResult reconcileCanonicalTargetWithinTransaction(
+            RecordBootstrapProjection.Candidate candidate,
+            String bootstrapKey,
+            Instant detectedAt) {
+        for (int attempts = 0; attempts < 3; attempts++) {
+            Optional<RecordStateSnapshot> current = stateStore.find(candidate.key());
+            if (current.isEmpty()) {
+                if (initializeForReconciliation(candidate, bootstrapKey, detectedAt)) return RebuildResult.CREATED;
+                continue;
             }
-            return RebuildResult.RETRY_EXHAUSTED;
-        });
+            RecordStateSnapshot state = current.orElseThrow();
+            ensureInitializationAnchor(
+                    state,
+                    bootstrapKey,
+                    detectedAt,
+                    InitializationAnchorValidation.HISTORICAL_IDENTITY_ONLY);
+            if (same(state, candidate.write())) return RebuildResult.UNCHANGED;
+            RecordStateUpdateResult updated = stateStore.update(
+                    new RecordStateUpdate(candidate.key(), state.lockVersion(), candidate.write()));
+            if (updated.status() == RecordStateUpdateResult.Status.UPDATED) return RebuildResult.REPLACED;
+            if (updated.status() == RecordStateUpdateResult.Status.UNCHANGED) return RebuildResult.UNCHANGED;
+        }
+        return RebuildResult.RETRY_EXHAUSTED;
     }
 
     /** Removes a state only after a fresh CAS read; audit facts intentionally remain. */

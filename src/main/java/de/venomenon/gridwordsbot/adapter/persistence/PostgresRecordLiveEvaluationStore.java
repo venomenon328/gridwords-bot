@@ -175,6 +175,27 @@ public class PostgresRecordLiveEvaluationStore implements RecordLiveEvaluationSt
     }
 
     @Override
+    public boolean fence(RecordLiveEvaluationKey key, UUID token, Instant now) {
+        java.util.Objects.requireNonNull(key, "key");
+        java.util.Objects.requireNonNull(token, "token");
+        java.util.Objects.requireNonNull(now, "now");
+        return jdbc.query("""
+                SELECT 1 FROM record_live_evaluation work
+                JOIN game_result result ON result.id=work.game_result_id
+                WHERE work.guild_id=? AND work.game_result_id=? AND work.game_result_version=?
+                  AND work.evaluation_state='CLAIMED' AND work.claim_token=? AND work.claim_until>?
+                  AND result.version=work.game_result_version
+                  AND NOT EXISTS (
+                      SELECT 1 FROM record_live_evaluation newer
+                      WHERE newer.guild_id=work.guild_id AND newer.game_result_id=work.game_result_id
+                        AND newer.game_result_version>work.game_result_version
+                        AND newer.evaluation_state<>'SUPERSEDED')
+                FOR UPDATE
+                """, (rs, row) -> 1, key.guildId(), key.gameResultId(), key.gameResultVersion(), token,
+                RecordJdbcMapping.utc(now)).size() == 1;
+    }
+
+    @Override
     public boolean renewLease(
             RecordLiveEvaluationKey key,
             UUID token,

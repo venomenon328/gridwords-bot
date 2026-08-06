@@ -121,6 +121,17 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
     }
 
     @Override
+    public List<RecordAnnouncementSnapshot> findByEventId(UUID eventId) {
+        java.util.Objects.requireNonNull(eventId, "eventId");
+        return jdbc.query("""
+                SELECT announcement.* FROM record_announcement announcement
+                JOIN record_announcement_event fact ON fact.announcement_id=announcement.id
+                WHERE fact.event_id=?
+                ORDER BY announcement.id
+                """, (rs, row) -> snapshot(rs), eventId);
+    }
+
+    @Override
     public Optional<RecordLeaseClaim> claim(
             RecordAnnouncementKey key, RecordLeaseClaimRequest request) {
         UUID token = UUID.randomUUID();

@@ -16,6 +16,7 @@ import java.util.UUID;
 public interface RecordAnnouncementStore {
     RecordAnnouncementSnapshot registerOrUpdate(RecordAnnouncementRegistration registration);
     Optional<RecordAnnouncementSnapshot> find(RecordAnnouncementKey key);
+    default List<RecordAnnouncementSnapshot> findByEventId(UUID eventId) { return List.of(); }
     Optional<RecordLeaseClaim> claim(RecordAnnouncementKey key, RecordLeaseClaimRequest request);
     boolean renewLease(RecordAnnouncementKey key, UUID token, RecordLeaseClaimRequest request);
     boolean replaceMessages(RecordAnnouncementKey key, UUID token, List<RecordAnnouncementMessage> messages);

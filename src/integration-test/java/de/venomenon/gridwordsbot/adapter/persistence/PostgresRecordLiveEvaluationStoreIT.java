@@ -177,6 +177,21 @@ class PostgresRecordLiveEvaluationStoreIT {
     }
 
     @Test
+    void writeFenceRejectsAnObsoleteResultVersionBeforeAnyRecordWrite() {
+        long resultId = insertResultAndReceivedSubmission(1, 100, 1000);
+        transitionToResultStored(1000, resultId);
+        RecordLiveEvaluationClaim claim = work.claimNext(request(NOW, NOW.plusSeconds(30))).orElseThrow();
+
+        assertThat(work.fence(claim.key(), claim.token(), NOW.plusSeconds(1))).isTrue();
+
+        jdbc.update("UPDATE game_result SET version=version+1 WHERE id=?", resultId);
+        jdbc.update("UPDATE submission SET updated_at=?, version=version+1 WHERE source_message_id=?",
+                java.sql.Timestamp.from(NOW.plusSeconds(2)), 1000L);
+
+        assertThat(work.fence(claim.key(), claim.token(), NOW.plusSeconds(3))).isFalse();
+    }
+
+    @Test
     void retryIsNotClaimableBeforeBackoffAndRestartsWhenDue() {
         long resultId = insertResultAndReceivedSubmission(1, 100, 1000);
         transitionToResultStored(1000, resultId);

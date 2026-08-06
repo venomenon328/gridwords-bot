@@ -6,17 +6,20 @@ import de.venomenon.gridwordsbot.adapter.persistence.PostgresRecordEventStore;
 import de.venomenon.gridwordsbot.adapter.persistence.PostgresRecordLiveEvaluationStore;
 import de.venomenon.gridwordsbot.adapter.persistence.PostgresRecordStateStore;
 import de.venomenon.gridwordsbot.adapter.persistence.PostgresRecordHistoryQuery;
+import de.venomenon.gridwordsbot.adapter.persistence.PostgresRecordLiveHistoryQuery;
 import de.venomenon.gridwordsbot.port.out.RecordAnnouncementStore;
 import de.venomenon.gridwordsbot.port.out.RecordBootstrapStore;
 import de.venomenon.gridwordsbot.port.out.RecordEventStore;
 import de.venomenon.gridwordsbot.port.out.RecordLiveEvaluationStore;
 import de.venomenon.gridwordsbot.port.out.RecordStateStore;
 import de.venomenon.gridwordsbot.port.out.RecordHistoryQuery;
+import de.venomenon.gridwordsbot.port.out.RecordLiveHistoryQuery;
 import de.venomenon.gridwordsbot.domain.record.RecordDefinitionCatalog;
 import de.venomenon.gridwordsbot.application.record.RecordBootstrapCoordinator;
 import de.venomenon.gridwordsbot.application.record.RecordStateService;
 import de.venomenon.gridwordsbot.application.record.RecordStateReadService;
 import de.venomenon.gridwordsbot.application.record.RecordBootstrapReadService;
+import de.venomenon.gridwordsbot.application.record.RecordLiveEvaluationProcessor;
 import de.venomenon.gridwordsbot.adapter.observability.MicrometerRecordBootstrapMetrics;
 import de.venomenon.gridwordsbot.port.out.RecordBootstrapMetrics;
 import de.venomenon.gridwordsbot.port.out.RecordTransactionRunner;
@@ -41,6 +44,7 @@ class RecordPersistenceConfiguration {
     }
     @Bean RecordAnnouncementStore recordAnnouncementStore(JdbcTemplate jdbc, Clock clock) { return new PostgresRecordAnnouncementStore(jdbc, clock); }
     @Bean RecordHistoryQuery recordHistoryQuery(JdbcTemplate jdbc) { return new PostgresRecordHistoryQuery(jdbc); }
+    @Bean RecordLiveHistoryQuery recordLiveHistoryQuery(JdbcTemplate jdbc) { return new PostgresRecordLiveHistoryQuery(jdbc); }
     @Bean RecordDefinitionCatalog recordDefinitionCatalog() { return RecordDefinitionCatalog.recordsV1(); }
     @Bean RecordTransactionRunner recordTransactionRunner(TransactionTemplate transactions) {
         return new RecordTransactionRunner() { @Override public <T> T inTransaction(java.util.function.Supplier<T> work) {
@@ -63,6 +67,14 @@ class RecordPersistenceConfiguration {
     }
     @Bean RecordStateReadService recordStateReadService(RecordStateStore states) { return new RecordStateReadService(states); }
     @Bean RecordBootstrapReadService recordBootstrapReadService(RecordBootstrapStore bootstraps) { return new RecordBootstrapReadService(bootstraps); }
+    @Bean RecordLiveEvaluationProcessor recordLiveEvaluationProcessor(
+            RecordLiveEvaluationStore work, RecordLiveHistoryQuery history, RecordBootstrapReadService bootstrap,
+            RecordStateService states, RecordEventStore events, RecordAnnouncementStore announcements,
+            RecordTransactionRunner transactions, RecordDefinitionCatalog catalog, Clock clock,
+            GridwordsBotProperties properties) {
+        return new RecordLiveEvaluationProcessor(work, history, bootstrap, states, events, announcements,
+                transactions, catalog, clock, properties.discord().channelId());
+    }
     @Bean ApplicationRunner recordBootstrapStartupRunner(RecordBootstrapCoordinator coordinator, GridwordsBotProperties properties) {
         return arguments -> coordinator.run(properties.discord().guildId());
     }

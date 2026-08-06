@@ -17,6 +17,8 @@ public interface RecordLiveEvaluationStore {
     Optional<RecordLiveEvaluationSnapshot> find(RecordLiveEvaluationKey key);
     List<RecordLiveEvaluationSnapshot> findAll(long guildId, long gameResultId);
     Optional<RecordLiveEvaluationClaim> claimNext(RecordLeaseClaimRequest request);
+    /** Locks and validates the currently owned work immediately before coupled writes. */
+    default boolean fence(RecordLiveEvaluationKey key, UUID token, Instant now) { return false; }
     boolean renewLease(RecordLiveEvaluationKey key, UUID token, RecordLeaseClaimRequest request);
     boolean markSucceeded(RecordLiveEvaluationKey key, UUID token, Instant completedAt);
     boolean markRetryableFailure(
