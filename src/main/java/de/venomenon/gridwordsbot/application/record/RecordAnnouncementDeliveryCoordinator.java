@@ -96,7 +96,7 @@ public final class RecordAnnouncementDeliveryCoordinator {
             if (!publicAnnouncementsEnabled) {
                 int suppressed = store.suppressPendingCreates(clock.instant());
                 if (suppressed > 0) {
-                    log.info("record_announcement_delivery outcome=SUPPRESSED scope=pending_create count={}", suppressed);
+                    log.info("record_announcement_delivery outcome=SUPPRESSED scope=never_attempted_create count={}", suppressed);
                 }
             }
             Instant now = clock.instant();
@@ -111,7 +111,8 @@ public final class RecordAnnouncementDeliveryCoordinator {
             heartbeat.start();
             if (!publicAnnouncementsEnabled && snapshot.publishedAt().isEmpty()
                     && projection == RecordAnnouncementProjection.CREATE) {
-                result = markSuppressed(claim, heartbeat) ? RunResult.SUPPRESSED : RunResult.LOST_LEASE;
+                result = suppressAttemptedCreate(claim, snapshot, heartbeat)
+                        ? RunResult.SUPPRESSED : RunResult.LOST_LEASE;
                 return result;
             }
             result = synchronize(claim, snapshot, heartbeat) ? RunResult.COMPLETED : RunResult.LOST_LEASE;
@@ -144,6 +145,22 @@ public final class RecordAnnouncementDeliveryCoordinator {
             }
             running.set(false);
         }
+    }
+
+    private boolean suppressAttemptedCreate(
+            RecordAnnouncementClaim claim, RecordAnnouncementSnapshot snapshot, LeaseHeartbeat heartbeat) {
+        String key = RecordAnnouncementRenderer.publicationKey(claim.key().idempotencyKey());
+        Set<Long> ids = new HashSet<>(snapshot.messages().stream().map(RecordAnnouncementMessage::messageId).toList());
+        discovery(claim, heartbeat, key).values().forEach(ids::addAll);
+        for (Long id : ids.stream().sorted().toList()) {
+            renew(claim, heartbeat);
+            messages.delete(claim.key().channelId(), id);
+            ensureLease(heartbeat);
+        }
+        ensureLease(heartbeat);
+        if (!store.replaceMessages(claim.key(), claim.token(), List.of())) return false;
+        ensureLease(heartbeat);
+        return store.markSuppressed(claim.key(), claim.token(), clock.instant());
     }
 
     private boolean synchronize(
