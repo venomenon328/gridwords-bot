@@ -112,6 +112,33 @@ class PostgresRecordPersistenceStoreIT {
                 current.value().equals(better.value()) ? de.venomenon.gridwordsbot.domain.record.RecordStateUpdateResult.Status.UNCHANGED : de.venomenon.gridwordsbot.domain.record.RecordStateUpdateResult.Status.UPDATED);
         assertThat(states.update(new RecordStateUpdate(key, RecordLockVersion.initial(), first)).status()).isEqualTo(de.venomenon.gridwordsbot.domain.record.RecordStateUpdateResult.Status.VERSION_CONFLICT);
     }
+    @Test void liveStateWriterRetriesCasAndNeverRegressesToTheStaleWorseCandidate() throws Exception {
+        RecordStateKey key = stateKey();
+        states.initialize(key, write(4, Duration.ofSeconds(80)));
+        RecordTransactionRunner direct = new RecordTransactionRunner() {
+            @Override public <T> T inTransaction(java.util.function.Supplier<T> work) { return work.get(); }
+        };
+        RecordStateService service = new RecordStateService(states, events, direct, RecordDefinitionCatalog.recordsV1());
+        RecordBootstrapProjection.Candidate better = new RecordBootstrapProjection.Candidate(key, write(3, Duration.ofSeconds(70)));
+        RecordBootstrapProjection.Candidate best = new RecordBootstrapProjection.Candidate(key, write(2, Duration.ofSeconds(60)));
+
+        concurrently(() -> service.applyLiveCandidateWithinTransaction(better),
+                () -> service.applyLiveCandidateWithinTransaction(best));
+
+        assertThat(states.find(key).orElseThrow().value())
+                .isEqualTo(new AttemptsDurationRecordValue(2, Duration.ofSeconds(60)));
+    }
+    @Test void liveStateWriterDoesNotCreateAResultDependentBootstrapAnchor() {
+        RecordTransactionRunner direct = new RecordTransactionRunner() {
+            @Override public <T> T inTransaction(java.util.function.Supplier<T> work) { return work.get(); }
+        };
+        RecordStateService service = new RecordStateService(states, events, direct, RecordDefinitionCatalog.recordsV1());
+
+        assertThat(service.applyLiveCandidateWithinTransaction(
+                new RecordBootstrapProjection.Candidate(stateKey(), write(2, Duration.ofSeconds(60)))))
+                .isEqualTo(RecordStateService.RebuildResult.CREATED);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM record_event", Integer.class)).isZero();
+    }
     @Test void stateAndBootstrapAnchorRollbackTogetherInOneRealTransaction() {
         TransactionTemplate template = new TransactionTemplate(new DataSourceTransactionManager(jdbc.getDataSource()));
         RecordTransactionRunner transactions = new RecordTransactionRunner() {

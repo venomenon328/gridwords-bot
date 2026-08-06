@@ -192,6 +192,24 @@ class PostgresRecordLiveEvaluationStoreIT {
     }
 
     @Test
+    void liveHistoryReadsOnlyParticipationPeriodsIntersectingTheChangedGameDay() {
+        long resultId = insertResultAndReceivedSubmission(1, 100, 1000);
+        transitionToResultStored(1000, resultId);
+        jdbc.update("""
+                INSERT INTO player_participation_period (player_id,game_type,active_from,inactive_from,created_at,updated_at)
+                VALUES (1,'GRIDWORDS',DATE '2026-08-01',NULL,?,?),
+                       (1,'QUADWORDS',DATE '2026-07-01',DATE '2026-07-31',?,?)
+                """, java.sql.Timestamp.from(NOW), java.sql.Timestamp.from(NOW),
+                java.sql.Timestamp.from(NOW), java.sql.Timestamp.from(NOW));
+
+        var history = new PostgresRecordLiveHistoryQuery(jdbc).loadFor(
+                new RecordLiveEvaluationKey(100, resultId, 0), RecordProcessingOrigin.LIVE_SUBMISSION);
+
+        assertThat(history.participationPeriods()).extracting(period -> period.gameType().name())
+                .containsExactly("GRIDWORDS");
+    }
+
+    @Test
     void retryIsNotClaimableBeforeBackoffAndRestartsWhenDue() {
         long resultId = insertResultAndReceivedSubmission(1, 100, 1000);
         transitionToResultStored(1000, resultId);

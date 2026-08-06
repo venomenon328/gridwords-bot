@@ -2,6 +2,7 @@ package de.venomenon.gridwordsbot.port.out;
 
 import de.venomenon.gridwordsbot.domain.record.RecordHistorySnapshot;
 import de.venomenon.gridwordsbot.domain.record.RecordLiveEvaluationKey;
+import de.venomenon.gridwordsbot.domain.record.RecordProcessingOrigin;
 
 /**
  * Targeted canonical read for one live result version.  It is deliberately
@@ -10,4 +11,8 @@ import de.venomenon.gridwordsbot.domain.record.RecordLiveEvaluationKey;
  */
 public interface RecordLiveHistoryQuery {
     RecordHistorySnapshot loadFor(RecordLiveEvaluationKey key);
+
+    default RecordHistorySnapshot loadFor(RecordLiveEvaluationKey key, RecordProcessingOrigin origin) {
+        return loadFor(key);
+    }
 }

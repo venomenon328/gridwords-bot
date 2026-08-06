@@ -253,6 +253,78 @@ public class RecordStateService {
         return RebuildResult.RETRY_EXHAUSTED;
     }
 
+    /**
+     * Applies an immediately observed live candidate without creating a
+     * bootstrap anchor.  A stale candidate may never replace an equal or
+     * better state that won the CAS race in the meantime.
+     */
+    public RebuildResult applyLiveCandidateWithinTransaction(RecordBootstrapProjection.Candidate candidate) {
+        java.util.Objects.requireNonNull(candidate, "candidate");
+        for (int attempts = 0; attempts < 3; attempts++) {
+            Optional<RecordStateSnapshot> current = stateStore.find(candidate.key());
+            if (current.isEmpty()) {
+                if (stateStore.initialize(candidate.key(), candidate.write())
+                        instanceof RecordStateInitialization.Created) {
+                    return RebuildResult.CREATED;
+                }
+                continue;
+            }
+            RecordStateSnapshot state = current.orElseThrow();
+            if (same(state, candidate.write()) || stateIsAtLeastAsGood(state, candidate.write())) {
+                return RebuildResult.UNCHANGED;
+            }
+            RecordStateUpdateResult updated = stateStore.update(
+                    new RecordStateUpdate(candidate.key(), state.lockVersion(), candidate.write()));
+            if (updated.status() == RecordStateUpdateResult.Status.UPDATED) return RebuildResult.REPLACED;
+            if (updated.status() == RecordStateUpdateResult.Status.UNCHANGED) return RebuildResult.UNCHANGED;
+        }
+        return RebuildResult.RETRY_EXHAUSTED;
+    }
+
+    /**
+     * Applies an exact, canonically recomputed correction target.  In contrast
+     * to the live path a correction is permitted to fall back to a worse next
+     * canonical source or to remove a state that has no remaining source.
+     * The caller already owns the outer record transaction.
+     */
+    public RebuildResult reconcileCorrectionTargetWithinTransaction(
+            Optional<RecordBootstrapProjection.Candidate> target,
+            de.venomenon.gridwordsbot.domain.record.RecordStateKey key) {
+        java.util.Objects.requireNonNull(target, "target");
+        java.util.Objects.requireNonNull(key, "key");
+        if (target.isPresent()) {
+            RecordBootstrapProjection.Candidate candidate = target.orElseThrow();
+            if (!candidate.key().equals(key)) throw new IllegalArgumentException("correction target key mismatch");
+            for (int attempts = 0; attempts < 3; attempts++) {
+                Optional<RecordStateSnapshot> current = stateStore.find(key);
+                if (current.isEmpty()) {
+                    if (stateStore.initialize(key, candidate.write()) instanceof RecordStateInitialization.Created) {
+                        return RebuildResult.CREATED;
+                    }
+                    continue;
+                }
+                RecordStateSnapshot state = current.orElseThrow();
+                if (same(state, candidate.write())) return RebuildResult.UNCHANGED;
+                RecordStateUpdateResult updated = stateStore.update(
+                        new RecordStateUpdate(key, state.lockVersion(), candidate.write()));
+                if (updated.status() == RecordStateUpdateResult.Status.UPDATED) return RebuildResult.REPLACED;
+                if (updated.status() == RecordStateUpdateResult.Status.UNCHANGED) return RebuildResult.UNCHANGED;
+            }
+            return RebuildResult.RETRY_EXHAUSTED;
+        }
+        return removeAbsentCanonicalTargetWithinTransaction(key);
+    }
+
+    private RebuildResult removeAbsentCanonicalTargetWithinTransaction(
+            de.venomenon.gridwordsbot.domain.record.RecordStateKey key) {
+        for (int attempts = 0; attempts < 3; attempts++) {
+            Optional<RecordStateSnapshot> current = stateStore.find(key);
+            if (current.isEmpty()) return RebuildResult.UNCHANGED;
+            if (stateStore.remove(key, current.orElseThrow().lockVersion())) return RebuildResult.REMOVED;
+        }
+        return RebuildResult.RETRY_EXHAUSTED;
+    }
+
     /** Removes a state only after a fresh CAS read; audit facts intentionally remain. */
     public RebuildResult removeIfNoSource(de.venomenon.gridwordsbot.domain.record.RecordStateKey key) {
         return removeAbsentCanonicalTarget(key);
