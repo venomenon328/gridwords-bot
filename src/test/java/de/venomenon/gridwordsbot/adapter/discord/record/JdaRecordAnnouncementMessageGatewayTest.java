@@ -117,7 +117,8 @@ class JdaRecordAnnouncementMessageGatewayTest {
         when(jda.getTextChannelById(12L)).thenReturn(channel);
         MessageCreateAction create = mock(MessageCreateAction.class);
         when(channel.sendMessageEmbeds(any(MessageEmbed.class))).thenReturn(create);
-        doThrow(missingPermission).when(create).setAllowedMentions(any());
+        when(create.setAllowedMentions(any())).thenReturn(create);
+        doThrow(missingPermission).when(create).complete();
 
         JdaRecordAnnouncementMessageGateway gateway = new JdaRecordAnnouncementMessageGateway(jda);
 
