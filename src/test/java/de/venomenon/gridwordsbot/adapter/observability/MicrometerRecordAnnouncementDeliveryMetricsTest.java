@@ -19,7 +19,9 @@ class MicrometerRecordAnnouncementDeliveryMetricsTest {
                 RunResult.EXTERNALLY_REMOVED, "externally_removed",
                 RunResult.LOST_LEASE, "lost_lease",
                 RunResult.SUPPRESSED, "suppressed",
-                RunResult.FAILED_RETRYABLE, "failed_retryable");
+                RunResult.FAILED_RETRYABLE, "failed_retryable",
+                RunResult.FAILED_PERMANENT, "failed_permanent",
+                RunResult.UNKNOWN, "unknown");
 
         expected.forEach((outcome, tag) -> metrics.record(outcome, Duration.ofMillis(25)));
 
