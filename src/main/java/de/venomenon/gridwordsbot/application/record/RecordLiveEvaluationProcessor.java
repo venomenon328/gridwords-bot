@@ -62,7 +62,7 @@ import java.util.function.BooleanSupplier;
  * application service.
  */
 public final class RecordLiveEvaluationProcessor {
-    private static final String RENDERER_VERSION = "records-v1";
+    private static final String RENDERER_VERSION = RecordAnnouncementRenderer.VERSION;
     private final RecordLiveEvaluationStore work;
     private final RecordLiveHistoryQuery history;
     private final RecordBootstrapReadService bootstrap;

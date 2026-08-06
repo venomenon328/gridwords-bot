@@ -65,7 +65,7 @@ import java.util.UUID;
  * case and never decides the business cutoff itself.
  */
 public final class RecordDayCloseService implements RecordDayCloseUseCase {
-    private static final String RENDERER_VERSION = "records-v1";
+    private static final String RENDERER_VERSION = RecordAnnouncementRenderer.VERSION;
 
     private final RecordDayCloseStore work;
     private final RecordHistoryQuery history;

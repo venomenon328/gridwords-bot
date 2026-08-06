@@ -80,7 +80,13 @@ public record GridwordsBotProperties(
             Duration liveEvaluationLeaseDuration,
             Duration liveEvaluationHeartbeatInterval,
             Duration liveEvaluationInitialRetryBackoff,
-            Duration liveEvaluationMaxRetryBackoff) {
+            Duration liveEvaluationMaxRetryBackoff,
+            Boolean publicAnnouncementsEnabled,
+            Duration announcementPollDelay,
+            Duration announcementLeaseDuration,
+            Duration announcementHeartbeatInterval,
+            Duration announcementInitialRetryBackoff,
+            Duration announcementMaxRetryBackoff) {
         private static final Duration MINIMUM_POLL_DELAY = Duration.ofMillis(1);
         private static final Duration DEFAULT_BOOTSTRAP_POLL_DELAY = Duration.ofMinutes(1);
         private static final Duration DEFAULT_BOOTSTRAP_LEASE_DURATION = Duration.ofMinutes(2);
@@ -90,6 +96,11 @@ public record GridwordsBotProperties(
         private static final Duration DEFAULT_LIVE_HEARTBEAT_INTERVAL = Duration.ofSeconds(30);
         private static final Duration DEFAULT_LIVE_INITIAL_RETRY_BACKOFF = Duration.ofSeconds(10);
         private static final Duration DEFAULT_LIVE_MAX_RETRY_BACKOFF = Duration.ofMinutes(5);
+        private static final Duration DEFAULT_ANNOUNCEMENT_POLL_DELAY = Duration.ofSeconds(10);
+        private static final Duration DEFAULT_ANNOUNCEMENT_LEASE_DURATION = Duration.ofMinutes(2);
+        private static final Duration DEFAULT_ANNOUNCEMENT_HEARTBEAT_INTERVAL = Duration.ofSeconds(30);
+        private static final Duration DEFAULT_ANNOUNCEMENT_INITIAL_RETRY_BACKOFF = Duration.ofSeconds(10);
+        private static final Duration DEFAULT_ANNOUNCEMENT_MAX_RETRY_BACKOFF = Duration.ofMinutes(5);
 
         @ConstructorBinding
         public Records {
@@ -121,6 +132,23 @@ public record GridwordsBotProperties(
                 throw new IllegalArgumentException(
                         "liveEvaluationInitialRetryBackoff must not exceed liveEvaluationMaxRetryBackoff");
             }
+            publicAnnouncementsEnabled = publicAnnouncementsEnabled != null && publicAnnouncementsEnabled;
+            announcementPollDelay = defaultIfNull(announcementPollDelay, DEFAULT_ANNOUNCEMENT_POLL_DELAY);
+            announcementLeaseDuration = defaultIfNull(announcementLeaseDuration, DEFAULT_ANNOUNCEMENT_LEASE_DURATION);
+            announcementHeartbeatInterval = defaultIfNull(announcementHeartbeatInterval, DEFAULT_ANNOUNCEMENT_HEARTBEAT_INTERVAL);
+            announcementInitialRetryBackoff = defaultIfNull(announcementInitialRetryBackoff, DEFAULT_ANNOUNCEMENT_INITIAL_RETRY_BACKOFF);
+            announcementMaxRetryBackoff = defaultIfNull(announcementMaxRetryBackoff, DEFAULT_ANNOUNCEMENT_MAX_RETRY_BACKOFF);
+            requireAtLeast(announcementPollDelay, MINIMUM_POLL_DELAY, "announcementPollDelay");
+            requirePositive(announcementLeaseDuration, "announcementLeaseDuration");
+            requirePositive(announcementHeartbeatInterval, "announcementHeartbeatInterval");
+            requirePositive(announcementInitialRetryBackoff, "announcementInitialRetryBackoff");
+            requirePositive(announcementMaxRetryBackoff, "announcementMaxRetryBackoff");
+            if (announcementHeartbeatInterval.compareTo(announcementLeaseDuration) >= 0) {
+                throw new IllegalArgumentException("announcementHeartbeatInterval must be shorter than announcementLeaseDuration");
+            }
+            if (announcementInitialRetryBackoff.compareTo(announcementMaxRetryBackoff) > 0) {
+                throw new IllegalArgumentException("announcementInitialRetryBackoff must not exceed announcementMaxRetryBackoff");
+            }
         }
 
         public Records(
@@ -136,7 +164,26 @@ public record GridwordsBotProperties(
                     DEFAULT_LIVE_LEASE_DURATION,
                     DEFAULT_LIVE_HEARTBEAT_INTERVAL,
                     DEFAULT_LIVE_INITIAL_RETRY_BACKOFF,
-                    DEFAULT_LIVE_MAX_RETRY_BACKOFF);
+                    DEFAULT_LIVE_MAX_RETRY_BACKOFF,
+                    false,
+                    DEFAULT_ANNOUNCEMENT_POLL_DELAY,
+                    DEFAULT_ANNOUNCEMENT_LEASE_DURATION,
+                    DEFAULT_ANNOUNCEMENT_HEARTBEAT_INTERVAL,
+                    DEFAULT_ANNOUNCEMENT_INITIAL_RETRY_BACKOFF,
+                    DEFAULT_ANNOUNCEMENT_MAX_RETRY_BACKOFF);
+        }
+
+        public Records(
+                Duration bootstrapPollDelay, Duration bootstrapLeaseDuration, Duration bootstrapRetryBackoff,
+                Boolean liveEvaluationEnabled, Duration liveEvaluationPollDelay, Duration liveEvaluationLeaseDuration,
+                Duration liveEvaluationHeartbeatInterval, Duration liveEvaluationInitialRetryBackoff,
+                Duration liveEvaluationMaxRetryBackoff) {
+            this(bootstrapPollDelay, bootstrapLeaseDuration, bootstrapRetryBackoff, liveEvaluationEnabled,
+                    liveEvaluationPollDelay, liveEvaluationLeaseDuration, liveEvaluationHeartbeatInterval,
+                    liveEvaluationInitialRetryBackoff, liveEvaluationMaxRetryBackoff, false,
+                    DEFAULT_ANNOUNCEMENT_POLL_DELAY, DEFAULT_ANNOUNCEMENT_LEASE_DURATION,
+                    DEFAULT_ANNOUNCEMENT_HEARTBEAT_INTERVAL, DEFAULT_ANNOUNCEMENT_INITIAL_RETRY_BACKOFF,
+                    DEFAULT_ANNOUNCEMENT_MAX_RETRY_BACKOFF);
         }
 
         public static Records defaults() {
@@ -149,7 +196,13 @@ public record GridwordsBotProperties(
                     DEFAULT_LIVE_LEASE_DURATION,
                     DEFAULT_LIVE_HEARTBEAT_INTERVAL,
                     DEFAULT_LIVE_INITIAL_RETRY_BACKOFF,
-                    DEFAULT_LIVE_MAX_RETRY_BACKOFF);
+                    DEFAULT_LIVE_MAX_RETRY_BACKOFF,
+                    false,
+                    DEFAULT_ANNOUNCEMENT_POLL_DELAY,
+                    DEFAULT_ANNOUNCEMENT_LEASE_DURATION,
+                    DEFAULT_ANNOUNCEMENT_HEARTBEAT_INTERVAL,
+                    DEFAULT_ANNOUNCEMENT_INITIAL_RETRY_BACKOFF,
+                    DEFAULT_ANNOUNCEMENT_MAX_RETRY_BACKOFF);
         }
         private static Duration defaultIfNull(Duration value, Duration fallback) {
             return value == null ? fallback : value;
