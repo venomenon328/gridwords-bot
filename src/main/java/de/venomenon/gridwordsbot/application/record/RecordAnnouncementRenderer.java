@@ -22,7 +22,7 @@ import java.util.Objects;
 
 /** Pure German renderer; it deliberately owns no JDA types or external I/O. */
 public final class RecordAnnouncementRenderer {
-    public static final String VERSION = "records-v1-discord-2";
+    public static final String VERSION = "records-v1-discord-3";
     private static final int PAGE_DESCRIPTION_LIMIT = 3_800;
 
     public RenderedRecordAnnouncement render(RecordAnnouncementRenderInput input) {
@@ -97,8 +97,10 @@ public final class RecordAnnouncementRenderer {
                     + (serverWide(draft) ? "Kandidat " : "") + holder + " stellt den Rekord ein: " + value + "."
                     + holderSuffix(previousHolder);
             case SERIES_RECORD_NEAR_MISSED_AT_END -> "**" + metric + " · " + scope + "**\n"
-                    + "Knapp verpasst: " + value + " statt " + previous + " (Abstand "
-                    + distance(draft.newValue(), draft.previousValue().orElseThrow()) + ").";
+                    + (serverWide(draft) ? "Kandidat " + holder + " verpasst knapp: " : "Knapp verpasst: ")
+                    + value + " statt " + previous + " (Abstand "
+                    + distance(draft.newValue(), draft.previousValue().orElseThrow()) + ")"
+                    + holderSuffix(previousHolder) + ".";
             default -> throw new IllegalArgumentException("event is not publicly renderable: " + draft.type());
         };
     }
