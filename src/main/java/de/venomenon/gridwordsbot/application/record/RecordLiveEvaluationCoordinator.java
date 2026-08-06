@@ -17,6 +17,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Polls exactly one durable live-evaluation job, keeps its lease alive, and
@@ -117,7 +118,7 @@ public final class RecordLiveEvaluationCoordinator {
                 throw failure;
             }
             try {
-                if (heartbeat != null && !heartbeat.leaseOwned()) {
+                if (!leaseOwnedAfterStoppingHeartbeat(heartbeat)) {
                     result = RunResult.LOST_LEASE;
                     RecordLiveEvaluationLog.lostLease(claim, elapsed(startedNanos));
                     return result;
@@ -144,7 +145,7 @@ public final class RecordLiveEvaluationCoordinator {
                 throw failure;
             }
             try {
-                if (heartbeat != null && !heartbeat.leaseOwned()) {
+                if (!leaseOwnedAfterStoppingHeartbeat(heartbeat)) {
                     result = RunResult.LOST_LEASE;
                     RecordLiveEvaluationLog.lostLease(claim, elapsed(startedNanos));
                     return result;
@@ -181,6 +182,14 @@ public final class RecordLiveEvaluationCoordinator {
         }
     }
 
+    private boolean leaseOwnedAfterStoppingHeartbeat(LeaseHeartbeat heartbeat) {
+        if (heartbeat == null) {
+            return true;
+        }
+        heartbeat.close();
+        return heartbeat.leaseOwned();
+    }
+
     private RecordLeaseClaimRequest leaseRequest(Instant now) {
         return new RecordLeaseClaimRequest(now, now.plus(leaseDuration));
     }
@@ -214,6 +223,7 @@ public final class RecordLiveEvaluationCoordinator {
         private final AtomicBoolean closed = new AtomicBoolean();
         private final AtomicBoolean owned = new AtomicBoolean(true);
         private final AtomicReference<RuntimeException> unexpectedFailure = new AtomicReference<>();
+        private final ReentrantLock executionLock = new ReentrantLock();
         private volatile ScheduledFuture<?> future;
 
         private LeaseHeartbeat(RecordLiveEvaluationClaim claim) {
@@ -233,18 +243,20 @@ public final class RecordLiveEvaluationCoordinator {
         }
 
         private void heartbeat() {
-            if (closed.get()) {
-                return;
-            }
+            executionLock.lock();
             try {
-                boolean renewed = renew();
-                if (!renewed && !closed.get()) {
-                    owned.set(false);
+                if (closed.get()) {
+                    return;
                 }
-            } catch (RuntimeException failure) {
-                if (!closed.get()) {
+                try {
+                    if (!renew()) {
+                        owned.set(false);
+                    }
+                } catch (RuntimeException failure) {
                     unexpectedFailure.compareAndSet(null, failure);
                 }
+            } finally {
+                executionLock.unlock();
             }
         }
 
@@ -267,6 +279,17 @@ public final class RecordLiveEvaluationCoordinator {
             ScheduledFuture<?> current = future;
             if (current != null) {
                 current.cancel(false);
+            }
+            awaitInFlightHeartbeat();
+        }
+
+        private void awaitInFlightHeartbeat() {
+            executionLock.lock();
+            try {
+                // Acquiring the lock establishes a happens-before edge with a
+                // heartbeat that had already entered renewLease().
+            } finally {
+                executionLock.unlock();
             }
         }
     }
