@@ -24,7 +24,7 @@ jobs:
   test:
     name: Maven verification
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -46,7 +46,7 @@ jobs:
     name: Build and exercise production image
     needs: test
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 35
     outputs:
       revision: ${{ steps.metadata.outputs.revision }}
@@ -121,7 +121,7 @@ jobs:
     name: Publish private GHCR image manually
     needs: [test, verify-image]
     if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     permissions:
       contents: read
       packages: write
