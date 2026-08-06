@@ -34,7 +34,8 @@ public final class DiscordParticipationCommandListener extends ListenerAdapter {
     public void registerCommands(JDA jda) {
         var guild = jda.getGuildById(properties.discord().guildId());
         if (guild == null) return;
-        guild.updateCommands().addCommands(
+        var update = guild.updateCommands();
+        update.addCommands(
                 Commands.slash("participation", "Teilnahme verwalten")
                         .addSubcommands(participationCommand("join", "Ab heute teilnehmen"),
                                 participationCommand("leave", "Ab morgen nicht mehr teilnehmen")),
@@ -46,9 +47,9 @@ public final class DiscordParticipationCommandListener extends ListenerAdapter {
                 Commands.slash("reminders", "Reminder-Einstellung verwalten")
                         .addSubcommands(new SubcommandData("on", "Reminder aktivieren"),
                                 new SubcommandData("off", "Reminder deaktivieren"),
-                                new SubcommandData("status", "Reminder-Status anzeigen")),
-                DiscordRecordsCommandListener.commandData())
-                .queue();
+                                new SubcommandData("status", "Reminder-Status anzeigen")));
+        update.addCommands(DiscordRecordsCommandListener.commandData());
+        update.queue();
     }
 
     @Override
