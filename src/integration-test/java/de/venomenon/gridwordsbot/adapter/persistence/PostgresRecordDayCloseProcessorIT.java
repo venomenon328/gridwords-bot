@@ -82,7 +82,7 @@ class PostgresRecordDayCloseProcessorIT {
     void commitsStateEventAnnouncementAndMarkerForOneClosedDay() {
         prepareTwoSevenDaySolvedRuns();
         PostgresRecordDayCloseStore work = new PostgresRecordDayCloseStore(jdbc, CLOCK);
-        seedSucceeded(work, LocalDate.of(2026, 7, 7), NOW.minusSeconds(2));
+        seedSucceeded(work, LocalDate.of(2026, 7, 7), NOW);
 
         assertThat(service(work, CLOCK).reconcileThrough(GUILD_ID, LocalDate.of(2026, 7, 8))).isEqualTo(1);
 
@@ -104,7 +104,7 @@ class PostgresRecordDayCloseProcessorIT {
         readyBootstrap(CLOCK);
 
         PostgresRecordDayCloseStore seedStore = new PostgresRecordDayCloseStore(jdbc, CLOCK);
-        seedSucceeded(seedStore, LocalDate.of(2026, 7, 31), NOW.minusSeconds(2));
+        seedSucceeded(seedStore, LocalDate.of(2026, 7, 31), NOW);
         FailSecondTerminalStore failSecond = new FailSecondTerminalStore(jdbc, CLOCK);
 
         assertThat(service(failSecond, CLOCK).reconcileThrough(GUILD_ID, LocalDate.of(2026, 8, 3))).isEqualTo(1);
@@ -132,7 +132,7 @@ class PostgresRecordDayCloseProcessorIT {
     void rejectedTerminalMarkerRollsBackAllRecordWrites() {
         prepareTwoSevenDaySolvedRuns();
         PostgresRecordDayCloseStore seedStore = new PostgresRecordDayCloseStore(jdbc, CLOCK);
-        seedSucceeded(seedStore, LocalDate.of(2026, 7, 7), NOW.minusSeconds(2));
+        seedSucceeded(seedStore, LocalDate.of(2026, 7, 7), NOW);
         PostgresRecordDayCloseStore failing = new PostgresRecordDayCloseStore(jdbc, CLOCK) {
             @Override
             public boolean markSucceeded(RecordDayCloseKey key, UUID token, Instant completedAt) {
