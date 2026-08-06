@@ -176,6 +176,7 @@ class RecordAnnouncementDeliveryCoordinatorTest {
     @Test
     void heartbeatFencesAWorkerThatLosesItsLeaseDuringBlockingDiscordLookup() throws Exception {
         Fixture fixture = fixture(RecordAnnouncementProjection.EDIT, List.of(new RecordAnnouncementMessage(0, 100)), true);
+        fixture.gateway.discovered = List.of(new RecordAnnouncementMessageGateway.PublishedPage(100, 0));
         AtomicInteger renewals = new AtomicInteger();
         CountDownLatch heartbeatAttempted = new CountDownLatch(1);
         when(fixture.store.renewLease(eq(KEY), eq(TOKEN), any())).thenAnswer(invocation -> {
