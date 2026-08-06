@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -97,7 +98,9 @@ class JdaRecordAnnouncementMessageGatewayTest {
         ErrorResponseException unknown = mock(ErrorResponseException.class);
         when(unknown.getErrorResponse()).thenReturn(ErrorResponse.UNKNOWN_MESSAGE);
         when(jda.getTextChannelById(12L)).thenReturn(channel);
-        when(channel.deleteMessageById(99L)).thenThrow(unknown);
+        RestAction<Void> deletion = mock(RestAction.class);
+        when(channel.deleteMessageById(99L)).thenReturn(deletion);
+        doThrow(unknown).when(deletion).complete();
 
         JdaRecordAnnouncementMessageGateway gateway = new JdaRecordAnnouncementMessageGateway(jda);
 
@@ -111,7 +114,9 @@ class JdaRecordAnnouncementMessageGatewayTest {
         ErrorResponseException missingPermission = mock(ErrorResponseException.class);
         when(missingPermission.getErrorResponse()).thenReturn(ErrorResponse.MISSING_PERMISSIONS);
         when(jda.getTextChannelById(12L)).thenReturn(channel);
-        when(channel.sendMessageEmbeds(any(MessageEmbed.class))).thenThrow(missingPermission);
+        MessageCreateAction create = mock(MessageCreateAction.class);
+        when(channel.sendMessageEmbeds(any(MessageEmbed.class))).thenReturn(create);
+        doThrow(missingPermission).when(create).setAllowedMentions(any());
 
         JdaRecordAnnouncementMessageGateway gateway = new JdaRecordAnnouncementMessageGateway(jda);
 
