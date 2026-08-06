@@ -141,8 +141,9 @@ class PostgresRecordAnnouncementDeliveryRecoveryIT {
         PostgresRecordAnnouncementStore activeStore = new PostgresRecordAnnouncementStore(jdbc, fixedClock(NOW), true);
         activeStore.registerOrUpdate(registration(key, eventId));
         RecordLeaseClaim original = activeStore.claim(key, request(NOW, NOW.plusSeconds(10))).orElseThrow();
-        assertThat(replaceMessagesInTransaction(
-                activeStore, key, original.token(), List.of(new RecordAnnouncementMessage(0, 100)))).isTrue();
+        assertThat(Boolean.TRUE.equals(new TransactionTemplate(new DataSourceTransactionManager(source)).execute(
+                status -> activeStore.replaceMessages(
+                        key, original.token(), List.of(new RecordAnnouncementMessage(0, 100)))))).isTrue();
 
         Instant restartedAt = NOW.plusSeconds(11);
         JdbcTemplate restartedJdbc = isolatedJdbc();
@@ -220,13 +221,6 @@ class PostgresRecordAnnouncementDeliveryRecoveryIT {
                 RecordAnnouncementRenderer.VERSION,
                 "a".repeat(64),
                 List.of(eventId));
-    }
-
-    private boolean replaceMessagesInTransaction(
-            PostgresRecordAnnouncementStore store, RecordAnnouncementKey key, UUID token,
-            List<RecordAnnouncementMessage> messages) {
-        return Boolean.TRUE.equals(new TransactionTemplate(new DataSourceTransactionManager(source))
-                .execute(status -> store.replaceMessages(key, token, messages)));
     }
 
     private JdbcTemplate isolatedJdbc() {
