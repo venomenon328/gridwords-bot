@@ -253,7 +253,7 @@ class PostgresRecordClaimLeaseFencingIT {
     }
 
     @Test
-    void disabledRestartSuppressesAlreadyClaimedNeverPublishedCreateWithoutLaterBacklog() {
+    void disabledRestartLeavesAttemptedClaimForCleanupReconciliation() {
         UUID eventId = appendEvent("disable-restart");
         RecordAnnouncementKey key = new RecordAnnouncementKey(1, 2, "result:disable-restart:live");
         PostgresRecordAnnouncementStore firstWorker = announcementStore(NOW);
@@ -261,14 +261,17 @@ class PostgresRecordClaimLeaseFencingIT {
         RecordLeaseClaim claimed = firstWorker.claim(key, request(NOW, NOW.plusSeconds(60))).orElseThrow();
 
         PostgresRecordAnnouncementStore disabledRestart = announcementStore(NOW.plusSeconds(1));
-        assertThat(disabledRestart.suppressPendingCreates(NOW.plusSeconds(1))).isEqualTo(1);
-        assertThat(disabledRestart.find(key).orElseThrow().state()).isEqualTo(RecordWorkState.SUPPRESSED);
-        assertThat(disabledRestart.find(key).orElseThrow().claimToken()).isEmpty();
+        assertThat(disabledRestart.suppressPendingCreates(NOW.plusSeconds(1))).isZero();
+        var stillClaimed = disabledRestart.find(key).orElseThrow();
+        assertThat(stillClaimed.state()).isEqualTo(RecordWorkState.CLAIMED);
+        assertThat(stillClaimed.claimToken()).contains(claimed.token());
+        assertThat(disabledRestart.claimNext(request(NOW.plusSeconds(1), NOW.plusSeconds(61)), false)).isEmpty();
 
-        PostgresRecordAnnouncementStore enabledRestart = announcementStore(NOW.plusSeconds(2));
-        assertThat(enabledRestart.claimNext(request(NOW.plusSeconds(2), NOW.plusSeconds(62)), true)).isEmpty();
-        assertThat(enabledRestart.renewLease(key, claimed.token(), request(NOW.plusSeconds(2), NOW.plusSeconds(62))))
-                .isFalse();
+        PostgresRecordAnnouncementStore afterExpiry = announcementStore(NOW.plusSeconds(61));
+        RecordAnnouncementClaim cleanupClaim = afterExpiry.claimNext(
+                request(NOW.plusSeconds(61), NOW.plusSeconds(121)), false).orElseThrow();
+        assertThat(cleanupClaim.token()).isNotEqualTo(claimed.token());
+        assertThat(afterExpiry.find(key).orElseThrow().claimToken()).contains(cleanupClaim.token());
     }
 
     @Test
