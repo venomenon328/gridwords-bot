@@ -47,12 +47,13 @@ class RecordLiveEvaluationMigrationIT {
                         'ABCDE', 'legacy share', 'gridwords-share-v1', ?, ?)
                     RETURNING id
                     """.formatted(schema), Long.class, java.sql.Timestamp.from(now), java.sql.Timestamp.from(now));
+            java.sql.Timestamp completedAt = java.sql.Timestamp.from(now);
             jdbc.update("""
                     INSERT INTO %s.submission (
                         source_message_id, guild_id, channel_id, author_player_id, raw_message_content,
-                        processing_state, game_result_id, received_at, updated_at)
-                    VALUES (100, 10, 20, 1, 'legacy share', 'COMPLETED', ?, ?, ?)
-                    """.formatted(schema), resultId, java.sql.Timestamp.from(now), java.sql.Timestamp.from(now));
+                        processing_state, game_result_id, received_at, updated_at, original_deleted_at)
+                    VALUES (100, 10, 20, 1, 'legacy share', 'COMPLETED', ?, ?, ?, ?)
+                    """.formatted(schema), resultId, completedAt, completedAt, completedAt);
             jdbc.update("""
                     INSERT INTO %s.game_result_excuse (
                         game_result_id, trigger_source_message_id, status, catalog_version, context_version,
