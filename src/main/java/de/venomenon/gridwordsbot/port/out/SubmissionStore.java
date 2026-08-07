@@ -40,6 +40,15 @@ public interface SubmissionStore {
     default CanonicalDeliveryAttempt beginCanonicalDelivery(long sourceMessageId, long gameResultId, UUID claimToken) {
         throw new UnsupportedOperationException("canonical delivery fencing is not available");
     }
+
+    /**
+     * Returns whether an unresolved delivery attempt predates the attempt owned by {@code currentClaimToken}.
+     * Only that ambiguity requires Discord publication-key discovery; the current write-ahead attempt alone does not.
+     */
+    default boolean hasEarlierCanonicalDeliveryAttempt(long gameResultId, UUID currentClaimToken) {
+        return false;
+    }
+
     /** Atomically chooses the newest publishable submission for one mutable game result. */
     default CanonicalPublicationPreparation prepareCanonicalPublication(long sourceMessageId, long gameResultId) {
         throw new UnsupportedOperationException("canonical publication preparation is not available");

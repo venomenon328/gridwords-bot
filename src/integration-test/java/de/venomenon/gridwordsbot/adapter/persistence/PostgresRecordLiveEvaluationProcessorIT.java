@@ -1041,6 +1041,9 @@ class PostgresRecordLiveEvaluationProcessorIT {
                 List<de.venomenon.gridwordsbot.domain.record.RecordAnnouncementMessage> messages) {
             return delegate.replaceMessages(key, token, messages);
         }
+        @Override public boolean markDelivered(RecordAnnouncementKey key, UUID token, Instant at) {
+            return delegate.markDelivered(key, token, at);
+        }
         @Override public boolean markSynchronized(RecordAnnouncementKey key, UUID token, Instant at) {
             return delegate.markSynchronized(key, token, at);
         }

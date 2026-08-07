@@ -1,6 +1,6 @@
 # Inkrement 12 – Rekorde und Rekordmeldungen
 
-**Status:** Umsetzung läuft; Pakete 12.1 bis 12.8 abgeschlossen; Paket 12.9 in Umsetzung  
+**Status:** technische Umsetzung abgeschlossen; reale Discord-Abnahme und unabhängige PR-Abnahme für Paket 12.10 stehen noch aus
 **Stand:** 7. August 2026  
 **Umbrella-Issue:** #58  
 **Fachliche Grundlage:** [`../requirements/records.md`](../requirements/records.md)  
@@ -46,7 +46,7 @@ Die Umsetzung bleibt ein modularer Monolith. Es entstehen weder eine generische 
 - Abschlussmeldung bei Rekord, Gleichstand oder relativem Near Miss,
 - Aggregation zusammengehöriger Fakten,
 - Edit beziehungsweise Delete bei Korrekturen,
-- `/records` mit `game` und optionalem `user`; die persönliche Sicht eines anderen Nutzers ist Administratoren vorbehalten.
+- `/records` mit `game`, `category` und optionalem `user`; die persönliche Sicht eines anderen Nutzers ist Administratoren vorbehalten.
 
 ## 3. Nicht Bestandteil
 
@@ -507,7 +507,7 @@ Mindestens:
 
 # Paket 12.9 – Ephemerer `/records`-Command
 
-**Status:** in Umsetzung  
+**Status:** umgesetzt
 **Empfohlener Branch:** `feature/12-9-records-command`
 
 ## Ziel
@@ -519,6 +519,7 @@ Spieler können den aktuell gültigen, bereits materialisierten Rekordstand prü
 - Registrierung von `/records`,
 - optionale Parameter:
   - `game:all|gridwords|quadwords`,
+  - `category:all|results|series`,
   - `user`,
 - ohne `user` beziehen sich persönliche Rekorde auf den Aufrufer,
 - `user:<anderer Nutzer>` ist ausschließlich für konfigurierte Administratoren zulässig; die Autorisierung erfolgt ohne Profil- oder Teilnahme-Write,
@@ -527,7 +528,8 @@ Spieler können den aktuell gültigen, bereits materialisierten Rekordstand prü
 - leere Allowed Mentions und neutralisierte externe Namen,
 - Ergebnisabschnitt mit persönlichen und serverweiten Definitionen,
 - Serienabschnitt mit persönlichen, serverweiten individuellen, gemeinsamen sowie positiven und negativen Rekorden,
-- `game:gridwords|quadwords` filtert eindeutig spielbezogene Definitionen über die Definitionsmetadaten; spielunabhängige Serien wie Aktivität, Komplett, Perfekt und „ohne perfekten Tag“ bleiben sichtbar,
+- `game:gridwords|quadwords` filtert eindeutig spielbezogene Definitionen über die Definitionsmetadaten; spielunabhängige Serien wie Aktivität, Komplett, Perfekt und „ohne perfekten Tag“ werden nicht angezeigt,
+- `category:results|series` filtert ausschließlich nach der Definitionskategorie und ist mit `game` und `user` kombinierbar,
 - laufende Rekordserie mit Hinweis „läuft“,
 - Spieltag bei Ergebnisrekorden sowie Start-/Enddatum bei Serienläufen,
 - stabile Anzeige ausgeschiedener Halter und neutraler Fallback für nicht mehr auflösbare Halter,
@@ -542,8 +544,8 @@ Mindestens:
 - Standardaufruf verwendet den Aufrufer für persönliche Rekorde und enthält weiterhin globale Scopes,
 - Administrator kann einen anderen Nutzer für den persönlichen Abschnitt auswählen,
 - Nicht-Administrator kann keinen anderen Nutzer abfragen; vor der Ablehnung erfolgen keine Record- oder Player-Writes,
-- `game:all`, `game:gridwords` und `game:quadwords`,
-- spielunabhängige Serien bleiben bei gesetztem Game-Filter sichtbar,
+- `game:all`, `game:gridwords` und `game:quadwords`, einzeln und zusammen mit `category:results|series`,
+- spielunabhängige Serien werden bei gesetztem Game-Filter nicht angezeigt,
 - Ergebnis- und Serienabschnitt sowie persönliche, serverweite individuelle und gemeinsame Scopes,
 - laufende und abgeschlossene Läufe,
 - ausgeschiedener Rekordhalter,
@@ -567,7 +569,7 @@ Mindestens:
 
 # Paket 12.10 – End-to-End-Härtung, Abnahme und Releasevorbereitung
 
-**Status:** offen  
+**Status:** technisch umgesetzt, in realer Discord- und unabhängiger PR-Abnahme
 **Empfohlener Branch:** `feature/12-10-records-hardening`
 
 ## Ziel
@@ -621,7 +623,7 @@ Mindestens auf dem separaten Testserver:
 6. negative Durststrecke,
 7. Korrektur mit Edit einer Rekordmeldung,
 8. Korrektur mit vollständigem Delete,
-9. `/records` mit `user`- und `game`-Sichten,
+9. `/records` mit `user`-, `game`- und `category`-Sichten einschließlich kombinierter Filter,
 10. Restart und Recovery ohne Duplikat,
 11. Meldungen global deaktivieren und ohne Backlog wieder aktivieren.
 

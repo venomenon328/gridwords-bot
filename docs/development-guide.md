@@ -60,6 +60,14 @@ mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
 
 Dieses Profil verwendet echtes PostgreSQL über Testcontainers. Es läuft lokal mit Docker und zusätzlich verpflichtend in GitHub Actions. H2 ersetzt diese Tests nicht.
 
+Der schmale Migration-Clean-Install-Gate führt zusätzlich zu den Standardtests ausschließlich die PostgreSQL-`*MigrationIT`-Tests aus. Er prüft Neuaufbau und Upgradepfade, ersetzt aber nicht die vollständige Persistenzmatrix:
+
+```powershell
+mvn --batch-mode --no-transfer-progress -Pmigration-clean-install verify
+```
+
+Details stehen in [ADR 0019](adr/0019-migration-clean-install-gate.md).
+
 ## 5. Bevorzugte lokale PostgreSQL-Umgebung
 
 ```powershell

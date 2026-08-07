@@ -142,8 +142,10 @@ class CanonicalGridWordsPublicationServiceTest {
         retry.getValue().run();
 
         verify(discord, times(1)).create(eq(12L), any());
-        verify(submissions).completeCanonicalPublication(SOURCE, RESULT, 99L, claim.token());
-        verify(deletion).deleteAfterCanonicalPublication(SOURCE);
+        org.mockito.InOrder handoff = org.mockito.Mockito.inOrder(submissions, deletion);
+        handoff.verify(submissions).completeCanonicalPublication(SOURCE, RESULT, 99L, claim.token());
+        handoff.verify(deletion).deleteAfterCanonicalPublication(SOURCE);
+        verify(discord, never()).findAllByPublicationKey(anyLong(), any());
         verify(submissions, never()).markRetryableFailure(SOURCE, "canonical publication failed");
     }
 
@@ -187,7 +189,10 @@ class CanonicalGridWordsPublicationServiceTest {
 
         assertThat(service.publish(SOURCE)).isTrue();
 
-        verify(discord).create(eq(12L), any());
+        org.mockito.InOrder delivery = org.mockito.Mockito.inOrder(submissions, discord);
+        delivery.verify(submissions).beginCanonicalDelivery(SOURCE, RESULT, claim.token());
+        delivery.verify(discord).create(eq(12L), any());
+        verify(discord, never()).findAllByPublicationKey(anyLong(), any());
         verify(submissions).completeCanonicalPublication(SOURCE, RESULT, 99L, claim.token());
         verify(results, never()).releaseCanonicalPublicationClaim(RESULT, claim.token());
     }
@@ -198,7 +203,8 @@ class CanonicalGridWordsPublicationServiceTest {
         when(results.findById(RESULT)).thenReturn(Optional.of(result));
         GameResultStore.PublicationClaim claim = claim("00000000-0000-0000-0000-000000000022");
         when(results.claimCanonicalPublication(eq(RESULT), any())).thenReturn(Optional.of(claim));
-        doReturn(List.of(77L), List.of(77L)).when(discord).findAllByPublicationKey(anyLong(), any());
+        when(submissions.hasEarlierCanonicalDeliveryAttempt(RESULT, claim.token())).thenReturn(true);
+        doReturn(List.of(77L)).when(discord).findAllByPublicationKey(anyLong(), any());
         when(submissions.completeCanonicalPublication(SOURCE, RESULT, 77L, claim.token())).thenReturn(true);
 
         assertThat(service.publish(SOURCE)).isTrue();
@@ -206,26 +212,30 @@ class CanonicalGridWordsPublicationServiceTest {
         org.mockito.InOrder order = org.mockito.Mockito.inOrder(discord, submissions);
         order.verify(discord).edit(eq(12L), eq(77L), any());
         order.verify(submissions).completeCanonicalPublication(SOURCE, RESULT, 77L, claim.token());
+        verify(discord, times(1)).findAllByPublicationKey(anyLong(), any());
         verify(discord, never()).create(anyLong(), any());
     }
     @ParameterizedTest
     @EnumSource(GameType.class)
-    void persistsTheDeliveryFenceBeforeCreateAndRemovesRecognizedDuplicateMessages(GameType gameType) {
+    void recoveryUsesOneDiscoveryAndRemovesRecognizedDuplicateMessages(GameType gameType) {
         useResult(resultForGame(gameType, OptionalLong.empty(), 3));
         stored(SubmissionStore.SubmissionState.RESULT_STORED);
         when(results.findById(RESULT)).thenReturn(Optional.of(result));
         GameResultStore.PublicationClaim claim = claim("00000000-0000-0000-0000-000000000021");
         when(results.claimCanonicalPublication(eq(RESULT), any())).thenReturn(Optional.of(claim));
-        doReturn(List.of(), List.of(99L, 100L)).when(discord).findAllByPublicationKey(anyLong(), any());
-        when(discord.create(anyLong(), any())).thenReturn(99L);
+        when(submissions.hasEarlierCanonicalDeliveryAttempt(RESULT, claim.token())).thenReturn(true);
+        doReturn(List.of(99L, 100L)).when(discord).findAllByPublicationKey(anyLong(), any());
         when(submissions.completeCanonicalPublication(SOURCE, RESULT, 99L, claim.token())).thenReturn(true);
 
         assertThat(service.publish(SOURCE)).isTrue();
 
         org.mockito.InOrder order = org.mockito.Mockito.inOrder(submissions, discord);
         order.verify(submissions).beginCanonicalDelivery(SOURCE, RESULT, claim.token());
-        order.verify(discord).create(eq(12L), any());
+        order.verify(discord).findAllByPublicationKey(eq(12L), any());
+        order.verify(discord).edit(eq(12L), eq(99L), any());
         verify(discord).delete(12L, 100L);
+        verify(discord, times(1)).findAllByPublicationKey(anyLong(), any());
+        verify(discord, never()).create(anyLong(), any());
     }
     @Test
     void replayOfPublishedSubmissionDoesNotSendOrEdit() {
@@ -283,7 +293,7 @@ class CanonicalGridWordsPublicationServiceTest {
         when(results.findById(RESULT)).thenReturn(Optional.of(result));
         GameResultStore.PublicationClaim claim = claim("00000000-0000-0000-0000-000000000003");
         when(results.claimCanonicalPublication(eq(RESULT), any())).thenReturn(Optional.of(claim));
-        when(discord.findByPublicationKey(anyLong(), any())).thenThrow(new IllegalStateException("Discord unavailable"));
+        when(discord.create(anyLong(), any())).thenThrow(new IllegalStateException("Discord unavailable"));
 
         assertThat(service.publish(SOURCE)).isFalse();
 
@@ -300,8 +310,9 @@ class CanonicalGridWordsPublicationServiceTest {
         GameResultStore.PublicationClaim retryClaim = claim("00000000-0000-0000-0000-000000000005");
         when(results.claimCanonicalPublication(eq(RESULT), any()))
                 .thenReturn(Optional.of(firstClaim), Optional.of(retryClaim));
-        doReturn(List.of(), List.of(), List.of(99L), List.of(99L))
-                .when(discord).findAllByPublicationKey(anyLong(), any());
+        when(submissions.hasEarlierCanonicalDeliveryAttempt(RESULT, firstClaim.token())).thenReturn(false);
+        when(submissions.hasEarlierCanonicalDeliveryAttempt(RESULT, retryClaim.token())).thenReturn(true);
+        doReturn(List.of(99L)).when(discord).findAllByPublicationKey(anyLong(), any());
         when(discord.create(anyLong(), any())).thenReturn(99L);
         when(submissions.completeCanonicalPublication(SOURCE, RESULT, 99L, firstClaim.token()))
                 .thenThrow(new SubmissionConflictException("database unavailable"));
@@ -311,6 +322,8 @@ class CanonicalGridWordsPublicationServiceTest {
         assertThat(service.publish(SOURCE)).isTrue();
 
         verify(discord).create(eq(12L), any());
+        verify(discord, times(1)).findAllByPublicationKey(anyLong(), any());
+        verify(discord).edit(eq(12L), eq(99L), any());
         verify(submissions).markRetryableFailure(eq(SOURCE), any());
         verify(results).releaseCanonicalPublicationClaim(RESULT, firstClaim.token());
         verify(submissions).completeCanonicalPublication(SOURCE, RESULT, 99L, retryClaim.token());
@@ -390,6 +403,7 @@ class CanonicalGridWordsPublicationServiceTest {
 
         verify(discord).edit(eq(12L), eq(88L), any());
         verify(discord, never()).create(anyLong(), any());
+        verify(discord, never()).findAllByPublicationKey(anyLong(), any());
     }
 
     @Test

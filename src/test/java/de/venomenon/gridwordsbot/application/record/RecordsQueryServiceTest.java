@@ -134,7 +134,7 @@ class RecordsQueryServiceTest {
     }
 
     @Test
-    void gameFilterKeepsGameIndependentSeriesButExcludesOtherGameSpecificDefinitions() {
+    void gameFilterExcludesGameIndependentSeriesAndOtherGameSpecificDefinitions() {
         StreakRecordValue generic = streak(8, LocalDate.of(2026, 7, 30));
         StreakRecordValue grid = streak(7, LocalDate.of(2026, 7, 31));
         StreakRecordValue quad = streak(6, LocalDate.of(2026, 8, 1));
@@ -149,11 +149,35 @@ class RecordsQueryServiceTest {
                 query(7, Optional.empty(), false, RecordsQueryUseCase.GameFilter.QUADWORDS)));
 
         assertThat(gridResult.entries()).extracting(RecordsQueryUseCase.Entry::metricSlug)
-                .contains("activity", "gridwords-solved")
-                .doesNotContain("quadwords-solved");
+                .containsExactly("gridwords-solved");
         assertThat(quadResult.entries()).extracting(RecordsQueryUseCase.Entry::metricSlug)
-                .contains("activity", "quadwords-solved")
-                .doesNotContain("gridwords-solved");
+                .containsExactly("quadwords-solved");
+    }
+
+    @Test
+    void categoryFilterSelectsOnlyTheRequestedSectionAndCombinesWithGameFilter() {
+        StreakRecordValue activity = streak(8, LocalDate.of(2026, 7, 30));
+        when(states.list(GUILD, catalog.version())).thenReturn(List.of(
+                state("result.gridwords.fastest-solution.personal", new RecordScope.Personal(7), Optional.of(7L),
+                        new DurationRecordValue(Duration.ofSeconds(74)),
+                        new RecordSourceReference.GameResult(1, 1, 7, GameType.GRIDWORDS, LocalDate.of(2026, 8, 6))),
+                state("result.quadwords.fastest-solution.personal", new RecordScope.Personal(7), Optional.of(7L),
+                        new DurationRecordValue(Duration.ofSeconds(75)),
+                        new RecordSourceReference.GameResult(2, 1, 7, GameType.QUADWORDS, LocalDate.of(2026, 8, 6))),
+                personalStreak("streak.activity.personal", 7, StreakRecordMetric.ACTIVITY, activity),
+                personalStreak("streak.gridwords-solved.personal", 7, StreakRecordMetric.GRIDWORDS_SOLVED, activity)));
+
+        RecordsQueryUseCase.Ready results = ready(service.query(new RecordsQueryUseCase.Query(
+                GUILD, 7, Optional.empty(), false, RecordsQueryUseCase.GameFilter.GRIDWORDS,
+                RecordsQueryUseCase.CategoryFilter.RESULTS)));
+        RecordsQueryUseCase.Ready series = ready(service.query(new RecordsQueryUseCase.Query(
+                GUILD, 7, Optional.empty(), false, RecordsQueryUseCase.GameFilter.GRIDWORDS,
+                RecordsQueryUseCase.CategoryFilter.SERIES)));
+
+        assertThat(results.entries()).extracting(RecordsQueryUseCase.Entry::definitionKey)
+                .containsExactly("result.gridwords.fastest-solution.personal");
+        assertThat(series.entries()).extracting(RecordsQueryUseCase.Entry::definitionKey)
+                .containsExactly("streak.gridwords-solved.personal");
     }
 
     @Test
@@ -169,7 +193,7 @@ class RecordsQueryServiceTest {
                                 new RecordSourceReference.StreakRunOwner.Player(7), imperfect.startDate()), true)));
 
         RecordsQueryUseCase.Ready result = ready(service.query(
-                query(7, Optional.empty(), false, RecordsQueryUseCase.GameFilter.GRIDWORDS)));
+                query(7, Optional.empty(), false, RecordsQueryUseCase.GameFilter.ALL)));
 
         assertThat(present(result, "streak.gridwords-solved.personal").value()).contains(solved);
         assertThat(present(result, "streak.gridwords-drought.personal").value()).contains(drought);

@@ -25,6 +25,8 @@ public interface RecordAnnouncementStore {
     }
     boolean renewLease(RecordAnnouncementKey key, UUID token, RecordLeaseClaimRequest request);
     boolean replaceMessages(RecordAnnouncementKey key, UUID token, List<RecordAnnouncementMessage> messages);
+    /** Persists a confirmed CREATE before its separate ID-based stability check. */
+    boolean markDelivered(RecordAnnouncementKey key, UUID token, Instant deliveredAt);
     boolean markSynchronized(RecordAnnouncementKey key, UUID token, Instant synchronizedAt);
     boolean markRetryableFailure(RecordAnnouncementKey key, UUID token, RecordWorkFailure failure, Instant nextRetryAt);
     boolean markPermanentFailure(RecordAnnouncementKey key, UUID token, RecordWorkFailure failure, Instant completedAt);

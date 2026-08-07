@@ -8,7 +8,7 @@ Der funktionale Umfang bis einschließlich **Inkrement 11** ist implementiert, g
 
 Der aktuelle Produktionsrelease ist **Version 1.2.0**. Er basiert auf dem nach `main` gemergten Inkrement 11 und aktiviert die kontextabhängigen Ausreden bewusst über die serverseitige, nicht versionierte Laufzeitkonfiguration.
 
-**Inkrement 12 – Rekorde und Rekordmeldungen** ist als nächstes Produktinkrement fachlich und architektonisch vorbereitet. Issue #58, die verbindliche Rekordspezifikation, ADR 0018 und zehn Entwicklungspakete liegen vor; Implementierung und Zielversion sind noch offen.
+**Inkrement 12 – Rekorde und Rekordmeldungen** ist technisch umgesetzt und wird in einem Draft-PR gegen Issue #83 end-to-end gehärtet. Der Umfang bleibt bis zur dokumentierten realen Discord-Abnahme, unabhängigen PR-Abnahme und einem separaten RC-Schritt unveröffentlicht; die Produktionsversion bleibt 1.2.0.
 
 Der abgenommene Stand umfasst:
 
@@ -77,6 +77,9 @@ Die früher vorgemerkten allgemeinen Inkremente für Statistik-/Konfigurations-C
 - [`docs/increments/10.6-game-specific-participation.md`](docs/increments/10.6-game-specific-participation.md) – unabhängige Spielteilnahme
 - [`docs/increments/11-contextual-excuses.md`](docs/increments/11-contextual-excuses.md) – abgeschlossenes Inkrement 11
 - [`docs/increments/12-records.md`](docs/increments/12-records.md) – vorbereitete Entwicklungspakete für Inkrement 12
+- [`docs/operations/12-records-acceptance.md`](docs/operations/12-records-acceptance.md) – technische Nachweise, reale Discord-Abnahme und RC-Sperre für Inkrement 12
+- [`docs/operations/12-records-operations.md`](docs/operations/12-records-operations.md) – Bootstrap-, Delivery-, Recovery- und Rollback-Runbook
+- [`docs/operations/12-records-release-notes.md`](docs/operations/12-records-release-notes.md) – unveröffentlichte Release Notes für Inkrement 12
 - [`docs/operations/`](docs/operations/) – Abnahmen, Betrieb, Deployment, Backup und Fehlerdiagnose
 - [`docs/adr/`](docs/adr/) – Architekturentscheidungen
 - [`AGENTS.md`](AGENTS.md) – Arbeitsregeln für Codex und Reviews

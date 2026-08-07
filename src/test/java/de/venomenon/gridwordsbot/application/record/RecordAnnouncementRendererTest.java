@@ -35,7 +35,7 @@ class RecordAnnouncementRendererTest {
     private static final Instant NOW = Instant.parse("2026-08-06T20:00:00Z");
 
     @Test
-    void rendersStableSanitizedResultFactsWithAHiddenPublicationKey() {
+    void rendersStableSanitizedPersonalResultFactsWithoutRedundantPreviousHolder() {
         RecordAnnouncementRegistration registration = registration(List.of(EVENT));
         RecordAnnouncementRenderer renderer = new RecordAnnouncementRenderer();
 
@@ -43,8 +43,9 @@ class RecordAnnouncementRendererTest {
                 List.of(event(RecordEventType.RESULT_RECORD_BROKEN)), Map.of(7L, "<@7> Georgia", 5L, "@Tobias")));
 
         assertThat(rendered.pages()).hasSize(1);
-        assertThat(rendered.pages().getFirst().description()).contains("GridWords", "Schnellste Lösung", "Georgia", "Tobias")
-                .doesNotContain("@", "<", ">");
+        assertThat(rendered.pages().getFirst().description())
+                .contains("GridWords", "Schnellste Lösung", "Georgia")
+                .doesNotContain("Tobias", "Vorheriger Halter", "@", "<", ">");
         assertThat(rendered.pages().getFirst().footer()).startsWith("record-announcement:").contains("|page:1/1");
         assertThat(renderer.render(new RecordAnnouncementRenderInput(registration,
                 List.of(event(RecordEventType.RESULT_RECORD_BROKEN)), Map.of(7L, "<@7> Georgia", 5L, "@Tobias"))))
@@ -52,14 +53,39 @@ class RecordAnnouncementRendererTest {
     }
 
     @Test
-    void rendersNearMissWithTheCorrectStreakDistance() {
+    void rendersPreviousHolderForServerWideResultTransfer() {
+        RecordEventSnapshot result = serverWideResultEvent(5L, 7L);
+
+        RenderedRecordAnnouncement rendered = new RecordAnnouncementRenderer().render(new RecordAnnouncementRenderInput(
+                registration(List.of(EVENT)), List.of(result), Map.of(5L, "Vorher", 7L, "Ada")));
+
+        assertThat(rendered.pages().getFirst().description())
+                .contains("serverweit individuell", "Ada", "Vorheriger Halter: Vorher");
+    }
+
+    @Test
+    void omitsPreviousHolderWhenServerWideRecordHolderImprovesOwnRecord() {
+        RecordEventSnapshot result = serverWideResultEvent(7L, 7L);
+
+        RenderedRecordAnnouncement rendered = new RecordAnnouncementRenderer().render(new RecordAnnouncementRenderInput(
+                registration(List.of(EVENT)), List.of(result), Map.of(7L, "Ada")));
+
+        assertThat(rendered.pages().getFirst().description())
+                .contains("serverweit individuell", "Ada")
+                .doesNotContain("Vorheriger Halter");
+    }
+
+    @Test
+    void rendersNearMissWithTheCorrectStreakDistanceWithoutRedundantPersonalHolder() {
         RecordEventSnapshot nearMiss = event(RecordEventType.SERIES_RECORD_NEAR_MISSED_AT_END);
         RecordAnnouncementRenderer renderer = new RecordAnnouncementRenderer();
 
         RenderedRecordAnnouncement rendered = renderer.render(new RecordAnnouncementRenderInput(registration(List.of(EVENT)),
-                List.of(nearMiss), Map.of(7L, "Georgia")));
+                List.of(nearMiss), Map.of(7L, "Georgia", 5L, "Vorher")));
 
-        assertThat(rendered.pages().getFirst().description()).contains("Knapp verpasst", "Abstand 1 Tag");
+        assertThat(rendered.pages().getFirst().description())
+                .contains("Knapp verpasst", "Abstand 1 Tag")
+                .doesNotContain("Vorheriger Halter", "Vorher");
     }
 
     @Test
@@ -140,6 +166,20 @@ class RecordAnnouncementRendererTest {
                         ? "streak.activity.personal" : "result.gridwords.fastest-solution.personal"),
                 RecordDefinitionVersion.RECORDS_V1, new RecordScope.Personal(7)), type, before, next,
                 Optional.of(5L), Optional.of(7L), Optional.of(source), source, "live-result:1",
+                RecordProcessingOrigin.LIVE_SUBMISSION, NOW);
+        return new RecordEventSnapshot(draft, RecordEventValidity.VALID, Optional.empty(), Optional.empty(), NOW, NOW);
+    }
+
+    private static RecordEventSnapshot serverWideResultEvent(long previousHolder, long newHolder) {
+        RecordSourceReference.GameResult source = new RecordSourceReference.GameResult(
+                1, 1, newHolder, GameType.GRIDWORDS, LocalDate.of(2026, 8, 6));
+        RecordEventDraft draft = new RecordEventDraft(EVENT, "server-result", new RecordStateKey(1,
+                new RecordDefinitionKey("result.gridwords.fastest-solution.server-individual"),
+                RecordDefinitionVersion.RECORDS_V1, new RecordScope.ServerIndividual()),
+                RecordEventType.RESULT_RECORD_BROKEN,
+                Optional.of(new DurationRecordValue(Duration.ofSeconds(95))),
+                new DurationRecordValue(Duration.ofSeconds(74)),
+                Optional.of(previousHolder), Optional.of(newHolder), Optional.of(source), source, "server-result",
                 RecordProcessingOrigin.LIVE_SUBMISSION, NOW);
         return new RecordEventSnapshot(draft, RecordEventValidity.VALID, Optional.empty(), Optional.empty(), NOW, NOW);
     }

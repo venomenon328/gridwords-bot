@@ -1,6 +1,7 @@
 package de.venomenon.gridwordsbot.application.record;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -63,15 +64,15 @@ class RecordAnnouncementDeliveryCoordinatorTest {
     }
 
     @Test
-    void editsTheDiscoveredStablePageForAnEditProjection() {
+    void editsThePersistedStablePageWithoutCreateDiscovery() {
         Fixture fixture = fixture(RecordAnnouncementProjection.EDIT, List.of(new RecordAnnouncementMessage(0, 100)), true);
-        fixture.gateway.discovered = List.of(new RecordAnnouncementMessageGateway.PublishedPage(100, 0));
 
         assertThat(fixture.coordinator.runNext()).isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.COMPLETED);
 
         assertThat(fixture.gateway.edited).containsExactly(100L);
         assertThat(fixture.gateway.created).isEmpty();
         assertThat(fixture.gateway.deleted).isEmpty();
+        assertThat(fixture.gateway.discoveryCalls).isZero();
         verify(fixture.store).replaceMessages(eq(KEY), eq(TOKEN),
                 eq(List.of(new RecordAnnouncementMessage(0, 100))));
     }
@@ -80,22 +81,20 @@ class RecordAnnouncementDeliveryCoordinatorTest {
     void partialReductionEditsTheStableFirstPageAndDeletesTheNoLongerRenderedPage() {
         Fixture fixture = fixture(RecordAnnouncementProjection.EDIT,
                 List.of(new RecordAnnouncementMessage(0, 100), new RecordAnnouncementMessage(1, 200)), true);
-        fixture.gateway.discovered = List.of(
-                new RecordAnnouncementMessageGateway.PublishedPage(100, 0),
-                new RecordAnnouncementMessageGateway.PublishedPage(200, 1));
 
         assertThat(fixture.coordinator.runNext()).isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.COMPLETED);
 
         assertThat(fixture.gateway.edited).containsExactly(100L);
         assertThat(fixture.gateway.deleted).containsExactly(200L);
         assertThat(fixture.gateway.created).isEmpty();
+        assertThat(fixture.gateway.discoveryCalls).isZero();
         verify(fixture.store).replaceMessages(eq(KEY), eq(TOKEN),
                 eq(List.of(new RecordAnnouncementMessage(0, 100))));
     }
 
     @Test
     void adoptsAnUnknownCreateAfterRestartWithoutCreatingOrEditingItAgain() {
-        Fixture fixture = fixture(RecordAnnouncementProjection.CREATE, List.of(), false);
+        Fixture fixture = fixture(RecordAnnouncementProjection.CREATE, List.of(), false, true, 2);
         fixture.gateway.discovered = List.of(new RecordAnnouncementMessageGateway.PublishedPage(100, 0));
 
         assertThat(fixture.coordinator.runNext()).isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.COMPLETED);
@@ -109,7 +108,7 @@ class RecordAnnouncementDeliveryCoordinatorTest {
     @Test
     void disabledModeDeletesPersistedAndUnknownCreatePagesBeforeSuppressing() {
         Fixture fixture = fixture(
-                RecordAnnouncementProjection.CREATE, List.of(new RecordAnnouncementMessage(0, 100)), false, false);
+                RecordAnnouncementProjection.CREATE, List.of(new RecordAnnouncementMessage(0, 100)), false, false, 2);
         fixture.gateway.discovered = List.of(new RecordAnnouncementMessageGateway.PublishedPage(200, 0));
 
         assertThat(fixture.coordinator.runNext()).isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.SUPPRESSED);
@@ -126,7 +125,6 @@ class RecordAnnouncementDeliveryCoordinatorTest {
     void disabledModeStillEditsAnAlreadyPublishedAnnouncement() {
         Fixture fixture = fixture(
                 RecordAnnouncementProjection.EDIT, List.of(new RecordAnnouncementMessage(0, 100)), true, false);
-        fixture.gateway.discovered = List.of(new RecordAnnouncementMessageGateway.PublishedPage(100, 0));
 
         assertThat(fixture.coordinator.runNext()).isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.COMPLETED);
 
@@ -139,12 +137,12 @@ class RecordAnnouncementDeliveryCoordinatorTest {
     void disabledModeStillDeletesAnAlreadyPublishedAnnouncement() {
         Fixture fixture = fixture(
                 RecordAnnouncementProjection.DELETE, List.of(new RecordAnnouncementMessage(0, 100)), true, false);
-        fixture.gateway.discovered = List.of(new RecordAnnouncementMessageGateway.PublishedPage(100, 0));
 
         assertThat(fixture.coordinator.runNext()).isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.COMPLETED);
 
         verify(fixture.store).claimNext(any(), eq(false));
         assertThat(fixture.gateway.deleted).containsExactly(100L);
+        assertThat(fixture.gateway.discoveryCalls).isZero();
         verify(fixture.store).replaceMessages(eq(KEY), eq(TOKEN), eq(List.of()));
         verify(fixture.store, never()).markSuppressed(any(), any(), any());
     }
@@ -152,18 +150,20 @@ class RecordAnnouncementDeliveryCoordinatorTest {
     @Test
     void synchronizedCreateReconciliationDoesNotEditAnUnchangedPublishedPage() {
         Fixture fixture = fixture(RecordAnnouncementProjection.CREATE, List.of(new RecordAnnouncementMessage(0, 100)), true);
-        fixture.gateway.discovered = List.of(new RecordAnnouncementMessageGateway.PublishedPage(100, 0));
 
         assertThat(fixture.coordinator.runNext()).isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.COMPLETED);
 
         assertThat(fixture.gateway.edited).isEmpty();
         assertThat(fixture.gateway.created).isEmpty();
         assertThat(fixture.gateway.deleted).isEmpty();
+        assertThat(fixture.gateway.existenceChecks).containsExactly(100L);
+        assertThat(fixture.gateway.discoveryCalls).isZero();
     }
 
     @Test
     void marksAChangedPublishedProjectionAsExternallyRemovedWithItsOwnOutcome() {
         Fixture fixture = fixture(RecordAnnouncementProjection.NO_OP, List.of(new RecordAnnouncementMessage(0, 100)), true);
+        fixture.gateway.existing = false;
 
         assertThat(fixture.coordinator.runNext())
                 .isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.EXTERNALLY_REMOVED);
@@ -174,9 +174,20 @@ class RecordAnnouncementDeliveryCoordinatorTest {
     }
 
     @Test
-    void heartbeatFencesAWorkerThatLosesItsLeaseDuringBlockingDiscordLookup() throws Exception {
+    void unknownTechnicalFailureEscapesUnchangedAndIsNotClassifiedAsAConflict() {
+        Fixture fixture = fixture(RecordAnnouncementProjection.CREATE, List.of(), false, true, 2);
+        IllegalStateException unknown = new IllegalStateException("database mapping exploded");
+        fixture.gateway.createFailure = unknown;
+
+        assertThatThrownBy(fixture.coordinator::runNext).isSameAs(unknown);
+
+        verify(fixture.store, never()).markRetryableFailure(any(), any(), any(), any());
+        verify(fixture.store, never()).markPermanentFailure(any(), any(), any(), any());
+    }
+
+    @Test
+    void heartbeatFencesAWorkerThatLosesItsLeaseDuringBlockingIdBasedEdit() throws Exception {
         Fixture fixture = fixture(RecordAnnouncementProjection.EDIT, List.of(new RecordAnnouncementMessage(0, 100)), true);
-        fixture.gateway.discovered = List.of(new RecordAnnouncementMessageGateway.PublishedPage(100, 0));
         AtomicInteger renewals = new AtomicInteger();
         CountDownLatch heartbeatAttempted = new CountDownLatch(1);
         when(fixture.store.renewLease(eq(KEY), eq(TOKEN), any())).thenAnswer(invocation -> {
@@ -186,34 +197,59 @@ class RecordAnnouncementDeliveryCoordinatorTest {
             }
             return true;
         });
-        fixture.gateway.beforeReturningDiscovery = heartbeatAttempted;
+        fixture.gateway.beforeReturningEdit = heartbeatAttempted;
 
         assertThat(fixture.coordinator.runNext()).isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.LOST_LEASE);
 
         assertThat(heartbeatAttempted.await(1, TimeUnit.SECONDS)).isTrue();
         verify(fixture.store, never()).replaceMessages(any(), any(), any());
         verify(fixture.store, never()).markSynchronized(any(), any(), any());
-        assertThat(fixture.gateway.edited).isEmpty();
+        assertThat(fixture.gateway.edited).containsExactly(100L);
+    }
+
+    @Test
+    void persistsTheConcreteRetryableGatewayCauseForOperations() {
+        Fixture fixture = fixture(RecordAnnouncementProjection.EDIT,
+                List.of(new RecordAnnouncementMessage(0, 100)), true);
+        fixture.gateway.editFailure = new RecordAnnouncementMessageGateway.RetryableMessageException(
+                "record announcement edit failed (discord_error=SERVER_ERROR)", null);
+        when(fixture.store.markRetryableFailure(eq(KEY), eq(TOKEN), any(), any())).thenReturn(true);
+
+        assertThat(fixture.coordinator.runNext())
+                .isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.FAILED_RETRYABLE);
+
+        var failure = org.mockito.ArgumentCaptor.forClass(
+                de.venomenon.gridwordsbot.domain.record.RecordWorkFailure.class);
+        verify(fixture.store).markRetryableFailure(eq(KEY), eq(TOKEN), failure.capture(), any());
+        assertThat(failure.getValue().safeMessage())
+                .isEqualTo("record announcement edit failed (discord_error=SERVER_ERROR)");
     }
 
     private Fixture fixture(
             RecordAnnouncementProjection projection, List<RecordAnnouncementMessage> messages, boolean published) {
-        return fixture(projection, messages, published, true);
+        return fixture(projection, messages, published, true, 1);
     }
 
     private Fixture fixture(
             RecordAnnouncementProjection projection, List<RecordAnnouncementMessage> messages,
             boolean published, boolean publicAnnouncementsEnabled) {
+        return fixture(projection, messages, published, publicAnnouncementsEnabled, 1);
+    }
+
+    private Fixture fixture(
+            RecordAnnouncementProjection projection, List<RecordAnnouncementMessage> messages,
+            boolean published, boolean publicAnnouncementsEnabled, int attemptCount) {
         RecordAnnouncementStore store = mock(RecordAnnouncementStore.class);
         RecordEventStore events = mock(RecordEventStore.class);
         PlayerStore players = mock(PlayerStore.class);
         Gateway gateway = new Gateway();
-        RecordAnnouncementClaim claim = new RecordAnnouncementClaim(KEY, TOKEN, NOW.plusSeconds(60), 1);
-        RecordAnnouncementSnapshot snapshot = snapshot(projection, messages, published);
+        RecordAnnouncementClaim claim = new RecordAnnouncementClaim(KEY, TOKEN, NOW.plusSeconds(60), attemptCount);
+        RecordAnnouncementSnapshot snapshot = snapshot(projection, messages, published, attemptCount);
         when(store.claimNext(any(), any(Boolean.class))).thenReturn(Optional.of(claim));
         when(store.find(KEY)).thenReturn(Optional.of(snapshot));
         when(store.renewLease(eq(KEY), eq(TOKEN), any())).thenReturn(true);
         when(store.replaceMessages(eq(KEY), eq(TOKEN), any())).thenReturn(true);
+        when(store.markDelivered(eq(KEY), eq(TOKEN), any())).thenReturn(true);
         when(store.markSynchronized(eq(KEY), eq(TOKEN), any())).thenReturn(true);
         when(store.markExternallyRemoved(eq(KEY), eq(TOKEN), any())).thenReturn(true);
         when(store.markSuppressed(eq(KEY), eq(TOKEN), any())).thenReturn(true);
@@ -230,12 +266,13 @@ class RecordAnnouncementDeliveryCoordinatorTest {
     }
 
     private static RecordAnnouncementSnapshot snapshot(
-            RecordAnnouncementProjection projection, List<RecordAnnouncementMessage> messages, boolean published) {
+            RecordAnnouncementProjection projection, List<RecordAnnouncementMessage> messages,
+            boolean published, int attemptCount) {
         return new RecordAnnouncementSnapshot(
                 new RecordAnnouncementRegistration(KEY, RecordAnnouncementSubject.player(7),
                         RecordAnnouncementPhase.LIVE_EVALUATION, projection, RecordAnnouncementRenderer.VERSION,
                         "a".repeat(64), List.of(EVENT_ID)),
-                RecordWorkState.CLAIMED, Optional.of(TOKEN), Optional.of(NOW.plusSeconds(60)), 1,
+                RecordWorkState.CLAIMED, Optional.of(TOKEN), Optional.of(NOW.plusSeconds(60)), attemptCount,
                 Optional.empty(), Optional.empty(), messages, published ? Optional.of(NOW) : Optional.empty(),
                 Optional.empty(), Optional.empty(), Optional.empty(), NOW, NOW);
     }
@@ -259,19 +296,32 @@ class RecordAnnouncementDeliveryCoordinatorTest {
         private final List<Long> created = new ArrayList<>();
         private final List<Long> edited = new ArrayList<>();
         private final List<Long> deleted = new ArrayList<>();
+        private final List<Long> existenceChecks = new ArrayList<>();
         private List<PublishedPage> discovered = List.of();
-        private CountDownLatch beforeReturningDiscovery;
+        private CountDownLatch beforeReturningEdit;
+        private RuntimeException createFailure;
+        private RuntimeException editFailure;
+        private boolean existing = true;
+        private int discoveryCalls;
 
         @Override public long create(long channelId, RenderedRecordAnnouncementPage page) {
+            if (createFailure != null) throw createFailure;
             created.add(999L);
             return 999L;
         }
         @Override public void edit(long channelId, long messageId, RenderedRecordAnnouncementPage page) {
+            if (beforeReturningEdit != null) await(beforeReturningEdit);
+            if (editFailure != null) throw editFailure;
             edited.add(messageId);
         }
         @Override public void delete(long channelId, long messageId) { deleted.add(messageId); }
-        @Override public List<PublishedPage> findByPublicationKey(long channelId, String publicationKey) {
-            if (beforeReturningDiscovery != null) await(beforeReturningDiscovery);
+        @Override public boolean exists(long channelId, long messageId) {
+            existenceChecks.add(messageId);
+            return existing;
+        }
+        @Override public List<PublishedPage> discoverCreatedPages(
+                long channelId, String publicationKey, List<RenderedRecordAnnouncementPage> expectedPages) {
+            discoveryCalls++;
             return discovered;
         }
         private static void await(CountDownLatch latch) {

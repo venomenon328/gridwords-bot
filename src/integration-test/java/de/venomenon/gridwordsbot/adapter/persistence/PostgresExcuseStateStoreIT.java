@@ -137,6 +137,7 @@ class PostgresExcuseStateStoreIT {
                         selectedResult, 1, ExcuseRound.INITIAL, 1, NOW.plusSeconds(1))))).isPresent();
         assertThat(refreshRequired(selectedResult)).isTrue();
         assertThat(refreshGeneration(selectedResult)).isEqualTo(1L);
+        assertThat(gameResultVersion(selectedResult)).isZero();
 
         insertPlayer(PLAYER_ID + 9);
         long declinedResult = availableResult(PLAYER_ID + 9, GameType.QUADWORDS, LocalDate.of(2026, 8, 2), NOW, NOW.plusSeconds(600));
@@ -144,6 +145,7 @@ class PostgresExcuseStateStoreIT {
                 declinedResult, 1, NOW.plusSeconds(1)))).isPresent();
         assertThat(refreshRequired(declinedResult)).isTrue();
         assertThat(refreshGeneration(declinedResult)).isEqualTo(1L);
+        assertThat(gameResultVersion(declinedResult)).isZero();
     }
 
     @Test
@@ -526,6 +528,10 @@ class PostgresExcuseStateStoreIT {
     private long refreshGeneration(long gameResultId) {
         return jdbc.queryForObject("SELECT canonical_refresh_generation FROM game_result WHERE id = ?", Long.class,
                 gameResultId);
+    }
+
+    private long gameResultVersion(long gameResultId) {
+        return jdbc.queryForObject("SELECT version FROM game_result WHERE id = ?", Long.class, gameResultId);
     }
 
     private static List<ExcuseOption> options(ExcuseRound round, String prefix) {

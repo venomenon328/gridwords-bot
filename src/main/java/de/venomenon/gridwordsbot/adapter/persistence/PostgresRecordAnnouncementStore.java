@@ -231,7 +231,7 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                     WHERE (delivery_state='OPEN'
                         OR (delivery_state='RETRYABLE' AND next_retry_at<=?)
                         OR (delivery_state='CLAIMED' AND claim_until<=?)
-                        OR (delivery_state='SYNCHRONIZED' AND published_at IS NOT NULL AND deleted_at IS NULL))
+                        OR delivery_state='DELIVERED')
                       AND (? OR published_at IS NOT NULL OR desired_projection='DELETE'
                            OR (desired_projection='CREATE' AND published_at IS NULL AND attempt_count>0))
                     ORDER BY updated_at, guild_id, channel_id, idempotency_key
@@ -240,7 +240,12 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                 )
                 UPDATE record_announcement announcement
                 SET delivery_state='CLAIMED',claim_token=?,claim_until=?,next_retry_at=NULL,
-                    attempt_count=attempt_count+1,updated_at=?
+                    attempt_count=attempt_count + CASE
+                        WHEN announcement.delivery_state='DELIVERED'
+                          OR (announcement.desired_projection='NO_OP' AND announcement.published_at IS NOT NULL)
+                          OR (announcement.desired_projection='CREATE' AND announcement.published_at IS NOT NULL)
+                        THEN 0 ELSE 1 END,
+                    updated_at=?
                 FROM candidate
                 WHERE announcement.id=candidate.id
                 RETURNING announcement.guild_id,announcement.channel_id,announcement.idempotency_key,
@@ -313,6 +318,30 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
     }
 
     @Override
+    public boolean markDelivered(
+            RecordAnnouncementKey key, UUID token, Instant deliveredAt) {
+        Instant now = clock.instant();
+        return jdbc.update(
+                        """
+                        UPDATE record_announcement
+                        SET delivery_state='DELIVERED',claim_token=NULL,claim_until=NULL,
+                            next_retry_at=NULL,failure_category=NULL,safe_error=NULL,
+                            published_at=COALESCE(published_at, ?),updated_at=?
+                        WHERE guild_id=? AND channel_id=? AND idempotency_key=?
+                          AND delivery_state='CLAIMED' AND claim_token=? AND claim_until>?
+                          AND desired_projection='CREATE'
+                        """,
+                        RecordJdbcMapping.utc(deliveredAt),
+                        RecordJdbcMapping.utc(deliveredAt),
+                        key.guildId(),
+                        key.channelId(),
+                        key.idempotencyKey(),
+                        token,
+                        RecordJdbcMapping.utc(now))
+                == 1;
+    }
+
+    @Override
     public boolean markSynchronized(
             RecordAnnouncementKey key, UUID token, Instant synchronizedAt) {
         Instant now = clock.instant();
@@ -321,7 +350,7 @@ public class PostgresRecordAnnouncementStore implements RecordAnnouncementStore 
                         UPDATE record_announcement
                         SET delivery_state='SYNCHRONIZED',claim_token=NULL,claim_until=NULL,
                             next_retry_at=NULL,failure_category=NULL,safe_error=NULL,
-                            published_at=CASE WHEN desired_projection='CREATE' THEN ? ELSE published_at END,
+                            published_at=CASE WHEN desired_projection='CREATE' THEN COALESCE(published_at, ?) ELSE published_at END,
                             changed_at=CASE WHEN desired_projection='EDIT' THEN ? ELSE changed_at END,
                             deleted_at=CASE WHEN desired_projection='DELETE' THEN ? ELSE deleted_at END,
                             updated_at=?

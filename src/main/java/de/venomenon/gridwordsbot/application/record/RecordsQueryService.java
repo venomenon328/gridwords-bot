@@ -62,6 +62,7 @@ public final class RecordsQueryService implements RecordsQueryUseCase {
                 .filter(definition -> gameMatches(definition, query.game()))
                 .map(definition -> entry(query.guildId(), personalPlayerId, definition, current, displays))
                 .flatMap(Optional::stream)
+                .filter(entry -> categoryMatches(entry, query.category()))
                 .sorted(Comparator.comparing((Entry entry) -> entry.category().ordinal())
                         .thenComparing(entry -> entry.scope().ordinal())
                         .thenComparing(Entry::definitionKey))
@@ -103,9 +104,16 @@ public final class RecordsQueryService implements RecordsQueryUseCase {
     }
 
     private static boolean gameMatches(RecordDefinition<?> definition, GameFilter filter) {
-        if (filter == GameFilter.ALL || definition.game().isEmpty()) return true;
+        if (filter == GameFilter.ALL) return true;
+        if (definition.game().isEmpty()) return false;
         return filter == GameFilter.GRIDWORDS
                 ? definition.game().orElseThrow() == GameType.GRIDWORDS
                 : definition.game().orElseThrow() == GameType.QUADWORDS;
+    }
+
+    private static boolean categoryMatches(Entry entry, CategoryFilter filter) {
+        return filter == CategoryFilter.ALL
+                || (filter == CategoryFilter.RESULTS && entry.category() == Category.RESULTS)
+                || (filter == CategoryFilter.SERIES && entry.category() == Category.SERIES);
     }
 }

@@ -39,9 +39,6 @@ import org.slf4j.LoggerFactory;
  */
 public final class RecordAnnouncementDeliveryCoordinator {
     private static final Logger log = LoggerFactory.getLogger(RecordAnnouncementDeliveryCoordinator.class);
-    private static final String RETRYABLE_FAILURE = "record announcement Discord delivery is retryable";
-    private static final String PERMANENT_FAILURE = "record announcement Discord delivery permanently failed";
-
     private final RecordAnnouncementStore store;
     private final RecordEventStore events;
     private final PlayerStore players;
@@ -109,6 +106,11 @@ public final class RecordAnnouncementDeliveryCoordinator {
             heartbeat = new LeaseHeartbeat(claim);
             if (!heartbeat.renewNow()) return result = RunResult.LOST_LEASE;
             heartbeat.start();
+            if (isStabilityCheck(snapshot)) {
+                result = verifyStability(claim, snapshot, heartbeat)
+                        ? RunResult.COMPLETED : RunResult.LOST_LEASE;
+                return result;
+            }
             if (!publicAnnouncementsEnabled && snapshot.publishedAt().isEmpty()
                     && projection == RecordAnnouncementProjection.CREATE) {
                 result = suppressAttemptedCreate(claim, snapshot, heartbeat)
@@ -126,12 +128,16 @@ public final class RecordAnnouncementDeliveryCoordinator {
         } catch (RecordAnnouncementMessageGateway.PermanentMessageException failure) {
             if (claim == null) throw failure;
             if (!leaseOwnedAfterStoppingHeartbeat(heartbeat)) return result = RunResult.LOST_LEASE;
-            result = markPermanent(claim, heartbeat) ? RunResult.FAILED_PERMANENT : RunResult.LOST_LEASE;
+            log.warn("record_announcement_delivery gateway_failure=PERMANENT announcement_key={} safe_error={}",
+                    claim.key().idempotencyKey(), failure.getMessage(), failure);
+            result = markPermanent(claim, heartbeat, failure) ? RunResult.FAILED_PERMANENT : RunResult.LOST_LEASE;
             return result;
         } catch (RecordAnnouncementMessageGateway.MessageGatewayException failure) {
             if (claim == null) throw failure;
             if (!leaseOwnedAfterStoppingHeartbeat(heartbeat)) return result = RunResult.LOST_LEASE;
-            result = markRetryable(claim, heartbeat) ? RunResult.FAILED_RETRYABLE : RunResult.LOST_LEASE;
+            log.warn("record_announcement_delivery gateway_failure=RETRYABLE announcement_key={} safe_error={}",
+                    claim.key().idempotencyKey(), failure.getMessage(), failure);
+            result = markRetryable(claim, heartbeat, failure) ? RunResult.FAILED_RETRYABLE : RunResult.LOST_LEASE;
             return result;
         } catch (RuntimeException unknown) {
             result = claim == null ? null : RunResult.UNKNOWN;
@@ -151,7 +157,9 @@ public final class RecordAnnouncementDeliveryCoordinator {
             RecordAnnouncementClaim claim, RecordAnnouncementSnapshot snapshot, LeaseHeartbeat heartbeat) {
         String key = RecordAnnouncementRenderer.publicationKey(claim.key().idempotencyKey());
         Set<Long> ids = new HashSet<>(snapshot.messages().stream().map(RecordAnnouncementMessage::messageId).toList());
-        discovery(claim, heartbeat, key).values().forEach(ids::addAll);
+        if (hasUnclearCreateOutcome(snapshot)) {
+            discovery(claim, heartbeat, key, List.of()).values().forEach(ids::addAll);
+        }
         for (Long id : ids.stream().sorted().toList()) {
             renew(claim, heartbeat);
             messages.delete(claim.key().channelId(), id);
@@ -169,6 +177,9 @@ public final class RecordAnnouncementDeliveryCoordinator {
         if (projection == RecordAnnouncementProjection.DELETE) {
             return delete(claim, snapshot, heartbeat);
         }
+        if (projection == RecordAnnouncementProjection.NO_OP) {
+            return verifyNoOp(claim, snapshot, heartbeat);
+        }
         List<RecordEventSnapshot> facts = snapshot.registration().eventIds().stream()
                 .map(events::find).flatMap(Optional::stream)
                 .filter(event -> event.validity() == RecordEventValidity.VALID).toList();
@@ -179,15 +190,14 @@ public final class RecordAnnouncementDeliveryCoordinator {
         players.findAllPlayers().forEach(player -> displays.put(player.discordUserId(), player.displayName()));
         RenderedRecordAnnouncement rendered = renderer.render(new RecordAnnouncementRenderInput(
                 snapshot.registration(), facts, displays));
-        Map<Integer, List<Long>> discovered = discovery(claim, heartbeat, rendered.publicationKey());
-        if (wasExternallyRemoved(snapshot, discovered)) {
-            markExternallyRemoved(claim, heartbeat);
-        }
-
-        List<RecordAnnouncementMessage> stable = new ArrayList<>();
         Map<Integer, Long> persisted = snapshot.messages().stream()
                 .collect(java.util.stream.Collectors.toMap(RecordAnnouncementMessage::position,
                         RecordAnnouncementMessage::messageId, (left, right) -> left));
+        Map<Integer, List<Long>> discovered = needsCreateDiscovery(snapshot, rendered, persisted)
+                ? discovery(claim, heartbeat, rendered.publicationKey(), rendered.pages())
+                : Map.of();
+
+        List<RecordAnnouncementMessage> stable = new ArrayList<>();
         Set<Long> previouslyKnown = new HashSet<>(persisted.values());
         discovered.values().forEach(previouslyKnown::addAll);
         Set<Long> deleted = new HashSet<>();
@@ -195,14 +205,7 @@ public final class RecordAnnouncementDeliveryCoordinator {
             renew(claim, heartbeat);
             List<Long> matches = discovered.getOrDefault(page.position(), List.of());
             long winner;
-            if (!matches.isEmpty()) {
-                winner = matches.getFirst();
-                if (projection == RecordAnnouncementProjection.EDIT) {
-                    messages.edit(claim.key().channelId(), winner, page);
-                    ensureLease(heartbeat);
-                }
-                removeDuplicates(claim, heartbeat, matches, winner, deleted);
-            } else if (persisted.containsKey(page.position())) {
+            if (persisted.containsKey(page.position())) {
                 winner = persisted.get(page.position());
                 if (projection == RecordAnnouncementProjection.EDIT) {
                     try {
@@ -216,6 +219,10 @@ public final class RecordAnnouncementDeliveryCoordinator {
                         ensureLease(heartbeat);
                     }
                 }
+                removeDuplicates(claim, heartbeat, matches, winner, deleted);
+            } else if (!matches.isEmpty()) {
+                winner = matches.getFirst();
+                removeDuplicates(claim, heartbeat, matches, winner, deleted);
             } else {
                 winner = messages.create(claim.key().channelId(), page);
                 ensureLease(heartbeat);
@@ -234,14 +241,18 @@ public final class RecordAnnouncementDeliveryCoordinator {
             }
         }
         ensureLease(heartbeat);
-        return store.markSynchronized(claim.key(), claim.token(), clock.instant());
+        return projection == RecordAnnouncementProjection.CREATE
+                ? store.markDelivered(claim.key(), claim.token(), clock.instant())
+                : store.markSynchronized(claim.key(), claim.token(), clock.instant());
     }
 
     private boolean delete(
             RecordAnnouncementClaim claim, RecordAnnouncementSnapshot snapshot, LeaseHeartbeat heartbeat) {
         String key = RecordAnnouncementRenderer.publicationKey(claim.key().idempotencyKey());
         Set<Long> ids = new HashSet<>(snapshot.messages().stream().map(RecordAnnouncementMessage::messageId).toList());
-        discovery(claim, heartbeat, key).values().forEach(ids::addAll);
+        if (hasUnclearCreateOutcome(snapshot)) {
+            discovery(claim, heartbeat, key, List.of()).values().forEach(ids::addAll);
+        }
         for (Long id : ids.stream().sorted().toList()) {
             renew(claim, heartbeat);
             messages.delete(claim.key().channelId(), id);
@@ -253,10 +264,11 @@ public final class RecordAnnouncementDeliveryCoordinator {
     }
 
     private Map<Integer, List<Long>> discovery(
-            RecordAnnouncementClaim claim, LeaseHeartbeat heartbeat, String publicationKey) {
+            RecordAnnouncementClaim claim, LeaseHeartbeat heartbeat, String publicationKey,
+            List<RenderedRecordAnnouncementPage> expectedPages) {
         renew(claim, heartbeat);
         Map<Integer, List<Long>> grouped = new HashMap<>();
-        messages.findByPublicationKey(claim.key().channelId(), publicationKey).forEach(page ->
+        messages.discoverCreatedPages(claim.key().channelId(), publicationKey, expectedPages).forEach(page ->
                 grouped.computeIfAbsent(page.position(), ignored -> new ArrayList<>()).add(page.messageId()));
         ensureLease(heartbeat);
         grouped.values().forEach(ids -> ids.sort(Long::compare));
@@ -274,15 +286,48 @@ public final class RecordAnnouncementDeliveryCoordinator {
         }
     }
 
-    private boolean wasExternallyRemoved(
-            RecordAnnouncementSnapshot snapshot, Map<Integer, List<Long>> discovered) {
-        if (snapshot.publishedAt().isEmpty() || snapshot.messages().isEmpty()) return false;
-        Set<Long> discoveredIds = new HashSet<>();
-        discovered.values().forEach(discoveredIds::addAll);
-        return snapshot.messages().stream().anyMatch(page -> !discoveredIds.contains(page.messageId()));
+    private boolean verifyStability(
+            RecordAnnouncementClaim claim, RecordAnnouncementSnapshot snapshot, LeaseHeartbeat heartbeat) {
+        if (snapshot.messages().isEmpty()) {
+            throw new IllegalStateException("delivered record announcement has no persisted Discord message IDs");
+        }
+        for (RecordAnnouncementMessage page : snapshot.messages()) {
+            renew(claim, heartbeat);
+            if (!messages.exists(claim.key().channelId(), page.messageId())) {
+                markExternallyRemoved(claim, heartbeat);
+            }
+            ensureLease(heartbeat);
+        }
+        ensureLease(heartbeat);
+        return store.markSynchronized(claim.key(), claim.token(), clock.instant());
     }
 
-    /** A synchronized CREATE or EDIT is periodically checked for external removal, never rendered again unchanged. */
+    private boolean verifyNoOp(
+            RecordAnnouncementClaim claim, RecordAnnouncementSnapshot snapshot, LeaseHeartbeat heartbeat) {
+        if (snapshot.publishedAt().isEmpty() || snapshot.messages().isEmpty()) {
+            ensureLease(heartbeat);
+            return store.markSynchronized(claim.key(), claim.token(), clock.instant());
+        }
+        return verifyStability(claim, snapshot, heartbeat);
+    }
+
+    private static boolean isStabilityCheck(RecordAnnouncementSnapshot snapshot) {
+        return snapshot.registration().desiredProjection() == RecordAnnouncementProjection.CREATE
+                && snapshot.publishedAt().isPresent() && snapshot.deletedAt().isEmpty();
+    }
+
+    private static boolean needsCreateDiscovery(
+            RecordAnnouncementSnapshot snapshot, RenderedRecordAnnouncement rendered,
+            Map<Integer, Long> persisted) {
+        return snapshot.attemptCount() > 1 && rendered.pages().stream()
+                .anyMatch(page -> !persisted.containsKey(page.position()));
+    }
+
+    private static boolean hasUnclearCreateOutcome(RecordAnnouncementSnapshot snapshot) {
+        return snapshot.attemptCount() > 1 && snapshot.publishedAt().isEmpty();
+    }
+
+    /** An unchanged published projection becomes a single ID-based existence check, not a repeated delivery. */
     private static RecordAnnouncementProjection effectiveProjection(RecordAnnouncementSnapshot snapshot) {
         RecordAnnouncementProjection desired = snapshot.registration().desiredProjection();
         if (desired == RecordAnnouncementProjection.CREATE && snapshot.publishedAt().isPresent()) {
@@ -326,17 +371,25 @@ public final class RecordAnnouncementDeliveryCoordinator {
         return store.markSuppressed(claim.key(), claim.token(), clock.instant());
     }
 
-    private boolean markRetryable(RecordAnnouncementClaim claim, LeaseHeartbeat heartbeat) {
+    private boolean markRetryable(
+            RecordAnnouncementClaim claim, LeaseHeartbeat heartbeat, RuntimeException failure) {
         ensureLease(heartbeat);
         return store.markRetryableFailure(claim.key(), claim.token(),
-                new RecordWorkFailure(RecordWorkFailureCategory.RETRYABLE, RETRYABLE_FAILURE),
+                new RecordWorkFailure(RecordWorkFailureCategory.RETRYABLE, safeGatewayError(failure)),
                 clock.instant().plus(backoff(claim.attemptCount())));
     }
 
-    private boolean markPermanent(RecordAnnouncementClaim claim, LeaseHeartbeat heartbeat) {
+    private boolean markPermanent(
+            RecordAnnouncementClaim claim, LeaseHeartbeat heartbeat, RuntimeException failure) {
         ensureLease(heartbeat);
         return store.markPermanentFailure(claim.key(), claim.token(),
-                new RecordWorkFailure(RecordWorkFailureCategory.PERMANENT, PERMANENT_FAILURE), clock.instant());
+                new RecordWorkFailure(RecordWorkFailureCategory.PERMANENT, safeGatewayError(failure)), clock.instant());
+    }
+
+    private static String safeGatewayError(RuntimeException failure) {
+        String message = failure.getMessage();
+        if (message == null || message.isBlank()) return failure.getClass().getSimpleName();
+        return message.length() <= 512 ? message : message.substring(0, 512);
     }
 
     private Duration backoff(int attempts) {
@@ -407,9 +460,14 @@ public final class RecordAnnouncementDeliveryCoordinator {
         }
 
         private boolean leaseOwned() {
-            RuntimeException failure = unexpectedFailure.get();
-            if (failure != null) throw failure;
-            return owned.get();
+            executionLock.lock();
+            try {
+                RuntimeException failure = unexpectedFailure.get();
+                if (failure != null) throw failure;
+                return owned.get();
+            } finally {
+                executionLock.unlock();
+            }
         }
 
         @Override

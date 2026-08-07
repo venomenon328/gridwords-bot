@@ -18,6 +18,7 @@ import java.time.ZoneId;
 import java.util.List;
 import java.util.Objects;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -207,11 +208,13 @@ public final class CanonicalGridWordsPublicationService {
             claimToken = claim.token();
             submissions.beginCanonicalDelivery(sourceMessageId, resultId, claimToken);
             deliveryAttemptRecorded = true;
+            boolean recoveryDiscoveryRequired = submissions.hasEarlierCanonicalDeliveryAttempt(resultId, claimToken);
 
             long canonicalMessageId = publishOrEdit(
                     submission,
                     result,
-                    canonicalMessage(result, submission.authorPlayerId(), submission.publicationContext()));
+                    canonicalMessage(result, submission.authorPlayerId(), submission.publicationContext()),
+                    recoveryDiscoveryRequired);
             boolean completed = submissions.completeCanonicalPublication(
                     sourceMessageId,
                     resultId,
@@ -383,10 +386,12 @@ public final class CanonicalGridWordsPublicationService {
             claimToken = claim.token();
             SubmissionStore.CanonicalDeliveryAttempt deliveryAttempt = submissions.beginCanonicalDelivery(
                     current.sourceMessageId(), resultId, claimToken);
+            boolean recoveryDiscoveryRequired = submissions.hasEarlierCanonicalDeliveryAttempt(resultId, claimToken);
             long canonicalMessageId = publishOrEdit(
                     current,
                     result,
-                    canonicalMessage(result, current.authorPlayerId(), current.publicationContext()));
+                    canonicalMessage(result, current.authorPlayerId(), current.publicationContext()),
+                    recoveryDiscoveryRequired);
             SubmissionStore.CanonicalRefreshCompletion completion = submissions.completeCanonicalRefresh(
                     current.sourceMessageId(), resultId, canonicalMessageId, claimToken,
                     deliveryAttempt.refreshGeneration());
@@ -408,37 +413,51 @@ public final class CanonicalGridWordsPublicationService {
     private long publishOrEdit(
             SubmissionStore.StoredSubmission submission,
             GameResultStore.StoredGameResult result,
-            CanonicalResultMessage message) {
-        long canonicalMessageId;
+            CanonicalResultMessage message,
+            boolean recoveryDiscoveryRequired) {
         if (result.canonicalMessageId().isPresent()) {
             long existingId = result.canonicalMessageId().getAsLong();
             try {
                 discord.edit(submission.channelId(), existingId, message);
-                canonicalMessageId = existingId;
             } catch (CanonicalMessageGateway.UnknownMessageException ignored) {
-                canonicalMessageId = findOrCreateCanonicalMessage(submission.channelId(), message);
+                return recoveryDiscoveryRequired
+                        ? recoverCanonicalMessage(submission.channelId(), message)
+                        : discord.create(submission.channelId(), message);
             }
-        } else {
-            canonicalMessageId = findOrCreateCanonicalMessage(submission.channelId(), message);
+            if (recoveryDiscoveryRequired) {
+                removeRecoveryDuplicates(
+                        submission.channelId(), message.publicationKey(), existingId);
+            }
+            return existingId;
         }
-        removeDuplicateCanonicalMessages(submission.channelId(), message.publicationKey(), canonicalMessageId);
-        return canonicalMessageId;
+        return recoveryDiscoveryRequired
+                ? recoverCanonicalMessage(submission.channelId(), message)
+                : discord.create(submission.channelId(), message);
     }
 
-    private long findOrCreateCanonicalMessage(long channelId, CanonicalResultMessage message) {
-        java.util.OptionalLong existing = discord.findAllByPublicationKey(channelId, message.publicationKey()).stream()
+    private long recoverCanonicalMessage(long channelId, CanonicalResultMessage message) {
+        List<Long> discovered = discord.findAllByPublicationKey(channelId, message.publicationKey());
+        OptionalLong existing = discovered.stream()
                 .mapToLong(Long::longValue)
                 .min();
         if (existing.isPresent()) {
             long canonicalMessageId = existing.getAsLong();
             discord.edit(channelId, canonicalMessageId, message);
+            removeRecoveryDuplicates(channelId, discovered, canonicalMessageId);
             return canonicalMessageId;
         }
         return discord.create(channelId, message);
     }
 
-    private void removeDuplicateCanonicalMessages(long channelId, String publicationKey, long canonicalMessageId) {
-        for (Long messageId : discord.findAllByPublicationKey(channelId, publicationKey)) {
+    private void removeRecoveryDuplicates(long channelId, String publicationKey, long canonicalMessageId) {
+        removeRecoveryDuplicates(
+                channelId,
+                discord.findAllByPublicationKey(channelId, publicationKey),
+                canonicalMessageId);
+    }
+
+    private void removeRecoveryDuplicates(long channelId, List<Long> discovered, long canonicalMessageId) {
+        for (Long messageId : discovered) {
             if (messageId != canonicalMessageId) {
                 discord.delete(channelId, messageId);
             }

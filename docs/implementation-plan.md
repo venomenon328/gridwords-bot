@@ -148,11 +148,11 @@ Verbindlich:
 - ADR 0017
 - Issue #42
 
-## Vorbereitetes Inkrement
+## In Abnahme befindliches Inkrement
 
 ### Inkrement 12 – Rekorde und Rekordmeldungen
 
-**Status:** fachlich und architektonisch vorbereitet; Issue #58 offen; Umsetzung in zehn Paketen geplant.
+**Status:** technisch umgesetzt; Issue #58 und Paket #83 befinden sich bis zur realen Discord- und unabhängigen PR-Abnahme im Draft.
 
 Das Inkrement führt historisch korrekte persönliche, serverweite individuelle und gemeinsame Rekorde ein. Ergebnisrekorde unterscheiden wenigste Versuche, schnellste Lösung und langsamste erfolgreiche Lösung. Serienrekorde umfassen die bestehenden positiven Serien sowie X-Durststrecken und Tage ohne perfekten Tag. Öffentliche Meldungen werden aggregiert, zuverlässig ausgeliefert und nach Ergebniskorrekturen editiert oder gelöscht. Ein ephemerer `/records`-Command macht den aktuellen Stand überprüfbar.
 
@@ -192,7 +192,7 @@ werden nicht weiterverfolgt. Sie waren keine umgesetzten oder abgenommenen Anfor
 
 ## Aktive Roadmap
 
-Inkrement 12 – Rekorde und Rekordmeldungen – ist das nächste verbindlich vorbereitete Produktinkrement. Die Umsetzung folgt den zehn Paketen in `docs/increments/12-records.md`.
+Inkrement 12 – Rekorde und Rekordmeldungen – ist technisch umgesetzt und noch nicht veröffentlicht. Die Abnahme folgt den zehn Paketen in `docs/increments/12-records.md`; RC, Release und Produktion bleiben separate nachgelagerte Schritte.
 
 Achievements bleiben eine mögliche spätere Erweiterung. Sie dürfen auf den in Inkrement 12 eingeführten fachlichen Rekordereignissen und Gültigkeitsänderungen aufbauen, benötigen aber ein eigenes priorisiertes Issue, eine fachliche Spezifikation und einen eigenen Inkrementplan.
 
