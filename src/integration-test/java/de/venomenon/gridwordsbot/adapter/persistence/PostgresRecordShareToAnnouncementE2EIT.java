@@ -228,14 +228,15 @@ class PostgresRecordShareToAnnouncementE2EIT {
         int[] durations = {120, 110, 100, 90, 80};
         for (int index = 0; index < attempts.length; index++) {
             LocalDate date = LocalDate.of(2026, 8, 2 + index);
+            String normalizedBoard = "⬜⬜⬜⬜⬜\n".repeat(attempts[index] - 1) + "🟩🟩🟩🟩🟩";
             Long resultId = jdbc.queryForObject("""
                     INSERT INTO game_result (
                         player_id, game_type, game_date, solved, attempts_used, max_attempts,
                         duration_seconds, normalized_board, raw_share_text, parser_version, created_at, updated_at)
-                    VALUES (?, 'GRIDWORDS', ?, TRUE, ?, 6, ?, 'ABCDE', 'historical share',
+                    VALUES (?, 'GRIDWORDS', ?, TRUE, ?, 6, ?, ?, 'historical share',
                         'gridwords-share-v1', ?, ?)
                     RETURNING id
-                    """, Long.class, PLAYER_ID, date, attempts[index], durations[index],
+                    """, Long.class, PLAYER_ID, date, attempts[index], durations[index], normalizedBoard,
                     java.sql.Timestamp.from(NOW.minusSeconds(600L - index)),
                     java.sql.Timestamp.from(NOW.minusSeconds(600L - index)));
             java.sql.Timestamp completedAt = java.sql.Timestamp.from(NOW.minusSeconds(600L - index));
