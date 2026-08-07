@@ -217,7 +217,6 @@ Positive und negative Serienläufe werden aus kanonischen Tageszuständen und hi
 - relative Near-Miss-Regel ohne Drei-Tage-Cap,
 - öffentliche Längenschwellen,
 - transportneutrale Reconciliation-Fakten bei geteilten, verbundenen oder verschobenen Läufen.
-
 ## Tests
 
 Mindestens:
@@ -437,7 +436,6 @@ Mindestens:
 - `X` hatte bereits sofort beendet und wird beim Day Close nicht doppelt verarbeitet,
 - Teilnahmewechsel beendet oder verhindert negative und gemeinsame Läufe korrekt,
 - DST-Übergänge in `Europe/Berlin`.
-
 ## Definition of Done
 
 - kein zweiter Tagesabschluss-Scheduler,
@@ -528,7 +526,7 @@ Spieler können den aktuell gültigen, bereits materialisierten Rekordstand prü
 - leere Allowed Mentions und neutralisierte externe Namen,
 - Ergebnisabschnitt mit persönlichen und serverweiten Definitionen,
 - Serienabschnitt mit persönlichen, serverweiten individuellen, gemeinsamen sowie positiven und negativen Rekorden,
-- `game:gridwords|quadwords` filtert eindeutig spielbezogene Definitionen über die Definitionsmetadaten; spielunabhängige Serien wie Aktivität, Komplett, Perfekt und „ohne perfekten Tag“ bleiben sichtbar,
+- `game:gridwords|quadwords` filtert eindeutig spielbezogene Definitionen über die Definitionsmetadaten; spielunabhängige Serien wie Aktivität, Komplett, Perfekt und „ohne perfekten Tag“ werden nicht angezeigt,
 - `category:results|series` filtert ausschließlich nach der Definitionskategorie und ist mit `game` und `user` kombinierbar,
 - laufende Rekordserie mit Hinweis „läuft“,
 - Spieltag bei Ergebnisrekorden sowie Start-/Enddatum bei Serienläufen,
@@ -545,7 +543,7 @@ Mindestens:
 - Administrator kann einen anderen Nutzer für den persönlichen Abschnitt auswählen,
 - Nicht-Administrator kann keinen anderen Nutzer abfragen; vor der Ablehnung erfolgen keine Record- oder Player-Writes,
 - `game:all`, `game:gridwords` und `game:quadwords`, einzeln und zusammen mit `category:results|series`,
-- spielunabhängige Serien bleiben bei gesetztem Game-Filter sichtbar,
+- spielunabhängige Serien werden bei gesetztem Game-Filter nicht angezeigt,
 - Ergebnis- und Serienabschnitt sowie persönliche, serverweite individuelle und gemeinsame Scopes,
 - laufende und abgeschlossene Läufe,
 - ausgeschiedener Rekordhalter,
