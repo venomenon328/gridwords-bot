@@ -238,14 +238,14 @@ class PostgresRecordShareToAnnouncementE2EIT {
                     """, Long.class, PLAYER_ID, date, attempts[index], durations[index],
                     java.sql.Timestamp.from(NOW.minusSeconds(600L - index)),
                     java.sql.Timestamp.from(NOW.minusSeconds(600L - index)));
+            java.sql.Timestamp completedAt = java.sql.Timestamp.from(NOW.minusSeconds(600L - index));
             jdbc.update("""
                     INSERT INTO submission (
                         source_message_id, guild_id, channel_id, author_player_id, raw_message_content,
-                        processing_state, game_result_id, received_at, updated_at)
-                    VALUES (?, ?, ?, ?, 'historical share', 'COMPLETED', ?, ?, ?)
+                        processing_state, game_result_id, received_at, updated_at, original_deleted_at)
+                    VALUES (?, ?, ?, ?, 'historical share', 'COMPLETED', ?, ?, ?, ?)
                     """, 1_000L + index, GUILD_ID, CHANNEL_ID, PLAYER_ID, resultId,
-                    java.sql.Timestamp.from(NOW.minusSeconds(600L - index)),
-                    java.sql.Timestamp.from(NOW.minusSeconds(600L - index)));
+                    completedAt, completedAt, completedAt);
         }
         assertThat(jdbc.queryForObject("SELECT count(*) FROM record_live_evaluation", Integer.class)).isZero();
     }
