@@ -48,12 +48,22 @@ class RecordsQueryServiceTest {
     }
 
     @Test
-    void bootstrapNotReadyReturnsNoPartialState() {
+    void unauthorizedForeignTargetIsRejectedBeforeAnyReadModelOrPlayerAccess() {
+        assertThat(service.query(query(7, Optional.of(99L), false, RecordsQueryUseCase.GameFilter.ALL)))
+                .isInstanceOf(RecordsQueryUseCase.Forbidden.class);
+
+        verify(bootstrap, never()).readiness(any());
+        verify(states, never()).list(any(Long.class), any());
+        verify(players, never()).findAllPlayers();
+        verifyNoPlayerWrites();
+    }
+
+    @Test
+    void bootstrapNotReadyReturnsInitializationStateInsteadOfPartialOrEmptyRecords() {
         when(bootstrap.readiness(new RecordBootstrapKey(GUILD, catalog.version())))
                 .thenReturn(RecordBootstrapReadiness.IN_PROGRESS);
 
-        assertThat(service.query(query(7, Optional.empty(), RecordsQueryUseCase.GameFilter.ALL,
-                RecordsQueryUseCase.ScopeFilter.ALL, RecordsQueryUseCase.CategoryFilter.ALL)))
+        assertThat(service.query(query(7, Optional.empty(), false, RecordsQueryUseCase.GameFilter.ALL)))
                 .isInstanceOf(RecordsQueryUseCase.Unavailable.class);
 
         verify(states, never()).list(any(Long.class), any());
@@ -61,92 +71,107 @@ class RecordsQueryServiceTest {
     }
 
     @Test
-    void gridwordsPersonalResultsUseCallerAndKeepEmptyDefinitionsVisible() {
-        RecordsQueryUseCase.Ready result = ready(service.query(query(7, Optional.empty(),
-                RecordsQueryUseCase.GameFilter.GRIDWORDS,
-                RecordsQueryUseCase.ScopeFilter.PERSONAL,
-                RecordsQueryUseCase.CategoryFilter.RESULTS)));
+    void defaultViewUsesCallerPersonalScopeAndAlsoContainsGlobalScopes() {
+        RecordStateSnapshot personal = resultState(
+                "result.gridwords.fastest-solution.personal", new RecordScope.Personal(7), Optional.of(7L),
+                new DurationRecordValue(Duration.ofSeconds(74)),
+                new RecordSourceReference.GameResult(1, 1, 7, GameType.GRIDWORDS, LocalDate.of(2026, 8, 6)));
+        RecordStateSnapshot server = resultState(
+                "result.gridwords.fastest-solution.server-individual", new RecordScope.ServerIndividual(), Optional.of(99L),
+                new DurationRecordValue(Duration.ofSeconds(70)),
+                new RecordSourceReference.GameResult(2, 0, 99, GameType.GRIDWORDS, LocalDate.of(2026, 8, 5)));
+        when(states.list(GUILD, catalog.version())).thenReturn(List.of(personal, server));
+        when(players.findAllPlayers()).thenReturn(List.of(player(7, "Tobias", true), player(99, "Georgia", false)));
 
-        assertThat(result.entries()).hasSize(3).allSatisfy(entry -> {
-            assertThat(entry.game()).contains(GameType.GRIDWORDS);
-            assertThat(entry.category()).isEqualTo(RecordsQueryUseCase.Category.RESULTS);
-            assertThat(entry.scope()).isEqualTo(RecordsQueryUseCase.Scope.PERSONAL);
-            assertThat(entry.value()).isEmpty();
-            assertThat(entry.source()).isEmpty();
-        });
+        RecordsQueryUseCase.Ready result = ready(service.query(
+                query(7, Optional.empty(), false, RecordsQueryUseCase.GameFilter.ALL)));
+
+        assertThat(result.entries()).extracting(RecordsQueryUseCase.Entry::scope)
+                .contains(RecordsQueryUseCase.Scope.PERSONAL,
+                        RecordsQueryUseCase.Scope.SERVER_INDIVIDUAL, RecordsQueryUseCase.Scope.SHARED);
+        assertThat(result.entries().stream()
+                .filter(entry -> entry.definitionKey().equals("result.gridwords.fastest-solution.personal"))
+                .findFirst().orElseThrow().holderDisplay()).contains("Tobias");
+        assertThat(result.entries().stream()
+                .filter(entry -> entry.definitionKey().equals("result.gridwords.fastest-solution.server-individual"))
+                .findFirst().orElseThrow().holderDisplay()).contains("Georgia");
+        verifyNoPlayerWrites();
     }
 
     @Test
-    void explicitUserSelectsTheirPersonalStateAndKeepsInactiveProfileDisplay() {
-        RecordStateSnapshot personal = resultState(
-                "result.gridwords.fastest-solution.personal",
-                new RecordScope.Personal(99),
-                Optional.of(99L),
+    void administratorTargetChangesOnlyPersonalScopeAndKeepsGlobalState() {
+        RecordStateSnapshot targetPersonal = resultState(
+                "result.gridwords.fastest-solution.personal", new RecordScope.Personal(99), Optional.of(99L),
                 new DurationRecordValue(Duration.ofSeconds(74)),
                 new RecordSourceReference.GameResult(1, 1, 99, GameType.GRIDWORDS, LocalDate.of(2026, 8, 6)));
-        when(states.list(GUILD, catalog.version())).thenReturn(List.of(personal));
-        when(players.findAllPlayers()).thenReturn(List.of(
-                new PlayerStore.StoredPlayer(99, "Georgia", false, false, false, NOW, NOW)));
+        RecordStateSnapshot server = resultState(
+                "result.gridwords.fastest-solution.server-individual", new RecordScope.ServerIndividual(), Optional.of(7L),
+                new DurationRecordValue(Duration.ofSeconds(60)),
+                new RecordSourceReference.GameResult(2, 0, 7, GameType.GRIDWORDS, LocalDate.of(2026, 8, 5)));
+        when(states.list(GUILD, catalog.version())).thenReturn(List.of(targetPersonal, server));
+        when(players.findAllPlayers()).thenReturn(List.of(player(7, "Tobias", true), player(99, "Georgia", false)));
 
-        RecordsQueryUseCase.Ready result = ready(service.query(query(7, Optional.of(99L),
-                RecordsQueryUseCase.GameFilter.GRIDWORDS,
-                RecordsQueryUseCase.ScopeFilter.PERSONAL,
-                RecordsQueryUseCase.CategoryFilter.RESULTS)));
+        RecordsQueryUseCase.Ready result = ready(service.query(
+                query(7, Optional.of(99L), true, RecordsQueryUseCase.GameFilter.ALL)));
 
-        RecordsQueryUseCase.Entry fastest = result.entries().stream()
-                .filter(entry -> entry.metricSlug().equals("fastest-solution")).findFirst().orElseThrow();
-        assertThat(fastest.holderDisplay()).contains("Georgia");
-        assertThat(fastest.value()).contains(new DurationRecordValue(Duration.ofSeconds(74)));
+        assertThat(result.entries().stream()
+                .filter(entry -> entry.definitionKey().equals("result.gridwords.fastest-solution.personal"))
+                .findFirst().orElseThrow().holderDisplay()).contains("Georgia");
+        assertThat(result.entries().stream()
+                .filter(entry -> entry.definitionKey().equals("result.gridwords.fastest-solution.server-individual"))
+                .findFirst().orElseThrow().holderDisplay()).contains("Tobias");
     }
 
     @Test
-    void gameFilterExcludesGenericSeriesAndSharedScopeNeverInventsAHolder() {
+    void gameFilterKeepsGenericSeriesButExcludesOtherGameSpecificDefinitions() {
+        RecordsQueryUseCase.Ready grid = ready(service.query(
+                query(7, Optional.empty(), false, RecordsQueryUseCase.GameFilter.GRIDWORDS)));
+
+        assertThat(grid.entries()).anySatisfy(entry -> {
+            assertThat(entry.metricSlug()).isEqualTo("activity");
+            assertThat(entry.game()).isEmpty();
+        });
+        assertThat(grid.entries()).anySatisfy(entry -> assertThat(entry.metricSlug()).isEqualTo("gridwords-solved"));
+        assertThat(grid.entries()).noneSatisfy(entry -> assertThat(entry.metricSlug()).isEqualTo("quadwords-solved"));
+        assertThat(grid.entries()).noneSatisfy(entry ->
+                assertThat(entry.game()).contains(GameType.QUADWORDS));
+    }
+
+    @Test
+    void sharedStateHasNoIndividualHolderAndUnknownServerHolderUsesNeutralFallback() {
         StreakRecordValue value = new StreakRecordValue(5, LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 5));
-        RecordStateSnapshot server = resultState(
-                "streak.gridwords-solved.server-individual",
-                new RecordScope.ServerIndividual(), Optional.of(99L), value,
-                new RecordSourceReference.StreakRun(StreakRecordMetric.GRIDWORDS_SOLVED,
-                        new RecordSourceReference.StreakRunOwner.Player(99), value.startDate()));
         RecordStateSnapshot shared = resultState(
-                "streak.gridwords-solved.shared",
-                new RecordScope.Shared(), Optional.empty(), value,
+                "streak.gridwords-solved.shared", new RecordScope.Shared(), Optional.empty(), value,
                 new RecordSourceReference.StreakRun(StreakRecordMetric.GRIDWORDS_SOLVED,
                         new RecordSourceReference.StreakRunOwner.Shared(), value.startDate()));
-        when(states.list(GUILD, catalog.version())).thenReturn(List.of(server, shared));
-        when(players.findAllPlayers()).thenReturn(List.of(
-                new PlayerStore.StoredPlayer(99, "Georgia", false, false, false, NOW, NOW)));
+        RecordStateSnapshot unknownServer = resultState(
+                "result.quadwords.fastest-solution.server-individual", new RecordScope.ServerIndividual(), Optional.of(123L),
+                new DurationRecordValue(Duration.ofSeconds(80)),
+                new RecordSourceReference.GameResult(3, 0, 123, GameType.QUADWORDS, LocalDate.of(2026, 8, 5)));
+        when(states.list(GUILD, catalog.version())).thenReturn(List.of(shared, unknownServer));
 
-        RecordsQueryUseCase.Ready result = ready(service.query(query(7, Optional.empty(),
-                RecordsQueryUseCase.GameFilter.GRIDWORDS,
-                RecordsQueryUseCase.ScopeFilter.ALL,
-                RecordsQueryUseCase.CategoryFilter.SERIES)));
+        RecordsQueryUseCase.Ready result = ready(service.query(
+                query(7, Optional.empty(), false, RecordsQueryUseCase.GameFilter.ALL)));
 
-        assertThat(result.entries()).allSatisfy(entry ->
-                assertThat(entry.metricSlug()).isIn("gridwords-solved", "gridwords-drought"));
-        assertThat(result.entries().stream()
-                .filter(entry -> entry.definitionKey().equals("streak.gridwords-solved.server-individual"))
-                .findFirst().orElseThrow().holderDisplay()).contains("Georgia");
         assertThat(result.entries().stream()
                 .filter(entry -> entry.definitionKey().equals("streak.gridwords-solved.shared"))
                 .findFirst().orElseThrow().holderDisplay()).isEmpty();
+        assertThat(result.entries().stream()
+                .filter(entry -> entry.definitionKey().equals("result.quadwords.fastest-solution.server-individual"))
+                .findFirst().orElseThrow().holderDisplay()).contains("Ehemaliger Spieler");
     }
 
-    @Test
-    void missingHolderProfileUsesNeutralFallback() {
-        RecordStateSnapshot server = resultState(
-                "result.quadwords.fastest-solution.server-individual",
-                new RecordScope.ServerIndividual(), Optional.of(123L),
-                new DurationRecordValue(Duration.ofSeconds(80)),
-                new RecordSourceReference.GameResult(2, 0, 123, GameType.QUADWORDS, LocalDate.of(2026, 8, 5)));
-        when(states.list(GUILD, catalog.version())).thenReturn(List.of(server));
+    private void verifyNoPlayerWrites() {
+        verify(players, never()).upsert(any());
+        verify(players, never()).synchronizeProfile(any());
+        verify(players, never()).activate(any());
+        verify(players, never()).deactivate(any());
+        verify(players, never()).activateGames(any());
+        verify(players, never()).deactivateGames(any());
+    }
 
-        RecordsQueryUseCase.Ready result = ready(service.query(query(7, Optional.empty(),
-                RecordsQueryUseCase.GameFilter.QUADWORDS,
-                RecordsQueryUseCase.ScopeFilter.SERVER_INDIVIDUAL,
-                RecordsQueryUseCase.CategoryFilter.RESULTS)));
-
-        assertThat(result.entries().stream().filter(entry -> entry.value().isPresent()).findFirst().orElseThrow()
-                .holderDisplay()).contains("Ehemaliger Spieler");
+    private static PlayerStore.StoredPlayer player(long id, String display, boolean active) {
+        return new PlayerStore.StoredPlayer(id, display, active, false, false, NOW, NOW);
     }
 
     private static RecordStateSnapshot resultState(
@@ -158,9 +183,8 @@ class RecordsQueryServiceTest {
     }
 
     private static RecordsQueryUseCase.Query query(
-            long requester, Optional<Long> personal, RecordsQueryUseCase.GameFilter game,
-            RecordsQueryUseCase.ScopeFilter scope, RecordsQueryUseCase.CategoryFilter category) {
-        return new RecordsQueryUseCase.Query(GUILD, requester, personal, game, scope, category);
+            long requester, Optional<Long> target, boolean administrator, RecordsQueryUseCase.GameFilter game) {
+        return new RecordsQueryUseCase.Query(GUILD, requester, target, administrator, game);
     }
 
     private static RecordsQueryUseCase.Ready ready(RecordsQueryUseCase.Result result) {
