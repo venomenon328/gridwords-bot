@@ -4,14 +4,15 @@ Dieses Protokoll bündelt die technische End-to-End-Abnahme für Issue #58 und P
 
 ## Status
 
-**Technischer Stand:** Maven-Gates bestanden; Image-Runtime und Compose-Validierung bestanden
+**Technischer Stand:** Review-Nacharbeit umgesetzt; die vollständigen Maven- und Container-Gates müssen auf dem aktuellen Head grün sein
 
 **Reale Discord-Abnahme:** offen – separater Testserver erforderlich
 
-**Container-Betriebscheck:** offen – dieser Windows-Host besitzt keine funktionierende Bash-Laufzeit
+**Container-Betriebscheck:** im Draft-PR automatisiert; `Container image` führt die nicht publizierenden Image-, Compose-, Backup-, Restore-, Resume- und Rollbackchecks auch vor `ready_for_review` aus
+
 **Release / RC / Produktion:** gesperrt
 
-Der PR bleibt Draft, bis die Container-/Betriebschecks, die unabhängige Review und sämtliche folgenden Discord-Punkte nachweisbar bestanden sind. Die Maven-Gates liefen auf diesem Branch erfolgreich. Es werden keine Tokens, Discord-IDs, Rohshares oder personenbezogenen Testdaten in diesem Dokument erfasst.
+Der PR bleibt Draft, bis die technischen Gates, die unabhängige Review und sämtliche folgenden Discord-Punkte nachweisbar bestanden sind. Es werden keine Tokens, Discord-IDs, Rohshares oder personenbezogenen Testdaten in diesem Dokument erfasst.
 
 ## Akzeptanzmatrix
 
@@ -34,11 +35,12 @@ Die Referenzen benennen bewusst Tests auf der passenden Ebene. Alle `Postgres…
 
 Zusätzliche End-to-End-Nachweise:
 
-- `RecordLiveEvaluationMigrationIT` prüft den Upgradepfad vom Schema bis 019; `PostgresSchemaIT` prüft den Neuaufbau mit aktuellem Liquibase-Master.
+- `RecordLiveEvaluationMigrationIT` prüft mit echtem PostgreSQL den produktionsrelevanten Upgradepfad vom Schema **017** über 018–022 zum aktuellen Liquibase-Master. Spieler-, Ergebnis-, spielbezogene Teilnahme-, Ausreden- und Ausredenkontextdaten bleiben erhalten; zugleich werden der aktuelle Record-Schemaumfang, der Live-Trigger und der 022-Deliveryindex nachgewiesen. `PostgresSchemaIT` prüft zusätzlich den Neuaufbau mit aktuellem Master.
+- `PostgresRecordShareToAnnouncementE2EIT` startet mit fünf historischen Vergleichsergebnissen, führt den Kandidaten über `ProcessSharedResultService` und die realen PostgreSQL-Adapter ein, verarbeitet die durch den Submission-Trigger registrierte Live-Arbeit über den echten Record-Processor und synchronisiert die daraus erzeugte aggregierte Announcement-Projektion über den echten Delivery-Koordinator. Nur das äußerste `RecordAnnouncementMessageGateway` ist ein kontrollierter Discord-Fake.
 - `PostgresRecordBootstrapCoordinatorIT` deckt Bootstrap-Neustart, Teilfortschritt und die Fortsetzung einer historischen laufenden Serie ab.
 - `PostgresRecordAnnouncementDeliveryRecoveryIT.restartReconcilesAPageCreatedBeforeTheDeliveryAcknowledgementWithoutDuplicatingIt` hinterlässt nach einem absichtlich verlorenen technischen ACK einen abgelaufenen PostgreSQL-Claim ohne gespeicherte Message-ID. Eine neue Koordinatorinstanz reclaimt ihn, entdeckt die bereits veröffentlichte Seite und synchronisiert sie ohne zweiten Create. Zusammen mit `PostgresRecordClaimLeaseFencingIT` deckt das konkurrierende Worker, Lease-Ablauf, Restart und Multipage-Reconciliation mit echtem PostgreSQL ab.
 - `RecordLiveEvaluationCoordinatorTest` und `RecordAnnouncementDeliveryCoordinatorTest` beweisen, dass unbekannte technische Fehler weder als fachlicher Konflikt noch als fachlicher permanenter Fehler maskiert werden.
-- `RecordsQueryServiceTest` und `DiscordRecordsCommandListenerTest` prüfen `category:results|series`, die Kombination mit `game`, die unveränderte Sicht spielunabhängiger Serien, Admin-Fremdansicht, Ephemeralität und leere Allowed Mentions.
+- `RecordsQueryServiceTest` und `DiscordRecordsCommandListenerTest` prüfen `category:all|results|series`, die Kombination mit `game`, das fachlich verbindliche Ausblenden spielunabhängiger Serien bei gesetztem Game-Filter, Admin-Fremdansicht, Ephemeralität und leere Allowed Mentions.
 
 ## Reale Discord-Abnahme – offen
 
@@ -50,8 +52,8 @@ Die folgenden Schritte müssen auf einer separaten Discord-Testanwendung, einem 
 - [ ] Abschluss beim fachlichen 06:00-Close mit kontrollierter Berlin-Clock prüfen.
 - [ ] Gleichstand, Near Miss und negative Durststrecke prüfen.
 - [ ] Korrektur mit Edit sowie Korrektur mit vollständigem Delete einer Rekordmeldung prüfen.
-- [ ] `/records`, Admin-Fremdansicht und `game`-Sichten prüfen.
-- [ ] `/records category:results`, `/records category:series` sowie eine Kombination wie `game:gridwords category:results` prüfen.
+- [ ] `/records`, Admin-Fremdansicht und `game`-Sichten prüfen; bei gesetztem `game`-Filter dürfen Aktivität, Komplett, Perfekt und „ohne perfekten Tag“ nicht erscheinen.
+- [ ] `/records category:all`, `/records category:results`, `/records category:series` sowie eine Kombination wie `game:gridwords category:results` prüfen.
 - [ ] Für jede Command-Seite Ephemeralität, Pagination und das Ausbleiben von Mentions prüfen.
 - [ ] Restart nach Send-vor-ACK und Recovery ohne doppelte öffentliche Projektion prüfen.
 - [ ] Öffentliche Meldungen deaktivieren, neue Ereignisse erzeugen und nach Reaktivierung das Ausbleiben eines Backlogs prüfen.
@@ -69,14 +71,7 @@ bash scripts/test/production-compose-contextual-excuses.sh
 bash scripts/test/production-operations.sh
 ```
 
-Am 7. August 2026 wurden auf diesem Branch tatsächlich erreicht:
-
-- `clean verify`: **BUILD SUCCESS**, 766 Tests, 0 Fehler.
-- `-Pdatabase-integration clean verify`: **BUILD SUCCESS**, 766 Standard- plus 241 Failsafe-PostgreSQL-Integrationstests, jeweils 0 Fehler.
-- `docker build -t gridwords-bot:ci .`: erfolgreich; Runtime-Prüfung bestätigt UID 10001, JAR vorhanden sowie keine `.env`, keine Quellen und kein Maven-Cache im Runtimeimage.
-- `docker compose … config`: erfolgreich; internes PostgreSQL-Netz ohne Hostport, Read-only-Bot und Testkonfiguration validiert.
-
-Die beiden Bash-Skripte konnten auf diesem Host nicht gestartet werden, weil die aufgerufene WSL-Bash keine `/bin/bash`-Distribution besitzt. Der darin enthaltene vollständige isolierte Backup-/Restore-/Resume-/Rollbackcheck bleibt deshalb offen und muss in GitHub Actions oder auf einem Host mit Bash ausgeführt werden. Das ist kein Erfolgsausweis.
+Für den aktuellen Head sind beide Maven-Befehle verbindlich. Der Workflow `Container image` führt dieselben Maven-Gates sowie Image-Runtime, Shellcheck und den vollständigen isolierten Compose-/Backup-/Restore-/Resume-/Rollbackpfad auf Ubuntu aus. Diese nicht publizierenden Jobs laufen ausdrücklich auch bei Draft-PRs. Der Publish-Job bleibt ausschließlich `workflow_dispatch` auf `main` vorbehalten und ist kein Bestandteil dieser Abnahme.
 
 ## RC-Sperre und unveröffentlichte Release Notes
 

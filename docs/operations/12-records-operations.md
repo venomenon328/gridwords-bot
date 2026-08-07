@@ -1,6 +1,6 @@
 # Rekorde: Betrieb, Recovery und sichere Wiederholung
 
-Dieses Runbook ergänzt [record-live-evaluation.md](record-live-evaluation.md), [troubleshooting.md](troubleshooting.md) und den allgemeinen [Backup-/Restoreweg](backup-restore.md). Alle folgenden Abfragen sind lesend. Sie enthalten keine Tokens und geben weder `claim_token` noch `safe_error` aus.
+Dieses Runbook ergänzt [record-live-evaluation.md](record-live-evaluation.md), [troubleshooting.md](troubleshooting.md) und den allgemeinen [Backup-/Restoreweg](backup-restore.md). Die Diagnoseabfragen sind lesend und geben niemals Claim-Tokens aus. `safe_error` wird ausschließlich in der unten gekennzeichneten Fehlerdiagnose angezeigt; die Record-Worker schreiben dort nur stabile, bereinigte Fehlertexte und keine Roh-Exceptions oder Secrets.
 
 Setze auf dem Server zunächst den vorhandenen Compose-Alias aus `troubleshooting.md`:
 
@@ -27,6 +27,22 @@ $COMPOSE exec -T postgres psql -U "$(grep '^POSTGRES_USER=' runtime.env | cut -d
 ```
 
 `SUCCEEDED` Bootstrap ist die Voraussetzung für öffentliche Meldungen und eine vollständige `/records`-Sicht. Ein abgelaufener Claim wird durch den nächsten Worker übernommen; weder Claim-Tokens noch Zustände werden manuell auf `SUCCEEDED` gesetzt.
+
+## Letzte persistierte Fehler sicher diagnostizieren
+
+Für die letzten klassifizierten Record-Fehler dürfen `failure_category`, Zeitpunkt und der bewusst bereinigte `safe_error` gelesen werden. Die Abfrage enthält weder Claim-Tokens noch Discord-Tokens, Rohshares oder personenbezogene Inhalte:
+
+```bash
+$COMPOSE exec -T postgres psql -U "$(grep '^POSTGRES_USER=' runtime.env | cut -d= -f2-)" -d "$(grep '^POSTGRES_DB=' runtime.env | cut -d= -f2-)" -c "SELECT work, failure_category, failed_at, safe_error FROM (SELECT 'bootstrap' AS work, failure_category, updated_at AS failed_at, safe_error FROM record_bootstrap WHERE failure_category IS NOT NULL UNION ALL SELECT 'live_evaluation', failure_category, updated_at, safe_error FROM record_live_evaluation WHERE failure_category IS NOT NULL UNION ALL SELECT 'day_close', failure_category, updated_at, safe_error FROM record_day_close WHERE failure_category IS NOT NULL UNION ALL SELECT 'announcement', failure_category, updated_at, safe_error FROM record_announcement WHERE failure_category IS NOT NULL) failures ORDER BY failed_at DESC LIMIT 20;"
+```
+
+Unbekannte technische Fehler werden absichtlich **nicht** in einen fachlichen oder klassifizierten Persistenzzustand umetikettiert. Sie sind deshalb im Containerlog zu diagnostizieren:
+
+```bash
+$COMPOSE logs --since=24h bot | grep -E 'record_(bootstrap|live_evaluation|day_close|announcement_delivery).*UNKNOWN'
+```
+
+Der Logpfad kann Stacktraces enthalten und ist nur für die interne Diagnose gedacht; vollständige Logs werden nicht ungeprüft in Issues oder PRs kopiert.
 
 ## Recovery
 

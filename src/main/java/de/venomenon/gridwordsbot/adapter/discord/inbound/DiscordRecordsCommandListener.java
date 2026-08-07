@@ -39,6 +39,7 @@ public final class DiscordRecordsCommandListener extends ListenerAdapter {
                                 .addChoice("GridWords", "gridwords")
                                 .addChoice("QuadWords", "quadwords"),
                         new OptionData(OptionType.STRING, "category", "Rekordart filtern", false)
+                                .addChoice("Alle", "all")
                                 .addChoice("Ergebnisse", "results")
                                 .addChoice("Serien", "series"));
     }

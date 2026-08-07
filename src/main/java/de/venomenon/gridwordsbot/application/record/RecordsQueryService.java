@@ -104,7 +104,8 @@ public final class RecordsQueryService implements RecordsQueryUseCase {
     }
 
     private static boolean gameMatches(RecordDefinition<?> definition, GameFilter filter) {
-        if (filter == GameFilter.ALL || definition.game().isEmpty()) return true;
+        if (filter == GameFilter.ALL) return true;
+        if (definition.game().isEmpty()) return false;
         return filter == GameFilter.GRIDWORDS
                 ? definition.game().orElseThrow() == GameType.GRIDWORDS
                 : definition.game().orElseThrow() == GameType.QUADWORDS;

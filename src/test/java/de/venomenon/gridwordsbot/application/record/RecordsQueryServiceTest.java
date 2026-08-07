@@ -134,7 +134,7 @@ class RecordsQueryServiceTest {
     }
 
     @Test
-    void gameFilterKeepsGameIndependentSeriesButExcludesOtherGameSpecificDefinitions() {
+    void gameFilterExcludesGameIndependentSeriesAndOtherGameSpecificDefinitions() {
         StreakRecordValue generic = streak(8, LocalDate.of(2026, 7, 30));
         StreakRecordValue grid = streak(7, LocalDate.of(2026, 7, 31));
         StreakRecordValue quad = streak(6, LocalDate.of(2026, 8, 1));
@@ -149,11 +149,9 @@ class RecordsQueryServiceTest {
                 query(7, Optional.empty(), false, RecordsQueryUseCase.GameFilter.QUADWORDS)));
 
         assertThat(gridResult.entries()).extracting(RecordsQueryUseCase.Entry::metricSlug)
-                .contains("activity", "gridwords-solved")
-                .doesNotContain("quadwords-solved");
+                .containsExactly("gridwords-solved");
         assertThat(quadResult.entries()).extracting(RecordsQueryUseCase.Entry::metricSlug)
-                .contains("activity", "quadwords-solved")
-                .doesNotContain("gridwords-solved");
+                .containsExactly("quadwords-solved");
     }
 
     @Test
@@ -179,7 +177,7 @@ class RecordsQueryServiceTest {
         assertThat(results.entries()).extracting(RecordsQueryUseCase.Entry::definitionKey)
                 .containsExactly("result.gridwords.fastest-solution.personal");
         assertThat(series.entries()).extracting(RecordsQueryUseCase.Entry::definitionKey)
-                .containsExactly("streak.activity.personal", "streak.gridwords-solved.personal");
+                .containsExactly("streak.gridwords-solved.personal");
     }
 
     @Test
@@ -195,7 +193,7 @@ class RecordsQueryServiceTest {
                                 new RecordSourceReference.StreakRunOwner.Player(7), imperfect.startDate()), true)));
 
         RecordsQueryUseCase.Ready result = ready(service.query(
-                query(7, Optional.empty(), false, RecordsQueryUseCase.GameFilter.GRIDWORDS)));
+                query(7, Optional.empty(), false, RecordsQueryUseCase.GameFilter.ALL)));
 
         assertThat(present(result, "streak.gridwords-solved.personal").value()).contains(solved);
         assertThat(present(result, "streak.gridwords-drought.personal").value()).contains(drought);
