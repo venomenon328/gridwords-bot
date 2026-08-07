@@ -568,9 +568,13 @@ Unterstützte Varianten:
 /records user:@Georgia
 /records category:results
 /records category:series
+/records game:gridwords category:results
+/records user:@Georgia category:series
 ```
 
-Optionen dürfen kombiniert werden, soweit fachlich sinnvoll.
+Optionen dürfen kombiniert werden, soweit fachlich sinnvoll. `category:results` enthält nur die
+Ergebnisrekorde, `category:series` nur die Serienrekorde. Der `user`-Filter ändert dabei wie
+sonst nur den persönlichen Abschnitt und bleibt für fremde Nutzer Administratoren vorbehalten.
 
 ### 17.1 Standardverhalten
 
@@ -599,13 +603,13 @@ Angezeigt werden je nach Filter:
 - Start- und Enddatum abgeschlossener Läufe,
 - bei laufenden Rekordläufen ein eindeutiger Hinweis „läuft“.
 
-Der `game`-Filter umfasst nur eindeutig spielbezogene Serien:
+Der `game`-Filter beschränkt Ergebnisrekorde und eindeutig spielbezogene Serien:
 
 - GridWords- beziehungsweise QuadWords-Lösungsserie,
 - entsprechende gemeinsame Lösungsserie,
 - entsprechende Durststrecke.
 
-Aktivität, komplett, perfekt und die Serie ohne perfekten Tag werden keinem einzelnen Spiel künstlich zugeordnet und bei gesetztem `game`-Filter nicht angezeigt.
+Aktivität, komplett, perfekt und die Serie ohne perfekten Tag werden keinem einzelnen Spiel künstlich zugeordnet. Sie bleiben daher bei einem gesetzten `game`-Filter sichtbar; nur die jeweils andere eindeutig spielbezogene Definition wird ausgeblendet. Diese Regel erlaubt sinnvolle kombinierte `game`-/`category`-Sichten, ohne einer spielunabhängigen Serie künstlich ein Spiel zuzuweisen.
 
 ### 17.4 Leere Zustände und Gleichstände
 

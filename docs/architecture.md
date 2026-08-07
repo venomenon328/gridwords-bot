@@ -490,6 +490,7 @@ Neue Report- oder Ausredenfunktionalität wird erst nach vollständigem Build, P
 - ADR 0015: persistente Channel-Retention und Tagesabschluss
 - ADR 0016: spielbezogene historische Teilnahme
 - ADR 0017: persistente Ausredenauswahl und kanonische Aktualisierung
+- ADR 0018: Rekordzustand, Auditereignisse und reconciliierte Meldungen
 
 ## 17. Channel-Retention und Tagesabschluss
 
@@ -542,3 +543,11 @@ Der Nutzer sieht öffentlich nur einen Button. Drei Vorschläge, Stilnamen, einm
 Die Interaction persistiert ihren Zustand und einen kanonischen Refreshauftrag atomar. Der bestehende kanonische Publisher liest Ergebnis, Serien und Ausredenzustand gemeinsam und editiert dieselbe Message-ID. Korrektur, Boardanreicherung, Ablauf und Recovery folgen derselben Pipeline; ein direkter öffentlicher Discord-Edit aus dem Interaction-Listener ist nicht zulässig.
 
 Bis zum Abschluss von Paket 8B bleibt dieser Abschnitt Zielarchitektur. Verbindliche Details stehen in `docs/requirements/excuses.md`, `docs/increments/11-contextual-excuses.md` und ADR 0017.
+
+## 21. Rekorde und Rekordmeldungen
+
+Inkrement 12 trennt den materialisierten aktuellen Rekordzustand, unveränderliche Auditereignisse und die gewünschte Discord-Projektion. `game_result` und historische, spielbezogene Teilnahmezeiträume bleiben die fachliche Quelle; `record_state` ist nur der konkurrenzsichere Lese- und Vergleichsanker.
+
+Bootstrap, Live-Auswertung, Tagesabschluss und Delivery verwenden jeweils konkrete persistente Arbeit mit tokengebundenem Claim, Lease, Retry und Recovery. Die kurze State-/Event-/Announcement-Transaktion endet vor jedem Discord-Aufruf. Unbekannte technische Fehler bleiben unverändert sichtbar; sie werden nicht als fachlicher Konflikt, permanenter Fehler oder erfolgreicher Abschluss umgedeutet.
+
+Der `/records`-Use-Case liest nur den Bootstrap-Status, materialisierte `record_state`-Zeilen und Spieleranzeigen. Er führt keine Auswertung, keine Claims und keine Persistenzänderung aus. `game` und `category` werden anhand der expliziten Definitionsmetadaten gefiltert; die JDA-Antwort einschließlich jeder Pagination bleibt ephemer und ohne Allowed Mentions.

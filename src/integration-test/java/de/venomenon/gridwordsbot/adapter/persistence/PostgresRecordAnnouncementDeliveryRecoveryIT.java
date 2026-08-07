@@ -1,6 +1,7 @@
 package de.venomenon.gridwordsbot.adapter.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import de.venomenon.gridwordsbot.application.record.RecordAnnouncementDeliveryCoordinator;
 import de.venomenon.gridwordsbot.application.record.RecordAnnouncementRenderer;
@@ -189,6 +190,67 @@ class PostgresRecordAnnouncementDeliveryRecoveryIT {
                 key, original.token(), request(restartedAt.plusSeconds(1), restartedAt.plusSeconds(61)))).isFalse();
     }
 
+    @Test
+    void restartReconcilesAPageCreatedBeforeTheDeliveryAcknowledgementWithoutDuplicatingIt() {
+        UUID eventId = appendEvent("create-before-ack");
+        RecordAnnouncementKey key = new RecordAnnouncementKey(1, 2, "result:create-before-ack:live");
+        PostgresRecordAnnouncementStore firstStore = new PostgresRecordAnnouncementStore(jdbc, fixedClock(NOW));
+        firstStore.registerOrUpdate(registration(key, eventId));
+
+        IllegalStateException lostAcknowledgement = new IllegalStateException("Discord acknowledgement was lost");
+        CreateThenCrashGateway gateway = new CreateThenCrashGateway(lostAcknowledgement);
+        RecordAnnouncementDeliveryCoordinator firstProcess = coordinator(firstStore, jdbc, gateway, NOW, true);
+
+        assertThatThrownBy(firstProcess::runNext).isSameAs(lostAcknowledgement);
+        assertThat(firstStore.find(key).orElseThrow()).satisfies(snapshot -> {
+            assertThat(snapshot.state()).isEqualTo(RecordWorkState.CLAIMED);
+            assertThat(snapshot.messages()).isEmpty();
+            assertThat(snapshot.attemptCount()).isEqualTo(1);
+        });
+
+        Instant restartedAt = NOW.plusSeconds(31);
+        JdbcTemplate restartedJdbc = isolatedJdbc();
+        PostgresRecordAnnouncementStore restartedStore =
+                new PostgresRecordAnnouncementStore(restartedJdbc, fixedClock(restartedAt));
+        RecordAnnouncementDeliveryCoordinator restartedProcess =
+                coordinator(restartedStore, restartedJdbc, gateway, restartedAt, true);
+
+        assertThat(restartedProcess.runNext()).isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.COMPLETED);
+        assertThat(gateway.createCalls).isEqualTo(1);
+        assertThat(restartedStore.find(key).orElseThrow()).satisfies(snapshot -> {
+            assertThat(snapshot.state()).isEqualTo(RecordWorkState.SYNCHRONIZED);
+            assertThat(snapshot.messages()).containsExactly(new RecordAnnouncementMessage(0, 300));
+            assertThat(snapshot.attemptCount()).isEqualTo(2);
+            assertThat(snapshot.publishedAt()).contains(restartedAt);
+        });
+    }
+
+    private RecordAnnouncementDeliveryCoordinator coordinator(
+            PostgresRecordAnnouncementStore store, JdbcTemplate workerJdbc,
+            RecordAnnouncementMessageGateway gateway, Instant now, boolean publicAnnouncementsEnabled) {
+        ScheduledExecutorService heartbeat = Executors.newSingleThreadScheduledExecutor();
+        heartbeatExecutors.add(heartbeat);
+        PlayerStore unusedPlayers = new PlayerStore() {
+            @Override public StoredPlayer upsert(PlayerUpsert request) { throw new UnsupportedOperationException(); }
+            @Override public Optional<StoredPlayer> findByDiscordUserId(long discordUserId) { return Optional.empty(); }
+            @Override public List<StoredPlayer> findAllPlayers() { return List.of(); }
+        };
+        return new RecordAnnouncementDeliveryCoordinator(
+                store,
+                new PostgresRecordEventStore(workerJdbc, fixedClock(now)),
+                unusedPlayers,
+                gateway,
+                new RecordAnnouncementRenderer(),
+                fixedClock(now),
+                Duration.ofSeconds(30),
+                Duration.ofSeconds(5),
+                Duration.ofSeconds(1),
+                Duration.ofSeconds(10),
+                heartbeat,
+                publicAnnouncementsEnabled,
+                (result, duration) -> { });
+    }
+
     private UUID appendEvent(String suffix) {
         UUID id = UUID.randomUUID();
         RecordEventDraft draft = new RecordEventDraft(
@@ -280,6 +342,38 @@ class PostgresRecordAnnouncementDeliveryRecoveryIT {
         @Override
         public List<PublishedPage> findByPublicationKey(long channelId, String publicationKey) {
             return discovered;
+        }
+    }
+
+    private static final class CreateThenCrashGateway implements RecordAnnouncementMessageGateway {
+        private final RuntimeException failure;
+        private final List<PublishedPage> discovered = new ArrayList<>();
+        private int createCalls;
+
+        private CreateThenCrashGateway(RuntimeException failure) {
+            this.failure = failure;
+        }
+
+        @Override
+        public long create(long channelId, RenderedRecordAnnouncementPage page) {
+            createCalls++;
+            discovered.add(new PublishedPage(300, page.position()));
+            throw failure;
+        }
+
+        @Override
+        public void edit(long channelId, long messageId, RenderedRecordAnnouncementPage page) {
+            throw new AssertionError("recovery must adopt the discovered page without editing it");
+        }
+
+        @Override
+        public void delete(long channelId, long messageId) {
+            throw new AssertionError("recovery must retain the discovered page");
+        }
+
+        @Override
+        public List<PublishedPage> findByPublicationKey(long channelId, String publicationKey) {
+            return List.copyOf(discovered);
         }
     }
 }

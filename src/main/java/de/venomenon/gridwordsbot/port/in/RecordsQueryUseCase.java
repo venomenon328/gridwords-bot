@@ -16,7 +16,8 @@ public interface RecordsQueryUseCase {
             long requesterPlayerId,
             Optional<Long> targetPlayerId,
             boolean requesterAdministrator,
-            GameFilter game) {
+            GameFilter game,
+            CategoryFilter category) {
         public Query {
             if (guildId <= 0) throw new IllegalArgumentException("guildId must be positive");
             if (requesterPlayerId <= 0) throw new IllegalArgumentException("requesterPlayerId must be positive");
@@ -25,6 +26,16 @@ public interface RecordsQueryUseCase {
                 if (id <= 0) throw new IllegalArgumentException("targetPlayerId must be positive");
             });
             Objects.requireNonNull(game, "game");
+            Objects.requireNonNull(category, "category");
+        }
+
+        public Query(
+                long guildId,
+                long requesterPlayerId,
+                Optional<Long> targetPlayerId,
+                boolean requesterAdministrator,
+                GameFilter game) {
+            this(guildId, requesterPlayerId, targetPlayerId, requesterAdministrator, game, CategoryFilter.ALL);
         }
 
         public long effectivePersonalPlayerId() {
@@ -68,7 +79,8 @@ public interface RecordsQueryUseCase {
         }
     }
 
-    enum GameFilter { ALL, GRIDWORDS, QUADWORDS }
     enum Category { RESULTS, SERIES }
+    enum GameFilter { ALL, GRIDWORDS, QUADWORDS }
+    enum CategoryFilter { ALL, RESULTS, SERIES }
     enum Scope { PERSONAL, SERVER_INDIVIDUAL, SHARED }
 }

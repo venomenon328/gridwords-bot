@@ -37,7 +37,10 @@ public final class DiscordRecordsCommandListener extends ListenerAdapter {
                         new OptionData(OptionType.STRING, "game", "Spiel filtern", false)
                                 .addChoice("Alle", "all")
                                 .addChoice("GridWords", "gridwords")
-                                .addChoice("QuadWords", "quadwords"));
+                                .addChoice("QuadWords", "quadwords"),
+                        new OptionData(OptionType.STRING, "category", "Rekordart filtern", false)
+                                .addChoice("Ergebnisse", "results")
+                                .addChoice("Serien", "series"));
     }
 
     @Override
@@ -56,7 +59,8 @@ public final class DiscordRecordsCommandListener extends ListenerAdapter {
                 event.getUser().getIdLong(),
                 userOption == null ? Optional.empty() : Optional.of(personalUser.getIdLong()),
                 administrator,
-                game(event.getOption("game"))));
+                game(event.getOption("game")),
+                category(event.getOption("category"))));
 
         var pages = renderer.render(result, personalDisplay);
         event.replyEmbeds(pages.getFirst())
@@ -78,6 +82,15 @@ public final class DiscordRecordsCommandListener extends ListenerAdapter {
             case "gridwords" -> RecordsQueryUseCase.GameFilter.GRIDWORDS;
             case "quadwords" -> RecordsQueryUseCase.GameFilter.QUADWORDS;
             default -> RecordsQueryUseCase.GameFilter.ALL;
+        };
+    }
+
+    private static RecordsQueryUseCase.CategoryFilter category(OptionMapping option) {
+        if (option == null) return RecordsQueryUseCase.CategoryFilter.ALL;
+        return switch (option.getAsString()) {
+            case "results" -> RecordsQueryUseCase.CategoryFilter.RESULTS;
+            case "series" -> RecordsQueryUseCase.CategoryFilter.SERIES;
+            default -> RecordsQueryUseCase.CategoryFilter.ALL;
         };
     }
 }

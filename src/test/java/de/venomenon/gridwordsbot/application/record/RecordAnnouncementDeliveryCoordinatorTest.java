@@ -1,6 +1,7 @@
 package de.venomenon.gridwordsbot.application.record;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -174,6 +175,18 @@ class RecordAnnouncementDeliveryCoordinatorTest {
     }
 
     @Test
+    void unknownTechnicalFailureEscapesUnchangedAndIsNotClassifiedAsAConflict() {
+        Fixture fixture = fixture(RecordAnnouncementProjection.CREATE, List.of(), false);
+        IllegalStateException unknown = new IllegalStateException("database mapping exploded");
+        fixture.gateway.createFailure = unknown;
+
+        assertThatThrownBy(fixture.coordinator::runNext).isSameAs(unknown);
+
+        verify(fixture.store, never()).markRetryableFailure(any(), any(), any(), any());
+        verify(fixture.store, never()).markPermanentFailure(any(), any(), any(), any());
+    }
+
+    @Test
     void heartbeatFencesAWorkerThatLosesItsLeaseDuringBlockingDiscordLookup() throws Exception {
         Fixture fixture = fixture(RecordAnnouncementProjection.EDIT, List.of(new RecordAnnouncementMessage(0, 100)), true);
         fixture.gateway.discovered = List.of(new RecordAnnouncementMessageGateway.PublishedPage(100, 0));
@@ -261,8 +274,10 @@ class RecordAnnouncementDeliveryCoordinatorTest {
         private final List<Long> deleted = new ArrayList<>();
         private List<PublishedPage> discovered = List.of();
         private CountDownLatch beforeReturningDiscovery;
+        private RuntimeException createFailure;
 
         @Override public long create(long channelId, RenderedRecordAnnouncementPage page) {
+            if (createFailure != null) throw createFailure;
             created.add(999L);
             return 999L;
         }
