@@ -917,9 +917,11 @@ class PostgresPersistenceAdapterIT {
         long resultId = store(source, resultFor(playerId, 3, "slow create"), List.of()).gameResultId().orElseThrow();
         GameResultStore.PublicationClaim slow = adapter.claimCanonicalPublication(resultId, now.minusSeconds(1)).orElseThrow();
         transactions.execute(status -> adapter.beginCanonicalDelivery(source, resultId, slow.token()));
+        assertFalse(adapter.hasEarlierCanonicalDeliveryAttempt(resultId, slow.token()));
         GameResultStore.PublicationClaim takeover = adapter.claimCanonicalPublication(resultId, now.plusSeconds(60)).orElseThrow();
         SubmissionStore.CanonicalDeliveryAttempt takeoverAttempt = transactions.execute(status ->
                 adapter.beginCanonicalDelivery(source, resultId, takeover.token()));
+        assertTrue(adapter.hasEarlierCanonicalDeliveryAttempt(resultId, takeover.token()));
         assertEquals(Boolean.TRUE, transactions.execute(status -> adapter.completeCanonicalPublication(source, resultId, 9610L, takeover.token())));
 
         assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM canonical_delivery_attempt WHERE game_result_id = ?", Integer.class, resultId));

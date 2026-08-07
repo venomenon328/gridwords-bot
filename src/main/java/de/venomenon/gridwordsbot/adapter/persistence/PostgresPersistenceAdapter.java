@@ -615,6 +615,12 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                 """, claimToken, resultId, sourceMessageId, generation, databaseTime(clock.instant()));
         return new CanonicalDeliveryAttempt(generation);
     }
+
+    @Override
+    public boolean hasEarlierCanonicalDeliveryAttempt(long gameResultId, UUID currentClaimToken) {
+        return hasOutstandingCanonicalDeliveryAttemptExcept(gameResultId, currentClaimToken);
+    }
+
     @Override
     public Optional<CanonicalRefreshCandidate> findCurrentCanonicalPublicationCandidate(long gameResultId) {
         return jdbc.query("""
