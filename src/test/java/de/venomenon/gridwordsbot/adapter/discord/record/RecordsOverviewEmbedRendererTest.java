@@ -3,6 +3,7 @@ package de.venomenon.gridwordsbot.adapter.discord.record;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import de.venomenon.gridwordsbot.domain.model.GameType;
+import de.venomenon.gridwordsbot.domain.record.AttemptsDurationRecordValue;
 import de.venomenon.gridwordsbot.domain.record.DurationRecordValue;
 import de.venomenon.gridwordsbot.domain.record.RecordSourceReference;
 import de.venomenon.gridwordsbot.domain.record.StreakRecordMetric;
@@ -19,16 +20,13 @@ class RecordsOverviewEmbedRendererTest {
     private final RecordsOverviewEmbedRenderer renderer = new RecordsOverviewEmbedRenderer();
 
     @Test
-    void rendersUnavailableAndEmptyStatesWithoutInventingValues() {
+    void rendersUnavailableForbiddenAndReadyEmptyStatesNeutrally() {
         assertThat(renderer.render(new RecordsQueryUseCase.Unavailable(), "Ada").getFirst().getDescription())
                 .contains("noch nicht vollständig initialisiert");
-
-        RecordsQueryUseCase.Entry empty = new RecordsQueryUseCase.Entry(
-                "result.gridwords.fastest-solution.personal", "fastest-solution", Optional.of(GameType.GRIDWORDS),
-                RecordsQueryUseCase.Category.RESULTS, RecordsQueryUseCase.Scope.PERSONAL,
-                Optional.empty(), Optional.empty(), Optional.empty(), false);
-        assertThat(renderer.render(new RecordsQueryUseCase.Ready(List.of(empty)), "Ada").getFirst().getDescription())
-                .contains("GridWords", "Schnellste Lösung", "Noch kein Rekord");
+        assertThat(renderer.render(new RecordsQueryUseCase.Forbidden(), "Ada").getFirst().getDescription())
+                .contains("nur Administratoren");
+        assertThat(renderer.render(new RecordsQueryUseCase.Ready(List.of()), "Ada").getFirst().getDescription())
+                .contains("Keine Rekorde");
     }
 
     @Test
@@ -49,12 +47,12 @@ class RecordsOverviewEmbedRendererTest {
     }
 
     @Test
-    void rendersServerHolderGameDayAndRunningSeries() {
+    void rendersServerHolderGameDayRunningSeriesAndAttemptsTieBreakContext() {
         RecordsQueryUseCase.Entry result = new RecordsQueryUseCase.Entry(
-                "result.quadwords.fastest-solution.server-individual", "fastest-solution",
+                "result.quadwords.fewest-attempts.server-individual", "fewest-attempts",
                 Optional.of(GameType.QUADWORDS), RecordsQueryUseCase.Category.RESULTS,
                 RecordsQueryUseCase.Scope.SERVER_INDIVIDUAL, Optional.of("Georgia"),
-                Optional.of(new DurationRecordValue(Duration.ofSeconds(74))),
+                Optional.of(new AttemptsDurationRecordValue(2, Duration.ofSeconds(90))),
                 Optional.of(new RecordSourceReference.GameResult(
                         1, 0, 99, GameType.QUADWORDS, LocalDate.of(2026, 8, 6))), false);
         StreakRecordValue streakValue = new StreakRecordValue(
@@ -70,7 +68,7 @@ class RecordsOverviewEmbedRendererTest {
                 .getFirst().getDescription();
 
         assertThat(description).contains(
-                "QuadWords · Schnellste Lösung", "Halter: Georgia", "Spieltag 06.08.2026",
+                "QuadWords · Wenigste Versuche", "2 Versuche · 1:30", "Halter: Georgia", "Spieltag 06.08.2026",
                 "Aktivitätsserie", "30.07.2026–06.08.2026", "läuft");
     }
 
