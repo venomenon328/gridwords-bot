@@ -58,10 +58,18 @@ public final class DiscordRecordsCommandListener extends ListenerAdapter {
                 administrator,
                 game(event.getOption("game"))));
 
-        event.replyEmbeds(renderer.render(result, personalDisplay))
+        var pages = renderer.render(result, personalDisplay);
+        event.replyEmbeds(pages.getFirst())
                 .setEphemeral(true)
                 .setAllowedMentions(List.of())
-                .queue();
+                .queue(hook -> {
+                    for (int index = 1; index < pages.size(); index++) {
+                        hook.sendMessageEmbeds(pages.get(index))
+                                .setEphemeral(true)
+                                .setAllowedMentions(List.of())
+                                .queue();
+                    }
+                });
     }
 
     private static RecordsQueryUseCase.GameFilter game(OptionMapping option) {
