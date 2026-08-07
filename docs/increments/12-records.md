@@ -217,6 +217,7 @@ Positive und negative Serienläufe werden aus kanonischen Tageszuständen und hi
 - relative Near-Miss-Regel ohne Drei-Tage-Cap,
 - öffentliche Längenschwellen,
 - transportneutrale Reconciliation-Fakten bei geteilten, verbundenen oder verschobenen Läufen.
+
 ## Tests
 
 Mindestens:
@@ -436,6 +437,7 @@ Mindestens:
 - `X` hatte bereits sofort beendet und wird beim Day Close nicht doppelt verarbeitet,
 - Teilnahmewechsel beendet oder verhindert negative und gemeinsame Läufe korrekt,
 - DST-Übergänge in `Europe/Berlin`.
+
 ## Definition of Done
 
 - kein zweiter Tagesabschluss-Scheduler,
