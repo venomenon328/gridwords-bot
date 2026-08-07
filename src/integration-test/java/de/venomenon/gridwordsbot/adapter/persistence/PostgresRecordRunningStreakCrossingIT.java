@@ -90,6 +90,7 @@ class PostgresRecordRunningStreakCrossingIT {
         jdbc.update("DELETE FROM game_result_excuse_option");
         jdbc.update("DELETE FROM game_result_excuse_offer_context");
         jdbc.update("DELETE FROM game_result_excuse");
+        jdbc.update("DELETE FROM channel_message_retirement");
         jdbc.update("DELETE FROM submission_attachment");
         jdbc.update("DELETE FROM submission");
         jdbc.update("DELETE FROM game_result");
