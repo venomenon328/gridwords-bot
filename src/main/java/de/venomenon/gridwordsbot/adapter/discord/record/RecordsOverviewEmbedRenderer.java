@@ -41,7 +41,7 @@ public final class RecordsOverviewEmbedRenderer {
                     .setDescription("Keine Rekorde passen zu der gewählten Sicht.")
                     .build());
         }
-        List<String> lines = ready.entries().stream().map(this::entry).toList();
+        List<String> lines = sectionedEntries(ready.entries());
         List<String> bodies = pageBodies(lines);
         List<MessageEmbed> pages = new ArrayList<>();
         for (int index = 0; index < bodies.size(); index++) {
@@ -53,6 +53,27 @@ public final class RecordsOverviewEmbedRenderer {
                     .build());
         }
         return List.copyOf(pages);
+    }
+
+    private List<String> sectionedEntries(List<RecordsQueryUseCase.Entry> entries) {
+        List<String> lines = new ArrayList<>();
+        RecordsQueryUseCase.Category previous = null;
+        for (RecordsQueryUseCase.Entry current : entries) {
+            String rendered = entry(current);
+            if (current.category() != previous) {
+                rendered = section(current.category()) + "\n\n" + rendered;
+                previous = current.category();
+            }
+            lines.add(rendered);
+        }
+        return List.copyOf(lines);
+    }
+
+    private static String section(RecordsQueryUseCase.Category category) {
+        return switch (category) {
+            case RESULTS -> "__Ergebnisrekorde__";
+            case SERIES -> "__Serienrekorde__";
+        };
     }
 
     private String entry(RecordsQueryUseCase.Entry entry) {
