@@ -1,6 +1,6 @@
 # Unveröffentlichte Release Notes: Inkrement 12
 
-**Status:** nur für die spätere RC- und Releasevorbereitung; nicht veröffentlicht.
+**Status:** für RC- und Releasevorbereitung freigegeben; noch nicht veröffentlicht.
 
 ## Neu
 
@@ -9,9 +9,22 @@
 - Seltene aggregierte Rekordmeldungen mit persistenter Delivery, Edit, Teilreduktion und Delete nach Korrekturen.
 - Ephemerer, strikt lesender `/records`-Command mit `user`, `game` und `category:results|series`; sinnvolle Filterkombinationen bleiben möglich.
 - Persistenter Bootstrap, Claim/Lease/Retry/Recovery und `/records` auf materialisiertem aktuellem Zustand.
+- Normaler kanonischer Ergebnis-Create und ID-basierte Korrekturen vermeiden channelweite Discord-History-Scans; die teure Discovery bleibt auf den seltenen mehrdeutigen Recovery-Fall beschränkt.
 
-## Hinweise
+## Betrieb und Rollout
 
-- Es gibt keine Ranglisten, Achievements, neue Rekordmetriken oder generische Regel-/Messaging-Plattform.
 - Bootstrap, Backfills, Importe und unveränderte Replays bleiben öffentlich still.
-- Eine reale Discord-Abnahme, ein RC, ein Registry-Tag und ein Produktionsrollout sind bewusst nicht Teil von Issue #83.
+- Öffentliche Rekordmeldungen sind separat schaltbar. Für den Produktivrollout wird zuerst mit deaktivierten öffentlichen Meldungen migriert und der Bootstrap-/`/records`-Stand geprüft; erst danach werden neue öffentliche Meldungen aktiviert.
+- Während deaktivierter öffentlicher Meldungen entstandene Ereignisse werden nach der Reaktivierung nicht als Backlog nachgeliefert.
+- Bei einem Problem der öffentlichen Delivery kann diese wieder deaktiviert werden, ohne Record-State oder den lesenden `/records`-Command abzuschalten.
+
+## Abnahme
+
+- Paket 12.10 wurde technisch und auf einem separaten Discord-Testserver repräsentativ abgenommen.
+- Ergebnisrekord-Create/Edit/Delete, Restart/Recovery, Suppression ohne Backlog, `/records`, positive Serienüberschreitung und Serien-Reconciliation durch `X` wurden real geprüft.
+- Seltene weitere Serienvarianten wie gemeinsame Serie, negative Durststrecke und realer 06:00-Day-Close bleiben zusätzlich unter Beobachtung im laufenden Betrieb; ihre Fachlogik und Zeitsemantik sind automatisiert abgedeckt.
+
+## Nicht enthalten
+
+- Es gibt keine Ranglisten, Achievements, neuen Rekordmetriken oder generische Regel-/Messaging-Plattform.
+- RC, Registry-Tag und Produktionsrollout erfolgen bewusst erst nach dem Merge in separaten Schritten.
