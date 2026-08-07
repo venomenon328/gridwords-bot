@@ -2,6 +2,9 @@ package de.venomenon.gridwordsbot.adapter.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import de.venomenon.gridwordsbot.application.canonical.CanonicalGridWordsPublicationService;
+import de.venomenon.gridwordsbot.application.canonical.CanonicalResultMessage;
+import de.venomenon.gridwordsbot.application.canonical.GridWordsSourceDeletionService;
 import de.venomenon.gridwordsbot.application.record.RecordAnnouncementDeliveryCoordinator;
 import de.venomenon.gridwordsbot.application.record.RecordAnnouncementRenderer;
 import de.venomenon.gridwordsbot.application.record.RecordBootstrapCoordinator;
@@ -15,14 +18,17 @@ import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.record.RecordAnnouncementKey;
 import de.venomenon.gridwordsbot.domain.record.RecordAnnouncementProjection;
 import de.venomenon.gridwordsbot.domain.record.RecordDefinitionCatalog;
+import de.venomenon.gridwordsbot.domain.record.RecordLeaseClaimRequest;
 import de.venomenon.gridwordsbot.domain.record.RecordScope;
 import de.venomenon.gridwordsbot.domain.record.RecordWorkState;
 import de.venomenon.gridwordsbot.parser.gridwords.GridWordsShareParser;
 import de.venomenon.gridwordsbot.parser.quadwords.QuadWordsShareParser;
 import de.venomenon.gridwordsbot.port.in.InboundSharedMessage;
 import de.venomenon.gridwordsbot.port.in.ProcessingResult;
+import de.venomenon.gridwordsbot.port.out.CanonicalMessageGateway;
 import de.venomenon.gridwordsbot.port.out.RecordAnnouncementMessageGateway;
 import de.venomenon.gridwordsbot.port.out.RecordTransactionRunner;
+import de.venomenon.gridwordsbot.port.out.SourceMessageDeletionGateway;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -30,6 +36,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.OptionalLong;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import liquibase.integration.spring.SpringLiquibase;
@@ -119,7 +126,7 @@ class PostgresRecordShareToAnnouncementE2EIT {
     }
 
     @Test
-    void validShareFlowsThroughCanonicalPersistenceRecordEvaluationAndAnnouncementDelivery() {
+    void validShareSurvivesCanonicalPublicationAndLeaseReclaimBeforeRecordAnnouncementDelivery() {
         seedPlayerAndFiveResultComparisonBasis();
         RecordStateService stateService = new RecordStateService(states, events, transactions, catalog);
         RecordBootstrapCoordinator bootstrap = new RecordBootstrapCoordinator(
@@ -150,45 +157,83 @@ class PostgresRecordShareToAnnouncementE2EIT {
                 WHERE guild_id = ? AND game_result_id = ? AND evaluation_state = 'OPEN'
                 """, Integer.class, GUILD_ID, resultId)).isOne();
 
+        CanonicalGridWordsPublicationService canonical = new CanonicalGridWordsPublicationService(
+                persistence, persistence, persistence, new CanonicalRecordingGateway(), clock, BERLIN,
+                (at, action) -> { }, ignored -> { });
+        assertThat(canonical.publish(5_000L)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT version FROM game_result WHERE id = ?", Long.class, resultId)).isZero();
+        assertThat(jdbc.queryForObject(
+                "SELECT canonical_refresh_generation FROM game_result WHERE id = ?", Long.class, resultId)).isOne();
+        assertThat(jdbc.queryForObject(
+                "SELECT processing_state FROM submission WHERE source_message_id = ?", String.class, 5_000L))
+                .isEqualTo("CANONICAL_MESSAGE_PUBLISHED");
+        GridWordsSourceDeletionService sourceDeletion = new GridWordsSourceDeletionService(
+                persistence,
+                (channelId, sourceMessageId) -> SourceMessageDeletionGateway.DeletionResult.DELETED,
+                clock,
+                (at, action) -> { });
+        assertThat(sourceDeletion.deleteAfterCanonicalPublication(5_000L)).isTrue();
+        assertThat(jdbc.queryForObject(
+                "SELECT processing_state FROM submission WHERE source_message_id = ?", String.class, 5_000L))
+                .isEqualTo("COMPLETED");
+
+        assertThat(work.claimNext(new RecordLeaseClaimRequest(NOW, NOW.plusSeconds(1))))
+                .hasValueSatisfying(claim -> assertThat(claim.key().gameResultVersion()).isZero());
+
+        Clock restartClock = Clock.fixed(NOW.plusSeconds(2), BERLIN);
+        PostgresRecordLiveEvaluationStore restartedWork = new PostgresRecordLiveEvaluationStore(jdbc, restartClock);
+        PostgresRecordStateStore restartedStates = new PostgresRecordStateStore(jdbc, restartClock);
+        PostgresRecordEventStore restartedEvents = new PostgresRecordEventStore(jdbc, restartClock);
+        PostgresRecordAnnouncementStore restartedAnnouncements = new PostgresRecordAnnouncementStore(jdbc, restartClock);
+        RecordStateService restartedStateService = new RecordStateService(
+                restartedStates, restartedEvents, transactions, catalog);
         RecordLiveEvaluationProcessor processor = new RecordLiveEvaluationProcessor(
-                work,
+                restartedWork,
                 new PostgresRecordLiveHistoryQuery(jdbc),
                 new RecordBootstrapReadService(bootstraps),
-                stateService,
-                events,
-                announcements,
+                restartedStateService,
+                restartedEvents,
+                restartedAnnouncements,
                 transactions,
                 catalog,
-                clock,
+                restartClock,
                 CHANNEL_ID);
         try (ScheduledExecutorService heartbeat = Executors.newSingleThreadScheduledExecutor()) {
             RecordLiveEvaluationCoordinator coordinator = new RecordLiveEvaluationCoordinator(
-                    work, processor, clock, Duration.ofSeconds(30), Duration.ofSeconds(1),
+                    restartedWork, processor, restartClock, Duration.ofSeconds(30), Duration.ofSeconds(1),
                     Duration.ofSeconds(1), Duration.ofMinutes(1), heartbeat,
                     (result, duration) -> { });
             assertThat(coordinator.runNext())
                     .isEqualTo(RecordLiveEvaluationCoordinator.RunResult.COMPLETED);
         }
+        assertThat(jdbc.queryForObject("""
+                SELECT evaluation_state FROM record_live_evaluation
+                WHERE guild_id = ? AND game_result_id = ? AND game_result_version = 0
+                """, String.class, GUILD_ID, resultId)).isEqualTo("SUCCEEDED");
+        assertThat(jdbc.queryForObject("""
+                SELECT attempt_count FROM record_live_evaluation
+                WHERE guild_id = ? AND game_result_id = ? AND game_result_version = 0
+                """, Integer.class, GUILD_ID, resultId)).isEqualTo(2);
 
         RecordAnnouncementKey key = new RecordAnnouncementKey(
                 GUILD_ID, CHANNEL_ID,
                 "live-result:" + resultId + ":player:" + PLAYER_ID + ":LIVE_EVALUATION");
-        var desired = announcements.find(key).orElseThrow();
+        var desired = restartedAnnouncements.find(key).orElseThrow();
         assertThat(desired.registration().desiredProjection()).isEqualTo(RecordAnnouncementProjection.CREATE);
         assertThat(desired.registration().eventIds()).hasSize(2);
         assertThat(desired.registration().eventIds()).allSatisfy(eventId ->
-                assertThat(events.find(eventId).orElseThrow().draft().stateKey().scope())
+                assertThat(restartedEvents.find(eventId).orElseThrow().draft().stateKey().scope())
                         .isEqualTo(new RecordScope.Personal(PLAYER_ID)));
 
         RecordingGateway gateway = new RecordingGateway();
         try (ScheduledExecutorService heartbeat = Executors.newSingleThreadScheduledExecutor()) {
             RecordAnnouncementDeliveryCoordinator delivery = new RecordAnnouncementDeliveryCoordinator(
-                    announcements,
-                    events,
+                    restartedAnnouncements,
+                    restartedEvents,
                     persistence,
                     gateway,
                     new RecordAnnouncementRenderer(),
-                    clock,
+                    restartClock,
                     Duration.ofSeconds(30),
                     Duration.ofSeconds(1),
                     Duration.ofSeconds(1),
@@ -205,11 +250,38 @@ class PostgresRecordShareToAnnouncementE2EIT {
             assertThat(page.description()).contains(
                     "GridWords", "Wenigste Versuche", "Schnellste Lösung", "Player One");
         });
-        assertThat(announcements.find(key).orElseThrow()).satisfies(snapshot -> {
+        assertThat(restartedAnnouncements.find(key).orElseThrow()).satisfies(snapshot -> {
             assertThat(snapshot.state()).isEqualTo(RecordWorkState.SYNCHRONIZED);
             assertThat(snapshot.messages()).hasSize(1);
         });
         assertThat(jdbc.queryForObject("SELECT count(*) FROM record_announcement_message", Integer.class)).isOne();
+    }
+
+    private static final class CanonicalRecordingGateway implements CanonicalMessageGateway {
+        private long messageId;
+
+        @Override
+        public long create(long channelId, CanonicalResultMessage message) {
+            assertThat(channelId).isEqualTo(CHANNEL_ID);
+            assertThat(message.publicationKey()).startsWith("gridwords-result-");
+            messageId = 8_000L;
+            return messageId;
+        }
+
+        @Override
+        public void edit(long channelId, long existingMessageId, CanonicalResultMessage message) {
+            throw new AssertionError("initial canonical publication must create its message");
+        }
+
+        @Override
+        public OptionalLong findByPublicationKey(long channelId, String publicationKey) {
+            return messageId == 0 ? OptionalLong.empty() : OptionalLong.of(messageId);
+        }
+
+        @Override
+        public void delete(long channelId, long existingMessageId) {
+            throw new AssertionError("initial canonical publication must not delete a message");
+        }
     }
 
     private void seedPlayerAndFiveResultComparisonBasis() {

@@ -83,11 +83,14 @@ class PostgresPersistenceAdapterIT {
         SubmissionStore.StoredSubmission stored = adapter.storeResult(new SubmissionStore.ResultStorage(900L, initial));
         assertEquals(SubmissionStore.SubmissionState.RESULT_STORED, stored.state());
         long id = stored.gameResultId().orElseThrow();
+        assertEquals(0L, gameResultVersion(id));
         adapter.setCanonicalMessageId(id, 777L);
+        assertEquals(0L, gameResultVersion(id));
         GameResultStore.StoredGameResult corrected = adapter.upsert(result(2, "correction"));
         assertEquals(id, corrected.id());
         assertEquals(777L, corrected.canonicalMessageId().orElseThrow());
         assertEquals(2, ((ShareOutcome.Solved) corrected.parsedResult().outcome()).attemptsUsed());
+        assertEquals(1L, gameResultVersion(id));
     }
 
     @Test
@@ -613,6 +616,7 @@ class PostgresPersistenceAdapterIT {
                 .orElseThrow();
         assertEquals(Boolean.TRUE, transactions.execute(status -> adapter.completeCanonicalPublication(
                 sourceMessageId, resultId, 5682L, publicationClaim.token())));
+        assertEquals(0L, gameResultVersion(resultId));
 
         adapter.requestCanonicalRefresh(resultId);
         SubmissionStore.CanonicalRefreshCandidate firstRefresh = adapter.findCanonicalRefreshCandidates().stream()
@@ -639,6 +643,7 @@ class PostgresPersistenceAdapterIT {
                 adapter.completeCanonicalRefresh(sourceMessageId, resultId, 5682L, secondClaim.token(),
                         secondRefresh.refreshGeneration())));
         assertTrue(adapter.findCanonicalRefreshCandidates().isEmpty());
+        assertEquals(0L, gameResultVersion(resultId));
     }
     @Test
     void reconstructsRetryableGridWordsSubmissionsForStartupRecovery() {
@@ -1104,5 +1109,9 @@ class PostgresPersistenceAdapterIT {
                 FROM information_schema.columns
                 WHERE table_name = 'game_result' AND column_name = 'canonical_publish_claim_token'
                 """, Integer.class));
+    }
+
+    private long gameResultVersion(long resultId) {
+        return jdbc.queryForObject("SELECT version FROM game_result WHERE id = ?", Long.class, resultId);
     }
 }

@@ -536,7 +536,7 @@ public class PostgresExcuseStateStore implements ExcuseStateStore {
         int changed = jdbc.update("""
                 UPDATE game_result
                 SET canonical_refresh_required = TRUE, canonical_refresh_generation = canonical_refresh_generation + 1,
-                    updated_at = ?, version = version + 1
+                    updated_at = ?
                 WHERE id = ?
                 """, utc(now), gameResultId);
         if (changed != 1) {

@@ -125,7 +125,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
             throw new IllegalArgumentException("IDs must be positive");
         }
         StoredGameResult result = jdbc.queryForObject("""
-                UPDATE game_result SET canonical_message_id = ?, updated_at = ?, version = version + 1
+                UPDATE game_result SET canonical_message_id = ?, updated_at = ?
                 WHERE id = ? RETURNING *
                 """, RESULT, canonicalMessageId, databaseTime(clock.instant()), resultId);
         if (result == null) {
@@ -600,7 +600,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                 UPDATE game_result
                 SET canonical_refresh_required = TRUE,
                     canonical_refresh_generation = canonical_refresh_generation + 1,
-                    updated_at = ?, version = version + 1
+                    updated_at = ?
                 WHERE id = ? AND canonical_publish_claim_token = ?
                 RETURNING canonical_refresh_generation
                 """, rs -> rs.next() ? rs.getLong(1) : null,
@@ -674,7 +674,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         int changed = jdbc.update("""
                 UPDATE game_result
                 SET canonical_refresh_required = TRUE, canonical_refresh_generation = canonical_refresh_generation + 1,
-                    updated_at = ?, version = version + 1
+                    updated_at = ?
                 WHERE id = ?
                 """, databaseTime(clock.instant()), resultId);
         if (changed != 1) {
@@ -716,7 +716,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                         ELSE TRUE
                     END,
                     canonical_publish_lease_until = NULL, canonical_publish_claim_token = NULL,
-                    updated_at = ?, version = version + 1
+                    updated_at = ?
                 WHERE id = ? AND canonical_publish_claim_token = ?
                 RETURNING canonical_refresh_required
                 """, rs -> rs.next() ? rs.getBoolean(1) : null,
@@ -773,7 +773,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
             claimedResult = jdbc.update("""
                     UPDATE game_result
                     SET canonical_message_id = ?, canonical_publish_lease_until = NULL,
-                        canonical_publish_claim_token = NULL, updated_at = ?, version = version + 1
+                        canonical_publish_claim_token = NULL, updated_at = ?
                     WHERE id = ? AND canonical_publish_claim_token = ?
                     """, canonicalMessageId, databaseTime(now), resultId, claimToken);
         } else {
@@ -785,7 +785,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                             WHEN canonical_refresh_generation = ? AND ? = FALSE THEN FALSE
                             ELSE TRUE
                         END,
-                        updated_at = ?, version = version + 1
+                        updated_at = ?
                     WHERE id = ? AND canonical_publish_claim_token = ?
                     """, canonicalMessageId, deliveryGeneration, otherOutstanding,
                     databaseTime(now), resultId, claimToken);
