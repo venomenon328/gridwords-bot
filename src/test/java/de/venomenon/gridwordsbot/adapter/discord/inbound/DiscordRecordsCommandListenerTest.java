@@ -50,9 +50,10 @@ class DiscordRecordsCommandListenerTest {
         assertThat(query.getValue().targetPlayerId()).isEmpty();
         assertThat(query.getValue().requesterAdministrator()).isFalse();
         assertThat(query.getValue().game()).isEqualTo(RecordsQueryUseCase.GameFilter.ALL);
+        verify(fixture.event()).replyEmbeds(any(MessageEmbed.class));
         verify(fixture.reply()).setEphemeral(true);
         verify(fixture.reply()).setAllowedMentions(List.of());
-        verify(fixture.reply()).queue();
+        verify(fixture.reply()).queue(any());
     }
 
     @Test
@@ -130,7 +131,7 @@ class DiscordRecordsCommandListenerTest {
         when(actor.getIdLong()).thenReturn(actorId);
         when(actor.getName()).thenReturn("actor");
         when(member.getEffectiveName()).thenReturn(effectiveName);
-        when(event.replyEmbeds(org.mockito.ArgumentMatchers.<MessageEmbed>anyCollection())).thenReturn(reply);
+        when(event.replyEmbeds(any(MessageEmbed.class))).thenReturn(reply);
         when(reply.setEphemeral(true)).thenReturn(reply);
         when(reply.setAllowedMentions(anyCollection())).thenReturn(reply);
         return new EventFixture(event, reply);
