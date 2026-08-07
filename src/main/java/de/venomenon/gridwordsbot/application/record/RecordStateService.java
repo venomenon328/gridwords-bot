@@ -420,11 +420,14 @@ public class RecordStateService {
     }
 
     /**
-     * A running state identifies the active candidate, but only a still-valid
-     * SERIES_RECORD_CROSSED audit fact proves that this candidate has already
-     * consumed its one public live crossing. Bootstrap materialization itself
-     * is deliberately silent and must not suppress the first later strict
-     * crossing of a run that merely tied the historical record at startup.
+     * A running state identifies the active candidate. A valid live crossing
+     * event is the normal durable consumption proof. The bootstrap anchor is
+     * an additional proof only when it initialized the very same running run:
+     * that means the run was already the canonical best at silent bootstrap
+     * and must not emit a retroactive crossing on a later extension. If a
+     * running run merely tied the historical record, bootstrap canonically
+     * keeps the earlier completed source, so its first later strict crossing
+     * remains unconsumed and is announced.
      */
     public Set<StreakCrossingKey> consumedCrossings(
             long guildId,
@@ -432,10 +435,8 @@ public class RecordStateService {
         return states(guildId, version).stream()
                 .filter(RecordStateSnapshot::running)
                 .filter(state -> state.source() instanceof RecordSourceReference.StreakRun)
-                .filter(state -> eventStore.findBySource(guildId, state.source()).stream()
-                        .anyMatch(event -> event.validity() == RecordEventValidity.VALID
-                                && event.draft().type() == RecordEventType.SERIES_RECORD_CROSSED
-                                && event.draft().stateKey().equals(state.key())))
+                .filter(state -> hasValidCrossingFact(guildId, state)
+                        || bootstrapInitializedSameRunningSource(guildId, version, state))
                 .map(state -> {
                     RecordSourceReference.StreakRun source =
                             (RecordSourceReference.StreakRun) state.source();
@@ -451,6 +452,30 @@ public class RecordStateService {
                             new StreakRunIdentity(source.metric(), owner, source.startDate()));
                 })
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
+    private boolean hasValidCrossingFact(long guildId, RecordStateSnapshot state) {
+        return eventStore.findBySource(guildId, state.source()).stream()
+                .anyMatch(event -> event.validity() == RecordEventValidity.VALID
+                        && event.draft().type() == RecordEventType.SERIES_RECORD_CROSSED
+                        && event.draft().stateKey().equals(state.key()));
+    }
+
+    private boolean bootstrapInitializedSameRunningSource(
+            long guildId,
+            de.venomenon.gridwordsbot.domain.record.RecordDefinitionVersion version,
+            RecordStateSnapshot state) {
+        String stable = guildId + ":" + version.value() + ":"
+                + state.key().definitionKey().value() + ":" + state.key().scopeKey();
+        UUID anchorId = UUID.nameUUIDFromBytes(stable.getBytes(StandardCharsets.UTF_8));
+        return eventStore.find(anchorId)
+                .filter(event -> event.validity() == RecordEventValidity.VALID)
+                .map(RecordEventSnapshot::draft)
+                .filter(draft -> draft.type() == RecordEventType.RECORD_INITIALIZED)
+                .filter(draft -> draft.processingOrigin() == RecordProcessingOrigin.BOOTSTRAP)
+                .filter(draft -> draft.stateKey().equals(state.key()))
+                .filter(draft -> draft.newSource().equals(state.source()))
+                .isPresent();
     }
 
     private static boolean same(RecordStateSnapshot state, RecordStateWrite write) {
