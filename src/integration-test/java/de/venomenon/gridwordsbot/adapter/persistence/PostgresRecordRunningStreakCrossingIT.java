@@ -11,7 +11,7 @@ import de.venomenon.gridwordsbot.domain.record.RecordAnnouncementProjection;
 import de.venomenon.gridwordsbot.domain.record.RecordDefinitionCatalog;
 import de.venomenon.gridwordsbot.domain.record.RecordDefinitionVersion;
 import de.venomenon.gridwordsbot.domain.record.RecordLeaseClaimRequest;
-import de.venomenon.gridwordsbot.domain.record.RecordTransactionRunner;
+import de.venomenon.gridwordsbot.port.out.RecordTransactionRunner;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
