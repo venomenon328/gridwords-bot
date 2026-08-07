@@ -4,25 +4,26 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 ## Aktueller Stand
 
-Der funktionale Umfang bis einschließlich **Inkrement 11** ist implementiert, gemergt, automatisiert geprüft, auf einem separaten Discord-Testserver real abgenommen und produktiv ausgerollt.
+Der funktionale Umfang bis einschließlich **Inkrement 12** ist implementiert, nach `main` gemergt, automatisiert geprüft und auf einem separaten Discord-Testserver repräsentativ real abgenommen.
 
-Der aktuelle Produktionsrelease ist **Version 1.2.0**. Er basiert auf dem nach `main` gemergten Inkrement 11 und aktiviert die kontextabhängigen Ausreden bewusst über die serverseitige, nicht versionierte Laufzeitkonfiguration.
+Der aktuelle Produktionsrelease ist weiterhin **Version 1.2.0**. Er basiert auf Inkrement 11 und aktiviert die kontextabhängigen Ausreden bewusst über die serverseitige, nicht versionierte Laufzeitkonfiguration.
 
-**Inkrement 12 – Rekorde und Rekordmeldungen** ist technisch umgesetzt und wird in einem Draft-PR gegen Issue #83 end-to-end gehärtet. Der Umfang bleibt bis zur dokumentierten realen Discord-Abnahme, unabhängigen PR-Abnahme und einem separaten RC-Schritt unveröffentlicht; die Produktionsversion bleibt 1.2.0.
+**Inkrement 12 – Rekorde und Rekordmeldungen** ist mit PR #84 abgeschlossen und nach `main` gemergt. Der Umfang bleibt bis zum separaten RC- und Produktionsschritt unveröffentlicht; die Produktionsversion bleibt bis dahin 1.2.0.
 
 Der abgenommene Stand umfasst:
 
-- 582 Standardtests ohne externe Infrastruktur,
+- einen vollständigen grünen Standardbuild ohne externe Infrastruktur,
 - eine grüne PostgreSQL-Integrationsmatrix mit echtem PostgreSQL,
 - grüne GitHub-CI für Standardbuild und Datenbankintegration,
 - ein erfolgreiches Produktionscontainer-, Compose-, Backup-, Restore-, Resume- und Rollback-Gate,
-- reale Discord-Abnahmen für Commands, spielbezogene Teilnahme, Tagesstatus, Menüs, Reminder, Recovery, Reports und kontextabhängige Ausreden,
-- einen erfolgreichen produktiven Rollout des unveränderlichen SHA-Images.
+- reale Discord-Abnahmen für Commands, spielbezogene Teilnahme, Tagesstatus, Menüs, Reminder, Recovery, Reports, kontextabhängige Ausreden und die risikoreichen Record-/Reconciliation-Pfade,
+- einen erfolgreichen produktiven Rollout des unveränderlichen 1.2.0-SHA-Images; Inkrement 12 folgt nach separater RC-Abnahme.
 
 Abnahmeprotokolle:
 
 - [`docs/operations/10.6-game-specific-participation-acceptance.md`](docs/operations/10.6-game-specific-participation-acceptance.md)
 - [`docs/operations/11-contextual-excuses-acceptance.md`](docs/operations/11-contextual-excuses-acceptance.md)
+- [`docs/operations/12-records-acceptance.md`](docs/operations/12-records-acceptance.md)
 
 ## Fachlicher Funktionsumfang
 
@@ -50,12 +51,16 @@ Der Bot unterstützt insbesondere:
 - jeweils drei private Ausredenvorschläge, einen einmaligen Stilwechsel, Auswahl oder Verzicht,
 - Übernahme ausschließlich des gewählten Textes in dieselbe kanonische Ergebnisnachricht,
 - Ablauf, Cooldown und Wiederholungsschutz für Ausreden,
+- historische persönliche, serverweite individuelle und gemeinsame Rekorde für Ergebnisse und Serien,
+- aggregierte, korrigierbare Rekordmeldungen mit Edit/Delete-Reconciliation,
+- den ephemeren, strikt lesenden `/records`-Command mit `game`, `category` und optionaler Admin-Fremdansicht,
+- persistente Record-Bootstrap-, Live-, Day-Close-, Delivery-, Retry- und Restart-Recovery,
 - Claim-, Lease-, Retry-, Recovery-, Supersession- und Duplikatschutz,
 - keine Discord-I/O innerhalb von Datenbanktransaktionen.
 
 Standardzeitzone ist `Europe/Berlin`.
 
-Die früher vorgemerkten allgemeinen Inkremente für Statistik-/Konfigurations-Commands und generische regelbasierte Kommentare werden nicht weiterverfolgt. Als nächstes verbindlich vorbereitetes Produktinkrement folgt Inkrement 12 mit einem ausdrücklich begrenzten Rekordkern statt einer allgemeinen Kommentar- oder Regelplattform.
+Die früher vorgemerkten allgemeinen Inkremente für Statistik-/Konfigurations-Commands und generische regelbasierte Kommentare werden nicht weiterverfolgt. Inkrement 12 ist abgeschlossen; der nächste Schritt ist die separate RC-, Release- und Produktionsvorbereitung.
 
 ## Projektdokumentation
 
@@ -76,10 +81,10 @@ Die früher vorgemerkten allgemeinen Inkremente für Statistik-/Konfigurations-C
 - [`docs/increments/10.5-interactive-result-details.md`](docs/increments/10.5-interactive-result-details.md) – interaktive Ergebnisdetails
 - [`docs/increments/10.6-game-specific-participation.md`](docs/increments/10.6-game-specific-participation.md) – unabhängige Spielteilnahme
 - [`docs/increments/11-contextual-excuses.md`](docs/increments/11-contextual-excuses.md) – abgeschlossenes Inkrement 11
-- [`docs/increments/12-records.md`](docs/increments/12-records.md) – vorbereitete Entwicklungspakete für Inkrement 12
-- [`docs/operations/12-records-acceptance.md`](docs/operations/12-records-acceptance.md) – technische Nachweise, reale Discord-Abnahme und RC-Sperre für Inkrement 12
+- [`docs/increments/12-records.md`](docs/increments/12-records.md) – abgeschlossenes Inkrement 12
+- [`docs/operations/12-records-acceptance.md`](docs/operations/12-records-acceptance.md) – technische und reale Discord-Abnahme für Inkrement 12
 - [`docs/operations/12-records-operations.md`](docs/operations/12-records-operations.md) – Bootstrap-, Delivery-, Recovery- und Rollback-Runbook
-- [`docs/operations/12-records-release-notes.md`](docs/operations/12-records-release-notes.md) – unveröffentlichte Release Notes für Inkrement 12
+- [`docs/operations/12-records-release-notes.md`](docs/operations/12-records-release-notes.md) – Releasevorbereitung für Inkrement 12
 - [`docs/operations/`](docs/operations/) – Abnahmen, Betrieb, Deployment, Backup und Fehlerdiagnose
 - [`docs/adr/`](docs/adr/) – Architekturentscheidungen
 - [`AGENTS.md`](AGENTS.md) – Arbeitsregeln für Codex und Reviews
@@ -143,6 +148,14 @@ RECORD_LIVE_EVALUATION_LEASE_DURATION=PT2M
 RECORD_LIVE_EVALUATION_HEARTBEAT_INTERVAL=PT30S
 RECORD_LIVE_EVALUATION_INITIAL_RETRY_BACKOFF=PT10S
 RECORD_LIVE_EVALUATION_MAX_RETRY_BACKOFF=PT5M
+
+# Öffentliche Rekordmeldungen; für den ersten Produktionsstart bewusst false.
+RECORD_PUBLIC_ANNOUNCEMENTS_ENABLED=false
+RECORD_ANNOUNCEMENT_POLL_DELAY=PT10S
+RECORD_ANNOUNCEMENT_LEASE_DURATION=PT2M
+RECORD_ANNOUNCEMENT_HEARTBEAT_INTERVAL=PT30S
+RECORD_ANNOUNCEMENT_INITIAL_RETRY_BACKOFF=PT10S
+RECORD_ANNOUNCEMENT_MAX_RETRY_BACKOFF=PT5M
 ```
 
 Der versionierte Default der Ausreden bleibt bewusst deaktiviert. Für einen lokalen Discord-Test kann `EXCUSE_GENERATOR_CONTEXTUAL_ENABLED=true` in der nicht versionierten `.env` gesetzt werden.
@@ -150,6 +163,8 @@ Der versionierte Default der Ausreden bleibt bewusst deaktiviert. Für einen lok
 Der Rekord-Bootstrap pollt persistente fällige Arbeit. Der Poll-Delay muss wegen der Scheduler-Auflösung mindestens `PT0.001S` betragen; Lease und Retry-Backoff müssen positiv sein. Die Defaults entsprechen dem bisherigen Verhalten: Poll und Retry jeweils eine Minute, Lease zwei Minuten. Im Produktionsprofil stellt der ausschließlich lokal gebundene Actuator die Bootstrap-Metriken unter `/actuator/metrics/gridwords.record.bootstrap.runs` und `/actuator/metrics/gridwords.record.bootstrap.duration` bereit.
 
 Die Live-Rekordauswertung ist standardmäßig aktiviert und claimt jeweils genau einen persistenten Ergebnisversionsauftrag. Ihr Poll-Delay beträgt mindestens `PT0.001S`; Heartbeat und Lease müssen positiv sein, der Heartbeat strikt kürzer als die Lease. Retry-Backoff wird von `RECORD_LIVE_EVALUATION_INITIAL_RETRY_BACKOFF` bis höchstens `RECORD_LIVE_EVALUATION_MAX_RETRY_BACKOFF` exponentiell begrenzt. Der lokale Actuator stellt die abgeschlossenen Ausführungen unter `/actuator/metrics/gridwords.record.live-evaluation.runs` und `/actuator/metrics/gridwords.record.live-evaluation.duration` bereit.
+
+Öffentliche Rekordmeldungen sind standardmäßig deaktiviert. Für einen Produktivrollout wird zuerst mit `RECORD_PUBLIC_ANNOUNCEMENTS_ENABLED=false` migriert und der Bootstrap-/`/records`-Stand geprüft; erst danach wird die Variable bewusst aktiviert. Während der deaktivierten Phase entstandene Meldungen werden nicht als Backlog nachgeliefert.
 
 ## Lokale Validierung
 
