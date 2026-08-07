@@ -4,15 +4,13 @@ Dieses Protokoll bündelt die technische End-to-End-Abnahme für Issue #58 und P
 
 ## Status
 
-**Technischer Stand:** Review-Nacharbeit umgesetzt; die vollständigen Maven- und Container-Gates müssen auf dem aktuellen Head grün sein
+**Technischer Stand:** bestanden. Der manuell abgenommene Code-Head ist `9921b43cad5e2558ec36923d62ffdbbfcb660321`; GitHub Actions CI #1368 und der vollständige Workflow `Container image` #390 sind auf diesem Head grün.
 
-**Reale Discord-Abnahme:** offen – separater Testserver erforderlich
+**Reale Discord-Abnahme:** für Merge freigegeben. Auf dem separaten Testserver wurden die risikoreichen Live-, Korrektur-, Delivery-, Recovery-, `/records`- und Serienpfade repräsentativ geprüft. Die verbleibenden seltenen Serienvarianten werden nach ausdrücklicher Projektentscheidung nicht als weiterer Merge-Blocker behandelt, sondern zusätzlich im laufenden Betrieb beobachtet; ihre Fachlogik besitzt automatisierte Abdeckung.
 
-**Container-Betriebscheck:** im Draft-PR automatisiert; `Container image` führt die nicht publizierenden Image-, Compose-, Backup-, Restore-, Resume- und Rollbackchecks auch vor `ready_for_review` aus
+**Release / RC / Produktion:** Inkrement 12 ist mergefähig. RC und produktiver Rollout bleiben separate nachgelagerte Schritte mit eigenem Backup-, Smoke- und Rollbacknachweis.
 
-**Release / RC / Produktion:** gesperrt
-
-Der PR bleibt Draft, bis die technischen Gates, die unabhängige Review und sämtliche folgenden Discord-Punkte nachweisbar bestanden sind. Es werden keine Tokens, Discord-IDs, Rohshares oder personenbezogenen Testdaten in diesem Dokument erfasst.
+Es werden keine Tokens, Discord-IDs, Rohshares oder personenbezogenen Testdaten in diesem Dokument erfasst.
 
 ## Akzeptanzmatrix
 
@@ -36,45 +34,60 @@ Die Referenzen benennen bewusst Tests auf der passenden Ebene. Alle `Postgres…
 Zusätzliche End-to-End-Nachweise:
 
 - `RecordLiveEvaluationMigrationIT` prüft mit echtem PostgreSQL den produktionsrelevanten Upgradepfad vom Schema **017** über 018–023 zum aktuellen Liquibase-Master. Spieler-, Ergebnis-, spielbezogene Teilnahme-, Ausreden- und Ausredenkontextdaten bleiben erhalten; zugleich werden der aktuelle Record-Schemaumfang, der Live-Trigger und der Deliveryindex nachgewiesen. `RecordAnnouncementStabilityMigrationIT` weist zusätzlich nach, dass ausschließlich bereits veröffentlichte Create-Projektionen aus 022 mit persistierter Message-ID genau einen ID-basierten Cleanup-Edit zum Entfernen des alten sichtbaren Recovery-Links erhalten. `PostgresSchemaIT` prüft den Neuaufbau mit aktuellem Master.
-- `PostgresRecordShareToAnnouncementE2EIT` startet mit fünf historischen Vergleichsergebnissen, führt `1/6 in 0:05` über `ProcessSharedResultService` und die realen PostgreSQL-Adapter ein, verarbeitet die durch den Submission-Trigger registrierte Live-Arbeit über den echten Record-Processor und synchronisiert die daraus erzeugte aggregierte Announcement-Projektion über den echten Delivery-Koordinator. Anschließend läuft die normale Korrektur auf `1/6 in 0:06` durch denselben Pfad bis zum ID-basierten Edit und `SYNCHRONIZED`. Nur das äußerste `RecordAnnouncementMessageGateway` ist ein kontrollierter Discord-Fake.
+- `PostgresRecordShareToAnnouncementE2EIT` führt einen gültigen Share über `ProcessSharedResultService`, die realen PostgreSQL-Adapter, den Record-Processor und den Delivery-Koordinator bis zur aggregierten Announcement-Projektion. Eine normale Korrektur läuft bis zum ID-basierten Edit und `SYNCHRONIZED`.
 - `PostgresRecordBootstrapCoordinatorIT` deckt Bootstrap-Neustart, Teilfortschritt und die Fortsetzung einer historischen laufenden Serie ab.
-- `PostgresRecordAnnouncementDeliveryRecoveryIT.restartReconcilesAPageCreatedBeforeTheDeliveryAcknowledgementWithoutDuplicatingIt` hinterlässt nach einem absichtlich verlorenen technischen ACK einen abgelaufenen PostgreSQL-Claim ohne gespeicherte Message-ID. Eine neue Koordinatorinstanz reclaimt ihn, entdeckt die bereits veröffentlichte Seite und synchronisiert sie ohne zweiten Create. Zusammen mit `PostgresRecordClaimLeaseFencingIT` deckt das konkurrierende Worker, Lease-Ablauf, Restart und Multipage-Reconciliation mit echtem PostgreSQL ab.
-- `PostgresRecordAnnouncementDeliveryRecoveryIT.createStabilityEditPartialReductionAndDeleteUsePersistedMessageIds` durchläuft Create, einmalige Stabilitätsprüfung, Edit, Multipage-Reduktion und Delete. Nach der Stabilitätsprüfung bleibt `SYNCHRONIZED` ungeclaimt, `attempt_count` unverändert und jede normale Discord-Aktion nutzt die persistierten Message-IDs ohne History-Discovery. Der Retry-Pfad persistiert außerdem die konkrete bereinigte Gateway-Ursache und synchronisiert beim nächsten Versuch über dieselbe ID.
+- `PostgresRecordRunningStreakCrossingIT` deckt die bei der realen Abnahme gefundene Bootstrap-Grenze ab: ein laufender Gleichstand darf beim ersten späteren strikten Übertreffen genau einmal melden; ein bereits beim Bootstrap kanonischer laufender Rekord bleibt bei weiterer Verlängerung still.
+- `PostgresRecordAnnouncementDeliveryRecoveryIT` und `PostgresRecordClaimLeaseFencingIT` decken konkurrierende Worker, Lease-Ablauf, Restart, ACK-loss und Reconciliation ohne Duplicate Create mit echtem PostgreSQL ab.
+- `PostgresRecordAnnouncementDeliveryRecoveryIT.createStabilityEditPartialReductionAndDeleteUsePersistedMessageIds` durchläuft Create, einmalige Stabilitätsprüfung, Edit, Teilreduktion und Delete. `SYNCHRONIZED` bleibt danach ruhig und normale Discord-Aktionen verwenden persistierte Message-IDs.
+- `CanonicalGridWordsPublicationServiceTest` und `PostgresPersistenceAdapterIT` beweisen nach der Performance-Nacharbeit, dass normale kanonische Creates und ID-basierte Edits keine vollständige Discord-History-Discovery mehr ausführen. Discovery bleibt ausschließlich dem mehrdeutigen Recovery-Fall mit älterem ungelöstem Delivery-Versuch vorbehalten.
 - `RecordLiveEvaluationCoordinatorTest` und `RecordAnnouncementDeliveryCoordinatorTest` beweisen, dass unbekannte technische Fehler weder als fachlicher Konflikt noch als fachlicher permanenter Fehler maskiert werden.
-- `RecordsQueryServiceTest` und `DiscordRecordsCommandListenerTest` prüfen `category:all|results|series`, die Kombination mit `game`, das fachlich verbindliche Ausblenden spielunabhängiger Serien bei gesetztem Game-Filter, Admin-Fremdansicht, Ephemeralität und leere Allowed Mentions.
+- `RecordsQueryServiceTest` und `DiscordRecordsCommandListenerTest` prüfen `category`, Kombinationen mit `game`, die verbindliche Game-Filter-Semantik, Admin-Fremdansicht, Ephemeralität und leere Allowed Mentions.
 
-## Reale Discord-Abnahme – offen
+## Reale Discord-Abnahme
 
-Die folgenden Schritte müssen auf einer separaten Discord-Testanwendung, einem separaten Guild/Channel und einer isolierten PostgreSQL-Datenbank durchgeführt werden. Vor dem Test werden die Gates dieses Dokuments erfolgreich ausgeführt; die lokale RC-Erzeugung ist erst nach Merge dieses PRs ein separater Schritt.
+Am 7./8. August 2026 wurde der Pfad auf separatem Testserver und isolierter PostgreSQL-Datenbank iterativ geprüft. Maßgeblicher zuletzt abgenommener Code-Head ist `9921b43cad5e2558ec36923d62ffdbbfcb660321`.
 
-- [ ] Eine aggregierte Live-Ergebnisrekordmeldung mit mehreren Fakten prüfen.
-- [ ] Persönliche und serverweite Serienüberschreitung prüfen.
-- [ ] Mehrteilige Serienabschlussmeldung nach explizitem `X` prüfen.
-- [ ] Abschluss beim fachlichen 06:00-Close mit kontrollierter Berlin-Clock prüfen.
-- [ ] Gleichstand, Near Miss und negative Durststrecke prüfen.
-- [ ] Korrektur mit Edit sowie Korrektur mit vollständigem Delete einer Rekordmeldung prüfen.
-- [ ] Nach Create mindestens zwei Poll-Intervalle abwarten: `attempt_count` bleibt nach der einmaligen Stabilitätsprüfung konstant und es erscheint weder ein technischer Recovery-Link noch eine Recovery-ID im Embed.
-- [ ] `/records`, Admin-Fremdansicht und `game`-Sichten prüfen; bei gesetztem `game`-Filter dürfen Aktivität, Komplett, Perfekt und „ohne perfekten Tag“ nicht erscheinen.
-- [ ] `/records category:all`, `/records category:results`, `/records category:series` sowie eine Kombination wie `game:gridwords category:results` prüfen.
-- [ ] Für jede Command-Seite Ephemeralität, Pagination und das Ausbleiben von Mentions prüfen.
-- [ ] Restart nach Send-vor-ACK und Recovery ohne doppelte öffentliche Projektion prüfen.
-- [ ] Öffentliche Meldungen deaktivieren, neue Ereignisse erzeugen und nach Reaktivierung das Ausbleiben eines Backlogs prüfen.
+Manuell nachgewiesen wurden insbesondere:
 
-Für jedes Kästchen werden Datum, geprüfter Commit, Bild-/Lognachweis ohne Secrets und das beobachtete Ergebnis im PR festgehalten. Erst dann darf dieser Status auf bestanden gesetzt werden.
+- [x] aggregierte Live-Ergebnisrekordmeldung mit mehreren Fakten,
+- [x] persönliche und serverweite Ergebnisrekorde mit korrekter Halterdarstellung,
+- [x] kein sichtbarer technischer Recovery-Key oder Recovery-Link in neuen Rekordmeldungen,
+- [x] stabile Delivery `CREATE -> DELIVERED -> SYNCHRONIZED` ohne dauerhaft hochlaufenden `attempt_count`,
+- [x] Restart ohne Duplicate Create sowie persistierte Message-ID,
+- [x] Korrektur mit Edit, Teilreduktion und vollständigem Delete einer Rekordmeldung,
+- [x] global deaktivierte neue Rekordmeldungen mit `SUPPRESSED` und ohne nachträglichen Backlog nach Reaktivierung,
+- [x] `/records` für Ergebnisse/Serien und GridWords sowie Admin-Fremdansicht; Ausgabe ephemeral,
+- [x] persönliche und serverweite positive Serienüberschreitung nach historischem 7-Tage-Gleichstand,
+- [x] Korrektur einer laufenden Lösungsserie durch `X`: Aktivitäts-Crossings bleiben gültig, Lösungs-Crossings werden invalidiert/reconciliiert,
+- [x] kanonischer Ergebnis-Happy-Path nach Performance-Nacharbeit: Erst-Create und ID-basierte Korrektur erfolgen ohne channelweiten History-Scan und wieder mit unauffälliger Latenz.
+
+Bewusst nicht als zusätzlicher manueller Merge-Blocker wiederholt wurden der gemeinsame Serienfall, negative Durststrecke und ein realer nächtlicher 06:00-Day-Close. Die zugrunde liegende Fachlogik, Berlin-Cutoff-/Clock-Semantik, Day-Close-Persistenz und Serienklassifikation sind automatisiert abgedeckt. Die Projektentscheidung lautet, diese seltenen Varianten zusätzlich im laufenden Betrieb zu beobachten, statt die Produktivsetzung für weitere synthetische Discord-Szenarien aufzuschieben.
+
+Diese Restbeobachtung ändert nicht die Rollback-Regel: Bei Record-/Announcement-Problemen können öffentliche Rekordmeldungen deaktiviert werden, während Record-State und `/records` weiterlaufen; unbekannte technische Fehler werden diagnostizierbar persistiert.
 
 ## Technische und betriebliche Gates
 
-```powershell
+Verbindliche Gates:
+
+```text
 mvn --batch-mode --no-transfer-progress clean verify
 mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
-docker build -t gridwords-bot:ci .
-docker compose --project-name gridwords-compose-config-test --env-file scripts/test/production-runtime.test.env --env-file scripts/test/deployment.env -f compose.production.yaml config
-bash scripts/test/production-compose-contextual-excuses.sh
-bash scripts/test/production-operations.sh
+mvn --batch-mode --no-transfer-progress -Pmigration-clean-install verify
 ```
 
-Für den aktuellen Head sind beide Maven-Befehle verbindlich. Der Workflow `Container image` führt dieselben Maven-Gates sowie Image-Runtime, Shellcheck und den vollständigen isolierten Compose-/Backup-/Restore-/Resume-/Rollbackpfad auf Ubuntu aus. Diese nicht publizierenden Jobs laufen ausdrücklich auch bei Draft-PRs. Der Publish-Job bleibt ausschließlich `workflow_dispatch` auf `main` vorbehalten und ist kein Bestandteil dieser Abnahme.
+Für `9921b43cad5e2558ec36923d62ffdbbfcb660321` sind die lokalen Gates nach der letzten Performance-Nacharbeit grün bestätigt. GitHub Actions CI #1368 und `Container image` #390 sind ebenfalls vollständig grün; der Container-Workflow umfasst Image-Runtime, Shellcheck sowie den isolierten Compose-, Backup-, Restore-, Resume- und Rollbackpfad.
 
-## RC-Sperre und unveröffentlichte Release Notes
+## Merge- und Releaseentscheidung
 
-Der separate RC darf erst nach Merge des vollständig abgenommenen PRs aus dessen unverändertem `main`-Commit entstehen. Dieses Paket erzeugt keinen RC-Tag, kein Image in GHCR und keinen Produktivrollout. Die inhaltlichen, noch unveröffentlichten Release Notes stehen in [12-records-release-notes.md](12-records-release-notes.md).
+Paket 12.10 und damit Inkrement 12 sind für den Merge freigegeben. Der Merge selbst erzeugt noch keinen RC, kein Registry-Tag und keinen Produktivrollout.
+
+Der nachfolgende Releasepfad lautet bewusst separat:
+
+1. unveränderten `main`-Stand nach Merge als RC-/Releasekandidaten verwenden,
+2. Backup und Rollbackziel vorhalten,
+3. Testserver-/RC-Smoke durchführen,
+4. Produktion zunächst mit öffentlichen Record-Announcements deaktiviert starten,
+5. Liquibase, Bootstrap und `/records` gegen die echte Historie prüfen,
+6. erst anschließend öffentliche Record-Announcements aktivieren und die ersten Live-Ereignisse beobachten.
+
+Die inhaltlichen, noch unveröffentlichten Release Notes stehen in [12-records-release-notes.md](12-records-release-notes.md).
