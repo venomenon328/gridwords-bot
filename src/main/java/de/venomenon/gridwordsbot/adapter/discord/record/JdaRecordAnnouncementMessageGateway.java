@@ -2,7 +2,11 @@ package de.venomenon.gridwordsbot.adapter.discord.record;
 
 import de.venomenon.gridwordsbot.application.record.RenderedRecordAnnouncementPage;
 import de.venomenon.gridwordsbot.port.out.RecordAnnouncementMessageGateway;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -19,7 +23,10 @@ import net.dv8tion.jda.api.requests.ErrorResponse;
 
 /** JDA-only adapter for record-announcement pages. */
 public final class JdaRecordAnnouncementMessageGateway implements RecordAnnouncementMessageGateway {
-    private static final Pattern FOOTER = Pattern.compile("(record-announcement:[0-9a-f]{64})\\|page:([1-9]\\d*)/([1-9]\\d*)");
+    private static final Pattern LEGACY_FOOTER = Pattern.compile(
+            "(record-announcement:[0-9a-f]{64})\\|page:([1-9]\\d*)/([1-9]\\d*)");
+    private static final String NONCE_PREFIX = "ra:";
+    private static final int NONCE_HASH_BYTES = 11;
     private final JDA jda;
 
     public JdaRecordAnnouncementMessageGateway(JDA jda) { this.jda = Objects.requireNonNull(jda, "jda"); }
@@ -27,7 +34,9 @@ public final class JdaRecordAnnouncementMessageGateway implements RecordAnnounce
     @Override
     public long create(long channelId, RenderedRecordAnnouncementPage page) {
         try {
-            return channel(channelId).sendMessageEmbeds(embed(page)).setAllowedMentions(List.of()).complete().getIdLong();
+            return channel(channelId).sendMessageEmbeds(embed(page))
+                    .setNonce(publicationNonce(publicationKey(page), page.position()))
+                    .setAllowedMentions(List.of()).complete().getIdLong();
         } catch (ErrorResponseException exception) {
             throw classified("record announcement creation failed", exception.getErrorResponse(), exception);
         } catch (MessageGatewayException exception) {
@@ -73,12 +82,20 @@ public final class JdaRecordAnnouncementMessageGateway implements RecordAnnounce
         try {
             MessageHistory history = channel(channelId).getHistory();
             List<PublishedPage> pages = new ArrayList<>();
+            String noncePrefix = publicationNoncePrefix(publicationKey);
             while (true) {
                 List<Message> batch = history.retrievePast(100).complete();
                 for (Message message : batch) {
                     if (!message.getAuthor().equals(jda.getSelfUser())) continue;
-                    footer(message).filter(value -> value.group(1).equals(publicationKey)).ifPresent(match ->
-                            pages.add(new PublishedPage(message.getIdLong(), Integer.parseInt(match.group(2)) - 1)));
+                    Integer noncePosition = noncePosition(message.getNonce(), noncePrefix);
+                    if (noncePosition != null) {
+                        pages.add(new PublishedPage(message.getIdLong(), noncePosition));
+                        continue;
+                    }
+                    legacyFooter(message)
+                            .filter(value -> value.group(1).equals(publicationKey))
+                            .ifPresent(match -> pages.add(
+                                    new PublishedPage(message.getIdLong(), Integer.parseInt(match.group(2)) - 1)));
                 }
                 if (batch.size() < 100) {
                     pages.sort(Comparator.comparingInt(PublishedPage::position).thenComparingLong(PublishedPage::messageId));
@@ -101,16 +118,55 @@ public final class JdaRecordAnnouncementMessageGateway implements RecordAnnounce
     }
 
     private static MessageEmbed embed(RenderedRecordAnnouncementPage page) {
-        return new EmbedBuilder().setTitle(page.title()).setDescription(page.description()).setFooter(page.footer()).build();
+        return new EmbedBuilder().setTitle(page.title()).setDescription(page.description()).build();
     }
 
-    private static java.util.Optional<Matcher> footer(Message message) {
+    private static String publicationKey(RenderedRecordAnnouncementPage page) {
+        Matcher matcher = LEGACY_FOOTER.matcher(page.footer());
+        if (!matcher.matches() || Integer.parseInt(matcher.group(2)) - 1 != page.position()) {
+            throw new IllegalArgumentException("record announcement page marker is invalid");
+        }
+        return matcher.group(1);
+    }
+
+    static String publicationNonce(String publicationKey, int position) {
+        if (position < 0) throw new IllegalArgumentException("position must not be negative");
+        return publicationNoncePrefix(publicationKey) + Integer.toString(position, 36);
+    }
+
+    private static String publicationNoncePrefix(String publicationKey) {
+        Objects.requireNonNull(publicationKey, "publicationKey");
+        byte[] digest = sha256(publicationKey);
+        byte[] shortened = new byte[NONCE_HASH_BYTES];
+        System.arraycopy(digest, 0, shortened, 0, shortened.length);
+        return NONCE_PREFIX + Base64.getUrlEncoder().withoutPadding().encodeToString(shortened) + ":";
+    }
+
+    private static Integer noncePosition(String nonce, String expectedPrefix) {
+        if (nonce == null || !nonce.startsWith(expectedPrefix) || nonce.length() == expectedPrefix.length()) return null;
+        try {
+            int position = Integer.parseInt(nonce.substring(expectedPrefix.length()), 36);
+            return position >= 0 ? position : null;
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private static java.util.Optional<Matcher> legacyFooter(Message message) {
         if (message.getEmbeds().size() != 1) return java.util.Optional.empty();
         String text = java.util.Optional.ofNullable(message.getEmbeds().getFirst().getFooter())
                 .map(MessageEmbed.Footer::getText).orElse(null);
         if (text == null) return java.util.Optional.empty();
-        Matcher matcher = FOOTER.matcher(text);
+        Matcher matcher = LEGACY_FOOTER.matcher(text);
         return matcher.matches() ? java.util.Optional.of(matcher) : java.util.Optional.empty();
+    }
+
+    private static byte[] sha256(String text) {
+        try {
+            return MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
+        }
     }
 
     private static MessageGatewayException classified(String message, ErrorResponse response, Throwable cause) {
