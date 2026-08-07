@@ -33,24 +33,29 @@ import org.mockito.ArgumentCaptor;
 class JdaRecordAnnouncementMessageGatewayTest {
 
     @Test
-    void createsAndEditsPagesWithEmptyAllowedMentions() {
+    void createsAndEditsPagesWithoutVisibleTechnicalMarker() {
         JDA jda = mock(JDA.class);
         TextChannel channel = mock(TextChannel.class);
         MessageCreateAction create = mock(MessageCreateAction.class);
         Message sent = mock(Message.class);
         when(jda.getTextChannelById(12L)).thenReturn(channel);
         when(channel.sendMessageEmbeds(any(MessageEmbed.class))).thenReturn(create);
+        when(create.setNonce(any())).thenReturn(create);
         when(create.setAllowedMentions(any())).thenReturn(create);
         when(create.complete()).thenReturn(sent);
         when(sent.getIdLong()).thenReturn(99L);
         JdaRecordAnnouncementMessageGateway gateway = new JdaRecordAnnouncementMessageGateway(jda);
-        ArgumentCaptor<MessageEmbed> embed = ArgumentCaptor.forClass(MessageEmbed.class);
+        ArgumentCaptor<MessageEmbed> createdEmbed = ArgumentCaptor.forClass(MessageEmbed.class);
+        ArgumentCaptor<String> nonce = ArgumentCaptor.forClass(String.class);
 
         assertThat(gateway.create(12L, page())).isEqualTo(99L);
 
-        verify(channel).sendMessageEmbeds(embed.capture());
-        assertThat(embed.getValue().getTitle()).isEqualTo("Neuer Rekord");
-        assertThat(embed.getValue().getFooter().getText()).contains("record-announcement:", "|page:1/1");
+        verify(channel).sendMessageEmbeds(createdEmbed.capture());
+        assertThat(createdEmbed.getValue().getTitle()).isEqualTo("Neuer Rekord");
+        assertThat(createdEmbed.getValue().getFooter()).isNull();
+        verify(create).setNonce(nonce.capture());
+        assertThat(nonce.getValue()).startsWith("ra:").doesNotContain("record-announcement");
+        assertThat(nonce.getValue().length()).isLessThanOrEqualTo(Message.MAX_NONCE_LENGTH);
         verify(create).setAllowedMentions(Collections.emptyList());
 
         RestAction<Message> lookup = mock(RestAction.class);
@@ -60,14 +65,17 @@ class JdaRecordAnnouncementMessageGatewayTest {
         when(lookup.complete()).thenReturn(existing);
         when(existing.editMessageEmbeds(any(MessageEmbed.class))).thenReturn(edit);
         when(edit.setAllowedMentions(any())).thenReturn(edit);
+        ArgumentCaptor<MessageEmbed> editedEmbed = ArgumentCaptor.forClass(MessageEmbed.class);
 
         gateway.edit(12L, 99L, page());
 
+        verify(existing).editMessageEmbeds(editedEmbed.capture());
+        assertThat(editedEmbed.getValue().getFooter()).isNull();
         verify(edit).setAllowedMentions(Collections.emptyList());
     }
 
     @Test
-    void findsOnlyOwnPublicationPagesInStablePositionAndMessageOrder() {
+    void findsOnlyOwnPublicationPagesByNonceInStablePositionAndMessageOrder() {
         JDA jda = mock(JDA.class);
         TextChannel channel = mock(TextChannel.class);
         MessageHistory history = mock(MessageHistory.class);
@@ -75,10 +83,10 @@ class JdaRecordAnnouncementMessageGatewayTest {
         SelfUser self = mock(SelfUser.class);
         User other = mock(User.class);
         String key = "record-announcement:" + "a".repeat(64);
-        Message second = message(70L, self, key + "|page:2/2");
-        Message firstLaterId = message(90L, self, key + "|page:1/2");
-        Message first = message(30L, self, key + "|page:1/2");
-        Message foreign = message(20L, other, key + "|page:1/2");
+        Message second = messageWithNonce(70L, self, JdaRecordAnnouncementMessageGateway.publicationNonce(key, 1));
+        Message firstLaterId = messageWithNonce(90L, self, JdaRecordAnnouncementMessageGateway.publicationNonce(key, 0));
+        Message first = messageWithNonce(30L, self, JdaRecordAnnouncementMessageGateway.publicationNonce(key, 0));
+        Message foreign = messageWithNonce(20L, other, JdaRecordAnnouncementMessageGateway.publicationNonce(key, 0));
         when(jda.getTextChannelById(12L)).thenReturn(channel);
         when(jda.getSelfUser()).thenReturn(self);
         when(channel.getHistory()).thenReturn(history);
@@ -90,6 +98,38 @@ class JdaRecordAnnouncementMessageGatewayTest {
                         new RecordAnnouncementMessageGateway.PublishedPage(30L, 0),
                         new RecordAnnouncementMessageGateway.PublishedPage(90L, 0),
                         new RecordAnnouncementMessageGateway.PublishedPage(70L, 1));
+    }
+
+    @Test
+    void stillFindsLegacyFooterMarkerDuringUnreleasedUpgrade() {
+        JDA jda = mock(JDA.class);
+        TextChannel channel = mock(TextChannel.class);
+        MessageHistory history = mock(MessageHistory.class);
+        RestAction<List<Message>> request = mock(RestAction.class);
+        SelfUser self = mock(SelfUser.class);
+        String key = "record-announcement:" + "b".repeat(64);
+        Message legacy = messageWithFooter(41L, self, key + "|page:2/2");
+        when(jda.getTextChannelById(12L)).thenReturn(channel);
+        when(jda.getSelfUser()).thenReturn(self);
+        when(channel.getHistory()).thenReturn(history);
+        when(history.retrievePast(100)).thenReturn(request);
+        when(request.complete()).thenReturn(List.of(legacy));
+
+        assertThat(new JdaRecordAnnouncementMessageGateway(jda).findByPublicationKey(12L, key))
+                .containsExactly(new RecordAnnouncementMessageGateway.PublishedPage(41L, 1));
+    }
+
+    @Test
+    void publicationNonceIsDeterministicDistinctPerPageAndWithinDiscordLimit() {
+        String key = "record-announcement:" + "c".repeat(64);
+
+        String first = JdaRecordAnnouncementMessageGateway.publicationNonce(key, 0);
+        String same = JdaRecordAnnouncementMessageGateway.publicationNonce(key, 0);
+        String second = JdaRecordAnnouncementMessageGateway.publicationNonce(key, 1);
+
+        assertThat(first).isEqualTo(same).isNotEqualTo(second);
+        assertThat(first.length()).isLessThanOrEqualTo(Message.MAX_NONCE_LENGTH);
+        assertThat(second.length()).isLessThanOrEqualTo(Message.MAX_NONCE_LENGTH);
     }
 
     @Test
@@ -117,6 +157,7 @@ class JdaRecordAnnouncementMessageGatewayTest {
         when(jda.getTextChannelById(12L)).thenReturn(channel);
         MessageCreateAction create = mock(MessageCreateAction.class);
         when(channel.sendMessageEmbeds(any(MessageEmbed.class))).thenReturn(create);
+        when(create.setNonce(any())).thenReturn(create);
         when(create.setAllowedMentions(any())).thenReturn(create);
         doThrow(missingPermission).when(create).complete();
 
@@ -131,10 +172,19 @@ class JdaRecordAnnouncementMessageGatewayTest {
                 "record-announcement:" + "a".repeat(64) + "|page:1/1");
     }
 
-    private static Message message(long id, User author, String footer) {
+    private static Message messageWithNonce(long id, User author, String nonce) {
         Message message = mock(Message.class);
         when(message.getIdLong()).thenReturn(id);
         when(message.getAuthor()).thenReturn(author);
+        when(message.getNonce()).thenReturn(nonce);
+        return message;
+    }
+
+    private static Message messageWithFooter(long id, User author, String footer) {
+        Message message = mock(Message.class);
+        when(message.getIdLong()).thenReturn(id);
+        when(message.getAuthor()).thenReturn(author);
+        when(message.getNonce()).thenReturn(null);
         when(message.getEmbeds()).thenReturn(List.of(new EmbedBuilder()
                 .setTitle("Neuer Rekord").setDescription("Ada erreicht etwas Neues.").setFooter(footer).build()));
         return message;
