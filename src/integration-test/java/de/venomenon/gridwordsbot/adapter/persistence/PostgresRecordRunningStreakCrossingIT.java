@@ -249,7 +249,7 @@ class PostgresRecordRunningStreakCrossingIT {
                 INSERT INTO submission (
                     source_message_id,guild_id,channel_id,author_player_id,raw_message_content,
                     processing_state,game_result_id,received_at,updated_at,original_deleted_at)
-                VALUES (?,10,20,?,'share',?,?,?, ?, CASE WHEN ?='COMPLETED' THEN ? ELSE NULL END)
+                VALUES (?,10,20,?,'share',?,?,?, ?, CASE WHEN CAST(? AS VARCHAR)='COMPLETED' THEN CAST(? AS TIMESTAMPTZ) ELSE NULL END)
                 """,
                 5_000_000L + resultId,
                 playerId,
