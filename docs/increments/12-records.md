@@ -1,7 +1,7 @@
 # Inkrement 12 – Rekorde und Rekordmeldungen
 
-**Status:** Umsetzung läuft; Pakete 12.1 bis 12.7 abgeschlossen; Paket 12.8 in Umsetzung  
-**Stand:** 6. August 2026  
+**Status:** Umsetzung läuft; Pakete 12.1 bis 12.8 abgeschlossen; Paket 12.9 in Umsetzung  
+**Stand:** 7. August 2026  
 **Umbrella-Issue:** #58  
 **Fachliche Grundlage:** [`../requirements/records.md`](../requirements/records.md)  
 **Architekturentscheidung:** [ADR 0018](../adr/0018-record-state-events-and-reconciled-announcements.md)
@@ -46,7 +46,7 @@ Die Umsetzung bleibt ein modularer Monolith. Es entstehen weder eine generische 
 - Abschlussmeldung bei Rekord, Gleichstand oder relativem Near Miss,
 - Aggregation zusammengehöriger Fakten,
 - Edit beziehungsweise Delete bei Korrekturen,
-- `/records` mit `game`, `user` und `category`.
+- `/records` mit `game` und optionalem `user`; die persönliche Sicht eines anderen Nutzers ist Administratoren vorbehalten.
 
 ## 3. Nicht Bestandteil
 
@@ -449,7 +449,7 @@ Mindestens:
 
 # Paket 12.8 – Discord-Renderer, Delivery und Reconciliation
 
-**Status:** offen  
+**Status:** umgesetzt  
 **Empfohlener Branch:** `feature/12-8-record-discord-delivery`
 
 ## Ziel
@@ -507,54 +507,61 @@ Mindestens:
 
 # Paket 12.9 – Ephemerer `/records`-Command
 
-**Status:** offen  
+**Status:** in Umsetzung  
 **Empfohlener Branch:** `feature/12-9-records-command`
 
 ## Ziel
 
-Spieler können den aktuell gültigen Rekordstand prüfen, ohne den Ergebniskanal mit Nachschlagevorgängen zu füllen.
+Spieler können den aktuell gültigen, bereits materialisierten Rekordstand prüfen, ohne den Ergebniskanal mit Nachschlagevorgängen zu füllen. Der Command bleibt strikt lesend und löst keine Historienneuberechnung aus.
 
 ## Lieferumfang
 
 - Registrierung von `/records`,
 - optionale Parameter:
-  - `game:gridwords|quadwords`,
+  - `game:all|gridwords|quadwords`,
   - `user`,
-  - `category:results|series`,
-- Standardnutzer ist der Aufrufer,
-- ephemere Antwort,
-- Ergebnisabschnitt mit allen drei persönlichen und serverweiten Definitionen,
-- Serienabschnitt mit positiven, gemeinsamen und negativen Rekorden,
-- game-spezifischer Filter nur für eindeutig spielbezogene Serien,
+- ohne `user` beziehen sich persönliche Rekorde auf den Aufrufer,
+- `user:<anderer Nutzer>` ist ausschließlich für konfigurierte Administratoren zulässig; die Autorisierung erfolgt ohne Profil- oder Teilnahme-Write,
+- bei fremdem Ziel ändert sich nur der persönliche Abschnitt; serverweite individuelle und gemeinsame Rekorde bleiben unverändert,
+- ausschließlich ephemere Antworten und ephemere Follow-up-Seiten,
+- leere Allowed Mentions und neutralisierte externe Namen,
+- Ergebnisabschnitt mit persönlichen und serverweiten Definitionen,
+- Serienabschnitt mit persönlichen, serverweiten individuellen, gemeinsamen sowie positiven und negativen Rekorden,
+- `game:gridwords|quadwords` filtert eindeutig spielbezogene Definitionen über die Definitionsmetadaten; spielunabhängige Serien wie Aktivität, Komplett, Perfekt und „ohne perfekten Tag“ bleiben sichtbar,
 - laufende Rekordserie mit Hinweis „läuft“,
-- Start-/Enddatum abgeschlossener Läufe,
-- neutraler Leerzustand,
-- „zuerst erreicht von“ bei gleichwertigen Quellen,
-- deterministische Pagination beziehungsweise Embed-Aufteilung,
-- vor erfolgreichem Bootstrap kein scheinbar vollständiger Stand.
+- Spieltag bei Ergebnisrekorden sowie Start-/Enddatum bei Serienläufen,
+- stabile Anzeige ausgeschiedener Halter und neutraler Fallback für nicht mehr auflösbare Halter,
+- neutraler Leerzustand, wenn nach erfolgreichem Bootstrap kein aktueller Rekordzustand vorhanden ist,
+- deterministische Reihenfolge und Pagination innerhalb der Discord-Grenzen,
+- vor erfolgreichem Bootstrap kein scheinbar vollständiger oder leerer Rekordstand.
 
 ## Tests
 
 Mindestens:
 
-- alle Filter einzeln und kombiniert,
-- Standardnutzer und expliziter Nutzer,
-- GridWords-Filter blendet spielübergreifende Serien aus,
-- Ergebnis- und Serienkategorie,
+- Standardaufruf verwendet den Aufrufer für persönliche Rekorde und enthält weiterhin globale Scopes,
+- Administrator kann einen anderen Nutzer für den persönlichen Abschnitt auswählen,
+- Nicht-Administrator kann keinen anderen Nutzer abfragen; vor der Ablehnung erfolgen keine Record- oder Player-Writes,
+- `game:all`, `game:gridwords` und `game:quadwords`,
+- spielunabhängige Serien bleiben bei gesetztem Game-Filter sichtbar,
+- Ergebnis- und Serienabschnitt sowie persönliche, serverweite individuelle und gemeinsame Scopes,
 - laufende und abgeschlossene Läufe,
 - ausgeschiedener Rekordhalter,
-- anonymisierter Rekordhalter,
-- leere Historie,
+- anonymisierter beziehungsweise nicht mehr auflösbarer Rekordhalter,
+- leerer materialisierter Rekordstand nach erfolgreichem Bootstrap,
 - Bootstrap läuft beziehungsweise ist fehlgeschlagen,
-- Discord-Längenlimits,
-- keine Allowed Mentions.
+- deterministische Pagination und Discord-Längenlimits,
+- ausschließlich ephemere Antwort und ephemere Follow-ups,
+- keine Allowed Mentions,
+- Read-only-Invariante: der Query-Pfad liest nur Bootstrapstatus, materialisierten Record-State und Spieleranzeigen.
 
 ## Definition of Done
 
-- Command ist rein lesend,
-- Antwort ist ephemer,
-- keine vollständige Historienneuberechnung pro Aufruf,
-- Slash-Command-Registrierung und Adaptertests sind grün.
+- Command ist strikt lesend und besitzt keine mutierenden Record-, Player- oder Work-Ports,
+- Antworten und Follow-ups sind ephemer,
+- keine vollständige Historienneuberechnung oder History-Query pro Aufruf,
+- Game-Filter basiert auf Definitionsmetadaten statt Schlüsselheuristiken,
+- Slash-Command-Registrierung, Autorisierung, Renderer- und Adaptertests sind grün.
 
 ---
 
@@ -614,7 +621,7 @@ Mindestens auf dem separaten Testserver:
 6. negative Durststrecke,
 7. Korrektur mit Edit einer Rekordmeldung,
 8. Korrektur mit vollständigem Delete,
-9. `/records` mit allen Filtern,
+9. `/records` mit `user`- und `game`-Sichten,
 10. Restart und Recovery ohne Duplikat,
 11. Meldungen global deaktivieren und ohne Backlog wieder aktivieren.
 
