@@ -12,10 +12,8 @@ import de.venomenon.gridwordsbot.adapter.discord.record.RecordsOverviewEmbedRend
 import de.venomenon.gridwordsbot.config.GridwordsBotProperties;
 import de.venomenon.gridwordsbot.port.in.RecordsQueryUseCase;
 import java.util.List;
-import java.util.Optional;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
-import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.MessageEmbed;
 import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
@@ -29,43 +27,40 @@ class DiscordRecordsCommandListenerTest {
     private static final long ACTOR = 101L;
 
     @Test
-    void registersAllReadOnlyFilterOptions() {
+    void registersThePackageOptionsOnly() {
         var command = DiscordRecordsCommandListener.commandData();
 
         assertThat(command.getName()).isEqualTo("records");
         assertThat(command.getOptions()).extracting(option -> option.getName())
-                .containsExactly("game", "scope", "user", "category");
+                .containsExactly("user", "game");
         assertThat(command.getOptions()).allSatisfy(option -> assertThat(option.isRequired()).isFalse());
     }
 
     @Test
-    void defaultsPersonalRecordsToCallerAndRepliesEphemerallyWithoutMentions() {
+    void standardUserDefaultsPersonalViewToCallerAndRepliesEphemerallyWithoutMentions() {
         RecordsQueryUseCase records = mock(RecordsQueryUseCase.class);
         when(records.query(any())).thenReturn(new RecordsQueryUseCase.Ready(List.of()));
         EventFixture fixture = event(GUILD, ACTOR, "Server Actor");
 
-        listener(records).onSlashCommandInteraction(fixture.event());
+        listener(records, List.of()).onSlashCommandInteraction(fixture.event());
 
         ArgumentCaptor<RecordsQueryUseCase.Query> query = ArgumentCaptor.forClass(RecordsQueryUseCase.Query.class);
         verify(records).query(query.capture());
         assertThat(query.getValue().requesterPlayerId()).isEqualTo(ACTOR);
-        assertThat(query.getValue().personalPlayerId()).isEmpty();
+        assertThat(query.getValue().targetPlayerId()).isEmpty();
+        assertThat(query.getValue().requesterAdministrator()).isFalse();
         assertThat(query.getValue().game()).isEqualTo(RecordsQueryUseCase.GameFilter.ALL);
-        assertThat(query.getValue().scope()).isEqualTo(RecordsQueryUseCase.ScopeFilter.ALL);
-        assertThat(query.getValue().category()).isEqualTo(RecordsQueryUseCase.CategoryFilter.ALL);
         verify(fixture.reply()).setEphemeral(true);
         verify(fixture.reply()).setAllowedMentions(List.of());
         verify(fixture.reply()).queue();
     }
 
     @Test
-    void mapsCombinedFiltersAndExplicitUser() {
+    void administratorTargetAndGameFilterArePassedReadOnlyToUseCase() {
         RecordsQueryUseCase records = mock(RecordsQueryUseCase.class);
         when(records.query(any())).thenReturn(new RecordsQueryUseCase.Ready(List.of()));
-        EventFixture fixture = event(GUILD, ACTOR, "Actor");
+        EventFixture fixture = event(GUILD, ACTOR, "Admin");
         OptionMapping game = option("quadwords");
-        OptionMapping scope = option("personal");
-        OptionMapping category = option("series");
         OptionMapping userOption = mock(OptionMapping.class);
         User target = mock(User.class);
         Member targetMember = mock(Member.class);
@@ -75,18 +70,29 @@ class DiscordRecordsCommandListenerTest {
         when(userOption.getAsUser()).thenReturn(target);
         when(userOption.getAsMember()).thenReturn(targetMember);
         when(fixture.event().getOption("game")).thenReturn(game);
-        when(fixture.event().getOption("scope")).thenReturn(scope);
-        when(fixture.event().getOption("category")).thenReturn(category);
         when(fixture.event().getOption("user")).thenReturn(userOption);
 
-        listener(records).onSlashCommandInteraction(fixture.event());
+        listener(records, List.of(ACTOR)).onSlashCommandInteraction(fixture.event());
 
         ArgumentCaptor<RecordsQueryUseCase.Query> query = ArgumentCaptor.forClass(RecordsQueryUseCase.Query.class);
         verify(records).query(query.capture());
-        assertThat(query.getValue().personalPlayerId()).contains(202L);
+        assertThat(query.getValue().targetPlayerId()).contains(202L);
+        assertThat(query.getValue().requesterAdministrator()).isTrue();
         assertThat(query.getValue().game()).isEqualTo(RecordsQueryUseCase.GameFilter.QUADWORDS);
-        assertThat(query.getValue().scope()).isEqualTo(RecordsQueryUseCase.ScopeFilter.PERSONAL);
-        assertThat(query.getValue().category()).isEqualTo(RecordsQueryUseCase.CategoryFilter.SERIES);
+    }
+
+    @Test
+    void unknownGameValueFallsBackToAll() {
+        RecordsQueryUseCase records = mock(RecordsQueryUseCase.class);
+        when(records.query(any())).thenReturn(new RecordsQueryUseCase.Ready(List.of()));
+        EventFixture fixture = event(GUILD, ACTOR, "Actor");
+        when(fixture.event().getOption("game")).thenReturn(option("unexpected"));
+
+        listener(records, List.of()).onSlashCommandInteraction(fixture.event());
+
+        ArgumentCaptor<RecordsQueryUseCase.Query> query = ArgumentCaptor.forClass(RecordsQueryUseCase.Query.class);
+        verify(records).query(query.capture());
+        assertThat(query.getValue().game()).isEqualTo(RecordsQueryUseCase.GameFilter.ALL);
     }
 
     @Test
@@ -94,13 +100,13 @@ class DiscordRecordsCommandListenerTest {
         RecordsQueryUseCase records = mock(RecordsQueryUseCase.class);
         EventFixture fixture = event(GUILD + 1, ACTOR, "Actor");
 
-        listener(records).onSlashCommandInteraction(fixture.event());
+        listener(records, List.of()).onSlashCommandInteraction(fixture.event());
 
         verifyNoInteractions(records);
     }
 
-    private static DiscordRecordsCommandListener listener(RecordsQueryUseCase records) {
-        return new DiscordRecordsCommandListener(properties(), records, new RecordsOverviewEmbedRenderer());
+    private static DiscordRecordsCommandListener listener(RecordsQueryUseCase records, List<Long> admins) {
+        return new DiscordRecordsCommandListener(properties(admins), records, new RecordsOverviewEmbedRenderer());
     }
 
     private static OptionMapping option(String value) {
@@ -130,9 +136,9 @@ class DiscordRecordsCommandListenerTest {
         return new EventFixture(event, reply);
     }
 
-    private static GridwordsBotProperties properties() {
+    private static GridwordsBotProperties properties(List<Long> admins) {
         return new GridwordsBotProperties(
-                new GridwordsBotProperties.Discord(true, "token", GUILD, 12L, List.of(ACTOR)), null, null);
+                new GridwordsBotProperties.Discord(true, "token", GUILD, 12L, admins), null, null);
     }
 
     private record EventFixture(SlashCommandInteractionEvent event, ReplyCallbackAction reply) { }
