@@ -23,10 +23,13 @@ import net.dv8tion.jda.api.requests.ErrorResponse;
 
 /** JDA-only adapter for record-announcement pages. */
 public final class JdaRecordAnnouncementMessageGateway implements RecordAnnouncementMessageGateway {
-    private static final Pattern LEGACY_FOOTER = Pattern.compile(
+    private static final Pattern PAGE_MARKER = Pattern.compile(
             "(record-announcement:[0-9a-f]{64})\\|page:([1-9]\\d*)/([1-9]\\d*)");
+    private static final Pattern HIDDEN_DESCRIPTION_MARKER = Pattern.compile(
+            "\\[\\u2063\\]\\(https://gridwords.invalid/record/([0-9a-f]{64})/([1-9]\\d*)/([1-9]\\d*)\\)$");
     private static final String NONCE_PREFIX = "ra:";
     private static final int NONCE_HASH_BYTES = 11;
+    private static final String INVISIBLE_LINK_LABEL = "\u2063";
     private final JDA jda;
 
     public JdaRecordAnnouncementMessageGateway(JDA jda) { this.jda = Objects.requireNonNull(jda, "jda"); }
@@ -87,6 +90,11 @@ public final class JdaRecordAnnouncementMessageGateway implements RecordAnnounce
                 List<Message> batch = history.retrievePast(100).complete();
                 for (Message message : batch) {
                     if (!message.getAuthor().equals(jda.getSelfUser())) continue;
+                    Matcher hidden = hiddenDescriptionMarker(message).orElse(null);
+                    if (hidden != null && ("record-announcement:" + hidden.group(1)).equals(publicationKey)) {
+                        pages.add(new PublishedPage(message.getIdLong(), Integer.parseInt(hidden.group(2)) - 1));
+                        continue;
+                    }
                     Integer noncePosition = noncePosition(message.getNonce(), noncePrefix);
                     if (noncePosition != null) {
                         pages.add(new PublishedPage(message.getIdLong(), noncePosition));
@@ -118,15 +126,26 @@ public final class JdaRecordAnnouncementMessageGateway implements RecordAnnounce
     }
 
     private static MessageEmbed embed(RenderedRecordAnnouncementPage page) {
-        return new EmbedBuilder().setTitle(page.title()).setDescription(page.description()).build();
+        return new EmbedBuilder().setTitle(page.title()).setDescription(page.description() + hiddenMarker(page)).build();
     }
 
-    private static String publicationKey(RenderedRecordAnnouncementPage page) {
-        Matcher matcher = LEGACY_FOOTER.matcher(page.footer());
+    private static String hiddenMarker(RenderedRecordAnnouncementPage page) {
+        Matcher marker = pageMarker(page);
+        String hash = marker.group(1).substring("record-announcement:".length());
+        return "[" + INVISIBLE_LINK_LABEL + "](https://gridwords.invalid/record/" + hash + "/"
+                + marker.group(2) + "/" + marker.group(3) + ")";
+    }
+
+    private static Matcher pageMarker(RenderedRecordAnnouncementPage page) {
+        Matcher matcher = PAGE_MARKER.matcher(page.footer());
         if (!matcher.matches() || Integer.parseInt(matcher.group(2)) - 1 != page.position()) {
             throw new IllegalArgumentException("record announcement page marker is invalid");
         }
-        return matcher.group(1);
+        return matcher;
+    }
+
+    private static String publicationKey(RenderedRecordAnnouncementPage page) {
+        return pageMarker(page).group(1);
     }
 
     static String publicationNonce(String publicationKey, int position) {
@@ -152,12 +171,20 @@ public final class JdaRecordAnnouncementMessageGateway implements RecordAnnounce
         }
     }
 
+    private static java.util.Optional<Matcher> hiddenDescriptionMarker(Message message) {
+        if (message.getEmbeds().size() != 1) return java.util.Optional.empty();
+        String description = message.getEmbeds().getFirst().getDescription();
+        if (description == null) return java.util.Optional.empty();
+        Matcher matcher = HIDDEN_DESCRIPTION_MARKER.matcher(description);
+        return matcher.find() ? java.util.Optional.of(matcher) : java.util.Optional.empty();
+    }
+
     private static java.util.Optional<Matcher> legacyFooter(Message message) {
         if (message.getEmbeds().size() != 1) return java.util.Optional.empty();
         String text = java.util.Optional.ofNullable(message.getEmbeds().getFirst().getFooter())
                 .map(MessageEmbed.Footer::getText).orElse(null);
         if (text == null) return java.util.Optional.empty();
-        Matcher matcher = LEGACY_FOOTER.matcher(text);
+        Matcher matcher = PAGE_MARKER.matcher(text);
         return matcher.matches() ? java.util.Optional.of(matcher) : java.util.Optional.empty();
     }
 
