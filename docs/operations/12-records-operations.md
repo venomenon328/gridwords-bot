@@ -28,6 +28,8 @@ $COMPOSE exec -T postgres psql -U "$(grep '^POSTGRES_USER=' runtime.env | cut -d
 
 `SUCCEEDED` Bootstrap ist die Voraussetzung für öffentliche Meldungen und eine vollständige `/records`-Sicht. Ein abgelaufener Claim wird durch den nächsten Worker übernommen; weder Claim-Tokens noch Zustände werden manuell auf `SUCCEEDED` gesetzt.
 
+Bei Announcements bedeutet `DELIVERED`, dass Discord den Create bestätigt hat und die Message-IDs persistiert sind; der nächste Claim führt genau eine Existenzprüfung über diese IDs aus. `SYNCHRONIZED` ist danach ruhig und wird ohne neue fachliche Projektion nicht erneut geclaimt. `attempt_count` zählt externe Zustellversuche. Die `DELIVERED`-Stabilitätsprüfung und ein reiner `NO_OP` erhöhen ihn nicht. Ein dauerhaft wachsender Zähler bei unverändertem `SYNCHRONIZED` ist daher ein Fehlerbild und kein normaler Monitoringeffekt.
+
 ## Letzte persistierte Fehler sicher diagnostizieren
 
 Für die letzten klassifizierten Record-Fehler dürfen `failure_category`, Zeitpunkt und der bewusst bereinigte `safe_error` gelesen werden. Die Abfrage enthält weder Claim-Tokens noch Discord-Tokens, Rohshares oder personenbezogene Inhalte:
@@ -46,7 +48,7 @@ Der Logpfad kann Stacktraces enthalten und ist nur für die interne Diagnose ged
 
 ## Recovery
 
-1. Bei `RETRYABLE` zuerst die Datenbank-, Discord- oder Netzwerkursache anhand der sicheren Bot-Logs und der Metriken prüfen. Den Backoff respektieren.
+1. Bei `RETRYABLE` zuerst `safe_error` lesen und anschließend die korrelierte Logzeile `record_announcement_delivery gateway_failure=...` samt internem Stacktrace prüfen. Discord-Klassifikationen werden als `discord_error=...`, sonstige Gateway-Ursachen mindestens als Exception-Klasse persistiert. Den Backoff respektieren.
 2. Bei einem unbekannten Fehler Stacktrace und Ursache beheben. Ein unbekannter technischer Fehler darf nicht durch SQL-Manipulation zu `RETRYABLE`, `FAILED_PERMANENT` oder Erfolg umetikettiert werden.
 3. Bei gealterten Claims den Bot kontrolliert neu starten. Bootstrap, Live-Auswertung, Day Close und Delivery übernehmen abgelaufene Leases tokengebunden und idempotent.
 4. Bei einer extern entfernten, zuvor bestätigten Rekordmeldung `EXTERNALLY_REMOVED` respektieren. Sie wird nicht manuell erneut als neue Rekordmeldung erzeugt; `/records` bleibt der aktuelle Nachweis.

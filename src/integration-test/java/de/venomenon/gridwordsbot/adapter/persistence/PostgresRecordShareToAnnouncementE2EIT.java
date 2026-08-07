@@ -157,8 +157,9 @@ class PostgresRecordShareToAnnouncementE2EIT {
                 WHERE guild_id = ? AND game_result_id = ? AND evaluation_state = 'OPEN'
                 """, Integer.class, GUILD_ID, resultId)).isOne();
 
+        CanonicalRecordingGateway canonicalGateway = new CanonicalRecordingGateway();
         CanonicalGridWordsPublicationService canonical = new CanonicalGridWordsPublicationService(
-                persistence, persistence, persistence, new CanonicalRecordingGateway(), clock, BERLIN,
+                persistence, persistence, persistence, canonicalGateway, clock, BERLIN,
                 (at, action) -> { }, ignored -> { });
         assertThat(canonical.publish(5_000L)).isTrue();
         assertThat(jdbc.queryForObject("SELECT version FROM game_result WHERE id = ?", Long.class, resultId)).isZero();
@@ -243,6 +244,8 @@ class PostgresRecordShareToAnnouncementE2EIT {
                     (result, duration) -> { });
             assertThat(delivery.runNext())
                     .isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.COMPLETED);
+            assertThat(delivery.runNext())
+                    .isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.COMPLETED);
         }
 
         assertThat(gateway.created).singleElement().satisfies(page -> {
@@ -253,12 +256,55 @@ class PostgresRecordShareToAnnouncementE2EIT {
         assertThat(restartedAnnouncements.find(key).orElseThrow()).satisfies(snapshot -> {
             assertThat(snapshot.state()).isEqualTo(RecordWorkState.SYNCHRONIZED);
             assertThat(snapshot.messages()).hasSize(1);
+            assertThat(snapshot.attemptCount()).isEqualTo(1);
         });
         assertThat(jdbc.queryForObject("SELECT count(*) FROM record_announcement_message", Integer.class)).isOne();
+
+        String correction = """
+                GridWords (7. August 2026) 1/6 in 0:06
+                🟩🟩🟩🟩🟩
+                """;
+        assertThat(submissions.process(new InboundSharedMessage(
+                GUILD_ID, CHANNEL_ID, 5_001L, PLAYER_ID, "Player One", correction, List.of(), NOW.plusSeconds(3))))
+                .isEqualTo(new ProcessingResult.Accepted(GameType.GRIDWORDS));
+        assertThat(canonical.publish(5_001L)).isTrue();
+        assertThat(sourceDeletion.deleteAfterCanonicalPublication(5_001L)).isTrue();
+        assertThat(canonicalGateway.edits).isOne();
+        assertThat(jdbc.queryForObject("SELECT version FROM game_result WHERE id = ?", Long.class, resultId)).isOne();
+
+        try (ScheduledExecutorService heartbeat = Executors.newSingleThreadScheduledExecutor()) {
+            RecordLiveEvaluationCoordinator coordinator = new RecordLiveEvaluationCoordinator(
+                    restartedWork, processor, restartClock, Duration.ofSeconds(30), Duration.ofSeconds(1),
+                    Duration.ofSeconds(1), Duration.ofMinutes(1), heartbeat,
+                    (result, duration) -> { });
+            assertThat(coordinator.runNext())
+                    .isEqualTo(RecordLiveEvaluationCoordinator.RunResult.COMPLETED);
+        }
+        assertThat(restartedAnnouncements.find(key).orElseThrow().registration().desiredProjection())
+                .isEqualTo(RecordAnnouncementProjection.EDIT);
+
+        try (ScheduledExecutorService heartbeat = Executors.newSingleThreadScheduledExecutor()) {
+            RecordAnnouncementDeliveryCoordinator delivery = new RecordAnnouncementDeliveryCoordinator(
+                    restartedAnnouncements, restartedEvents, persistence, gateway,
+                    new RecordAnnouncementRenderer(), restartClock,
+                    Duration.ofSeconds(30), Duration.ofSeconds(1), Duration.ofSeconds(1), Duration.ofMinutes(1),
+                    heartbeat, true, (result, duration) -> { });
+            assertThat(delivery.runNext())
+                    .isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.COMPLETED);
+        }
+        assertThat(gateway.edited).singleElement().satisfies(page ->
+                assertThat(page.description()).contains("1 Versuche", "0:06"));
+        assertThat(gateway.discoveryCalls).isZero();
+        assertThat(restartedAnnouncements.find(key).orElseThrow()).satisfies(snapshot -> {
+            assertThat(snapshot.state()).isEqualTo(RecordWorkState.SYNCHRONIZED);
+            assertThat(snapshot.attemptCount()).isEqualTo(2);
+            assertThat(snapshot.failure()).isEmpty();
+        });
     }
 
     private static final class CanonicalRecordingGateway implements CanonicalMessageGateway {
         private long messageId;
+        private int edits;
 
         @Override
         public long create(long channelId, CanonicalResultMessage message) {
@@ -270,7 +316,9 @@ class PostgresRecordShareToAnnouncementE2EIT {
 
         @Override
         public void edit(long channelId, long existingMessageId, CanonicalResultMessage message) {
-            throw new AssertionError("initial canonical publication must create its message");
+            assertThat(channelId).isEqualTo(CHANNEL_ID);
+            assertThat(existingMessageId).isEqualTo(messageId);
+            edits++;
         }
 
         @Override
@@ -325,7 +373,9 @@ class PostgresRecordShareToAnnouncementE2EIT {
 
     private static final class RecordingGateway implements RecordAnnouncementMessageGateway {
         private final List<RenderedRecordAnnouncementPage> created = new ArrayList<>();
+        private final List<RenderedRecordAnnouncementPage> edited = new ArrayList<>();
         private final List<PublishedPage> published = new ArrayList<>();
+        private int discoveryCalls;
 
         @Override
         public long create(long channelId, RenderedRecordAnnouncementPage page) {
@@ -338,7 +388,9 @@ class PostgresRecordShareToAnnouncementE2EIT {
 
         @Override
         public void edit(long channelId, long messageId, RenderedRecordAnnouncementPage page) {
-            throw new AssertionError("initial record delivery must not edit Discord messages");
+            assertThat(channelId).isEqualTo(CHANNEL_ID);
+            assertThat(published).anyMatch(publishedPage -> publishedPage.messageId() == messageId);
+            edited.add(page);
         }
 
         @Override
@@ -347,8 +399,15 @@ class PostgresRecordShareToAnnouncementE2EIT {
         }
 
         @Override
-        public List<PublishedPage> findByPublicationKey(long channelId, String publicationKey) {
+        public boolean exists(long channelId, long messageId) {
+            return published.stream().anyMatch(page -> page.messageId() == messageId);
+        }
+
+        @Override
+        public List<PublishedPage> discoverCreatedPages(
+                long channelId, String publicationKey, List<RenderedRecordAnnouncementPage> expectedPages) {
             assertThat(channelId).isEqualTo(CHANNEL_ID);
+            discoveryCalls++;
             return List.copyOf(published);
         }
     }

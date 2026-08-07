@@ -34,7 +34,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -216,6 +218,7 @@ class PostgresRecordAnnouncementDeliveryRecoveryIT {
                 coordinator(restartedStore, restartedJdbc, gateway, restartedAt, true);
 
         assertThat(restartedProcess.runNext()).isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.COMPLETED);
+        assertThat(restartedProcess.runNext()).isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.COMPLETED);
         assertThat(gateway.createCalls).isEqualTo(1);
         assertThat(restartedStore.find(key).orElseThrow()).satisfies(snapshot -> {
             assertThat(snapshot.state()).isEqualTo(RecordWorkState.SYNCHRONIZED);
@@ -223,6 +226,107 @@ class PostgresRecordAnnouncementDeliveryRecoveryIT {
             assertThat(snapshot.attemptCount()).isEqualTo(2);
             assertThat(snapshot.publishedAt()).contains(restartedAt);
         });
+    }
+
+    @Test
+    void createStabilityEditPartialReductionAndDeleteUsePersistedMessageIds() {
+        RecordAnnouncementKey key = new RecordAnnouncementKey(1, 2, "result:id-first-lifecycle:live");
+        List<UUID> initialEvents = new ArrayList<>();
+        for (int index = 0; index < 50; index++) {
+            initialEvents.add(appendEvent("id-first-lifecycle-" + index));
+        }
+        PostgresRecordAnnouncementStore store = new PostgresRecordAnnouncementStore(jdbc, fixedClock(NOW));
+        LifecycleGateway gateway = new LifecycleGateway();
+        store.registerOrUpdate(registration(
+                key, initialEvents, RecordAnnouncementProjection.CREATE, "a"));
+        RecordAnnouncementDeliveryCoordinator coordinator = coordinator(store, jdbc, gateway, NOW, true);
+
+        assertThat(coordinator.runNext()).isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.COMPLETED);
+        var delivered = store.find(key).orElseThrow();
+        assertThat(delivered.state()).isEqualTo(RecordWorkState.DELIVERED);
+        assertThat(delivered.attemptCount()).isEqualTo(1);
+        assertThat(delivered.messages()).hasSizeGreaterThan(1);
+        List<Long> originalMessageIds = delivered.messages().stream()
+                .map(RecordAnnouncementMessage::messageId).toList();
+
+        assertThat(coordinator.runNext()).isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.COMPLETED);
+        var stable = store.find(key).orElseThrow();
+        assertThat(stable.state()).isEqualTo(RecordWorkState.SYNCHRONIZED);
+        assertThat(stable.attemptCount()).isEqualTo(1);
+        assertThat(gateway.existenceChecks).containsExactlyElementsOf(originalMessageIds);
+        assertThat(gateway.discoveryCalls).isZero();
+        assertThat(coordinator.runNext()).isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.NOT_CLAIMED);
+        assertThat(store.find(key).orElseThrow().attemptCount()).isEqualTo(1);
+
+        store.registerOrUpdate(registration(
+                key, initialEvents, RecordAnnouncementProjection.EDIT, "b"));
+        assertThat(coordinator.runNext()).isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.COMPLETED);
+        var edited = store.find(key).orElseThrow();
+        assertThat(edited.state()).isEqualTo(RecordWorkState.SYNCHRONIZED);
+        assertThat(edited.attemptCount()).isEqualTo(2);
+        assertThat(gateway.edited).containsExactlyElementsOf(originalMessageIds);
+        assertThat(gateway.discoveryCalls).isZero();
+
+        store.registerOrUpdate(registration(
+                key, List.of(initialEvents.getFirst()), RecordAnnouncementProjection.EDIT, "c"));
+        assertThat(coordinator.runNext()).isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.COMPLETED);
+        var reduced = store.find(key).orElseThrow();
+        assertThat(reduced.state()).isEqualTo(RecordWorkState.SYNCHRONIZED);
+        assertThat(reduced.attemptCount()).isEqualTo(3);
+        assertThat(reduced.messages()).containsExactly(new RecordAnnouncementMessage(0, originalMessageIds.getFirst()));
+        assertThat(gateway.deleted).containsExactlyElementsOf(originalMessageIds.subList(1, originalMessageIds.size()));
+        assertThat(gateway.discoveryCalls).isZero();
+
+        store.registerOrUpdate(registration(
+                key, List.of(), RecordAnnouncementProjection.DELETE, "d"));
+        assertThat(coordinator.runNext()).isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.COMPLETED);
+        var deleted = store.find(key).orElseThrow();
+        assertThat(deleted.state()).isEqualTo(RecordWorkState.SYNCHRONIZED);
+        assertThat(deleted.attemptCount()).isEqualTo(4);
+        assertThat(deleted.messages()).isEmpty();
+        assertThat(deleted.deletedAt()).isPresent();
+        assertThat(gateway.deleted).containsExactlyInAnyOrderElementsOf(originalMessageIds);
+        assertThat(gateway.discoveryCalls).isZero();
+    }
+
+    @Test
+    void retryableEditPersistsTheConcreteGatewayCauseAndRecoversByMessageId() {
+        RecordAnnouncementKey key = new RecordAnnouncementKey(1, 2, "result:retry-observability:live");
+        UUID eventId = appendEvent("retry-observability");
+        PostgresRecordAnnouncementStore initialStore = new PostgresRecordAnnouncementStore(jdbc, fixedClock(NOW));
+        LifecycleGateway gateway = new LifecycleGateway();
+        initialStore.registerOrUpdate(registration(key, eventId));
+        RecordAnnouncementDeliveryCoordinator initialCoordinator = coordinator(initialStore, jdbc, gateway, NOW, true);
+        assertThat(initialCoordinator.runNext()).isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.COMPLETED);
+        assertThat(initialCoordinator.runNext()).isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.COMPLETED);
+
+        initialStore.registerOrUpdate(registration(
+                key, List.of(eventId), RecordAnnouncementProjection.EDIT, "b"));
+        gateway.editFailure = new RecordAnnouncementMessageGateway.RetryableMessageException(
+                "record announcement edit failed (discord_error=SERVER_ERROR)", null);
+        assertThat(initialCoordinator.runNext())
+                .isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.FAILED_RETRYABLE);
+        var retryable = initialStore.find(key).orElseThrow();
+        assertThat(retryable.state()).isEqualTo(RecordWorkState.RETRYABLE);
+        assertThat(retryable.attemptCount()).isEqualTo(2);
+        assertThat(retryable.failure()).hasValueSatisfying(failure -> assertThat(failure.safeMessage())
+                .isEqualTo("record announcement edit failed (discord_error=SERVER_ERROR)"));
+
+        Instant retryAt = retryable.nextRetryAt().orElseThrow();
+        JdbcTemplate retryJdbc = isolatedJdbc();
+        PostgresRecordAnnouncementStore retryStore =
+                new PostgresRecordAnnouncementStore(retryJdbc, fixedClock(retryAt));
+        gateway.editFailure = null;
+        RecordAnnouncementDeliveryCoordinator retryCoordinator =
+                coordinator(retryStore, retryJdbc, gateway, retryAt, true);
+        assertThat(retryCoordinator.runNext())
+                .isEqualTo(RecordAnnouncementDeliveryCoordinator.RunResult.COMPLETED);
+        assertThat(retryStore.find(key).orElseThrow()).satisfies(snapshot -> {
+            assertThat(snapshot.state()).isEqualTo(RecordWorkState.SYNCHRONIZED);
+            assertThat(snapshot.attemptCount()).isEqualTo(3);
+            assertThat(snapshot.failure()).isEmpty();
+        });
+        assertThat(gateway.discoveryCalls).isZero();
     }
 
     private RecordAnnouncementDeliveryCoordinator coordinator(
@@ -275,14 +379,22 @@ class PostgresRecordAnnouncementDeliveryRecoveryIT {
     }
 
     private static RecordAnnouncementRegistration registration(RecordAnnouncementKey key, UUID eventId) {
+        return registration(key, List.of(eventId), RecordAnnouncementProjection.CREATE, "a");
+    }
+
+    private static RecordAnnouncementRegistration registration(
+            RecordAnnouncementKey key,
+            List<UUID> eventIds,
+            RecordAnnouncementProjection projection,
+            String fingerprintCharacter) {
         return new RecordAnnouncementRegistration(
                 key,
                 RecordAnnouncementSubject.player(1),
                 RecordAnnouncementPhase.LIVE_EVALUATION,
-                RecordAnnouncementProjection.CREATE,
+                projection,
                 RecordAnnouncementRenderer.VERSION,
-                "a".repeat(64),
-                List.of(eventId));
+                fingerprintCharacter.repeat(64),
+                eventIds);
     }
 
     private JdbcTemplate isolatedJdbc() {
@@ -340,7 +452,13 @@ class PostgresRecordAnnouncementDeliveryRecoveryIT {
         }
 
         @Override
-        public List<PublishedPage> findByPublicationKey(long channelId, String publicationKey) {
+        public boolean exists(long channelId, long messageId) {
+            return discovered.stream().anyMatch(page -> page.messageId() == messageId);
+        }
+
+        @Override
+        public List<PublishedPage> discoverCreatedPages(
+                long channelId, String publicationKey, List<RenderedRecordAnnouncementPage> expectedPages) {
             return discovered;
         }
     }
@@ -372,8 +490,58 @@ class PostgresRecordAnnouncementDeliveryRecoveryIT {
         }
 
         @Override
-        public List<PublishedPage> findByPublicationKey(long channelId, String publicationKey) {
+        public boolean exists(long channelId, long messageId) {
+            return discovered.stream().anyMatch(page -> page.messageId() == messageId);
+        }
+
+        @Override
+        public List<PublishedPage> discoverCreatedPages(
+                long channelId, String publicationKey, List<RenderedRecordAnnouncementPage> expectedPages) {
             return List.copyOf(discovered);
+        }
+    }
+
+    private static final class LifecycleGateway implements RecordAnnouncementMessageGateway {
+        private final Map<Long, RenderedRecordAnnouncementPage> pages = new LinkedHashMap<>();
+        private final List<Long> edited = new ArrayList<>();
+        private final List<Long> deleted = new ArrayList<>();
+        private final List<Long> existenceChecks = new ArrayList<>();
+        private int discoveryCalls;
+        private long nextMessageId = 1_000;
+        private RuntimeException editFailure;
+
+        @Override
+        public long create(long channelId, RenderedRecordAnnouncementPage page) {
+            long messageId = nextMessageId++;
+            pages.put(messageId, page);
+            return messageId;
+        }
+
+        @Override
+        public void edit(long channelId, long messageId, RenderedRecordAnnouncementPage page) {
+            if (editFailure != null) throw editFailure;
+            if (!pages.containsKey(messageId)) throw new AssertionError("persisted message ID is missing");
+            pages.put(messageId, page);
+            edited.add(messageId);
+        }
+
+        @Override
+        public void delete(long channelId, long messageId) {
+            pages.remove(messageId);
+            deleted.add(messageId);
+        }
+
+        @Override
+        public boolean exists(long channelId, long messageId) {
+            existenceChecks.add(messageId);
+            return pages.containsKey(messageId);
+        }
+
+        @Override
+        public List<PublishedPage> discoverCreatedPages(
+                long channelId, String publicationKey, List<RenderedRecordAnnouncementPage> expectedPages) {
+            discoveryCalls++;
+            throw new AssertionError("ordinary delivery must not scan Discord history");
         }
     }
 }

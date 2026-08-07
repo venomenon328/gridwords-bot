@@ -85,3 +85,7 @@ databaseChangeLog:
   - include:
       file: 022-record-announcement-delivery.sql
       relativeToChangelogFile: true
+
+  - include:
+      file: 023-record-announcement-stability.sql
+      relativeToChangelogFile: true

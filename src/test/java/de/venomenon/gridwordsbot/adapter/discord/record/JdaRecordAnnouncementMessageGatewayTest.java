@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -33,7 +34,7 @@ import org.mockito.ArgumentCaptor;
 class JdaRecordAnnouncementMessageGatewayTest {
 
     @Test
-    void createsAndEditsPagesWithoutVisibleTechnicalFooterAndWithRecoverableHiddenMarker() {
+    void createsAndEditsPagesWithoutAnyVisibleTechnicalMarker() {
         JDA jda = mock(JDA.class);
         TextChannel channel = mock(TextChannel.class);
         MessageCreateAction create = mock(MessageCreateAction.class);
@@ -54,29 +55,22 @@ class JdaRecordAnnouncementMessageGatewayTest {
         MessageEmbed created = createdEmbed.getValue();
         assertThat(created.getTitle()).isEqualTo("Neuer Rekord");
         assertThat(created.getFooter()).isNull();
-        assertThat(created.getDescription())
-                .startsWith("Ada erreicht etwas Neues.")
-                .contains("https://gridwords.invalid/record/")
-                .doesNotContain("record-announcement:");
+        assertThat(created.getDescription()).isEqualTo("Ada erreicht etwas Neues.");
         verify(create).setNonce(nonce.capture());
         assertThat(nonce.getValue()).startsWith("ra:").doesNotContain("record-announcement");
         assertThat(nonce.getValue().length()).isLessThanOrEqualTo(Message.MAX_NONCE_LENGTH);
         verify(create).setAllowedMentions(Collections.emptyList());
 
-        RestAction<Message> lookup = mock(RestAction.class);
-        Message existing = mock(Message.class);
         MessageEditAction edit = mock(MessageEditAction.class);
-        when(channel.retrieveMessageById(99L)).thenReturn(lookup);
-        when(lookup.complete()).thenReturn(existing);
-        when(existing.editMessageEmbeds(any(MessageEmbed.class))).thenReturn(edit);
+        when(channel.editMessageEmbedsById(eq(99L), any(MessageEmbed.class))).thenReturn(edit);
         when(edit.setAllowedMentions(any())).thenReturn(edit);
         ArgumentCaptor<MessageEmbed> editedEmbed = ArgumentCaptor.forClass(MessageEmbed.class);
 
         gateway.edit(12L, 99L, page());
 
-        verify(existing).editMessageEmbeds(editedEmbed.capture());
+        verify(channel).editMessageEmbedsById(eq(99L), editedEmbed.capture());
         assertThat(editedEmbed.getValue().getFooter()).isNull();
-        assertThat(editedEmbed.getValue().getDescription()).contains("https://gridwords.invalid/record/");
+        assertThat(editedEmbed.getValue().getDescription()).isEqualTo("Ada erreicht etwas Neues.");
         verify(edit).setAllowedMentions(Collections.emptyList());
     }
 
@@ -99,7 +93,8 @@ class JdaRecordAnnouncementMessageGatewayTest {
         when(history.retrievePast(100)).thenReturn(request);
         when(request.complete()).thenReturn(List.of(second, firstLaterId, first, foreign));
 
-        assertThat(new JdaRecordAnnouncementMessageGateway(jda).findByPublicationKey(12L, key))
+        assertThat(new JdaRecordAnnouncementMessageGateway(jda)
+                .discoverCreatedPages(12L, key, List.of()))
                 .containsExactly(
                         new RecordAnnouncementMessageGateway.PublishedPage(30L, 0),
                         new RecordAnnouncementMessageGateway.PublishedPage(90L, 0),
@@ -121,7 +116,8 @@ class JdaRecordAnnouncementMessageGatewayTest {
         when(history.retrievePast(100)).thenReturn(request);
         when(request.complete()).thenReturn(List.of(message));
 
-        assertThat(new JdaRecordAnnouncementMessageGateway(jda).findByPublicationKey(12L, key))
+        assertThat(new JdaRecordAnnouncementMessageGateway(jda)
+                .discoverCreatedPages(12L, key, List.of(page())))
                 .containsExactly(new RecordAnnouncementMessageGateway.PublishedPage(55L, 0));
     }
 
@@ -140,8 +136,42 @@ class JdaRecordAnnouncementMessageGatewayTest {
         when(history.retrievePast(100)).thenReturn(request);
         when(request.complete()).thenReturn(List.of(legacy));
 
-        assertThat(new JdaRecordAnnouncementMessageGateway(jda).findByPublicationKey(12L, key))
+        assertThat(new JdaRecordAnnouncementMessageGateway(jda)
+                .discoverCreatedPages(12L, key, List.of()))
                 .containsExactly(new RecordAnnouncementMessageGateway.PublishedPage(41L, 1));
+    }
+
+    @Test
+    void discoversAnUnmarkedCreateByItsExactRenderedContentWhenHistoryOmitsNonce() {
+        JDA jda = mock(JDA.class);
+        TextChannel channel = mock(TextChannel.class);
+        MessageHistory history = mock(MessageHistory.class);
+        RestAction<List<Message>> request = mock(RestAction.class);
+        SelfUser self = mock(SelfUser.class);
+        String key = "record-announcement:" + "a".repeat(64);
+        Message matching = messageWithContent(55L, self, page());
+        when(jda.getTextChannelById(12L)).thenReturn(channel);
+        when(jda.getSelfUser()).thenReturn(self);
+        when(channel.getHistory()).thenReturn(history);
+        when(history.retrievePast(100)).thenReturn(request);
+        when(request.complete()).thenReturn(List.of(matching));
+
+        assertThat(new JdaRecordAnnouncementMessageGateway(jda)
+                .discoverCreatedPages(12L, key, List.of(page())))
+                .containsExactly(new RecordAnnouncementMessageGateway.PublishedPage(55L, 0));
+    }
+
+    @Test
+    void checksExistenceDirectlyByPersistedMessageId() {
+        JDA jda = mock(JDA.class);
+        TextChannel channel = mock(TextChannel.class);
+        RestAction<Message> lookup = mock(RestAction.class);
+        when(jda.getTextChannelById(12L)).thenReturn(channel);
+        when(channel.retrieveMessageById(99L)).thenReturn(lookup);
+        when(lookup.complete()).thenReturn(mock(Message.class));
+
+        assertThat(new JdaRecordAnnouncementMessageGateway(jda).exists(12L, 99L)).isTrue();
+        verify(channel).retrieveMessageById(99L);
     }
 
     @Test
@@ -189,7 +219,8 @@ class JdaRecordAnnouncementMessageGatewayTest {
         JdaRecordAnnouncementMessageGateway gateway = new JdaRecordAnnouncementMessageGateway(jda);
 
         assertThatThrownBy(() -> gateway.create(12L, page()))
-                .isInstanceOf(RecordAnnouncementMessageGateway.PermanentMessageException.class);
+                .isInstanceOf(RecordAnnouncementMessageGateway.PermanentMessageException.class)
+                .hasMessageContaining("discord_error=MISSING_PERMISSIONS");
     }
 
     private static RenderedRecordAnnouncementPage page() {
@@ -226,6 +257,17 @@ class JdaRecordAnnouncementMessageGatewayTest {
         when(message.getNonce()).thenReturn(null);
         when(message.getEmbeds()).thenReturn(List.of(new EmbedBuilder()
                 .setTitle("Neuer Rekord").setDescription("Ada erreicht etwas Neues.").setFooter(footer).build()));
+        return message;
+    }
+
+    private static Message messageWithContent(
+            long id, User author, RenderedRecordAnnouncementPage page) {
+        Message message = mock(Message.class);
+        when(message.getIdLong()).thenReturn(id);
+        when(message.getAuthor()).thenReturn(author);
+        when(message.getNonce()).thenReturn(null);
+        when(message.getEmbeds()).thenReturn(List.of(new EmbedBuilder()
+                .setTitle(page.title()).setDescription(page.description()).build()));
         return message;
     }
 }

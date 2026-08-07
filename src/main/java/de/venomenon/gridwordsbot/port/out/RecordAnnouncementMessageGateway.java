@@ -8,7 +8,10 @@ public interface RecordAnnouncementMessageGateway {
     long create(long channelId, RenderedRecordAnnouncementPage page);
     void edit(long channelId, long messageId, RenderedRecordAnnouncementPage page);
     void delete(long channelId, long messageId);
-    List<PublishedPage> findByPublicationKey(long channelId, String publicationKey);
+    boolean exists(long channelId, long messageId);
+    /** Expensive channel discovery, reserved for a CREATE whose external outcome is genuinely unclear. */
+    List<PublishedPage> discoverCreatedPages(
+            long channelId, String publicationKey, List<RenderedRecordAnnouncementPage> expectedPages);
 
     record PublishedPage(long messageId, int position) {
         public PublishedPage {

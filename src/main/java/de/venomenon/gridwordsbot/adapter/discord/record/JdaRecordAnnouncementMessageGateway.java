@@ -29,7 +29,6 @@ public final class JdaRecordAnnouncementMessageGateway implements RecordAnnounce
             "\\[\\u2063\\]\\(https://gridwords.invalid/record/([0-9a-f]{64})/([1-9]\\d*)/([1-9]\\d*)\\)$");
     private static final String NONCE_PREFIX = "ra:";
     private static final int NONCE_HASH_BYTES = 11;
-    private static final String INVISIBLE_LINK_LABEL = "\u2063";
     private final JDA jda;
 
     public JdaRecordAnnouncementMessageGateway(JDA jda) { this.jda = Objects.requireNonNull(jda, "jda"); }
@@ -45,14 +44,14 @@ public final class JdaRecordAnnouncementMessageGateway implements RecordAnnounce
         } catch (MessageGatewayException exception) {
             throw exception;
         } catch (RuntimeException exception) {
-            throw new RetryableMessageException("record announcement creation failed", exception);
+            throw retryable("record announcement creation failed", exception);
         }
     }
 
     @Override
     public void edit(long channelId, long messageId, RenderedRecordAnnouncementPage page) {
         try {
-            channel(channelId).retrieveMessageById(messageId).complete().editMessageEmbeds(embed(page))
+            channel(channelId).editMessageEmbedsById(messageId, embed(page))
                     .setAllowedMentions(List.of()).complete();
         } catch (ErrorResponseException exception) {
             if (exception.getErrorResponse() == ErrorResponse.UNKNOWN_MESSAGE) {
@@ -62,7 +61,7 @@ public final class JdaRecordAnnouncementMessageGateway implements RecordAnnounce
         } catch (MessageGatewayException exception) {
             throw exception;
         } catch (RuntimeException exception) {
-            throw new RetryableMessageException("record announcement edit failed", exception);
+            throw retryable("record announcement edit failed", exception);
         }
     }
 
@@ -76,16 +75,33 @@ public final class JdaRecordAnnouncementMessageGateway implements RecordAnnounce
         } catch (MessageGatewayException exception) {
             throw exception;
         } catch (RuntimeException exception) {
-            throw new RetryableMessageException("record announcement deletion failed", exception);
+            throw retryable("record announcement deletion failed", exception);
         }
     }
 
     @Override
-    public List<PublishedPage> findByPublicationKey(long channelId, String publicationKey) {
+    public boolean exists(long channelId, long messageId) {
+        try {
+            channel(channelId).retrieveMessageById(messageId).complete();
+            return true;
+        } catch (ErrorResponseException exception) {
+            if (exception.getErrorResponse() == ErrorResponse.UNKNOWN_MESSAGE) return false;
+            throw classified("record announcement existence check failed", exception.getErrorResponse(), exception);
+        } catch (MessageGatewayException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw retryable("record announcement existence check failed", exception);
+        }
+    }
+
+    @Override
+    public List<PublishedPage> discoverCreatedPages(
+            long channelId, String publicationKey, List<RenderedRecordAnnouncementPage> expectedPages) {
         try {
             MessageHistory history = channel(channelId).getHistory();
             List<PublishedPage> pages = new ArrayList<>();
             String noncePrefix = publicationNoncePrefix(publicationKey);
+            List<RenderedRecordAnnouncementPage> expected = List.copyOf(expectedPages);
             while (true) {
                 List<Message> batch = history.retrievePast(100).complete();
                 for (Message message : batch) {
@@ -104,6 +120,10 @@ public final class JdaRecordAnnouncementMessageGateway implements RecordAnnounce
                             .filter(value -> value.group(1).equals(publicationKey))
                             .ifPresent(match -> pages.add(
                                     new PublishedPage(message.getIdLong(), Integer.parseInt(match.group(2)) - 1)));
+                    if (pages.stream().noneMatch(page -> page.messageId() == message.getIdLong())) {
+                        matchingExpectedPosition(message, expected).ifPresent(position ->
+                                pages.add(new PublishedPage(message.getIdLong(), position)));
+                    }
                 }
                 if (batch.size() < 100) {
                     pages.sort(Comparator.comparingInt(PublishedPage::position).thenComparingLong(PublishedPage::messageId));
@@ -115,7 +135,7 @@ public final class JdaRecordAnnouncementMessageGateway implements RecordAnnounce
         } catch (MessageGatewayException exception) {
             throw exception;
         } catch (RuntimeException exception) {
-            throw new RetryableMessageException("record announcement search failed", exception);
+            throw retryable("record announcement create discovery failed", exception);
         }
     }
 
@@ -126,14 +146,7 @@ public final class JdaRecordAnnouncementMessageGateway implements RecordAnnounce
     }
 
     private static MessageEmbed embed(RenderedRecordAnnouncementPage page) {
-        return new EmbedBuilder().setTitle(page.title()).setDescription(page.description() + hiddenMarker(page)).build();
-    }
-
-    private static String hiddenMarker(RenderedRecordAnnouncementPage page) {
-        Matcher marker = pageMarker(page);
-        String hash = marker.group(1).substring("record-announcement:".length());
-        return "[" + INVISIBLE_LINK_LABEL + "](https://gridwords.invalid/record/" + hash + "/"
-                + marker.group(2) + "/" + marker.group(3) + ")";
+        return new EmbedBuilder().setTitle(page.title()).setDescription(page.description()).build();
     }
 
     private static Matcher pageMarker(RenderedRecordAnnouncementPage page) {
@@ -188,6 +201,18 @@ public final class JdaRecordAnnouncementMessageGateway implements RecordAnnounce
         return matcher.matches() ? java.util.Optional.of(matcher) : java.util.Optional.empty();
     }
 
+    private static java.util.Optional<Integer> matchingExpectedPosition(
+            Message message, List<RenderedRecordAnnouncementPage> expectedPages) {
+        if (message.getEmbeds().size() != 1) return java.util.Optional.empty();
+        MessageEmbed embed = message.getEmbeds().getFirst();
+        String title = embed.getTitle();
+        String description = embed.getDescription();
+        return expectedPages.stream()
+                .filter(page -> page.title().equals(title) && page.description().equals(description))
+                .map(RenderedRecordAnnouncementPage::position)
+                .findFirst();
+    }
+
     private static byte[] sha256(String text) {
         try {
             return MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8));
@@ -197,9 +222,16 @@ public final class JdaRecordAnnouncementMessageGateway implements RecordAnnounce
     }
 
     private static MessageGatewayException classified(String message, ErrorResponse response, Throwable cause) {
+        String safeMessage = message + " (discord_error=" + response.name() + ")";
         return switch (response) {
-            case MISSING_ACCESS, MISSING_PERMISSIONS, UNKNOWN_CHANNEL -> new PermanentMessageException(message, cause);
-            default -> new RetryableMessageException(message, cause);
+            case MISSING_ACCESS, MISSING_PERMISSIONS, UNKNOWN_CHANNEL ->
+                    new PermanentMessageException(safeMessage, cause);
+            default -> new RetryableMessageException(safeMessage, cause);
         };
+    }
+
+    private static RetryableMessageException retryable(String operation, RuntimeException cause) {
+        return new RetryableMessageException(
+                operation + " (cause=" + cause.getClass().getSimpleName() + ")", cause);
     }
 }

@@ -230,6 +230,10 @@ Rekordmeldungen verwenden dieselben bewährten Prinzipien wie kanonische Nachric
 - Reconciliation unklarer Discord-Ausgänge,
 - keine Discord-Aufrufe in Transaktionen.
 
+Persistierte Discord-Message-IDs sind nach einer bestätigten Veröffentlichung der primäre Adressierungsweg für Existenzprüfung, Edit und Delete. Eine Channel-History-Discovery ist auf tatsächlich unklare Create-Ausgänge begrenzt, insbesondere Send-vor-ACK beziehungsweise einen Prozessabbruch vor Persistierung der Message-ID. Technische Recovery-Schlüssel werden nicht in den sichtbaren Discord-Inhalt geschrieben; der Create verwendet einen deterministischen Discord-Nonce und die Recovery kann zusätzlich gegen den erwarteten gerenderten Inhalt abgleichen.
+
+Nach einem Create trennt der persistente Zwischenzustand `DELIVERED` die erfolgreiche Zustellung von genau einer ID-basierten Stabilitätsprüfung. Diese Prüfung und ein fachliches `NO_OP` sind keine neuen Delivery-Versuche und erhöhen die Versuchsanzahl nicht. Nach `SYNCHRONIZED` wird die unveränderte Projektion nicht erneut geclaimt oder überwacht; externe Löschung wird bei der einmaligen Stabilitätsprüfung oder beim nächsten fachlich ausgelösten Edit erkannt. Ein fachlich gewünschtes Delete ist auch bei bereits fehlender Discord-Nachricht erfolgreich erfüllt.
+
 Gemeinsame konkrete Hilfskomponenten dürfen extrahiert werden, wenn dadurch tatsächliche Duplikation entfällt. Es wird kein universelles Messaging-Framework eingeführt.
 
 ### 10. Extern gelöschte Meldungen werden respektiert
