@@ -12,6 +12,7 @@ import de.venomenon.gridwordsbot.domain.record.RecordDefinitionVersion;
 import de.venomenon.gridwordsbot.domain.record.RecordEventAppendResult;
 import de.venomenon.gridwordsbot.domain.record.RecordEventDraft;
 import de.venomenon.gridwordsbot.domain.record.RecordEventSnapshot;
+import de.venomenon.gridwordsbot.domain.record.RecordEventType;
 import de.venomenon.gridwordsbot.domain.record.RecordEventValidity;
 import de.venomenon.gridwordsbot.domain.record.RecordLockVersion;
 import de.venomenon.gridwordsbot.domain.record.RecordProcessingOrigin;
@@ -176,18 +177,36 @@ class RecordStateServiceTest {
     }
 
     @Test
-    void runningBootstrapStateReconstructsOnlyTheConsumedCrossingIdentity() {
+    void runningBootstrapStateWithoutCrossingEventDoesNotConsumeFutureCrossing() {
         Harness harness = new Harness();
-        LocalDate start = LocalDate.of(2026, 7, 29);
-        RecordStateKey streakKey = new RecordStateKey(1,
-                new RecordDefinitionKey("streak.gridwords-solved.personal"),
-                RecordDefinitionVersion.RECORDS_V1, new RecordScope.Personal(7));
-        RecordBootstrapProjection.Candidate running = new RecordBootstrapProjection.Candidate(streakKey,
-                new RecordStateWrite(Optional.of(7L), new StreakRecordValue(8, start, LocalDate.of(2026, 8, 5)),
-                        new RecordSourceReference.StreakRun(StreakRecordMetric.GRIDWORDS_SOLVED,
-                                new RecordSourceReference.StreakRunOwner.Player(7), start),
-                        Optional.empty(), true));
+        RecordBootstrapProjection.Candidate running = runningStreakCandidate();
+        harness.states.values.put(running.key(), snapshot(running, RecordLockVersion.initial()));
+
+        assertThat(service(harness).consumedCrossings(1, RecordDefinitionVersion.RECORDS_V1)).isEmpty();
+    }
+
+    @Test
+    void validCrossingEventIsTheDurableConsumptionProofForARunningState() {
+        Harness harness = new Harness();
+        RecordBootstrapProjection.Candidate running = runningStreakCandidate();
+        RecordStateKey streakKey = running.key();
+        LocalDate start = ((RecordSourceReference.StreakRun) running.write().source()).startDate();
         harness.states.values.put(streakKey, snapshot(running, RecordLockVersion.initial()));
+        StreakRecordValue previous = new StreakRecordValue(7, start, start.plusDays(6));
+        harness.events.put(new RecordEventDraft(
+                UUID.nameUUIDFromBytes("crossed-running-streak".getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                "crossed-running-streak",
+                streakKey,
+                RecordEventType.SERIES_RECORD_CROSSED,
+                Optional.of(previous),
+                running.write().value(),
+                Optional.of(7L),
+                Optional.of(7L),
+                Optional.of(running.write().source()),
+                running.write().source(),
+                "live-result:99",
+                RecordProcessingOrigin.LIVE_SUBMISSION,
+                DETECTED_AT));
 
         assertThat(service(harness).consumedCrossings(1, RecordDefinitionVersion.RECORDS_V1)).containsExactly(
                 new StreakCrossingKey(RecordDefinitionVersion.RECORDS_V1, streakKey.definitionKey(),
@@ -228,6 +247,18 @@ class RecordStateServiceTest {
                 write.sourceGameFirstAcceptedAt(), write.running(), version, DETECTED_AT, DETECTED_AT);
     }
 
+    private static RecordBootstrapProjection.Candidate runningStreakCandidate() {
+        LocalDate start = LocalDate.of(2026, 7, 29);
+        RecordStateKey streakKey = new RecordStateKey(1,
+                new RecordDefinitionKey("streak.gridwords-solved.personal"),
+                RecordDefinitionVersion.RECORDS_V1, new RecordScope.Personal(7));
+        return new RecordBootstrapProjection.Candidate(streakKey,
+                new RecordStateWrite(Optional.of(7L), new StreakRecordValue(8, start, LocalDate.of(2026, 8, 5)),
+                        new RecordSourceReference.StreakRun(StreakRecordMetric.GRIDWORDS_SOLVED,
+                                new RecordSourceReference.StreakRunOwner.Player(7), start),
+                        Optional.empty(), true));
+    }
+
     private static RecordBootstrapProjection.Candidate streakCandidate(
             RecordStateKey key, LocalDate start, LocalDate end) {
         return new RecordBootstrapProjection.Candidate(key,
@@ -240,7 +271,7 @@ class RecordStateServiceTest {
     private static RecordEventDraft anchor(RecordBootstrapProjection.Candidate candidate, String stable, Instant detectedAt) {
         RecordStateWrite write = candidate.write();
         return new RecordEventDraft(UUID.nameUUIDFromBytes(stable.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
-                "record-initialized:" + stable, KEY, de.venomenon.gridwordsbot.domain.record.RecordEventType.RECORD_INITIALIZED,
+                "record-initialized:" + stable, KEY, RecordEventType.RECORD_INITIALIZED,
                 Optional.empty(), write.value(), Optional.empty(), write.holderPlayerId(), Optional.empty(), write.source(), stable,
                 RecordProcessingOrigin.BOOTSTRAP, detectedAt);
     }
@@ -311,6 +342,12 @@ class RecordStateServiceTest {
         void put(RecordEventDraft draft) { values.put(draft.idempotencyKey(), new RecordEventSnapshot(draft, RecordEventValidity.VALID, Optional.empty(), Optional.empty(), DETECTED_AT, DETECTED_AT)); }
         @Override public Optional<RecordEventSnapshot> find(UUID id) { return values.values().stream().filter(event -> event.draft().eventId().equals(id)).findFirst(); }
         @Override public List<RecordEventSnapshot> findByTriggerKey(long guild, String trigger) { return values.values().stream().filter(event -> event.draft().triggerKey().equals(trigger)).toList(); }
+        @Override public List<RecordEventSnapshot> findBySource(long guild, RecordSourceReference source) {
+            return values.values().stream()
+                    .filter(event -> event.draft().stateKey().guildId() == guild)
+                    .filter(event -> event.draft().newSource().equals(source))
+                    .toList();
+        }
         @Override public boolean invalidate(UUID id, Instant at) { return false; }
         @Override public boolean supersede(UUID id, UUID successor, Instant at) { return false; }
     }
