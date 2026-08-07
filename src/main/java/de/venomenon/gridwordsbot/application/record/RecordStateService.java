@@ -419,13 +419,23 @@ public class RecordStateService {
         return stateStore.findAll(guildId, version);
     }
 
-    /** Running states are the durable proof that the corresponding live crossing was consumed at bootstrap. */
+    /**
+     * A running state identifies the active candidate, but only a still-valid
+     * SERIES_RECORD_CROSSED audit fact proves that this candidate has already
+     * consumed its one public live crossing. Bootstrap materialization itself
+     * is deliberately silent and must not suppress the first later strict
+     * crossing of a run that merely tied the historical record at startup.
+     */
     public Set<StreakCrossingKey> consumedCrossings(
             long guildId,
             de.venomenon.gridwordsbot.domain.record.RecordDefinitionVersion version) {
         return states(guildId, version).stream()
                 .filter(RecordStateSnapshot::running)
                 .filter(state -> state.source() instanceof RecordSourceReference.StreakRun)
+                .filter(state -> eventStore.findBySource(guildId, state.source()).stream()
+                        .anyMatch(event -> event.validity() == RecordEventValidity.VALID
+                                && event.draft().type() == RecordEventType.SERIES_RECORD_CROSSED
+                                && event.draft().stateKey().equals(state.key())))
                 .map(state -> {
                     RecordSourceReference.StreakRun source =
                             (RecordSourceReference.StreakRun) state.source();
