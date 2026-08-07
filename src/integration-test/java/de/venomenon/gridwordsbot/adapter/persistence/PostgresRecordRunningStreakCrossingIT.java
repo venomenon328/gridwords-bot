@@ -30,7 +30,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-/** Regression for a running streak that merely ties the historical record at bootstrap and crosses it later. */
+/** Bootstrap/live regression coverage for the one-crossing-per-running-streak contract. */
 @Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class PostgresRecordRunningStreakCrossingIT {
@@ -109,31 +109,14 @@ class PostgresRecordRunningStreakCrossingIT {
         }
         jdbc.update("DELETE FROM record_live_evaluation");
 
-        RecordStateService stateService = new RecordStateService(states, events, transactions, catalog);
-        RecordBootstrapCoordinator bootstrap = new RecordBootstrapCoordinator(
-                bootstraps, new PostgresRecordHistoryQuery(jdbc), stateService, catalog, clock);
-        assertThat(bootstrap.run(GUILD_ID)).isEqualTo(RecordBootstrapCoordinator.BootstrapRunResult.SUCCEEDED);
+        RecordStateService stateService = bootstrap();
         assertThat(jdbc.queryForObject(
                 "SELECT count(*) FROM record_event WHERE event_type='SERIES_RECORD_CROSSED'",
                 Integer.class)).isZero();
         assertThat(stateService.consumedCrossings(GUILD_ID, RecordDefinitionVersion.RECORDS_V1)).isEmpty();
 
         long liveResultId = insertSolved(1, LocalDate.of(2026, 8, 7), "RESULT_STORED");
-        var claim = work.claimNext(new RecordLeaseClaimRequest(NOW.plusSeconds(1), NOW.plusSeconds(60)))
-                .orElseThrow();
-        RecordLiveEvaluationProcessor processor = new RecordLiveEvaluationProcessor(
-                work,
-                new PostgresRecordLiveHistoryQuery(jdbc),
-                new RecordBootstrapReadService(bootstraps),
-                stateService,
-                events,
-                announcements,
-                transactions,
-                catalog,
-                clock,
-                CHANNEL_ID);
-
-        assertThat(processor.process(claim)).isEqualTo(RecordLiveEvaluationProcessor.ProcessingResult.PROCESSED);
+        processNext(stateService);
 
         assertThat(jdbc.queryForList("""
                 SELECT definition_key FROM record_event
@@ -166,6 +149,67 @@ class PostgresRecordRunningStreakCrossingIT {
                 .orElseThrow();
         assertThat(announcement.registration().desiredProjection()).isEqualTo(RecordAnnouncementProjection.CREATE);
         assertThat(announcement.registration().eventIds()).hasSize(4);
+    }
+
+    @Test
+    void runningStreakAlreadyCanonicalAtBootstrapDoesNotEmitARetroactiveCrossingOnExtension() {
+        insertPlayer(1);
+        insertPlayer(2);
+        insertParticipation(1);
+        insertParticipation(2);
+        for (long playerId : List.of(1L, 2L)) {
+            insertSolvedRange(playerId, LocalDate.of(2026, 7, 15), LocalDate.of(2026, 7, 21), "COMPLETED");
+        }
+        insertSolvedRange(1, LocalDate.of(2026, 7, 30), LocalDate.of(2026, 8, 6), "COMPLETED");
+        jdbc.update("DELETE FROM record_live_evaluation");
+
+        RecordStateService stateService = bootstrap();
+        assertThat(stateService.consumedCrossings(GUILD_ID, RecordDefinitionVersion.RECORDS_V1))
+                .extracting(key -> key.definitionKey().value())
+                .contains("streak.activity.personal", "streak.activity.server-individual",
+                        "streak.gridwords-solved.personal", "streak.gridwords-solved.server-individual");
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM record_event WHERE event_type='SERIES_RECORD_CROSSED'",
+                Integer.class)).isZero();
+
+        long liveResultId = insertSolved(1, LocalDate.of(2026, 8, 7), "RESULT_STORED");
+        processNext(stateService);
+
+        assertThat(jdbc.queryForObject("""
+                SELECT count(*) FROM record_event
+                WHERE processing_origin='LIVE_SUBMISSION'
+                  AND event_type='SERIES_RECORD_CROSSED'
+                  AND validity='VALID'
+                """, Integer.class)).isZero();
+        assertThat(announcements.find(new RecordAnnouncementKey(
+                GUILD_ID,
+                CHANNEL_ID,
+                "live-result:" + liveResultId + ":player:1:STREAK_CROSSED"))).isEmpty();
+    }
+
+    private RecordStateService bootstrap() {
+        RecordStateService stateService = new RecordStateService(states, events, transactions, catalog);
+        RecordBootstrapCoordinator bootstrap = new RecordBootstrapCoordinator(
+                bootstraps, new PostgresRecordHistoryQuery(jdbc), stateService, catalog, clock);
+        assertThat(bootstrap.run(GUILD_ID)).isEqualTo(RecordBootstrapCoordinator.BootstrapRunResult.SUCCEEDED);
+        return stateService;
+    }
+
+    private void processNext(RecordStateService stateService) {
+        var claim = work.claimNext(new RecordLeaseClaimRequest(NOW.plusSeconds(1), NOW.plusSeconds(60)))
+                .orElseThrow();
+        RecordLiveEvaluationProcessor processor = new RecordLiveEvaluationProcessor(
+                work,
+                new PostgresRecordLiveHistoryQuery(jdbc),
+                new RecordBootstrapReadService(bootstraps),
+                stateService,
+                events,
+                announcements,
+                transactions,
+                catalog,
+                clock,
+                CHANNEL_ID);
+        assertThat(processor.process(claim)).isEqualTo(RecordLiveEvaluationProcessor.ProcessingResult.PROCESSED);
     }
 
     private void insertPlayer(long playerId) {
