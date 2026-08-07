@@ -22,7 +22,7 @@ import java.util.Objects;
 
 /** Pure German renderer; it deliberately owns no JDA types or external I/O. */
 public final class RecordAnnouncementRenderer {
-    public static final String VERSION = "records-v1-discord-3";
+    public static final String VERSION = "records-v1-discord-4";
     private static final int PAGE_DESCRIPTION_LIMIT = 3_800;
 
     public RenderedRecordAnnouncement render(RecordAnnouncementRenderInput input) {
@@ -83,7 +83,7 @@ public final class RecordAnnouncementRenderer {
         String value = value(draft.newValue());
         String previous = draft.previousValue().map(RecordAnnouncementRenderer::value).orElse("keine Vergleichsbasis");
         String holder = draft.newHolderPlayerId().map(id -> display(displays, id)).orElse("gemeinsam");
-        String previousHolder = draft.previousHolderPlayerId().map(id -> display(displays, id)).orElse("");
+        String previousHolder = previousHolder(draft, displays);
         return switch (draft.type()) {
             case RESULT_RECORD_BROKEN -> "**" + resultGame(key) + " · " + metric + " · " + scope + "**\n"
                     + holder + ": " + value + ". Vorher: " + previous + holderSuffix(previousHolder) + ".";
@@ -103,6 +103,14 @@ public final class RecordAnnouncementRenderer {
                     + holderSuffix(previousHolder) + ".";
             default -> throw new IllegalArgumentException("event is not publicly renderable: " + draft.type());
         };
+    }
+
+    private static String previousHolder(RecordEventDraft draft, Map<Long, String> displays) {
+        if (!(draft.stateKey().scope() instanceof RecordScope.ServerIndividual)) return "";
+        if (draft.previousHolderPlayerId().isEmpty()) return "";
+        long previousHolder = draft.previousHolderPlayerId().orElseThrow();
+        if (draft.newHolderPlayerId().filter(id -> id == previousHolder).isPresent()) return "";
+        return display(displays, previousHolder);
     }
 
     private static String holderSuffix(String holder) {
