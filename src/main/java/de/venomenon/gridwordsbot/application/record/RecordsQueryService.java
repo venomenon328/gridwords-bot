@@ -61,6 +61,7 @@ public final class RecordsQueryService implements RecordsQueryUseCase {
         List<Entry> entries = catalog.definitions().stream()
                 .filter(definition -> gameMatches(definition, query.game()))
                 .map(definition -> entry(query.guildId(), personalPlayerId, definition, current, displays))
+                .flatMap(Optional::stream)
                 .sorted(Comparator.comparing((Entry entry) -> entry.category().ordinal())
                         .thenComparing(entry -> entry.scope().ordinal())
                         .thenComparing(Entry::definitionKey))
@@ -68,7 +69,7 @@ public final class RecordsQueryService implements RecordsQueryUseCase {
         return new Ready(entries);
     }
 
-    private Entry entry(
+    private Optional<Entry> entry(
             long guildId,
             long personalPlayerId,
             RecordDefinition<?> definition,
@@ -81,10 +82,11 @@ public final class RecordsQueryService implements RecordsQueryUseCase {
         };
         RecordStateSnapshot snapshot = current.get(new RecordStateKey(
                 guildId, definition.key(), definition.definitionVersion(), scope));
-        Optional<String> holder = snapshot == null || definition.scopeType() == RecordScopeType.SHARED
+        if (snapshot == null) return Optional.empty();
+        Optional<String> holder = definition.scopeType() == RecordScopeType.SHARED
                 ? Optional.empty()
                 : snapshot.holderPlayerId().map(id -> displays.getOrDefault(id, UNKNOWN_PLAYER));
-        return new Entry(
+        return Optional.of(new Entry(
                 definition.key().value(),
                 definition.metric().slug(),
                 definition.game(),
@@ -95,9 +97,9 @@ public final class RecordsQueryService implements RecordsQueryUseCase {
                     case SHARED -> Scope.SHARED;
                 },
                 holder,
-                snapshot == null ? Optional.empty() : Optional.of(snapshot.value()),
-                snapshot == null ? Optional.empty() : Optional.of(snapshot.source()),
-                snapshot != null && snapshot.running());
+                Optional.of(snapshot.value()),
+                Optional.of(snapshot.source()),
+                snapshot.running()));
     }
 
     private static boolean gameMatches(RecordDefinition<?> definition, GameFilter filter) {
