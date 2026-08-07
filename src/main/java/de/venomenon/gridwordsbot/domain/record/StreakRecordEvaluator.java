@@ -69,25 +69,17 @@ public final class StreakRecordEvaluator {
     private StreakRecordClassification classify(RecordDefinition<StreakRecordValue> definition,
             StreakRun candidate, Optional<StreakRun> reference, Set<StreakCrossingKey> consumed) {
         if (reference.isEmpty()) return StreakRecordClassification.NONE;
-        StreakRun prior = reference.orElseThrow();
-        RecordComparison comparison = definition.compare(candidate.value(), prior.value());
+        RecordComparison comparison = definition.compare(candidate.value(), reference.orElseThrow().value());
         if (!candidate.completed()) {
             StreakCrossingKey key = new StreakCrossingKey(definition.definitionVersion(), definition.key(),
                     candidate.identity());
-            // A live streak grows one calendar day at a time.  The unique
-            // crossing boundary is therefore exactly reference + 1.  This
-            // prevents a run that was already above the reference when a
-            // silent bootstrap happened from emitting a retroactive crossing
-            // on its next extension, while a bootstrap tie still announces
-            // the first later strict crossing.
-            boolean firstStrictCrossing = candidate.length() == prior.length() + 1;
-            return comparison == RecordComparison.BETTER && firstStrictCrossing && !consumed.contains(key)
+            return comparison == RecordComparison.BETTER && !consumed.contains(key)
                     ? StreakRecordClassification.CROSSED : StreakRecordClassification.NONE;
         }
         return switch (comparison) {
             case BETTER -> StreakRecordClassification.NEW_RECORD;
             case EQUAL -> StreakRecordClassification.TIED;
-            case WORSE -> RecordNearMissPolicy.isNearMiss(prior.length(), candidate.length())
+            case WORSE -> RecordNearMissPolicy.isNearMiss(reference.orElseThrow().length(), candidate.length())
                     ? StreakRecordClassification.NEAR_MISS : StreakRecordClassification.NONE;
         };
     }
