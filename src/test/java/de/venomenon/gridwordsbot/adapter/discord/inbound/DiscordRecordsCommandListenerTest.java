@@ -87,7 +87,8 @@ class DiscordRecordsCommandListenerTest {
         RecordsQueryUseCase records = mock(RecordsQueryUseCase.class);
         when(records.query(any())).thenReturn(new RecordsQueryUseCase.Ready(List.of()));
         EventFixture fixture = event(GUILD, ACTOR, "Actor");
-        when(fixture.event().getOption("game")).thenReturn(option("unexpected"));
+        OptionMapping unexpected = option("unexpected");
+        when(fixture.event().getOption("game")).thenReturn(unexpected);
 
         listener(records, List.of()).onSlashCommandInteraction(fixture.event());
 
