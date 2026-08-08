@@ -49,6 +49,7 @@ public final class DiscordParticipationCommandListener extends ListenerAdapter {
                                 new SubcommandData("off", "Reminder deaktivieren"),
                                 new SubcommandData("status", "Reminder-Status anzeigen")));
         update.addCommands(DiscordRecordsCommandListener.commandData());
+        update.addCommands(DiscordAchievementsCommandListener.commandData());
         update.queue();
     }
 
