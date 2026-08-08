@@ -1,6 +1,8 @@
 # Betrieb und Recovery – Inkrement 13 Achievements
 
-Dieses Dokument beschreibt den Betriebs- und Recovery-Pfad von `achievements-v1`. Es ergänzt ADR 0020 und das Abnahmeprotokoll `13-achievements-acceptance.md`. RC, Release und produktiver Rollout werden separat durchgeführt.
+Dieses Dokument beschreibt den Betriebs- und Recovery-Pfad von `achievements-v1`. Es ergänzt ADR 0020 und das Abnahmeprotokoll `13-achievements-acceptance.md`.
+
+**Produktionsstatus:** Release **1.4.0** ist erfolgreich ausgerollt. Der produktive Achievement-Merge basiert auf `main`-Commit `213fe15dcc59e46856ea9be7066161fdc473353a`; der anschließende Produktiv-Smoke/Canary ist bestanden.
 
 ## 1. Betriebsmodell
 
@@ -127,7 +129,7 @@ Die Delivery erkennt die fehlende persistierte Nachricht separat. Der Zustand bl
 
 Eine synchronisierte Achievement-Meldung wird wegen einer späteren fachlichen Invalidierung nicht erneut geclaimt, editiert oder gelöscht.
 
-## 7. `/achievements` im Betrieb
+## 7. Achievement-Commands im Betrieb
 
 `/achievements` ist ein reiner Read-Pfad:
 
@@ -138,7 +140,15 @@ Eine synchronisierte Achievement-Meldung wird wegen einer späteren fachlichen I
 - Selbst- und Fremdansicht sind ephemeral,
 - Single-Game-Filter enthalten ausschließlich den jeweiligen Single-Game-Scope.
 
-Ein Fehler des Commands verändert keine Achievement-Persistenz.
+`/achievement-list` ist ebenfalls strikt read-only und self-only:
+
+- zeigt alle 60 Definitionen des V1-Katalogs,
+- `✅` bedeutet aktuell `ACTIVE`,
+- `❌` bedeutet fehlend oder `INVALIDATED`,
+- zeigt keine quantitativen Fortschrittswerte,
+- bleibt vollständig ephemeral und mention-sicher.
+
+Ein Fehler dieser Commands verändert keine Achievement-Persistenz.
 
 ## 8. Diagnose
 
@@ -200,16 +210,18 @@ Ein DB-Rollback auf ein physisch älteres Schema darf nur über den allgemeinen,
 
 Bei wiederholten unbekannten Fehlern keine Datenzustände manuell passend editieren, sondern Logs, persistierte Failure-Felder, Bootstrap-/Announcement-State und kanonische Quelldaten prüfen.
 
-## 11. Releasegrenze
+## 11. Produktionsstand und weitere Releases
 
-Paket 13.8 endet mit technischer Härtung plus dokumentierter realer Discord-Abnahme. Es baut **keinen** RC und führt **keinen** Produktivrollout durch.
+Release **1.4.0** ist produktiv. Der Produktivrollout wurde mit dem bestehenden unveränderlichen Image-/Backup-/Healthcheck-/Rollbackpfad durchgeführt; der anschließende Smoke-Test wurde erfolgreich bestätigt.
 
-Vor einem späteren RC/Release sind mindestens erforderlich:
+Für weitere Achievement-Versionen gilt weiterhin:
 
-1. reale Discord-Abnahme gemäß `13-achievements-acceptance.md` erfolgreich,
-2. PR #103 gemergt und unveränderter `main`-Stand festgelegt,
-3. Backup-/Rollbackziel vorhanden,
-4. separater Testserver-/RC-Smoke,
-5. erst danach bewusste Produktionsentscheidung.
+1. kanonische Daten bleiben Quelle der Wahrheit,
+2. Schemaänderungen ausschließlich über Liquibase,
+3. vor Deployment vollständige technische Gates,
+4. validiertes Datenbankbackup vor App-Update,
+5. unveränderliches Release-/SHA-Image,
+6. kontrollierter Smoke/Canary mit klaren Rollbackkriterien,
+7. keine manuellen Achievement-Tabellenänderungen zur Simulation erfolgreicher Zustände.
 
-Die konkreten Release-/Rolloutschritte werden nach Abschluss von Inkrement 13 separat geplant.
+Der abgeschlossene Rollout-Nachweis steht in `13-achievements-live-canary.md`.
