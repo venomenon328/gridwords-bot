@@ -148,11 +148,9 @@ Verbindlich:
 - ADR 0017
 - Issue #42
 
-## In Abnahme befindliches Inkrement
-
 ### Inkrement 12 – Rekorde und Rekordmeldungen
 
-**Status:** technisch umgesetzt; Issue #58 und Paket #83 befinden sich bis zur realen Discord- und unabhängigen PR-Abnahme im Draft.
+**Status:** abgeschlossen; Issue #58 geschlossen, alle zehn Pakete gemergt und technische sowie reale Discord-Abnahme bestanden.
 
 Das Inkrement führt historisch korrekte persönliche, serverweite individuelle und gemeinsame Rekorde ein. Ergebnisrekorde unterscheiden wenigste Versuche, schnellste Lösung und langsamste erfolgreiche Lösung. Serienrekorde umfassen die bestehenden positiven Serien sowie X-Durststrecken und Tage ohne perfekten Tag. Öffentliche Meldungen werden aggregiert, zuverlässig ausgeliefert und nach Ergebniskorrekturen editiert oder gelöscht. Ein ephemerer `/records`-Command macht den aktuellen Stand überprüfbar.
 
@@ -160,8 +158,24 @@ Verbindlich:
 
 - `docs/requirements/records.md`
 - `docs/increments/12-records.md`
+- `docs/operations/12-records-acceptance.md`
 - ADR 0018
 - Issue #58
+
+## Aktives Inkrement
+
+### Inkrement 13 – Achievements
+
+**Status:** fachlich spezifiziert; Umsetzung ausstehend. Umbrella-Issue #86, Pakete #87–#94.
+
+Das Inkrement führt den kuratierten Katalog `achievements-v1` mit 60 stabilen, einmalig freischaltbaren Achievements ein. Der Katalog würdigt Erfahrung, Zuverlässigkeit, Teilnahmeserien, Erfolgsserien, Leistung sowie besondere Spiel- und Zeitsituationen. Vergaben werden aus der kanonischen Historie reconciled, korrekturfähig persistiert, bei Live-Freischaltungen aggregiert angekündigt und bei Einführung vollständig rückwirkend rekonstruiert. `/achievements` macht den aktuellen freigeschalteten Fundus lesbar.
+
+Verbindlich:
+
+- `docs/requirements/achievements.md`
+- `docs/increments/13-achievements.md`
+- ADR 0020
+- Issue #86
 
 ## Versionsstände
 
@@ -179,7 +193,7 @@ Kontextabhängige Ausreden mit privater Auswahl und Übernahme des gewählten Te
 
 **Status:** veröffentlicht und produktiv deployt.
 
-Eine Zielversion für Inkrement 12 wird erst im Rahmen der RC- und Releasevorbereitung festgelegt.
+Eine Zielversion für die noch nicht separat veröffentlichten Inkremente 12 und 13 wird erst im Rahmen der jeweiligen RC- und Releasevorbereitung festgelegt.
 
 ## Obsolet gewordene frühere Roadmap-Platzhalter
 
@@ -192,9 +206,9 @@ werden nicht weiterverfolgt. Sie waren keine umgesetzten oder abgenommenen Anfor
 
 ## Aktive Roadmap
 
-Inkrement 12 – Rekorde und Rekordmeldungen – ist technisch umgesetzt und noch nicht veröffentlicht. Die Abnahme folgt den zehn Paketen in `docs/increments/12-records.md`; RC, Release und Produktion bleiben separate nachgelagerte Schritte.
+Inkrement 13 – Achievements – ist fachlich spezifiziert und wird in den acht Paketen aus `docs/increments/13-achievements.md` umgesetzt. Inkrement 12 ist fachlich und technisch abgeschlossen; RC, Release und Produktion bleiben separate nachgelagerte Schritte.
 
-Achievements bleiben eine mögliche spätere Erweiterung. Sie dürfen auf den in Inkrement 12 eingeführten fachlichen Rekordereignissen und Gültigkeitsänderungen aufbauen, benötigen aber ein eigenes priorisiertes Issue, eine fachliche Spezifikation und einen eigenen Inkrementplan.
+Spätere Achievement-Erweiterungen, insbesondere persönliche Rekord-, Durchschnitts-, Verbesserungs- oder Schwierigkeits-Achievements, benötigen eine eigene fachliche Entscheidung. Falls rekordbezogene Achievements ergänzt werden, dürfen sie auf den in Inkrement 12 eingeführten gültigen Rekordereignissen aufbauen und keine Rekordlogik duplizieren.
 
 ## Definition of Done für künftige Inkremente
 
