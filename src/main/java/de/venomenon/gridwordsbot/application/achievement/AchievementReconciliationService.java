@@ -42,6 +42,7 @@ import java.util.UUID;
 public final class AchievementReconciliationService {
     private static final String HANDOFF_RENDERER_VERSION = "achievement-handoff-v1";
     private static final int MAX_CAS_ATTEMPTS = 6;
+    private static final int MAX_SNAPSHOT_ATTEMPTS = 6;
 
     private final AchievementHistoryQuery history;
     private final AchievementEvaluator evaluator;
@@ -79,12 +80,31 @@ public final class AchievementReconciliationService {
     /** Loads the participant-wide canonical history, evaluates it, and persists one atomic reconciliation. */
     public ReconciliationResult reconcile(ReconciliationRequest request) {
         Objects.requireNonNull(request, "request");
+        for (int attempt = 0; attempt < MAX_SNAPSHOT_ATTEMPTS; attempt++) {
+            AchievementHistorySnapshot snapshot = loadSnapshot(request);
+            AchievementEvaluation evaluation = evaluator.evaluate(snapshot, timeZone);
+            try {
+                return transactions.inParticipantTransaction(request.participantId(), () -> {
+                    AchievementHistorySnapshot lockedSnapshot = loadSnapshot(request);
+                    if (!lockedSnapshot.equals(snapshot)) {
+                        throw StaleHistorySnapshotException.INSTANCE;
+                    }
+                    return reconcileWithinTransaction(request, evaluation);
+                });
+            } catch (StaleHistorySnapshotException ignored) {
+                // Canonical history changed after evaluation; retry from a fresh participant-wide snapshot.
+            }
+        }
+        throw new IllegalStateException("achievement reconciliation history kept changing for participant "
+                + request.participantId());
+    }
+
+    private AchievementHistorySnapshot loadSnapshot(ReconciliationRequest request) {
         AchievementHistorySnapshot snapshot = history.load(request.guildId(), request.participantId());
         if (snapshot.participantId() != request.participantId()) {
             throw new IllegalStateException("achievement history belongs to another participant");
         }
-        AchievementEvaluation evaluation = evaluator.evaluate(snapshot, timeZone);
-        return transactions.inTransaction(() -> reconcileWithinTransaction(request, evaluation));
+        return snapshot;
     }
 
     private ReconciliationResult reconcileWithinTransaction(
@@ -480,6 +500,14 @@ public final class AchievementReconciliationService {
                     type == TransitionType.UNLOCK || type == TransitionType.REACTIVATE
                             ? Optional.of(event)
                             : Optional.empty());
+        }
+    }
+
+    private static final class StaleHistorySnapshotException extends RuntimeException {
+        private static final StaleHistorySnapshotException INSTANCE = new StaleHistorySnapshotException();
+
+        private StaleHistorySnapshotException() {
+            super(null, null, false, false);
         }
     }
 
