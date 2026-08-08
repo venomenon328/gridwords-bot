@@ -22,7 +22,7 @@ import org.mockito.ArgumentCaptor;
 
 class DiscordRecordsCommandRegistrationTest {
     @Test
-    void centralGuildCommandUpdateIncludesRecordsAndAchievementsExactlyOnce() {
+    void centralGuildCommandUpdateIncludesRecordsAndAchievementCommandsExactlyOnce() {
         JDA jda = mock(JDA.class);
         Guild guild = mock(Guild.class);
         CommandListUpdateAction update = mock(CommandListUpdateAction.class);
@@ -38,9 +38,9 @@ class DiscordRecordsCommandRegistrationTest {
                 .registerCommands(jda);
 
         ArgumentCaptor<CommandData> additional = ArgumentCaptor.forClass(CommandData.class);
-        verify(update, times(2)).addCommands(additional.capture());
+        verify(update, times(3)).addCommands(additional.capture());
         assertThat(additional.getAllValues()).extracting(CommandData::getName)
-                .containsExactly("records", "achievements");
+                .containsExactly("records", "achievements", "achievement-list");
         verify(update).queue();
     }
 
