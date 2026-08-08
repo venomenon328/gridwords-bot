@@ -4,26 +4,24 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 ## Aktueller Stand
 
-Der funktionale Umfang bis einschließlich **Inkrement 12** ist implementiert, nach `main` gemergt, automatisiert geprüft und auf einem separaten Discord-Testserver repräsentativ real abgenommen.
+Der funktionale Umfang bis einschließlich **Inkrement 13** ist implementiert, nach `main` gemergt, automatisiert gehärtet und produktiv ausgerollt.
 
-Der aktuelle Produktionsrelease ist weiterhin **Version 1.2.0**. Er basiert auf Inkrement 11 und aktiviert die kontextabhängigen Ausreden bewusst über die serverseitige, nicht versionierte Laufzeitkonfiguration.
+Der aktuelle Produktionsrelease ist **Version 1.4.0**. Der produktive Stand basiert auf dem Merge-Commit
 
-**Inkrement 12 – Rekorde und Rekordmeldungen** ist mit PR #84 abgeschlossen und nach `main` gemergt. Der Umfang bleibt bis zum separaten RC- und Produktionsschritt unveröffentlicht; die Produktionsversion bleibt bis dahin 1.2.0.
+`213fe15dcc59e46856ea9be7066161fdc473353a`.
 
-Der abgenommene Stand umfasst:
+**Inkrement 12 – Rekorde und Rekordmeldungen** wurde mit Version **1.3.0** produktiv eingeführt.  
+**Inkrement 13 – Achievements** wurde mit Version **1.4.0** produktiv eingeführt.
 
-- einen vollständigen grünen Standardbuild ohne externe Infrastruktur,
-- eine grüne PostgreSQL-Integrationsmatrix mit echtem PostgreSQL,
-- grüne GitHub-CI für Standardbuild und Datenbankintegration,
-- ein erfolgreiches Produktionscontainer-, Compose-, Backup-, Restore-, Resume- und Rollback-Gate,
-- reale Discord-Abnahmen für Commands, spielbezogene Teilnahme, Tagesstatus, Menüs, Reminder, Recovery, Reports, kontextabhängige Ausreden und die risikoreichen Record-/Reconciliation-Pfade,
-- einen erfolgreichen produktiven Rollout des unveränderlichen 1.2.0-SHA-Images; Inkrement 12 folgt nach separater RC-Abnahme.
+Für Inkrement 13 wurden vor dem Rollout Standardbuild, PostgreSQL-Integration, Migration/Upgrade sowie das vollständige Produktionscontainer-, Compose-, Backup-, Restore-, Resume- und Rollback-Gate erfolgreich ausgeführt. Der reale lokale Discord-Smoke deckte Startup, Migration 024, historischen Bootstrap, Introduction, `/achievements` und Restart-Idempotenz ab. Der anschließende Produktiv-Smoke/Canary wurde erfolgreich abgeschlossen.
 
 Abnahmeprotokolle:
 
 - [`docs/operations/10.6-game-specific-participation-acceptance.md`](docs/operations/10.6-game-specific-participation-acceptance.md)
 - [`docs/operations/11-contextual-excuses-acceptance.md`](docs/operations/11-contextual-excuses-acceptance.md)
 - [`docs/operations/12-records-acceptance.md`](docs/operations/12-records-acceptance.md)
+- [`docs/operations/13-achievements-acceptance.md`](docs/operations/13-achievements-acceptance.md)
+- [`docs/operations/13-achievements-live-canary.md`](docs/operations/13-achievements-live-canary.md)
 
 ## Fachlicher Funktionsumfang
 
@@ -55,12 +53,16 @@ Der Bot unterstützt insbesondere:
 - aggregierte, korrigierbare Rekordmeldungen mit Edit/Delete-Reconciliation,
 - den ephemeren, strikt lesenden `/records`-Command mit `game`, `category` und optionaler Admin-Fremdansicht,
 - persistente Record-Bootstrap-, Live-, Day-Close-, Delivery-, Retry- und Restart-Recovery,
+- einen kuratierten Katalog mit **60 Achievements** für Erfahrung, Zuverlässigkeit, Serien, Leistung und besondere Spielsituationen,
+- rückwirkende Achievement-Rekonstruktion aus der kanonischen Historie,
+- aggregierte öffentliche Achievement-Freischaltungen,
+- korrekturfähigen Achievement-State mit Invalidierung und Reaktivierung ohne öffentliche Aberkennungsnachricht,
+- den ephemeren `/achievements`-Command für aktive Achievements mit Self-/Other- und Game-Filter,
+- den ephemeren, self-only `/achievement-list`-Command mit allen 60 Definitionen und binärem `✅`/`❌`-Status ohne quantitative Fortschrittsanzeige,
 - Claim-, Lease-, Retry-, Recovery-, Supersession- und Duplikatschutz,
 - keine Discord-I/O innerhalb von Datenbanktransaktionen.
 
 Standardzeitzone ist `Europe/Berlin`.
-
-Die früher vorgemerkten allgemeinen Inkremente für Statistik-/Konfigurations-Commands und generische regelbasierte Kommentare werden nicht weiterverfolgt. Inkrement 12 ist abgeschlossen; der nächste Schritt ist die separate RC-, Release- und Produktionsvorbereitung.
 
 ## Projektdokumentation
 
@@ -68,23 +70,23 @@ Die früher vorgemerkten allgemeinen Inkremente für Statistik-/Konfigurations-C
 - [`docs/requirements/series-model.md`](docs/requirements/series-model.md) – Seriensemantik
 - [`docs/requirements/dynamic-player-model.md`](docs/requirements/dynamic-player-model.md) – dynamische Spieler und historisches Ausgangsmodell
 - [`docs/requirements/game-specific-participation.md`](docs/requirements/game-specific-participation.md) – spielbezogene Teilnahme
-- [`docs/requirements/excuses.md`](docs/requirements/excuses.md) – kontextabhängige Ausreden, Auswahl, Persistenz und Wiederholungsschutz
-- [`docs/requirements/records.md`](docs/requirements/records.md) – verbindliche Ergebnis-, Serien-, Meldungs- und Korrektursemantik für Rekorde
+- [`docs/requirements/excuses.md`](docs/requirements/excuses.md) – kontextabhängige Ausreden
+- [`docs/requirements/records.md`](docs/requirements/records.md) – Rekordsemantik
+- [`docs/requirements/achievements.md`](docs/requirements/achievements.md) – vollständiger Achievement-Katalog und Fachsemantik
+- [`docs/requirements/achievement-list.md`](docs/requirements/achievement-list.md) – vollständige persönliche Achievement-Liste
 - [`docs/requirements/daily-status-reminders.md`](docs/requirements/daily-status-reminders.md) – Tagesstatus, Reminder und Cleanup
 - [`docs/requirements/periodic-reports.md`](docs/requirements/periodic-reports.md) – Wochen- und Monatsberichte
 - [`docs/requirements/production-deployment.md`](docs/requirements/production-deployment.md) – Produktions- und Deploymentweg
 - [`docs/architecture.md`](docs/architecture.md) – Architektur und Modulgrenzen
-- [`docs/implementation-plan.md`](docs/implementation-plan.md) – abgeschlossene und vorbereitete Inkremente
+- [`docs/implementation-plan.md`](docs/implementation-plan.md) – abgeschlossene Produktinkremente
 - [`docs/development-guide.md`](docs/development-guide.md) – lokaler Build, Docker und Tests
-- [`docs/increments/10-periodic-reports.md`](docs/increments/10-periodic-reports.md) – Inkrement 10
-- [`docs/increments/10.4-day-close-reminder-retention-cleanup.md`](docs/increments/10.4-day-close-reminder-retention-cleanup.md) – Tagesabschluss und Bereinigung
-- [`docs/increments/10.5-interactive-result-details.md`](docs/increments/10.5-interactive-result-details.md) – interaktive Ergebnisdetails
-- [`docs/increments/10.6-game-specific-participation.md`](docs/increments/10.6-game-specific-participation.md) – unabhängige Spielteilnahme
-- [`docs/increments/11-contextual-excuses.md`](docs/increments/11-contextual-excuses.md) – abgeschlossenes Inkrement 11
-- [`docs/increments/12-records.md`](docs/increments/12-records.md) – abgeschlossenes Inkrement 12
-- [`docs/operations/12-records-acceptance.md`](docs/operations/12-records-acceptance.md) – technische und reale Discord-Abnahme für Inkrement 12
-- [`docs/operations/12-records-operations.md`](docs/operations/12-records-operations.md) – Bootstrap-, Delivery-, Recovery- und Rollback-Runbook
-- [`docs/operations/12-records-release-notes.md`](docs/operations/12-records-release-notes.md) – Releasevorbereitung für Inkrement 12
+- [`docs/increments/11-contextual-excuses.md`](docs/increments/11-contextual-excuses.md) – Inkrement 11
+- [`docs/increments/12-records.md`](docs/increments/12-records.md) – Inkrement 12
+- [`docs/increments/13-achievements.md`](docs/increments/13-achievements.md) – Inkrement 13
+- [`docs/operations/12-records-operations.md`](docs/operations/12-records-operations.md) – Record-Betrieb und Recovery
+- [`docs/operations/13-achievements-operations.md`](docs/operations/13-achievements-operations.md) – Achievement-Betrieb und Recovery
+- [`docs/operations/13-achievements-acceptance.md`](docs/operations/13-achievements-acceptance.md) – technische und reale Abnahme von Inkrement 13
+- [`docs/operations/13-achievements-live-canary.md`](docs/operations/13-achievements-live-canary.md) – dokumentierter Produktiv-Canary von Inkrement 13
 - [`docs/operations/`](docs/operations/) – Abnahmen, Betrieb, Deployment, Backup und Fehlerdiagnose
 - [`docs/adr/`](docs/adr/) – Architekturentscheidungen
 - [`AGENTS.md`](AGENTS.md) – Arbeitsregeln für Codex und Reviews
@@ -136,12 +138,10 @@ EXCUSE_OFFER_LIFETIME=PT15M
 EXCUSE_EXPIRATION_PAGE_SIZE=25
 EXCUSE_EXPIRATION_MAX_PAGES=4
 
-# Persistenter Rekord-Bootstrap (nur Datenbankprofil)
 RECORD_BOOTSTRAP_POLL_DELAY=PT1M
 RECORD_BOOTSTRAP_LEASE_DURATION=PT2M
 RECORD_BOOTSTRAP_RETRY_BACKOFF=PT1M
 
-# Persistente Live-Rekordauswertung (nur Datenbankprofil)
 RECORD_LIVE_EVALUATION_ENABLED=true
 RECORD_LIVE_EVALUATION_POLL_DELAY=PT10S
 RECORD_LIVE_EVALUATION_LEASE_DURATION=PT2M
@@ -149,7 +149,6 @@ RECORD_LIVE_EVALUATION_HEARTBEAT_INTERVAL=PT30S
 RECORD_LIVE_EVALUATION_INITIAL_RETRY_BACKOFF=PT10S
 RECORD_LIVE_EVALUATION_MAX_RETRY_BACKOFF=PT5M
 
-# Öffentliche Rekordmeldungen; für den ersten Produktionsstart bewusst false.
 RECORD_PUBLIC_ANNOUNCEMENTS_ENABLED=false
 RECORD_ANNOUNCEMENT_POLL_DELAY=PT10S
 RECORD_ANNOUNCEMENT_LEASE_DURATION=PT2M
@@ -160,11 +159,7 @@ RECORD_ANNOUNCEMENT_MAX_RETRY_BACKOFF=PT5M
 
 Der versionierte Default der Ausreden bleibt bewusst deaktiviert. Für einen lokalen Discord-Test kann `EXCUSE_GENERATOR_CONTEXTUAL_ENABLED=true` in der nicht versionierten `.env` gesetzt werden.
 
-Der Rekord-Bootstrap pollt persistente fällige Arbeit. Der Poll-Delay muss wegen der Scheduler-Auflösung mindestens `PT0.001S` betragen; Lease und Retry-Backoff müssen positiv sein. Die Defaults entsprechen dem bisherigen Verhalten: Poll und Retry jeweils eine Minute, Lease zwei Minuten. Im Produktionsprofil stellt der ausschließlich lokal gebundene Actuator die Bootstrap-Metriken unter `/actuator/metrics/gridwords.record.bootstrap.runs` und `/actuator/metrics/gridwords.record.bootstrap.duration` bereit.
-
-Die Live-Rekordauswertung ist standardmäßig aktiviert und claimt jeweils genau einen persistenten Ergebnisversionsauftrag. Ihr Poll-Delay beträgt mindestens `PT0.001S`; Heartbeat und Lease müssen positiv sein, der Heartbeat strikt kürzer als die Lease. Retry-Backoff wird von `RECORD_LIVE_EVALUATION_INITIAL_RETRY_BACKOFF` bis höchstens `RECORD_LIVE_EVALUATION_MAX_RETRY_BACKOFF` exponentiell begrenzt. Der lokale Actuator stellt die abgeschlossenen Ausführungen unter `/actuator/metrics/gridwords.record.live-evaluation.runs` und `/actuator/metrics/gridwords.record.live-evaluation.duration` bereit.
-
-Öffentliche Rekordmeldungen sind standardmäßig deaktiviert. Für einen Produktivrollout wird zuerst mit `RECORD_PUBLIC_ANNOUNCEMENTS_ENABLED=false` migriert und der Bootstrap-/`/records`-Stand geprüft; erst danach wird die Variable bewusst aktiviert. Während der deaktivierten Phase entstandene Meldungen werden nicht als Backlog nachgeliefert.
+Achievement-Bootstrap und Achievement-Delivery verwenden persistente PostgreSQL-Zustände und starten im `database`-Profil automatisch. Die Schemaerweiterung liegt in Liquibase-Migration 024. Für die Achievement-Commands oder den Bootstrap ist kein separater History-Rebuild-Command erforderlich.
 
 ## Lokale Validierung
 
@@ -180,6 +175,12 @@ PostgreSQL-Integration:
 docker compose up -d postgres
 docker compose ps
 mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
+```
+
+Migration/Upgrade:
+
+```powershell
+mvn --batch-mode --no-transfer-progress -Pmigration-clean-install verify
 ```
 
 PostgreSQL stoppen und Daten behalten:
@@ -220,11 +221,11 @@ Liquibase verwendet dieselben Migrationen wie die Integrationstests und der Prod
 
 Der Produktionscontainer wird aus dem versionierten `Dockerfile` gebaut und läuft als Nicht-Root-Benutzer mit Java 21.
 
-Die normale GitHub-CI führt Standardbuild und PostgreSQL-Integration aus. Der Workflow `Container image` prüft zusätzlich das Produktionsimage sowie Compose-, Backup-, Restore-, Resume- und Rollbackpfade.
+Die normale GitHub-CI führt Standardbuild, PostgreSQL-Integration und das Migration-/Upgrade-Gate aus. Der Workflow `Container image` prüft zusätzlich das Produktionsimage sowie Compose-, Backup-, Restore-, Resume- und Rollbackpfade.
 
 Eine Veröffentlichung nach `ghcr.io/venomenon328/gridwords-bot` erfolgt ausschließlich durch einen bewusst manuell gestarteten Workflow auf `main` mit einem neuen SemVer-Tag. Pull Requests veröffentlichen niemals ein Image.
 
-Release Candidates werden mit einer separaten Discord-Testanwendung und einer isolierten PostgreSQL-Datenbank geprüft. Nach erfolgreicher Abnahme wird ausschließlich der freigegebene Commit über einen unveränderlichen SHA-Tag ausgerollt.
+Produktionsdeployments verwenden ausschließlich das freigegebene unveränderliche SHA-Image. Vor dem App-Update wird ein validiertes PostgreSQL-Backup erzeugt; der vorhandene Deploymentpfad führt bei fehlgeschlagenem Healthcheck einen verifizierten App-Rollback auf das vorherige Image aus.
 
 ## Datenbankzugriff mit DBeaver
 
@@ -255,6 +256,7 @@ Die Produktionsdatenbank besitzt keinen öffentlichen Hostport. Administrativer 
 - reale PNG-Fixtures für den QuadWords-Bildparser,
 - feste injizierte `Clock` für zeitabhängige Tests,
 - manueller Smoke-Test mit separater Discord-Testanwendung,
+- kontrollierter Produktiv-Canary für risikoreiche externe Discord-Pfade,
 - vollständiger Container-, Backup-, Restore-, Resume- und Rollback-Test in GitHub Actions.
 
 H2 ersetzt keine PostgreSQL-Integrationstests.

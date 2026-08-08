@@ -126,20 +126,6 @@ Verbindlich:
 
 Bei klar definierten auffälligen Ergebnissen kann der Ergebnisautor freiwillig drei private redaktionelle Ausreden öffnen, einmal den Stil wechseln, eine Ausrede auswählen oder verzichten. Nur der gewählte Text erscheint in derselben kanonischen Ergebnisnachricht. Ablauf, Cooldown, Wiederholungsschutz, Korrekturen und Recovery sind persistent abgesichert.
 
-Abgeschlossen sind insbesondere:
-
-- reine Ausredendomäne und validierter Katalog,
-- Ergebnis-, Zeit-, Board- und Tageskontext,
-- persistenter Zustand, Optionen und Auswahlhistorie,
-- einmalige Angebotsentscheidung bei einem neuen Ergebnis,
-- öffentlicher Öffnungsbutton und autorisierter ephemerer Flow,
-- drei Vorschläge, einmaliger Stilwechsel, Auswahl und Verzicht,
-- Ablauf, Korrekturrevalidierung, Boardanreicherung und Restart-Recovery,
-- produktiver Katalog `2026.08.04.1` mit 564 auswählbaren Templates,
-- reale Discord-Abnahme,
-- vollständiges Produktionsimage-, Compose-, Backup-, Restore-, Resume- und Rollback-Gate,
-- produktiver Rollout mit aktiviertem Feature.
-
 Verbindlich:
 
 - `docs/requirements/excuses.md`
@@ -150,7 +136,7 @@ Verbindlich:
 
 ### Inkrement 12 – Rekorde und Rekordmeldungen
 
-**Status:** abgeschlossen; Issue #58 geschlossen, alle zehn Pakete gemergt und technische sowie reale Discord-Abnahme bestanden.
+**Status:** abgeschlossen; Issue #58 geschlossen, alle zehn Pakete gemergt, technische und reale Discord-Abnahme bestanden und mit Release **1.3.0** produktiv ausgerollt.
 
 Das Inkrement führt historisch korrekte persönliche, serverweite individuelle und gemeinsame Rekorde ein. Ergebnisrekorde unterscheiden wenigste Versuche, schnellste Lösung und langsamste erfolgreiche Lösung. Serienrekorde umfassen die bestehenden positiven Serien sowie X-Durststrecken und Tage ohne perfekten Tag. Öffentliche Meldungen werden aggregiert, zuverlässig ausgeliefert und nach Ergebniskorrekturen editiert oder gelöscht. Ein ephemerer `/records`-Command macht den aktuellen Stand überprüfbar.
 
@@ -162,22 +148,28 @@ Verbindlich:
 - ADR 0018
 - Issue #58
 
-## Aktives Inkrement
-
 ### Inkrement 13 – Achievements
 
-**Status:** technisch umgesetzt und automatisiert gehärtet; reale Discord-Abnahme ausstehend. Umbrella-Issue #86, Abschluss-PR #103 / Paket #94.
+**Status:** abgeschlossen; Umbrella-Issue #86 und Paket #94 abgeschlossen, Gesamt-PR #103 nach `main` gemergt, Release **1.4.0** produktiv ausgerollt und Produktiv-Smoke/Canary bestanden.
 
-Das Inkrement führt den kuratierten Katalog `achievements-v1` mit 60 stabilen, einmalig freischaltbaren Achievements ein. Der Katalog würdigt Erfahrung, Zuverlässigkeit, Teilnahmeserien, Erfolgsserien, Leistung sowie besondere Spiel- und Zeitsituationen. Vergaben werden aus der kanonischen Historie reconciled, korrekturfähig persistiert, bei Live-Freischaltungen aggregiert angekündigt und bei Einführung vollständig rückwirkend rekonstruiert. `/achievements` macht den aktuellen freigeschalteten Fundus lesbar.
+Das Inkrement führt den kuratierten Katalog `achievements-v1` mit 60 stabilen, einmalig freischaltbaren Achievements ein. Der Katalog würdigt Erfahrung, Zuverlässigkeit, Teilnahmeserien, Erfolgsserien, Leistung sowie besondere Spiel- und Zeitsituationen. Vergaben werden aus der kanonischen Historie reconciled, korrekturfähig persistiert, bei Live-Freischaltungen aggregiert angekündigt und bei Einführung vollständig rückwirkend rekonstruiert.
 
-Die Pakete 13.1–13.7 sind im Achievement-Sammelstand integriert. Paket 13.8 ergänzt die vollständige 60-Fälle-Abnahmematrix, PostgreSQL-End-to-End-, Upgrade-, Konkurrenz- und Delivery-Recovery-Härtung sowie Betriebsdokumentation. Der einzige bewusst noch offene Abnahmeschritt ist der reale Discord-Test auf dem separaten Testserver; bis dahin bleibt PR #103 Draft.
+`/achievements` zeigt die aktuell aktiven Achievements mit Self-/Other- und Game-Filter. `/achievement-list` zeigt self-only alle 60 Definitionen mit ausschließlich `✅`/`❌` als persönlichem Status und ohne quantitative Fortschrittsanzeige.
+
+Der finale Integrationsstand wurde mit Standardbuild, echtem PostgreSQL, Migration/Upgrade, Konkurrenz-, Retry-/Restart-/Send-vor-ACK- sowie Container-/Backup-/Restore-/Resume-/Rollbackpfaden gehärtet. Der lokale Discord-Smoke bestätigte Startup, Migration 024, historischen Bootstrap, Introduction, `/achievements` und Restart-Idempotenz. Der anschließende Produktiv-Canary wurde erfolgreich abgeschlossen.
+
+Der produktiv ausgerollte Achievement-Merge basiert auf `main`-Commit:
+
+`213fe15dcc59e46856ea9be7066161fdc473353a`
 
 Verbindlich:
 
 - `docs/requirements/achievements.md`
+- `docs/requirements/achievement-list.md`
 - `docs/increments/13-achievements.md`
 - `docs/operations/13-achievements-acceptance.md`
 - `docs/operations/13-achievements-operations.md`
+- `docs/operations/13-achievements-live-canary.md`
 - ADR 0020
 - Issue #86
 
@@ -197,7 +189,17 @@ Kontextabhängige Ausreden mit privater Auswahl und Übernahme des gewählten Te
 
 **Status:** veröffentlicht und produktiv deployt.
 
-Eine Zielversion für die noch nicht separat veröffentlichten Inkremente 12 und 13 wird erst im Rahmen der jeweiligen RC- und Releasevorbereitung festgelegt.
+### Version 1.3.0
+
+Rekorde, Serienrekorde, aggregierte Rekordmeldungen sowie `/records`.
+
+**Status:** veröffentlicht und produktiv deployt.
+
+### Version 1.4.0
+
+60 historisch rekonstruierbare Achievements, aggregierte Live-Freischaltungen, `/achievements` und `/achievement-list`.
+
+**Status:** veröffentlicht, produktiv deployt und durch den Live-Smoke/Canary bestätigt.
 
 ## Obsolet gewordene frühere Roadmap-Platzhalter
 
@@ -210,7 +212,7 @@ werden nicht weiterverfolgt. Sie waren keine umgesetzten oder abgenommenen Anfor
 
 ## Aktive Roadmap
 
-Inkrement 13 – Achievements – ist technisch umgesetzt; offen ist nur noch die reale Discord-Abnahme aus Paket 13.8. Danach folgen Merge von PR #103 sowie ein separater RC-/Releasepfad. Inkrement 12 ist fachlich und technisch abgeschlossen; RC, Release und Produktion bleiben ebenfalls separate nachgelagerte Schritte.
+Aktuell ist kein weiteres Produktinkrement in diesem Plan verbindlich freigegeben. Neue Funktionen werden über eigene priorisierte Issues und eine neue Paketplanung aufgenommen.
 
 Spätere Achievement-Erweiterungen, insbesondere persönliche Rekord-, Durchschnitts-, Verbesserungs- oder Schwierigkeits-Achievements, benötigen eine eigene fachliche Entscheidung. Falls rekordbezogene Achievements ergänzt werden, dürfen sie auf den in Inkrement 12 eingeführten gültigen Rekordereignissen aufbauen und keine Rekordlogik duplizieren.
 
@@ -224,4 +226,4 @@ Spätere Achievement-Erweiterungen, insbesondere persönliche Rekord-, Durchschn
 - Dokumentation aktuell,
 - notwendiger manueller Discord-Smoke-Test erfolgreich,
 - bei Betriebsänderungen Backup-, Restore-, Upgrade- und Rollbackweg geprüft,
-- produktiver Release erst nach erfolgreicher RC-Abnahme.
+- produktiver Release erst nach erfolgreicher RC-/Rolloutfreigabe.
