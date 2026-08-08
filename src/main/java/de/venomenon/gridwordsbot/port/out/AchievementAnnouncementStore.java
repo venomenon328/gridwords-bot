@@ -12,6 +12,8 @@ import java.util.UUID;
 public interface AchievementAnnouncementStore {
     AchievementAnnouncement.Snapshot register(AchievementAnnouncement.Registration registration);
     Optional<AchievementAnnouncement.Snapshot> find(AchievementAnnouncement.Key key);
+    /** Pending live handoffs that may still be reduced after a canonical correction. */
+    List<AchievementAnnouncement.Snapshot> findPending(long guildId, long participantId);
     List<AchievementAnnouncement.Item> findItems(AchievementAnnouncement.Key key);
     boolean updatePendingContent(AchievementAnnouncement.Key key, String rendererVersion, String contentFingerprint);
     boolean replaceItems(AchievementAnnouncement.Key key, List<UUID> eventIds);

@@ -56,6 +56,19 @@ public final class PostgresAchievementAnnouncementStore implements AchievementAn
     }
 
     @Override
+    public List<AchievementAnnouncement.Snapshot> findPending(long guildId, long participantId) {
+        if (guildId <= 0 || participantId <= 0) {
+            throw new IllegalArgumentException("guildId and participantId must be positive");
+        }
+        return jdbc.query("""
+                SELECT * FROM achievement_announcement
+                 WHERE guild_id=? AND participant_id=? AND announcement_type='LIVE_UNLOCK_BATCH'
+                   AND delivery_state IN ('OPEN','RETRYABLE') AND discord_message_id IS NULL
+                 ORDER BY created_at, id
+                """, AchievementJdbcMapping::announcement, guildId, participantId);
+    }
+
+    @Override
     public List<AchievementAnnouncement.Item> findItems(AchievementAnnouncement.Key key) {
         AchievementAnnouncement.Snapshot announcement = find(key).orElseThrow(
                 () -> new IllegalArgumentException("unknown achievement announcement"));
