@@ -22,7 +22,7 @@ import org.mockito.ArgumentCaptor;
 
 class JdaAchievementAnnouncementMessageGatewayTest {
     @Test
-    void createsMentionSafeMessageWithNonceAndInvisibleRecoveryMarker() {
+    void createsMentionSafeMessageWithStableNonceAndNoVisibleRecoveryMetadata() {
         JDA jda = mock(JDA.class);
         TextChannel channel = mock(TextChannel.class);
         MessageCreateAction create = mock(MessageCreateAction.class);
@@ -43,7 +43,9 @@ class JdaAchievementAnnouncementMessageGatewayTest {
         verify(create).setNonce(nonce.capture());
         verify(create).setAllowedMentions(List.of());
         assertThat(embeds.getValue()).singleElement().satisfies(embed ->
-                assertThat(embed.getDescription()).contains("Ada", "https://gridwords.invalid/achievement/"));
+                assertThat(embed.getDescription())
+                        .isEqualTo(announcement.embeds().getFirst().description())
+                        .doesNotContain("gridwords.invalid", "achievement-announcement"));
         assertThat(nonce.getValue()).startsWith("aa:").doesNotContain("achievement-announcement")
                 .hasSizeLessThanOrEqualTo(Message.MAX_NONCE_LENGTH);
     }
