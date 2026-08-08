@@ -89,3 +89,7 @@ databaseChangeLog:
   - include:
       file: 023-record-announcement-stability.sql
       relativeToChangelogFile: true
+
+  - include:
+      file: 024-achievement-persistence.sql
+      relativeToChangelogFile: true
