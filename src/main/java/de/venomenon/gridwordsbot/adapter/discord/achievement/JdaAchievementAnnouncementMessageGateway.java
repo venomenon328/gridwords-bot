@@ -72,7 +72,7 @@ public final class JdaAchievementAnnouncementMessageGateway implements Achieveme
                 List<Message> batch = history.retrievePast(100).complete();
                 for (Message message : batch) {
                     if (!message.getAuthor().equals(jda.getSelfUser())) continue;
-                    if (expectedNonce.equals(message.getNonce()) || hasMarker(message, publicationKey) || sameContent(message, expected)) {
+                    if (expectedNonce.equals(message.getNonce()) || hasMarker(message, publicationKey)) {
                         matches.add(message.getIdLong());
                     }
                 }
@@ -128,20 +128,6 @@ public final class JdaAchievementAnnouncementMessageGateway implements Achieveme
         if (description == null) return false;
         java.util.regex.Matcher matcher = HIDDEN_MARKER.matcher(description);
         return matcher.find() && publicationKey.endsWith(matcher.group(1));
-    }
-
-    private static boolean sameContent(Message message, RenderedAchievementAnnouncement expected) {
-        if (message.getEmbeds().size() != expected.embeds().size()) return false;
-        for (int index = 0; index < expected.embeds().size(); index++) {
-            MessageEmbed actual = message.getEmbeds().get(index);
-            RenderedAchievementAnnouncement.Embed intended = expected.embeds().get(index);
-            String description = actual.getDescription();
-            if (index == expected.embeds().size() - 1 && description != null) {
-                description = HIDDEN_MARKER.matcher(description).replaceFirst("");
-            }
-            if (!intended.title().equals(actual.getTitle()) || !intended.description().equals(description)) return false;
-        }
-        return true;
     }
 
     private TextChannel channel(long channelId) {
