@@ -24,8 +24,6 @@ import net.dv8tion.jda.api.requests.ErrorResponse;
 public final class JdaAchievementAnnouncementMessageGateway implements AchievementAnnouncementMessageGateway {
     private static final String NONCE_PREFIX = "aa:";
     private static final Pattern MARKER = Pattern.compile("achievement-announcement:[0-9a-f]{64}");
-    private static final Pattern HIDDEN_MARKER = Pattern.compile(
-            "\\[\\u2063\\]\\(https://gridwords\\.invalid/achievement/([0-9a-f]{64})\\)$");
     private final JDA jda;
 
     public JdaAchievementAnnouncementMessageGateway(JDA jda) { this.jda = Objects.requireNonNull(jda, "jda"); }
@@ -72,9 +70,7 @@ public final class JdaAchievementAnnouncementMessageGateway implements Achieveme
                 List<Message> batch = history.retrievePast(100).complete();
                 for (Message message : batch) {
                     if (!message.getAuthor().equals(jda.getSelfUser())) continue;
-                    if (expectedNonce.equals(message.getNonce()) || hasMarker(message, publicationKey)) {
-                        matches.add(message.getIdLong());
-                    }
+                    if (expectedNonce.equals(message.getNonce())) matches.add(message.getIdLong());
                 }
                 if (batch.size() < 100) {
                     matches.sort(Comparator.naturalOrder());
@@ -112,22 +108,9 @@ public final class JdaAchievementAnnouncementMessageGateway implements Achieveme
     }
 
     private static List<MessageEmbed> embeds(RenderedAchievementAnnouncement announcement) {
-        String hash = announcement.publicationKey().substring("achievement-announcement:".length());
-        return java.util.stream.IntStream.range(0, announcement.embeds().size()).mapToObj(index -> {
-            RenderedAchievementAnnouncement.Embed embed = announcement.embeds().get(index);
-            String description = index == announcement.embeds().size() - 1
-                    ? embed.description() + "[\u2063](https://gridwords.invalid/achievement/" + hash + ")"
-                    : embed.description();
-            return new EmbedBuilder().setTitle(embed.title()).setDescription(description).build();
-        }).toList();
-    }
-
-    private static boolean hasMarker(Message message, String publicationKey) {
-        if (message.getEmbeds().isEmpty()) return false;
-        String description = message.getEmbeds().getLast().getDescription();
-        if (description == null) return false;
-        java.util.regex.Matcher matcher = HIDDEN_MARKER.matcher(description);
-        return matcher.find() && publicationKey.endsWith(matcher.group(1));
+        return announcement.embeds().stream()
+                .map(embed -> new EmbedBuilder().setTitle(embed.title()).setDescription(embed.description()).build())
+                .toList();
     }
 
     private TextChannel channel(long channelId) {
