@@ -31,19 +31,21 @@ public final class AchievementAnnouncementRenderer {
         List<AchievementEventFact.Snapshot> ordered = input.events().stream()
                 .sorted(Comparator.comparing(event -> catalogIndex(event.fact().awardKey().achievementKey().value())))
                 .toList();
-        if (ordered.isEmpty()) throw new IllegalArgumentException("achievement announcement requires events");
+        if (ordered.isEmpty() && announcement.registration().type() == AchievementAnnouncement.Type.LIVE_UNLOCK_BATCH) {
+            throw new IllegalArgumentException("live achievement announcement requires events");
+        }
         String display = neutralize(input.participantDisplayName());
         String publicationKey = publicationKey(announcement.registration().idempotencyKey());
         String header = switch (announcement.registration().type()) {
             case LIVE_UNLOCK_BATCH -> display + " hat " + ordered.size() + " neue Achievement"
                     + (ordered.size() == 1 ? " freigeschaltet:" : "s freigeschaltet:");
             case HISTORICAL_INTRODUCTION -> display + " startet mit " + ordered.size()
-                    + " r\u00fcckwirkend vergebenen Achievements:";
+                    + " rückwirkend vergebenen Achievements:";
         };
         List<String> lines = ordered.stream().map(this::line).toList();
         List<String> bodies = bodies(header, lines);
         String title = announcement.registration().type() == AchievementAnnouncement.Type.LIVE_UNLOCK_BATCH
-                ? "\ud83c\udfc5 Neue Achievements" : "\ud83c\udfc5 Achievements";
+                ? "🏅 Neue Achievements" : "🏅 Achievements";
         List<RenderedAchievementAnnouncement.Embed> embeds = bodies.stream()
                 .map(body -> new RenderedAchievementAnnouncement.Embed(title, body)).toList();
         String fingerprint = sha256(embeds.stream().map(embed -> embed.title() + "\n" + embed.description())
