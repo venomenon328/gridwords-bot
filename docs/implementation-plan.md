@@ -166,14 +166,18 @@ Verbindlich:
 
 ### Inkrement 13 – Achievements
 
-**Status:** fachlich spezifiziert; Umsetzung ausstehend. Umbrella-Issue #86, Pakete #87–#94.
+**Status:** technisch umgesetzt und automatisiert gehärtet; reale Discord-Abnahme ausstehend. Umbrella-Issue #86, Abschluss-PR #103 / Paket #94.
 
 Das Inkrement führt den kuratierten Katalog `achievements-v1` mit 60 stabilen, einmalig freischaltbaren Achievements ein. Der Katalog würdigt Erfahrung, Zuverlässigkeit, Teilnahmeserien, Erfolgsserien, Leistung sowie besondere Spiel- und Zeitsituationen. Vergaben werden aus der kanonischen Historie reconciled, korrekturfähig persistiert, bei Live-Freischaltungen aggregiert angekündigt und bei Einführung vollständig rückwirkend rekonstruiert. `/achievements` macht den aktuellen freigeschalteten Fundus lesbar.
+
+Die Pakete 13.1–13.7 sind im Achievement-Sammelstand integriert. Paket 13.8 ergänzt die vollständige 60-Fälle-Abnahmematrix, PostgreSQL-End-to-End-, Upgrade-, Konkurrenz- und Delivery-Recovery-Härtung sowie Betriebsdokumentation. Der einzige bewusst noch offene Abnahmeschritt ist der reale Discord-Test auf dem separaten Testserver; bis dahin bleibt PR #103 Draft.
 
 Verbindlich:
 
 - `docs/requirements/achievements.md`
 - `docs/increments/13-achievements.md`
+- `docs/operations/13-achievements-acceptance.md`
+- `docs/operations/13-achievements-operations.md`
 - ADR 0020
 - Issue #86
 
@@ -206,7 +210,7 @@ werden nicht weiterverfolgt. Sie waren keine umgesetzten oder abgenommenen Anfor
 
 ## Aktive Roadmap
 
-Inkrement 13 – Achievements – ist fachlich spezifiziert und wird in den acht Paketen aus `docs/increments/13-achievements.md` umgesetzt. Inkrement 12 ist fachlich und technisch abgeschlossen; RC, Release und Produktion bleiben separate nachgelagerte Schritte.
+Inkrement 13 – Achievements – ist technisch umgesetzt; offen ist nur noch die reale Discord-Abnahme aus Paket 13.8. Danach folgen Merge von PR #103 sowie ein separater RC-/Releasepfad. Inkrement 12 ist fachlich und technisch abgeschlossen; RC, Release und Produktion bleiben ebenfalls separate nachgelagerte Schritte.
 
 Spätere Achievement-Erweiterungen, insbesondere persönliche Rekord-, Durchschnitts-, Verbesserungs- oder Schwierigkeits-Achievements, benötigen eine eigene fachliche Entscheidung. Falls rekordbezogene Achievements ergänzt werden, dürfen sie auf den in Inkrement 12 eingeführten gültigen Rekordereignissen aufbauen und keine Rekordlogik duplizieren.
 
