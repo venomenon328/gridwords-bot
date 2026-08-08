@@ -125,8 +125,11 @@ class AchievementAnnouncementDeliveryCoordinatorTest {
                         active ? AchievementAwardState.Status.ACTIVE : AchievementAwardState.Status.INVALIDATED,
                         LocalDate.of(2026, 8, 7), NOW, AchievementEvidence.Kind.GAME_RESULT, "result:1",
                         active ? Optional.empty() : Optional.of(NOW));
-                when(awards.find(awardKey)).thenReturn(Optional.of(new AchievementAwardState.Snapshot(awardKey, write,
-                        AchievementAwardState.LockVersion.initial(), NOW, NOW)));
+                AchievementAwardState.Snapshot state = new AchievementAwardState.Snapshot(awardKey, write,
+                        AchievementAwardState.LockVersion.initial(), NOW, NOW);
+                when(awards.findAll(1, 3)).thenReturn(List.of(state));
+            } else {
+                when(awards.findAll(1, 3)).thenReturn(List.of());
             }
             when(players.findByDiscordUserId(3)).thenReturn(Optional.of(new PlayerStore.StoredPlayer(3, "Ada", true, false, true, NOW, NOW)));
             when(announcements.markSuppressed(eq(key), eq(token), any())).thenReturn(true);
