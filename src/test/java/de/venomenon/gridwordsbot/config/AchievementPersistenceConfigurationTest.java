@@ -16,13 +16,13 @@ import de.venomenon.gridwordsbot.port.out.AchievementTransactionRunner;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
 import de.venomenon.gridwordsbot.port.out.SubmissionStore;
 import java.time.Clock;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.transaction.support.TransactionTemplate;
 
 class AchievementPersistenceConfigurationTest {
@@ -52,8 +52,13 @@ class AchievementPersistenceConfigurationTest {
     @Configuration(proxyBeanMethods = false)
     static class InfrastructureConfiguration {
         @Bean
-        JdbcTemplate jdbcTemplate() {
-            return new JdbcTemplate();
+        DataSource dataSource() {
+            return mock(DataSource.class);
+        }
+
+        @Bean
+        JdbcTemplate jdbcTemplate(DataSource dataSource) {
+            return new JdbcTemplate(dataSource);
         }
 
         @Bean
@@ -62,8 +67,8 @@ class AchievementPersistenceConfigurationTest {
         }
 
         @Bean
-        TransactionTemplate transactionTemplate() {
-            return new TransactionTemplate(new DataSourceTransactionManager(new DriverManagerDataSource()));
+        TransactionTemplate transactionTemplate(DataSource dataSource) {
+            return new TransactionTemplate(new DataSourceTransactionManager(dataSource));
         }
 
         @Bean
