@@ -1,6 +1,7 @@
 package de.venomenon.gridwordsbot.application.achievement;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -48,12 +49,38 @@ class AchievementAnnouncementDeliveryCoordinatorTest {
     }
 
     @Test
-    void suppressesAnObsoleteClaimWithoutAnyDiscordCreate() {
+    void suppressesAnObsoleteLiveClaimWithoutAnyDiscordCreate() {
         Fixture fixture = new Fixture(false);
         try {
             assertThat(fixture.coordinator.runNext()).isEqualTo(AchievementAnnouncementDeliveryCoordinator.RunResult.SUPPRESSED);
+            verify(fixture.announcements).replaceClaimedItems(eq(fixture.key), eq(fixture.token), eq(List.of()));
             verify(fixture.announcements).markSuppressed(eq(fixture.key), eq(fixture.token), any());
             verify(fixture.messages, never()).create(anyLong(), any(RenderedAchievementAnnouncement.class));
+        } finally { fixture.executor.shutdownNow(); }
+    }
+
+    @Test
+    void deliversHistoricalIntroductionEvenWhenParticipantHasNoAwards() {
+        Fixture fixture = new Fixture(AchievementAnnouncement.Type.HISTORICAL_INTRODUCTION, false, false);
+        try {
+            assertThat(fixture.coordinator.runNext()).isEqualTo(AchievementAnnouncementDeliveryCoordinator.RunResult.COMPLETED);
+            verify(fixture.announcements).replaceClaimedItems(eq(fixture.key), eq(fixture.token), eq(List.of()));
+            verify(fixture.messages).create(eq(2L), any(RenderedAchievementAnnouncement.class));
+            verify(fixture.announcements, never()).markSuppressed(eq(fixture.key), eq(fixture.token), any());
+            verify(fixture.announcements).markSynchronized(eq(fixture.key), eq(fixture.token), any());
+        } finally { fixture.executor.shutdownNow(); }
+    }
+
+    @Test
+    void missingPersistedEventIsTechnicalFailureNotSilentSuppression() {
+        Fixture fixture = new Fixture(true);
+        try {
+            when(fixture.events.find(fixture.event.fact().eventId())).thenReturn(Optional.empty());
+
+            assertThatThrownBy(fixture.coordinator::runNext)
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("missing event");
+            verify(fixture.announcements, never()).markSuppressed(eq(fixture.key), eq(fixture.token), any());
         } finally { fixture.executor.shutdownNow(); }
     }
 
@@ -65,40 +92,49 @@ class AchievementAnnouncementDeliveryCoordinatorTest {
         final AchievementAnnouncementMessageGateway messages = mock(AchievementAnnouncementMessageGateway.class);
         final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
         final UUID token = UUID.randomUUID();
-        final AchievementAnnouncement.Key key = new AchievementAnnouncement.Key(1, "live:achievement:1");
+        final AchievementAnnouncement.Key key;
         final AchievementEventFact.Snapshot event;
         final AchievementAnnouncementDeliveryCoordinator coordinator;
 
         Fixture(boolean active) {
+            this(AchievementAnnouncement.Type.LIVE_UNLOCK_BATCH, true, active);
+        }
+
+        Fixture(AchievementAnnouncement.Type type, boolean withEvent, boolean active) {
             var catalog = AchievementDefinitionCatalog.achievementsV1();
             var definition = catalog.definitions().getFirst();
             var awardKey = new AchievementAwardState.Key(1, 3, definition.key());
+            key = new AchievementAnnouncement.Key(1,
+                    type == AchievementAnnouncement.Type.LIVE_UNLOCK_BATCH ? "live:achievement:1" : "historical:achievement:1");
             event = new AchievementEventFact.Snapshot(new AchievementEventFact.Draft(UUID.randomUUID(), "event:1", awardKey,
                     catalog.version(), AchievementEventFact.Type.UNLOCKED, LocalDate.of(2026, 8, 7),
                     AchievementEvidence.Kind.GAME_RESULT, "result:1", AchievementEventFact.ProcessingOrigin.LIVE_SUBMISSION, NOW), NOW);
             AchievementAnnouncement.Registration registration = new AchievementAnnouncement.Registration(1, 2, 3, catalog.version(),
-                    AchievementAnnouncement.Type.LIVE_UNLOCK_BATCH, key.idempotencyKey(), "old", "a".repeat(64));
+                    type, key.idempotencyKey(), "old", "a".repeat(64));
             AchievementAnnouncement.Snapshot claim = new AchievementAnnouncement.Snapshot(1, registration,
                     AchievementAnnouncement.DeliveryState.CLAIMED, Optional.of(token), Optional.of(NOW.plusSeconds(60)), 1,
                     Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
                     Optional.empty(), Optional.empty(), NOW, NOW);
             when(announcements.claimNext(any())).thenReturn(Optional.of(claim));
             when(announcements.renewLease(any(), eq(token), any())).thenReturn(true);
-            when(announcements.findItems(key)).thenReturn(List.of(new AchievementAnnouncement.Item(0, event.fact().eventId())));
-            when(events.find(event.fact().eventId())).thenReturn(Optional.of(event));
-            when(players.findByDiscordUserId(3)).thenReturn(Optional.of(new PlayerStore.StoredPlayer(3, "Ada", true, false, true, NOW, NOW)));
-            when(announcements.markSuppressed(eq(key), eq(token), any())).thenReturn(true);
-            if (active) {
-                AchievementAwardState.Write write = new AchievementAwardState.Write(catalog.version(), AchievementAwardState.Status.ACTIVE,
-                        LocalDate.of(2026, 8, 7), NOW, AchievementEvidence.Kind.GAME_RESULT, "result:1", Optional.empty());
+            when(announcements.findItems(key)).thenReturn(withEvent
+                    ? List.of(new AchievementAnnouncement.Item(0, event.fact().eventId())) : List.of());
+            if (withEvent) {
+                when(events.find(event.fact().eventId())).thenReturn(Optional.of(event));
+                AchievementAwardState.Write write = new AchievementAwardState.Write(catalog.version(),
+                        active ? AchievementAwardState.Status.ACTIVE : AchievementAwardState.Status.INVALIDATED,
+                        LocalDate.of(2026, 8, 7), NOW, AchievementEvidence.Kind.GAME_RESULT, "result:1",
+                        active ? Optional.empty() : Optional.of(NOW));
                 when(awards.find(awardKey)).thenReturn(Optional.of(new AchievementAwardState.Snapshot(awardKey, write,
                         AchievementAwardState.LockVersion.initial(), NOW, NOW)));
-                when(announcements.replaceClaimedItems(eq(key), eq(token), any())).thenReturn(true);
-                when(announcements.updateClaimedContent(eq(key), eq(token), any(), any())).thenReturn(true);
-                when(messages.create(eq(2L), any())).thenReturn(99L);
-                when(announcements.markDelivered(eq(key), eq(token), eq(99L), any())).thenReturn(true);
-                when(announcements.markSynchronized(eq(key), eq(token), any())).thenReturn(true);
-            } else when(awards.find(awardKey)).thenReturn(Optional.empty());
+            }
+            when(players.findByDiscordUserId(3)).thenReturn(Optional.of(new PlayerStore.StoredPlayer(3, "Ada", true, false, true, NOW, NOW)));
+            when(announcements.markSuppressed(eq(key), eq(token), any())).thenReturn(true);
+            when(announcements.replaceClaimedItems(eq(key), eq(token), any())).thenReturn(true);
+            when(announcements.updateClaimedContent(eq(key), eq(token), any(), any())).thenReturn(true);
+            when(messages.create(eq(2L), any())).thenReturn(99L);
+            when(announcements.markDelivered(eq(key), eq(token), eq(99L), any())).thenReturn(true);
+            when(announcements.markSynchronized(eq(key), eq(token), any())).thenReturn(true);
             coordinator = new AchievementAnnouncementDeliveryCoordinator(announcements, events, awards, players, messages,
                     catalog, AchievementEmojiResolver.unicodeOnly(), CLOCK, Duration.ofMinutes(2), Duration.ofSeconds(30),
                     Duration.ofSeconds(10), Duration.ofMinutes(5), executor);
