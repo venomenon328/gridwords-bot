@@ -34,6 +34,18 @@ class AchievementAnnouncementRendererTest {
     }
 
     @Test
+    void historicalIntroductionWithNoAwardsStillRendersOneMessage() {
+        AchievementAnnouncementRenderer renderer = new AchievementAnnouncementRenderer(CATALOG, AchievementEmojiResolver.unicodeOnly());
+
+        RenderedAchievementAnnouncement rendered = renderer.render(new AchievementAnnouncementRenderInput(
+                announcement(AchievementAnnouncement.Type.HISTORICAL_INTRODUCTION), List.of(), "Ada"));
+
+        assertThat(rendered.embeds()).hasSize(1);
+        assertThat(rendered.embeds().getFirst().description())
+                .isEqualTo("Ada startet mit 0 rückwirkend vergebenen Achievements:");
+    }
+
+    @Test
     void historicalIntroductionKeepsCatalogOrderAndFitsAllSixtyAchievementsIntoOneMessage() {
         AchievementAnnouncementRenderer renderer = new AchievementAnnouncementRenderer(CATALOG, AchievementEmojiResolver.unicodeOnly());
         List<AchievementEventFact.Snapshot> events = CATALOG.definitions().stream().map(this::event).toList();
