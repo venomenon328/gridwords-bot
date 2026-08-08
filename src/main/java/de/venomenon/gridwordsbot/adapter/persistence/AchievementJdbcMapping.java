@@ -81,7 +81,7 @@ final class AchievementJdbcMapping {
                 rs.getLong("id"), registration, AchievementAnnouncement.DeliveryState.valueOf(rs.getString("delivery_state")),
                 optionalUuid(rs, "claim_token"), optionalInstant(rs, "claim_until"), rs.getInt("attempt_count"),
                 optionalInstant(rs, "next_retry_at"), Optional.ofNullable(failure), Optional.ofNullable(messageId),
-                optionalInstant(rs, "delivered_at"), optionalInstant(rs, "synchronized_at"),
+                optionalInstant(rs, "delivered_at"), optionalInstant(rs, "synchronized_at"), optionalInstant(rs, "completed_at"),
                 optionalInstant(rs, "externally_removed_at"), optionalInstant(rs, "suppressed_at"),
                 instant(rs, "created_at"), instant(rs, "updated_at"));
     }
