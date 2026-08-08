@@ -142,9 +142,8 @@ class PostgresAchievementAnnouncementDeliveryRecoveryIT {
         Clock clock = Clock.fixed(NOW, BERLIN);
         seedLiveAnnouncement(clock, "live:recovery:concurrent-workers");
         RecordingGateway gateway = new RecordingGateway();
-        CountDownLatch createEntered = new CountDownLatch(1);
-        CountDownLatch releaseCreate = new CountDownLatch(1);
-        gateway.blockCreate(createEntered, releaseCreate);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
 
         try (ScheduledExecutorService firstHeartbeat = Executors.newSingleThreadScheduledExecutor();
                 ScheduledExecutorService secondHeartbeat = Executors.newSingleThreadScheduledExecutor();
@@ -152,17 +151,25 @@ class PostgresAchievementAnnouncementDeliveryRecoveryIT {
             AchievementAnnouncementDeliveryCoordinator first = coordinator(clock, gateway, firstHeartbeat);
             AchievementAnnouncementDeliveryCoordinator second = coordinator(clock, gateway, secondHeartbeat);
 
-            var firstResult = workers.submit(first::runNext);
-            assertThat(createEntered.await(10, TimeUnit.SECONDS)).isTrue();
-            var secondResult = workers.submit(second::runNext);
+            var firstResult = workers.submit(() -> {
+                ready.countDown();
+                start.await();
+                return first.runNext();
+            });
+            var secondResult = workers.submit(() -> {
+                ready.countDown();
+                start.await();
+                return second.runNext();
+            });
 
-            assertThat(secondResult.get(10, TimeUnit.SECONDS))
-                    .isEqualTo(AchievementAnnouncementDeliveryCoordinator.RunResult.NOT_CLAIMED);
-            releaseCreate.countDown();
-            assertThat(firstResult.get(10, TimeUnit.SECONDS))
-                    .isEqualTo(AchievementAnnouncementDeliveryCoordinator.RunResult.COMPLETED);
+            assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            assertThat(List.of(firstResult.get(20, TimeUnit.SECONDS), secondResult.get(20, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(
+                            AchievementAnnouncementDeliveryCoordinator.RunResult.COMPLETED,
+                            AchievementAnnouncementDeliveryCoordinator.RunResult.NOT_CLAIMED);
         } finally {
-            releaseCreate.countDown();
+            start.countDown();
         }
 
         assertThat(gateway.createCalls.get()).isOne();
@@ -242,8 +249,6 @@ class PostgresAchievementAnnouncementDeliveryRecoveryIT {
         private final Map<Long, RenderedAchievementAnnouncement> messages = new HashMap<>();
         private final List<Long> deletedMessageIds = new ArrayList<>();
         private volatile boolean loseNextCreateAck;
-        private volatile CountDownLatch createEntered;
-        private volatile CountDownLatch releaseCreate;
 
         @Override
         public synchronized long create(long channelId, RenderedAchievementAnnouncement announcement) {
@@ -251,19 +256,6 @@ class PostgresAchievementAnnouncementDeliveryRecoveryIT {
             createCalls.incrementAndGet();
             long id = nextId.getAndIncrement();
             messages.put(id, announcement);
-            CountDownLatch entered = createEntered;
-            CountDownLatch release = releaseCreate;
-            if (entered != null && release != null) {
-                entered.countDown();
-                try {
-                    if (!release.await(10, TimeUnit.SECONDS)) {
-                        throw new AssertionError("timed out waiting to release fake Discord create");
-                    }
-                } catch (InterruptedException interrupted) {
-                    Thread.currentThread().interrupt();
-                    throw new RetryableMessageException("interrupted fake Discord create", interrupted);
-                }
-            }
             if (loseNextCreateAck) {
                 loseNextCreateAck = false;
                 throw new RetryableMessageException("simulated lost Discord acknowledgement", null);
@@ -317,11 +309,6 @@ class PostgresAchievementAnnouncementDeliveryRecoveryIT {
 
         synchronized int messageCount() {
             return messages.size();
-        }
-
-        void blockCreate(CountDownLatch entered, CountDownLatch release) {
-            this.createEntered = entered;
-            this.releaseCreate = release;
         }
     }
 }
