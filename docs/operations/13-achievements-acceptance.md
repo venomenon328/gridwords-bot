@@ -71,7 +71,7 @@ Der Test weist zusätzlich nach:
 - Restart nach bereits persistierter Message-ID, aber vor `SYNCHRONIZED`: ID-basierter Abschluss ohne neues Create oder Discovery,
 - konkurrierende Delivery-Worker gegen PostgreSQL: genau ein Worker erhält die Arbeit und genau eine externe Nachricht bleibt dauerhaft gültig.
 
-`PostgresAchievementPersistenceStoreIT` ergänzt die DB-seitigen Fences für Bootstrap-/Announcement-Claims, Introduction-vor-Live-Reihenfolge und tokengebundene Revalidation/Suppression. `AchievementAnnouncementDeliveryCoordinatorTest` deckt Fehlerklassifikation, Heartbeat und fachliche Revalidation ab; `JdaAchievementAnnouncementMessageGatewayTest` prüft Nonce/Marker, Mentionschutz und Gateway-Vertrag.
+`PostgresAchievementPersistenceStoreIT` ergänzt die DB-seitigen Fences für Bootstrap-/Announcement-Claims, Introduction-vor-Live-Reihenfolge und tokengebundene Revalidation/Suppression. `AchievementAnnouncementDeliveryCoordinatorTest` deckt Fehlerklassifikation, Heartbeat und fachliche Revalidation ab; `JdaAchievementAnnouncementMessageGatewayTest` prüft die stabile Nonce als Publication-Identität, Mentionschutz, das Fehlen sichtbarer Recovery-Metadaten und den Gateway-Vertrag.
 
 ### Discord-Grenzen der vollständigen Einführung
 
@@ -107,6 +107,7 @@ Die folgenden Punkte müssen auf dem separaten Testserver mit isolierter Testdat
 - [ ] Die Introduction ist **eine Discord-Nachricht**; mehrere Embeds innerhalb dieser Nachricht sind zulässig.
 - [ ] Gesamtzahl und enthaltene Achievements entsprechen `/achievements` unmittelbar nach dem Bootstrap.
 - [ ] Jedes enthaltene Achievement zeigt Emoji, vollständigen Namen und Beschreibung.
+- [ ] Es sind keine internen Publication-IDs, Hashes oder Recovery-URLs sichtbar.
 - [ ] Keine zusätzliche Gruppierung nach GridWords, QuadWords, GW+QW oder Allgemein.
 - [ ] Bot während beziehungsweise nach Teilfortschritt neu starten; bereits synchronisierte Introductions werden nicht dupliziert.
 - [ ] Falls praktikabel einen Teilnehmer ohne historische Awards prüfen: auch dieser erhält genau eine 0er-Introduction.
@@ -116,6 +117,7 @@ Die folgenden Punkte müssen auf dem separaten Testserver mit isolierter Testdat
 - [ ] Nach erfolgreichem Bootstrap einen Share einreichen, der mehrere Achievements gleichzeitig freischaltet.
 - [ ] Es erscheint genau **eine** öffentliche Live-Meldung für diesen Trigger.
 - [ ] Teilnehmer, Anzahl, Emoji, vollständiger Achievement-Name und Beschreibung stimmen.
+- [ ] Es sind keine internen Publication-IDs, Hashes oder Recovery-URLs sichtbar.
 - [ ] Es entstehen keine unbeabsichtigten Discord-Mentions.
 - [ ] Neustart nach synchronisierter Meldung erzeugt kein Duplikat.
 
