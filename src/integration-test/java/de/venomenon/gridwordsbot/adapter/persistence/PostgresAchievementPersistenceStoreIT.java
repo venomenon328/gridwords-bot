@@ -262,6 +262,7 @@ class PostgresAchievementPersistenceStoreIT {
         assertThatThrownBy(() -> announcements.replaceItems(registration.key(), List.of(first.eventId(), first.eventId())))
                 .isInstanceOf(IllegalArgumentException.class);
 
+        bootstrapSucceeded();
         AchievementWork.LeaseClaim claim = announcements.claim(
                 registration.key(), new AchievementWork.LeaseClaimRequest(NOW, NOW.plusSeconds(60))).orElseThrow();
         assertThat(announcements.markDelivered(registration.key(), UUID.randomUUID(), 1234L, NOW.plusSeconds(10))).isFalse();
@@ -292,6 +293,60 @@ class PostgresAchievementPersistenceStoreIT {
         assertThat(announcements.find(registration.key()).orElseThrow().deliveryState())
                 .isEqualTo(AchievementAnnouncement.DeliveryState.SUPPRESSED);
         assertThat(events.find(first.eventId())).isPresent();
+    }
+
+    @Test
+    void postgresClaimFenceRequiresSuccessfulBootstrapAndIntroductionBeforeLiveDelivery() {
+        AchievementAnnouncement.Registration introduction = new AchievementAnnouncement.Registration(
+                1, 2, 7, V1, AchievementAnnouncement.Type.HISTORICAL_INTRODUCTION,
+                "historical:participant:7", "renderer-v1", "a".repeat(64));
+        AchievementAnnouncement.Registration live = announcement("live:after-introduction");
+        announcements.register(introduction);
+        announcements.register(live);
+
+        assertThat(announcements.claimNext(new AchievementWork.LeaseClaimRequest(NOW, NOW.plusSeconds(60)))).isEmpty();
+
+        bootstrapSucceeded();
+        AchievementAnnouncement.Snapshot introductionClaim = announcements.claimNext(
+                new AchievementWork.LeaseClaimRequest(NOW, NOW.plusSeconds(60))).orElseThrow();
+        assertThat(introductionClaim.registration().type()).isEqualTo(AchievementAnnouncement.Type.HISTORICAL_INTRODUCTION);
+        assertThat(announcements.claimNext(new AchievementWork.LeaseClaimRequest(NOW, NOW.plusSeconds(60)))).isEmpty();
+
+        UUID token = introductionClaim.claimToken().orElseThrow();
+        assertThat(announcements.markDelivered(introduction.key(), token, 800L, NOW.plusSeconds(1))).isTrue();
+        assertThat(announcements.markSynchronized(introduction.key(), token, NOW.plusSeconds(2))).isTrue();
+        assertThat(announcements.claimNext(new AchievementWork.LeaseClaimRequest(NOW.plusSeconds(3), NOW.plusSeconds(63)))
+                .orElseThrow().registration().key()).isEqualTo(live.key());
+    }
+
+    @Test
+    void claimedAnnouncementCanOnlyBeRevalidatedOrSuppressedByItsToken() {
+        AchievementEventFact.Draft first = event(
+                UUID.randomUUID(), "event:claimed", "participation.1.gridwords", AchievementEventFact.Type.UNLOCKED, "result:1");
+        events.append(first);
+        AchievementAnnouncement.Registration registration = announcement("live:claimed-revalidation");
+        announcements.register(registration);
+        announcements.replaceItems(registration.key(), List.of(first.eventId()));
+        bootstrapSucceeded();
+        AchievementWork.LeaseClaim claim = announcements.claim(registration.key(),
+                new AchievementWork.LeaseClaimRequest(NOW, NOW.plusSeconds(60))).orElseThrow();
+
+        assertThat(announcements.replaceClaimedItems(registration.key(), UUID.randomUUID(), List.of())).isFalse();
+        assertThat(announcements.updateClaimedContent(registration.key(), UUID.randomUUID(), "renderer-v2", "b".repeat(64))).isFalse();
+        assertThat(announcements.markSuppressed(registration.key(), UUID.randomUUID(), NOW.plusSeconds(1))).isFalse();
+        assertThat(announcements.replaceClaimedItems(registration.key(), claim.token(), List.of())).isTrue();
+        assertThat(announcements.updateClaimedContent(registration.key(), claim.token(), "renderer-v2", "b".repeat(64))).isTrue();
+        assertThat(announcements.markSuppressed(registration.key(), claim.token(), NOW.plusSeconds(2))).isTrue();
+        assertThat(announcements.find(registration.key()).orElseThrow().deliveryState())
+                .isEqualTo(AchievementAnnouncement.DeliveryState.SUPPRESSED);
+    }
+
+    private void bootstrapSucceeded() {
+        AchievementWork.BootstrapKey key = new AchievementWork.BootstrapKey(1, V1);
+        bootstraps.register(key);
+        AchievementWork.LeaseClaim claim = bootstraps.claim(
+                key, new AchievementWork.LeaseClaimRequest(NOW, NOW.plusSeconds(60))).orElseThrow();
+        assertThat(bootstraps.markSucceeded(key, claim.token(), NOW)).isTrue();
     }
 
     private AchievementAwardState.Key awardKey(String key) {
