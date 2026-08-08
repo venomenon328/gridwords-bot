@@ -5,7 +5,7 @@ import java.util.regex.Pattern;
 
 /** Dauerhafte fachliche Identität einer Achievement-Definition. */
 public record AchievementKey(String value) implements Comparable<AchievementKey> {
-    private static final Pattern VALID_VALUE = Pattern.compile("[a-z0-9]+(?:[.-][a-z0-9]+)*");
+    private static final Pattern VALID_VALUE = Pattern.compile("[a-z0-9]+(?:[._-][a-z0-9]+)*");
 
     public AchievementKey {
         Objects.requireNonNull(value, "value");
