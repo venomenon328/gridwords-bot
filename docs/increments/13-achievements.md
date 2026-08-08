@@ -1,6 +1,6 @@
 # Inkrement 13 – Achievements
 
-**Status:** fachlich spezifiziert; Umsetzung ausstehend  
+**Status:** technisch umgesetzt; reale Discord-Abnahme ausstehend  
 **Stand:** 8. August 2026  
 **Umbrella-Issue:** #86  
 **Fachliche Grundlage:** [`../requirements/achievements.md`](../requirements/achievements.md)  
@@ -82,7 +82,7 @@ Jedes Paket bildet einen einzeln reviewbaren Pull Request. Refactorings außerha
 
 # Paket 13.1 – Achievement-Domäne und vollständiger V1-Katalog
 
-**Status:** geplant  
+**Status:** abgeschlossen  
 **Empfohlener Branch:** `feature/13-1-achievement-domain`
 
 ## Ziel
@@ -137,7 +137,7 @@ mvn --batch-mode --no-transfer-progress clean verify
 
 # Paket 13.2 – Historischer Snapshot und reiner 60er-Evaluator
 
-**Status:** geplant  
+**Status:** abgeschlossen  
 **Empfohlener Branch:** `feature/13-2-achievement-evaluator`
 
 ## Ziel
@@ -196,7 +196,7 @@ mvn --batch-mode --no-transfer-progress clean verify
 
 # Paket 13.3 – Persistenzschema und PostgreSQL-Adapter
 
-**Status:** geplant  
+**Status:** abgeschlossen  
 **Empfohlener Branch:** `feature/13-3-achievement-persistence`
 
 ## Ziel
@@ -255,7 +255,7 @@ mvn --batch-mode --no-transfer-progress -Pmigration-clean-install verify
 
 # Paket 13.4 – Konkurrenzsichere Reconciliation und State-Service
 
-**Status:** geplant  
+**Status:** abgeschlossen  
 **Empfohlener Branch:** `feature/13-4-achievement-reconciliation`
 
 ## Ziel
@@ -306,7 +306,7 @@ mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
 
 # Paket 13.5 – Live-Integration, historischer Bootstrap und Gating
 
-**Status:** geplant  
+**Status:** abgeschlossen  
 **Empfohlener Branch:** `feature/13-5-achievement-integration-bootstrap`
 
 ## Ziel
@@ -357,7 +357,7 @@ mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
 
 # Paket 13.6 – Discord-Renderer, aggregierte Delivery und Recovery
 
-**Status:** geplant  
+**Status:** abgeschlossen  
 **Empfohlener Branch:** `feature/13-6-achievement-discord-delivery`
 
 ## Ziel
@@ -411,7 +411,7 @@ mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
 
 # Paket 13.7 – Ephemerer `/achievements`-Command
 
-**Status:** geplant  
+**Status:** abgeschlossen  
 **Empfohlener Branch:** `feature/13-7-achievements-command`
 
 ## Ziel
@@ -465,7 +465,7 @@ mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
 
 # Paket 13.8 – End-to-End-Härtung, Abnahme und Releasevorbereitung
 
-**Status:** geplant  
+**Status:** technische Härtung umgesetzt; reale Discord-Abnahme ausstehend  
 **Empfohlener Branch:** `feature/13-8-achievements-hardening`
 
 ## Ziel
