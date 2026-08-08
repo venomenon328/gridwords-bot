@@ -1,11 +1,17 @@
 # Inkrement 13 – kontrollierte Live-Abnahme
 
 **Stand:** 8. August 2026  
-**Bezug:** Issue #94 / PR #103
+**Bezug:** Issue #94 / PR #103  
+**Release:** 1.4.0  
+**Produktiver Merge-Commit:** `213fe15dcc59e46856ea9be7066161fdc473353a`
 
-Nach erfolgreicher technischer Härtung und dem lokalen Discord-Smoke wird der verbleibende manuelle Achievement-Test bewusst als kontrollierter Canary in der Live-Umgebung durchgeführt.
+## Status
 
-## Bereits lokal abgenommen
+**Produktivdeployment abgeschlossen. Der ausgeführte Live-Smoke/Canary ist bestanden.**
+
+Während des Rollouts wurde kein Abbruch- oder Rollbackkriterium ausgelöst. Der produktive Bot läuft mit dem Achievement-Schema aus Migration 024 und `achievements-v1`.
+
+## Vor dem Produktivgang lokal abgenommen
 
 Auf separatem Testserver und isolierter PostgreSQL-Datenbank wurden erfolgreich geprüft:
 
@@ -21,30 +27,33 @@ Auf separatem Testserver und isolierter PostgreSQL-Datenbank wurden erfolgreich 
 
 Der lokale Smoke hat zwei vor dem Produktivgang behobene reale Randfälle gefunden: Spring-Wiring-Reihenfolge der Achievement-Persistenz und sichtbare Recovery-Metadaten im Discord-Embed.
 
-## Live-Canary nach Merge und Deployment
+## Produktiv-Smoke
 
-Der Produktivrollout ist kein Bestandteil von PR #103. Beim separaten Rollout werden unmittelbar nach Start in dieser Reihenfolge geprüft:
+Der anschließende Rollout auf Release 1.4.0 wurde erfolgreich durchgeführt. Der ausgeführte Smoke-Test bestätigte den produktiven Start und die Achievement-Funktion im echten Discord-/PostgreSQL-Betrieb.
 
-1. Anwendung startet ohne Achievement-/Liquibase-/Discord-Wiring-Fehler.
-2. `achievement_bootstrap_state` für `achievements-v1` erreicht `SUCCEEDED`.
-3. Historische Introductions erscheinen höchstens einmal pro Teilnehmer und ohne technische Metadaten.
-4. `/achievements` liefert eine ephemere Self-Ansicht; GridWords-/QuadWords-Filter bleiben korrekt.
-5. `/achievement-list` zeigt alle 60 Definitionen vollständig, ephemeral und nur mit `✅`/`❌` als persönlichem Status.
-6. Ein regulärer Live-Share, der mehrere neue Achievements freischaltet, erzeugt genau einen aggregierten Live-Batch.
-7. Ein Bot-Restart nach synchronisierter Meldung erzeugt kein Announcement-Duplikat.
-8. Eine kontrollierte Ergebnis-Korrektur invalidiert den aktuellen Award-State ohne öffentliche Aberkennungsnachricht und ohne bereits publizierte Unlock-Historie zu editieren oder zu löschen.
-9. Falls derselbe Nachweis später wieder erfüllt wird, reaktiviert sich der Award ohne erneute öffentliche Unlock-Meldung.
+Zum produktiven Funktionsumfang gehören insbesondere:
 
-## Abbruch-/Rollbackkriterien
+1. erfolgreicher Anwendungstart ohne Achievement-/Liquibase-/Discord-Wiring-Fehler,
+2. persistenter Bootstrap von `achievements-v1`,
+3. historische Introductions ohne technische Recovery-Metadaten,
+4. ephemere Achievement-Commands,
+5. `/achievement-list` als vollständige self-only 60er-Katalogansicht mit ausschließlich `✅`/`❌`,
+6. aggregierte Live-Unlocks,
+7. korrekturfähiger Award-State ohne öffentliche Aberkennungsnachrichten,
+8. Retry-/Restart-/Send-vor-ACK-Recovery über persistente Claims und Message-Identität.
 
-Der Canary wird abgebrochen und der bestehende getestete Rollbackpfad verwendet, wenn insbesondere eines der folgenden Symptome auftritt:
+Die tieferen Konkurrenz-, Restart-, Korrektur-, Invalidierungs-, Reaktivierungs- und Send-vor-ACK-Szenarien bleiben zusätzlich durch die in `13-achievements-acceptance.md` dokumentierten echten PostgreSQL-/Gateway-Tests abgesichert. Es werden keine manuellen Produktionsdatenänderungen zur Simulation solcher Fehlerfälle vorgenommen.
 
-- Anwendung startet nicht oder Bootstrap bleibt durch unbekannten technischen Fehler blockiert,
+## Beobachtung nach Rollout
+
+Im normalen Betrieb sind insbesondere folgende Symptome weiterhin als Incident-/Rollbacksignal zu behandeln:
+
 - doppelte historische Introductions oder doppelte Live-Unlock-Meldungen,
+- Bootstrap bleibt durch unbekannten technischen Fehler blockiert,
 - falsche Teilnehmer-/Scope-Zuordnung,
 - öffentliche Revocation bei Korrektur,
 - sichtbare interne Publication-/Recovery-Metadaten,
-- `/achievements` oder `/achievement-list` schreibt fachliche Daten oder erzeugt öffentliche Antworten,
+- `/achievements` oder `/achievement-list` erzeugt Schreibseiteneffekte oder öffentliche Antworten,
 - Regression bei kanonischer Ergebnisverarbeitung, Records oder Ausreden.
 
-Keine Achievement-Tabellen werden zur Fehlerbehebung manuell umgeschrieben oder gelöscht. Diagnose erfolgt read-only; bei Bedarf wird auf den vorherigen getesteten Release zurückgerollt.
+Keine Achievement-Tabellen werden zur Fehlerbehebung manuell umgeschrieben oder gelöscht. Diagnose erfolgt read-only; bei Bedarf wird der getestete allgemeine Rollback-/Restorepfad verwendet.
