@@ -6,9 +6,11 @@ Dieses Protokoll bündelt die technische End-to-End-Abnahme für Inkrement 13 / 
 
 **Technischer Stand:** umgesetzt und automatisiert gehärtet. Maßgeblich ist der finale Head von Draft-PR #103; die konkreten GitHub-Actions-Läufe werden zusätzlich in der PR-Beschreibung protokolliert.
 
-**Reale Discord-Abnahme:** **ausstehend**. Sie wird nach Abschluss der technischen Härtung manuell auf dem separaten Testserver durchgeführt. Bis dahin bleibt PR #103 Draft und Inkrement 13 nicht mergefreigegeben.
+**Lokale reale Discord-Abnahme:** **bestanden für Startup, Upgrade, Bootstrap, historische Introduction, `/achievements` und Restart-Idempotenz.** Dabei wurden zwei reale Randfälle gefunden und vor Merge behoben: reihenfolgeabhängiges Spring-Wiring der Achievement-Persistenz sowie sichtbare Recovery-Metadaten im Discord-Embed.
 
-**Release / RC / Produktion:** nicht Bestandteil von Paket 13.8. RC, Release und produktiver Rollout erfolgen erst nach erfolgreicher Discord-Abnahme und Merge in einem separaten Schritt.
+**Verbleibende reale Discord-Abnahme:** Live-Batch, Korrektur/Invalidierung/Reaktivierung und `/achievement-list` werden gemäß `13-achievements-live-canary.md` bewusst als kontrollierter Canary in der Live-Umgebung durchgeführt. Diese Entscheidung ersetzt die frühere Vorgabe, sämtliche realen Discord-Pfade zwingend vor Merge auf dem Testserver abzuschließen.
+
+**Release / RC / Produktion:** nicht Bestandteil von Paket 13.8. Merge und anschließender kontrollierter Rollout werden separat entschieden und durchgeführt.
 
 Es werden keine Tokens, Discord-IDs, Rohshares oder personenbezogenen Testdaten in diesem Dokument erfasst.
 
@@ -33,6 +35,16 @@ Die 60 Fälle aus `docs/requirements/achievements.md` bilden die verbindliche Mi
 | 49–52 | `PostgresAchievementBootstrapIT`, `PostgresAchievementPersistenceStoreIT`, `AchievementAnnouncementRendererTest`: exakt eine Introduction pro Teilnehmer/Definitionsversion, vollständiger Inhalt ohne Scope-Gruppierung und restartfähige Idempotenz. |
 | 53–59 | `AchievementsQueryServiceTest`, `DiscordAchievementsCommandListenerTest`, `AchievementsOverviewEmbedRendererTest`, `PostgresAchievementsQueryIT`: Self/Other, exakte Scope-Filter, nur aktive Awards, read-only ohne History-Scan und vollständig ephemere Pagination. |
 | 60 | `AchievementAnnouncementRendererTest`, `AchievementsOverviewEmbedRendererTest`: fehlendes Custom Emoji fällt auf das Unicode-Fallback zurück, ohne die Achievement-Identität zu verändern. |
+
+## Nachtrag `/achievement-list`
+
+Der ergänzende self-only Command ist in `docs/requirements/achievement-list.md` spezifiziert. Automatisiert abgedeckt sind:
+
+- `AchievementCatalogQueryServiceTest`: alle 60 Definitionen in Katalogreihenfolge; ausschließlich `ACTIVE` ergibt `✅`, fehlend/invalidiert ergibt `❌`,
+- `AchievementCatalogEmbedRendererTest`: vollständige 60er-Ausgabe mit Name/Beschreibung/Emoji ohne Fortschrittswerte innerhalb einer ephemeren Discord-Interaction und der 10-Embed-/6000-Zeichen-Grenze,
+- `DiscordAchievementCatalogCommandListenerTest`: self-only, keine Optionen, ephemeral und mention-sicher,
+- `DiscordRecordsCommandRegistrationTest`: zentrale Registrierung von `/achievement-list` genau einmal,
+- `PostgresAchievementsQueryIT`: echter PostgreSQL-Read ohne Player-/Event-Seiteneffekte.
 
 ## Zusätzliche End-to-End- und Härtungsnachweise
 
@@ -66,12 +78,12 @@ Der Test weist zusätzlich nach:
 
 `PostgresAchievementAnnouncementDeliveryRecoveryIT` verbindet den realen PostgreSQL-Announcement-Store mit dem echten `AchievementAnnouncementDeliveryCoordinator` und ersetzt ausschließlich die externe Discord-Grenze durch ein kontrollierbares Gateway. Abgedeckt sind:
 
-- serverseitig erfolgreicher Create mit lokal verlorenem ACK: persistierter Retry entdeckt die bestehende Nachricht statt erneut dauerhaft zu publizieren,
+- serverseitig erfolgreicher Create mit lokal verlorenem ACK: persistierter Retry entdeckt die bestehende Nachricht anhand der stabilen Discord-Nonce statt erneut dauerhaft zu publizieren,
 - deterministische Auswahl einer Nachricht bei mehreren Artefakten derselben logischen Create-Operation und Löschung ausschließlich der Duplikatartefakte,
 - Restart nach bereits persistierter Message-ID, aber vor `SYNCHRONIZED`: ID-basierter Abschluss ohne neues Create oder Discovery,
 - konkurrierende Delivery-Worker gegen PostgreSQL: genau ein Worker erhält die Arbeit und genau eine externe Nachricht bleibt dauerhaft gültig.
 
-`PostgresAchievementPersistenceStoreIT` ergänzt die DB-seitigen Fences für Bootstrap-/Announcement-Claims, Introduction-vor-Live-Reihenfolge und tokengebundene Revalidation/Suppression. `AchievementAnnouncementDeliveryCoordinatorTest` deckt Fehlerklassifikation, Heartbeat und fachliche Revalidation ab; `JdaAchievementAnnouncementMessageGatewayTest` prüft die stabile Nonce als Publication-Identität, Mentionschutz, das Fehlen sichtbarer Recovery-Metadaten und den Gateway-Vertrag.
+`PostgresAchievementPersistenceStoreIT` ergänzt die DB-seitigen Fences für Bootstrap-/Announcement-Claims, Introduction-vor-Live-Reihenfolge und tokengebundene Revalidation/Suppression. `AchievementAnnouncementDeliveryCoordinatorTest` deckt Fehlerklassifikation, Heartbeat und fachliche Revalidation ab; `JdaAchievementAnnouncementMessageGatewayTest` prüft Nonce, Mentionschutz und Gateway-Vertrag.
 
 ### Discord-Grenzen der vollständigen Einführung
 
@@ -96,48 +108,32 @@ Die verpflichtenden Gesamtbuilds führen die vollständigen bestehenden Unit- un
 
 Der bestehende Workflow `Container image` ergänzt Image-Runtime, Shellcheck sowie die isolierten Compose-, Backup-, Restore-, Resume- und Rollbackpfade. Paket 13.8 führt keine separate parallele Betriebslogik ein.
 
-## Reale Discord-Abnahme – manuelle Checkliste
+## Reale Discord-Abnahme
 
-Die folgenden Punkte müssen auf dem separaten Testserver mit isolierter Testdatenbank erfolgreich durchgeführt und anschließend hier beziehungsweise in PR #103 protokolliert werden. Ein automatisierter Fake-/Mock-Nachweis ersetzt diese Abnahme ausdrücklich nicht.
+### Lokal erfolgreich nachgewiesen
 
-### A. Historische Einführung
+- [x] Bot mit einem noch nicht erfolgreich gebootstrappten `achievements-v1`-Stand gestartet.
+- [x] PostgreSQL-Upgrade/Migration 024 gegen vorbereitete historische Daten erfolgreich.
+- [x] Bootstrap erreicht `SUCCEEDED`.
+- [x] Genau eine öffentliche historische Einführung für den vorbereiteten Teilnehmer.
+- [x] Introduction ist genau eine Discord-Nachricht.
+- [x] Drei erwartete rückwirkende GridWords-Awards (`GW: Dabei!`, `GW: Geschafft!`, `GW: Aller guten Dinge`).
+- [x] Emoji, vollständiger Name und Beschreibung korrekt.
+- [x] Keine internen Publication-IDs, Hashes oder Recovery-URLs sichtbar.
+- [x] `/achievements` Self-Ansicht ephemeral und fachlich konsistent.
+- [x] GridWords-/QuadWords-Filter korrekt.
+- [x] Restart nach synchronisierter Introduction erzeugt kein Duplikat.
 
-- [ ] Bot mit einem noch nicht erfolgreich gebootstrappten `achievements-v1`-Stand starten.
-- [ ] Für jeden vorhandenen Teilnehmer erscheint genau eine öffentliche historische Einführung.
-- [ ] Die Introduction ist **eine Discord-Nachricht**; mehrere Embeds innerhalb dieser Nachricht sind zulässig.
-- [ ] Gesamtzahl und enthaltene Achievements entsprechen `/achievements` unmittelbar nach dem Bootstrap.
-- [ ] Jedes enthaltene Achievement zeigt Emoji, vollständigen Namen und Beschreibung.
-- [ ] Es sind keine internen Publication-IDs, Hashes oder Recovery-URLs sichtbar.
-- [ ] Keine zusätzliche Gruppierung nach GridWords, QuadWords, GW+QW oder Allgemein.
-- [ ] Bot während beziehungsweise nach Teilfortschritt neu starten; bereits synchronisierte Introductions werden nicht dupliziert.
-- [ ] Falls praktikabel einen Teilnehmer ohne historische Awards prüfen: auch dieser erhält genau eine 0er-Introduction.
+### Bewusst in die Live-Canary-Abnahme verschoben
 
-### B. Live-Freischaltung
+- [ ] `/achievement-list` vollständig/ephemeral mit allen 60 Definitionen und korrektem `✅`/`❌`-Status.
+- [ ] Live-Share mit mehreren gleichzeitigen Unlocks erzeugt genau einen aggregierten Batch.
+- [ ] Teilnehmer, Anzahl, Emoji, Name und Beschreibung des Live-Batches stimmen; keine internen Metadaten oder Mentions.
+- [ ] Restart nach synchronisierter Live-Meldung erzeugt kein Duplikat.
+- [ ] Korrektur invalidiert den aktuellen Profilzustand ohne öffentliche Aberkennung und ohne Edit/Löschung bereits publizierter Unlock-Historie.
+- [ ] Spätere Reaktivierung erzeugt keine zweite öffentliche Unlock-Meldung.
 
-- [ ] Nach erfolgreichem Bootstrap einen Share einreichen, der mehrere Achievements gleichzeitig freischaltet.
-- [ ] Es erscheint genau **eine** öffentliche Live-Meldung für diesen Trigger.
-- [ ] Teilnehmer, Anzahl, Emoji, vollständiger Achievement-Name und Beschreibung stimmen.
-- [ ] Es sind keine internen Publication-IDs, Hashes oder Recovery-URLs sichtbar.
-- [ ] Es entstehen keine unbeabsichtigten Discord-Mentions.
-- [ ] Neustart nach synchronisierter Meldung erzeugt kein Duplikat.
-
-### C. Korrektur / Invalidierung
-
-- [ ] Einen bereits verarbeiteten Share so korrigieren, dass mindestens ein Achievement fachlich nicht mehr belegt ist.
-- [ ] `/achievements` zeigt den korrigierten aktiven Zustand.
-- [ ] Es erscheint **keine** öffentliche Aberkennungsnachricht.
-- [ ] Eine bereits synchronisierte historische Unlock-Meldung wird wegen der späteren Invalidierung nicht editiert oder gelöscht.
-
-### D. `/achievements`
-
-- [ ] `/achievements` ohne Optionen zeigt das eigene Profil ephemeral.
-- [ ] `/achievements user:...` zeigt ohne Adminrolle ein anderes Profil und erzeugt keinen sichtbaren öffentlichen Post.
-- [ ] `game:GridWords` zeigt ausschließlich `GRIDWORDS`.
-- [ ] `game:QuadWords` zeigt ausschließlich `QUADWORDS`.
-- [ ] `Alle` kann GRIDWORDS, QUADWORDS, CROSS_GAME und GLOBAL enthalten.
-- [ ] Invalidierte/gesperrte Achievements werden nicht angezeigt.
-- [ ] Bei genügend vielen Awards funktioniert die vollständige ephemere Pagination.
-- [ ] Unicode-Emojis werden korrekt dargestellt; bei nicht verfügbarem Custom Emoji bleibt das Unicode-Fallback sichtbar.
+Die konkrete Reihenfolge und die Rollbackkriterien stehen in `13-achievements-live-canary.md`.
 
 ## Technische und betriebliche Gates
 
@@ -155,13 +151,11 @@ Die konkreten finalen Workflow-Nummern und der finale Commit-SHA werden in PR #1
 
 ## Merge- und Releaseentscheidung
 
-Der technische Teil von Inkrement 13 kann nach grünen finalen Gates als **technisch abgenommen** gelten. Die Mergefreigabe setzt zusätzlich die oben dokumentierte reale Discord-Abnahme voraus.
+Der technische Teil von Inkrement 13 kann nach grünen finalen Gates und dem oben dokumentierten lokalen Discord-Smoke als mergefähig gelten. Die verbleibenden manuellen Live-Pfade sind kein Pre-Merge-Blocker mehr; sie bilden stattdessen einen verpflichtenden Canary-Abbruchpunkt im separaten Produktivrollout.
 
-Bis dahin gilt:
+Bis zur bewussten Mergeentscheidung gilt weiterhin:
 
 1. PR #103 bleibt Draft,
 2. Issue #94 und Umbrella #86 bleiben offen,
-3. kein RC, Tag, Release oder produktiver Rollout,
+3. kein RC, Tag, Release oder produktiver Rollout innerhalb dieses PRs,
 4. keine manuellen Datenbankänderungen zur Simulation erfolgreicher Delivery-/Bootstrap-Zustände.
-
-Nach erfolgreicher Discord-Abnahme wird ausschließlich der Abnahmestatus ergänzt und der unveränderte technisch geprüfte Stand zur Mergeentscheidung verwendet.
