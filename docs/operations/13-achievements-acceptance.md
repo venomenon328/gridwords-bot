@@ -1,16 +1,16 @@
 # Abnahmeprotokoll Inkrement 13
 
-Dieses Protokoll bündelt die technische End-to-End-Abnahme für Inkrement 13 / Issue #86 und Paket 13.8 / Issue #94. Es ist kein RC-, Release- oder Produktionsprotokoll.
+Dieses Protokoll bündelt die technische End-to-End-Abnahme für Inkrement 13 / Issue #86 und Paket 13.8 / Issue #94 sowie den anschließenden realen Rollout-Nachweis.
 
 ## Status
 
-**Technischer Stand:** umgesetzt und automatisiert gehärtet. Maßgeblich ist der finale Head von Draft-PR #103; die konkreten GitHub-Actions-Läufe werden zusätzlich in der PR-Beschreibung protokolliert.
+**Technische Abnahme:** bestanden. Der finale Gesamt-PR #103 wurde nach vollständig grünen Standard-, PostgreSQL-, Migration-/Upgrade- und Container-/Betriebsgates nach `main` gemergt.
 
-**Lokale reale Discord-Abnahme:** **bestanden für Startup, Upgrade, Bootstrap, historische Introduction, `/achievements` und Restart-Idempotenz.** Dabei wurden zwei reale Randfälle gefunden und vor Merge behoben: reihenfolgeabhängiges Spring-Wiring der Achievement-Persistenz sowie sichtbare Recovery-Metadaten im Discord-Embed.
+**Lokale reale Discord-Abnahme:** bestanden für Startup, Upgrade, Bootstrap, historische Introduction, `/achievements` und Restart-Idempotenz. Dabei wurden zwei reale Randfälle gefunden und vor Merge behoben: reihenfolgeabhängiges Spring-Wiring der Achievement-Persistenz sowie sichtbare Recovery-Metadaten im Discord-Embed.
 
-**Verbleibende reale Discord-Abnahme:** Live-Batch, Korrektur/Invalidierung/Reaktivierung und `/achievement-list` werden gemäß `13-achievements-live-canary.md` bewusst als kontrollierter Canary in der Live-Umgebung durchgeführt. Diese Entscheidung ersetzt die frühere Vorgabe, sämtliche realen Discord-Pfade zwingend vor Merge auf dem Testserver abzuschließen.
+**Produktivrelease:** **Version 1.4.0 erfolgreich ausgerollt.** Maßgeblicher Merge-Commit ist `213fe15dcc59e46856ea9be7066161fdc473353a`. Der ausgeführte Produktiv-Smoke/Canary ist bestanden; es wurde kein Abbruch- oder Rollbackkriterium ausgelöst.
 
-**Release / RC / Produktion:** nicht Bestandteil von Paket 13.8. Merge und anschließender kontrollierter Rollout werden separat entschieden und durchgeführt.
+Die tieferen Konkurrenz-, Retry-/Restart-, Korrektur-, Invalidierungs-, Reaktivierungs- und Send-vor-ACK-Szenarien bleiben zusätzlich durch die unten dokumentierten automatisierten PostgreSQL-/Gateway-Nachweise abgesichert. Produktionsdaten werden nicht manuell verändert, um Fehlerfälle künstlich nachzustellen.
 
 Es werden keine Tokens, Discord-IDs, Rohshares oder personenbezogenen Testdaten in diesem Dokument erfasst.
 
@@ -30,7 +30,7 @@ Die 60 Fälle aus `docs/requirements/achievements.md` bilden die verbindliche Mi
 | 34–37 | `AchievementEvaluatorTest`: `<07:00`, exakt `07:00`, `>=23:00` sowie Sommer-/Winterzeit über `Europe/Berlin`. |
 | 38–40 | `AchievementReconciliationServiceTest`, `PostgresAchievementReconciliationIT`, `PostgresAchievementStaleReconciliationIT`, `PostgresAchievementPersistenceStoreIT`: Replay/Retry/Restart, konkurrierende Erstvergabe und stale Reconciliation. |
 | 41–43 | `AchievementReconciliationServiceTest`, `PostgresAchievementReconciliationIT`, `PostgresAchievementBootstrapIT`: Invalidierung, append-only Historie ohne öffentliche Revocation und spätere Reaktivierung. |
-| 44–45 | `PostgresAchievementShareToDeliveryE2EIT`, `AchievementAnnouncementRendererTest`: drei Unlocks desselben Shares werden in genau einem Live-Batch mit Name und Beschreibung ausgeliefert. |
+| 44–45 | `PostgresAchievementShareToDeliveryE2EIT`, `AchievementAnnouncementRendererTest`: mehrere Unlocks desselben Shares werden in genau einem Live-Batch mit Name und Beschreibung ausgeliefert. |
 | 46–48 | `PostgresAchievementBootstrapIT`, `AchievementEvaluatorTest`: Live-Gating bis Bootstrap-Erfolg, dieselben Fachregeln und historisch korrektes `earned_on`. |
 | 49–52 | `PostgresAchievementBootstrapIT`, `PostgresAchievementPersistenceStoreIT`, `AchievementAnnouncementRendererTest`: exakt eine Introduction pro Teilnehmer/Definitionsversion, vollständiger Inhalt ohne Scope-Gruppierung und restartfähige Idempotenz. |
 | 53–59 | `AchievementsQueryServiceTest`, `DiscordAchievementsCommandListenerTest`, `AchievementsOverviewEmbedRendererTest`, `PostgresAchievementsQueryIT`: Self/Other, exakte Scope-Filter, nur aktive Awards, read-only ohne History-Scan und vollständig ephemere Pagination. |
@@ -106,7 +106,7 @@ Damit wird Inkrement 13 als additive Schemaerweiterung geprüft, nicht nur gegen
 
 Die verpflichtenden Gesamtbuilds führen die vollständigen bestehenden Unit- und Integrationstests weiter aus. Damit bleiben insbesondere Parser, kanonische Ergebnisverarbeitung, Teilnahme, Reminder/Tagesstatus, Reports, Ausreden und Records Teil der Regression.
 
-Der bestehende Workflow `Container image` ergänzt Image-Runtime, Shellcheck sowie die isolierten Compose-, Backup-, Restore-, Resume- und Rollbackpfade. Paket 13.8 führt keine separate parallele Betriebslogik ein.
+Der Workflow `Container image` ergänzt Image-Runtime, Shellcheck sowie die isolierten Compose-, Backup-, Restore-, Resume- und Rollbackpfade.
 
 ## Reale Discord-Abnahme
 
@@ -124,20 +124,18 @@ Der bestehende Workflow `Container image` ergänzt Image-Runtime, Shellcheck sow
 - [x] GridWords-/QuadWords-Filter korrekt.
 - [x] Restart nach synchronisierter Introduction erzeugt kein Duplikat.
 
-### Bewusst in die Live-Canary-Abnahme verschoben
+### Produktivrollout
 
-- [ ] `/achievement-list` vollständig/ephemeral mit allen 60 Definitionen und korrektem `✅`/`❌`-Status.
-- [ ] Live-Share mit mehreren gleichzeitigen Unlocks erzeugt genau einen aggregierten Batch.
-- [ ] Teilnehmer, Anzahl, Emoji, Name und Beschreibung des Live-Batches stimmen; keine internen Metadaten oder Mentions.
-- [ ] Restart nach synchronisierter Live-Meldung erzeugt kein Duplikat.
-- [ ] Korrektur invalidiert den aktuellen Profilzustand ohne öffentliche Aberkennung und ohne Edit/Löschung bereits publizierter Unlock-Historie.
-- [ ] Spätere Reaktivierung erzeugt keine zweite öffentliche Unlock-Meldung.
+- [x] Release 1.4.0 erfolgreich deployt.
+- [x] Produktiver Start ohne Rollback abgeschlossen.
+- [x] Produktiv-Smoke/Canary durch den Betreiber als bestanden bestätigt.
+- [x] Während des Smoke-Tests kein dokumentiertes Abbruch-/Rollbackkriterium ausgelöst.
 
-Die konkrete Reihenfolge und die Rollbackkriterien stehen in `13-achievements-live-canary.md`.
+Die konkreten Canary- und Beobachtungskriterien stehen in `13-achievements-live-canary.md`.
 
 ## Technische und betriebliche Gates
 
-Verpflichtend für den finalen PR-Head:
+Der finale Pre-Merge-Head von PR #103 war vollständig grün für:
 
 ```text
 mvn --batch-mode --no-transfer-progress clean verify
@@ -145,17 +143,8 @@ mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
 mvn --batch-mode --no-transfer-progress -Pmigration-clean-install verify
 ```
 
-Zusätzlich muss der vollständige GitHub-Actions-Workflow `Container image` inklusive Image-Runtime, Shellcheck, Compose, Backup, Restore, Resume und Rollback grün sein.
+Zusätzlich war der vollständige GitHub-Actions-Workflow `Container image` inklusive Image-Runtime, Shellcheck, Compose, Backup, Restore, Resume und Rollback grün.
 
-Die konkreten finalen Workflow-Nummern und der finale Commit-SHA werden in PR #103 dokumentiert. Dadurch verursacht das Eintragen eines neuen SHA in dieses Dokument keinen weiteren ungetesteten Dokumentationscommit.
+## Abschluss
 
-## Merge- und Releaseentscheidung
-
-Der technische Teil von Inkrement 13 kann nach grünen finalen Gates und dem oben dokumentierten lokalen Discord-Smoke als mergefähig gelten. Die verbleibenden manuellen Live-Pfade sind kein Pre-Merge-Blocker mehr; sie bilden stattdessen einen verpflichtenden Canary-Abbruchpunkt im separaten Produktivrollout.
-
-Bis zur bewussten Mergeentscheidung gilt weiterhin:
-
-1. PR #103 bleibt Draft,
-2. Issue #94 und Umbrella #86 bleiben offen,
-3. kein RC, Tag, Release oder produktiver Rollout innerhalb dieses PRs,
-4. keine manuellen Datenbankänderungen zur Simulation erfolgreicher Delivery-/Bootstrap-Zustände.
+Inkrement 13 ist technisch, real und produktiv abgenommen. PR #103 ist nach `main` gemergt, Issue #94 ist abgeschlossen und Release 1.4.0 wurde erfolgreich ausgerollt. Der weitere Betrieb folgt den Diagnose-, Recovery- und Rollbackregeln aus `13-achievements-operations.md`.
