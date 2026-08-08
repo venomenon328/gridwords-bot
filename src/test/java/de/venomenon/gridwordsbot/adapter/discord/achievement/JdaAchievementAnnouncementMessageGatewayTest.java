@@ -70,6 +70,29 @@ class JdaAchievementAnnouncementMessageGatewayTest {
                 .discoverCreatedMessages(2L, announcement.publicationKey(), announcement)).containsExactly(30L, 90L);
     }
 
+    @Test
+    void identicalVisibleContentWithoutPublicationIdentityIsNotReused() {
+        JDA jda = mock(JDA.class);
+        TextChannel channel = mock(TextChannel.class);
+        MessageHistory history = mock(MessageHistory.class);
+        RestAction<List<Message>> request = mock(RestAction.class);
+        SelfUser self = mock(SelfUser.class);
+        RenderedAchievementAnnouncement announcement = announcement();
+        Message unrelated = mock(Message.class);
+        MessageEmbed embed = mock(MessageEmbed.class);
+        when(unrelated.getAuthor()).thenReturn(self);
+        when(unrelated.getNonce()).thenReturn(null);
+        when(unrelated.getEmbeds()).thenReturn(List.of(embed));
+        when(embed.getTitle()).thenReturn(announcement.embeds().getFirst().title());
+        when(embed.getDescription()).thenReturn(announcement.embeds().getFirst().description());
+        when(jda.getTextChannelById(2L)).thenReturn(channel); when(jda.getSelfUser()).thenReturn(self);
+        when(channel.getHistory()).thenReturn(history); when(history.retrievePast(100)).thenReturn(request);
+        when(request.complete()).thenReturn(List.of(unrelated));
+
+        assertThat(new JdaAchievementAnnouncementMessageGateway(jda)
+                .discoverCreatedMessages(2L, announcement.publicationKey(), announcement)).isEmpty();
+    }
+
     private static RenderedAchievementAnnouncement announcement() {
         return new RenderedAchievementAnnouncement("achievement-announcement:" + "a".repeat(64), "b".repeat(64),
                 List.of(new RenderedAchievementAnnouncement.Embed("🏅 Achievements", "Ada hat etwas freigeschaltet.")));
