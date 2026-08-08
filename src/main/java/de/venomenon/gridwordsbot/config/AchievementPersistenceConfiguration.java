@@ -67,6 +67,11 @@ public class AchievementPersistenceConfiguration {
     }
 
     @Bean
+    AchievementEmojiResolver achievementEmojiResolver() {
+        return AchievementEmojiResolver.unicodeOnly();
+    }
+
+    @Bean
     @ConditionalOnBean(TransactionTemplate.class)
     AchievementTransactionRunner achievementTransactionRunner(TransactionTemplate transactions, JdbcTemplate jdbc) {
         return new AchievementTransactionRunner() {
@@ -181,12 +186,13 @@ public class AchievementPersistenceConfiguration {
             PlayerStore players,
             AchievementAnnouncementMessageGateway messages,
             AchievementDefinitionCatalog catalog,
+            AchievementEmojiResolver emojis,
             Clock clock,
             ScheduledExecutorService achievementAnnouncementHeartbeatExecutor,
             GridwordsBotProperties properties) {
         GridwordsBotProperties.Records delivery = properties.records();
         return new AchievementAnnouncementDeliveryCoordinator(
-                announcements, events, awards, players, messages, catalog, AchievementEmojiResolver.unicodeOnly(), clock,
+                announcements, events, awards, players, messages, catalog, emojis, clock,
                 delivery.announcementLeaseDuration(), delivery.announcementHeartbeatInterval(),
                 delivery.announcementInitialRetryBackoff(), delivery.announcementMaxRetryBackoff(),
                 achievementAnnouncementHeartbeatExecutor);
