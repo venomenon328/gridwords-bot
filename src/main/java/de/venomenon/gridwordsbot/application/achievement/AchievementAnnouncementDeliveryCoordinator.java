@@ -95,7 +95,9 @@ public final class AchievementAnnouncementDeliveryCoordinator {
     private RunResult deliver(AchievementAnnouncement.Snapshot announcement, UUID token, LeaseHeartbeat heartbeat) {
         AchievementAnnouncement.Key key = announcement.registration().key();
         List<AchievementEventFact.Snapshot> active = activeFacts(announcement);
-        if (active.isEmpty()) {
+        if (active.isEmpty() && announcement.registration().type() == AchievementAnnouncement.Type.LIVE_UNLOCK_BATCH) {
+            ensure(heartbeat);
+            if (!announcements.replaceClaimedItems(key, token, List.of())) return RunResult.LOST_LEASE;
             ensure(heartbeat);
             return announcements.markSuppressed(key, token, clock.instant()) ? RunResult.SUPPRESSED : RunResult.LOST_LEASE;
         }
@@ -145,9 +147,13 @@ public final class AchievementAnnouncementDeliveryCoordinator {
 
     private List<AchievementEventFact.Snapshot> activeFacts(AchievementAnnouncement.Snapshot announcement) {
         return announcements.findItems(announcement.registration().key()).stream()
-                .map(AchievementAnnouncement.Item::eventId).map(events::find).flatMap(java.util.Optional::stream)
+                .map(AchievementAnnouncement.Item::eventId)
+                .map(eventId -> events.find(eventId).orElseThrow(
+                        () -> new IllegalStateException("achievement announcement references missing event: " + eventId)))
                 .filter(event -> awards.find(event.fact().awardKey())
-                        .map(state -> state.write().status() == AchievementAwardState.Status.ACTIVE).orElse(false))
+                        .map(state -> state.write().status() == AchievementAwardState.Status.ACTIVE)
+                        .orElseThrow(() -> new IllegalStateException("achievement event has no award state: "
+                                + event.fact().awardKey().achievementKey().value())))
                 .toList();
     }
 
