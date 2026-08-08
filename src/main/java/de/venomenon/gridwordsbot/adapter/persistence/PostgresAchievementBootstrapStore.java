@@ -82,7 +82,7 @@ public final class PostgresAchievementBootstrapStore implements AchievementBoots
     @Override
     public boolean markSucceeded(AchievementWork.BootstrapKey key, UUID token, Instant completedAt) {
         Objects.requireNonNull(completedAt, "completedAt");
-        return finish(key, token, "SUCCEEDED", null, completedAt, null);
+        return finish(key, token, "SUCCEEDED", null, completedAt);
     }
 
     @Override
@@ -117,7 +117,7 @@ public final class PostgresAchievementBootstrapStore implements AchievementBoots
         if (failure.category() != AchievementWork.FailureCategory.PERMANENT) {
             throw new IllegalArgumentException("permanent completion requires PERMANENT failure category");
         }
-        return finish(key, token, "FAILED_PERMANENT", failure, completedAt, null);
+        return finish(key, token, "FAILED_PERMANENT", failure, completedAt);
     }
 
     private boolean finish(
@@ -125,8 +125,7 @@ public final class PostgresAchievementBootstrapStore implements AchievementBoots
             UUID token,
             String state,
             AchievementWork.Failure failure,
-            Instant completedAt,
-            Instant ignored) {
+            Instant completedAt) {
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(token, "token");
         Objects.requireNonNull(completedAt, "completedAt");
