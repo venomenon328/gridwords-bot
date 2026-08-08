@@ -8,6 +8,8 @@ import de.venomenon.gridwordsbot.adapter.discord.inbound.DiscordParticipationCom
 import de.venomenon.gridwordsbot.application.canonical.CanonicalGridWordsPublicationService;
 import de.venomenon.gridwordsbot.application.canonical.GridWordsSourceDeletionService;
 import de.venomenon.gridwordsbot.application.cleanup.DailyChannelCleanupService;
+import de.venomenon.gridwordsbot.application.achievement.AchievementBootstrapCoordinator;
+import de.venomenon.gridwordsbot.application.achievement.AchievementResultLifecycle;
 import de.venomenon.gridwordsbot.port.in.ExcuseExpirationUseCase;
 import net.dv8tion.jda.api.JDA;
 import org.springframework.beans.factory.ObjectProvider;
@@ -26,6 +28,9 @@ final class DatabaseInboundStartup implements ApplicationRunner {
     private final ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider;
     private final ObjectProvider<GridWordsSourceDeletionService> deletionProvider;
     private final ObjectProvider<DailyChannelCleanupService> cleanupProvider;
+    private final ObjectProvider<AchievementBootstrapCoordinator> achievementBootstrapProvider;
+    private final ObjectProvider<AchievementResultLifecycle> achievementLifecycleProvider;
+    private final GridwordsBotProperties properties;
     DatabaseInboundStartup(ObjectProvider<JDA> jdaProvider, ObjectProvider<DiscordInboundListener> listenerProvider,
             ObjectProvider<DiscordParticipationCommandListener> commandProvider,
             ObjectProvider<DailyResultDetailsInteractionListener> resultDetailsProvider,
@@ -56,11 +61,30 @@ final class DatabaseInboundStartup implements ApplicationRunner {
             ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider,
             ObjectProvider<GridWordsSourceDeletionService> deletionProvider,
             ObjectProvider<DailyChannelCleanupService> cleanupProvider) {
+        this(jdaProvider, listenerProvider, commandProvider, resultDetailsProvider, excuseOpenProvider,
+                excuseInteractionProvider, excuseExpirationProvider, canonicalProvider, deletionProvider, cleanupProvider,
+                absentAchievementBootstrap(), absentAchievementLifecycle(), null);
+    }
+    DatabaseInboundStartup(ObjectProvider<JDA> jdaProvider, ObjectProvider<DiscordInboundListener> listenerProvider,
+            ObjectProvider<DiscordParticipationCommandListener> commandProvider,
+            ObjectProvider<DailyResultDetailsInteractionListener> resultDetailsProvider,
+            ObjectProvider<ExcuseOpenInteractionListener> excuseOpenProvider,
+            ObjectProvider<ExcuseInteractionListener> excuseInteractionProvider,
+            ObjectProvider<ExcuseExpirationUseCase> excuseExpirationProvider,
+            ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider,
+            ObjectProvider<GridWordsSourceDeletionService> deletionProvider,
+            ObjectProvider<DailyChannelCleanupService> cleanupProvider,
+            ObjectProvider<AchievementBootstrapCoordinator> achievementBootstrapProvider,
+            ObjectProvider<AchievementResultLifecycle> achievementLifecycleProvider,
+            GridwordsBotProperties properties) {
         this.jdaProvider = jdaProvider; this.listenerProvider = listenerProvider; this.commandProvider = commandProvider;
         this.resultDetailsProvider = resultDetailsProvider; this.excuseOpenProvider = excuseOpenProvider;
         this.excuseInteractionProvider = excuseInteractionProvider; this.excuseExpirationProvider = excuseExpirationProvider;
         this.canonicalProvider = canonicalProvider;
         this.deletionProvider = deletionProvider; this.cleanupProvider = cleanupProvider;
+        this.achievementBootstrapProvider = achievementBootstrapProvider;
+        this.achievementLifecycleProvider = achievementLifecycleProvider;
+        this.properties = properties;
     }
     DatabaseInboundStartup(ObjectProvider<JDA> jdaProvider, ObjectProvider<DiscordInboundListener> listenerProvider,
             ObjectProvider<DiscordParticipationCommandListener> commandProvider,
@@ -97,7 +121,19 @@ final class DatabaseInboundStartup implements ApplicationRunner {
     private static ObjectProvider<ExcuseExpirationUseCase> absentExcuseExpirations() {
         return new ObjectProvider<>() { @Override public ExcuseExpirationUseCase getObject() { return null; } };
     }
+    private static ObjectProvider<AchievementBootstrapCoordinator> absentAchievementBootstrap() {
+        return new ObjectProvider<>() { @Override public AchievementBootstrapCoordinator getObject() { return null; } };
+    }
+    private static ObjectProvider<AchievementResultLifecycle> absentAchievementLifecycle() {
+        return new ObjectProvider<>() { @Override public AchievementResultLifecycle getObject() { return null; } };
+    }
     @Override public void run(ApplicationArguments arguments) {
+        AchievementBootstrapCoordinator achievementBootstrap = achievementBootstrapProvider.getIfAvailable();
+        if (achievementBootstrap != null && properties != null) {
+            achievementBootstrap.run(properties.discord().guildId(), properties.discord().channelId());
+        }
+        AchievementResultLifecycle achievementLifecycle = achievementLifecycleProvider.getIfAvailable();
+        if (achievementLifecycle != null) achievementLifecycle.recoverPendingResults();
         DailyChannelCleanupService cleanup = cleanupProvider.getIfAvailable();
         if (cleanup != null) cleanup.reconcile();
         ExcuseExpirationUseCase expirations = excuseExpirationProvider.getIfAvailable();

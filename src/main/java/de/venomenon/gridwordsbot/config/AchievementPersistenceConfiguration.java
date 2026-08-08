@@ -6,6 +6,8 @@ import de.venomenon.gridwordsbot.adapter.persistence.PostgresAchievementBootstra
 import de.venomenon.gridwordsbot.adapter.persistence.PostgresAchievementEventStore;
 import de.venomenon.gridwordsbot.adapter.persistence.PostgresAchievementHistoryQuery;
 import de.venomenon.gridwordsbot.application.achievement.AchievementReconciliationService;
+import de.venomenon.gridwordsbot.application.achievement.AchievementBootstrapCoordinator;
+import de.venomenon.gridwordsbot.application.achievement.AchievementResultLifecycle;
 import de.venomenon.gridwordsbot.domain.achievement.AchievementDefinitionCatalog;
 import de.venomenon.gridwordsbot.domain.achievement.AchievementEvaluator;
 import de.venomenon.gridwordsbot.port.out.AchievementAnnouncementStore;
@@ -14,7 +16,10 @@ import de.venomenon.gridwordsbot.port.out.AchievementBootstrapStore;
 import de.venomenon.gridwordsbot.port.out.AchievementEventStore;
 import de.venomenon.gridwordsbot.port.out.AchievementHistoryQuery;
 import de.venomenon.gridwordsbot.port.out.AchievementTransactionRunner;
+import de.venomenon.gridwordsbot.port.out.PlayerStore;
+import de.venomenon.gridwordsbot.port.out.SubmissionStore;
 import java.time.Clock;
+import java.time.Duration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -81,6 +86,23 @@ public class AchievementPersistenceConfiguration {
                     return work.get();
                 });
             }
+
+            @Override
+            public <T> T inBootstrapFenceTransaction(
+                    de.venomenon.gridwordsbot.domain.achievement.persistence.AchievementWork.BootstrapKey key,
+                    java.util.function.Supplier<T> work) {
+                return transactions.execute(status -> {
+                    Integer locked = jdbc.queryForObject("""
+                            SELECT 1 FROM achievement_bootstrap_state
+                             WHERE guild_id=? AND definition_version=?
+                             FOR UPDATE
+                            """, Integer.class, key.guildId(), key.definitionVersion().value());
+                    if (locked == null || locked != 1) {
+                        throw new IllegalStateException("achievement bootstrap fence could not be acquired");
+                    }
+                    return work.get();
+                });
+            }
         };
     }
 
@@ -104,5 +126,35 @@ public class AchievementPersistenceConfiguration {
                 transactions,
                 clock,
                 AchievementEvaluator.DEFAULT_TIME_ZONE);
+    }
+
+    @Bean
+    @ConditionalOnBean({AchievementReconciliationService.class, SubmissionStore.class})
+    AchievementResultLifecycle achievementResultLifecycle(
+            AchievementBootstrapStore bootstraps,
+            AchievementTransactionRunner transactions,
+            AchievementReconciliationService reconciliation,
+            AchievementDefinitionCatalog catalog,
+            AchievementAwardStateStore awards,
+            AchievementEventStore events,
+            AchievementAnnouncementStore announcements,
+            SubmissionStore submissions,
+            Clock clock) {
+        return new AchievementResultLifecycle(
+                bootstraps, transactions, reconciliation, catalog, awards, events, announcements, submissions, clock);
+    }
+
+    @Bean
+    @ConditionalOnBean({AchievementResultLifecycle.class, PlayerStore.class})
+    AchievementBootstrapCoordinator achievementBootstrapCoordinator(
+            AchievementBootstrapStore bootstraps,
+            AchievementTransactionRunner transactions,
+            PlayerStore players,
+            AchievementResultLifecycle lifecycle,
+            AchievementDefinitionCatalog catalog,
+            Clock clock) {
+        return new AchievementBootstrapCoordinator(
+                bootstraps, transactions, players, lifecycle, catalog, clock,
+                Duration.ofMinutes(2), Duration.ofMinutes(1));
     }
 }

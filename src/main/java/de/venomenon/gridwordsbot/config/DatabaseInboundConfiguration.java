@@ -20,6 +20,8 @@ import de.venomenon.gridwordsbot.application.excuse.ExcuseExpirationService;
 import de.venomenon.gridwordsbot.application.status.DailyResultDetailsService;
 import de.venomenon.gridwordsbot.application.status.DailyStatusRefreshService;
 import de.venomenon.gridwordsbot.application.submission.ProcessSharedResultService;
+import de.venomenon.gridwordsbot.application.achievement.AchievementBootstrapCoordinator;
+import de.venomenon.gridwordsbot.application.achievement.AchievementResultLifecycle;
 import de.venomenon.gridwordsbot.parser.gridwords.GridWordsShareParser;
 import de.venomenon.gridwordsbot.parser.quadwords.QuadWordsImageParser;
 import de.venomenon.gridwordsbot.parser.quadwords.QuadWordsShareParser;
@@ -72,7 +74,8 @@ class DatabaseInboundConfiguration {
             SubmissionStore submissions,
             ObjectProvider<CanonicalGridWordsPublicationService> canonicalProvider,
             ObjectProvider<AttachmentContentLoader> loaderProvider,
-            ObjectProvider<DailyStatusRefreshService> statusProvider) {
+            ObjectProvider<DailyStatusRefreshService> statusProvider,
+            ObjectProvider<AchievementResultLifecycle> achievementLifecycleProvider) {
         AttachmentContentLoader loader = loaderProvider.getIfAvailable(() -> attachment -> {
             throw new AttachmentContentLoader.RetryableAttachmentException(
                     "attachment loader is unavailable", null);
@@ -96,6 +99,11 @@ class DatabaseInboundConfiguration {
                     DailyStatusRefreshService status = statusProvider.getIfAvailable();
                     if (status != null) {
                         status.refresh(gameDate);
+                    }
+                }, outcome -> {
+                    AchievementResultLifecycle lifecycle = achievementLifecycleProvider.getIfAvailable();
+                    if (lifecycle != null) {
+                        lifecycle.reconcileNormal(outcome);
                     }
                 });
     }
@@ -407,8 +415,12 @@ class DatabaseInboundConfiguration {
             ObjectProvider<ExcuseExpirationUseCase> excuseExpirations,
             ObjectProvider<CanonicalGridWordsPublicationService> canonical,
             ObjectProvider<GridWordsSourceDeletionService> deletion,
-            ObjectProvider<DailyChannelCleanupService> cleanup) {
+            ObjectProvider<DailyChannelCleanupService> cleanup,
+            ObjectProvider<AchievementBootstrapCoordinator> achievementBootstrap,
+            ObjectProvider<AchievementResultLifecycle> achievementLifecycle,
+            GridwordsBotProperties properties) {
         return new DatabaseInboundStartup(
-                jda, listener, commands, resultDetails, excuseOpen, excuseInteractions, excuseExpirations, canonical, deletion, cleanup);
+                jda, listener, commands, resultDetails, excuseOpen, excuseInteractions, excuseExpirations, canonical, deletion, cleanup,
+                achievementBootstrap, achievementLifecycle, properties);
     }
 }
