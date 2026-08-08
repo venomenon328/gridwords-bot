@@ -73,6 +73,7 @@ public final class AchievementAnnouncement {
             Optional<Long> discordMessageId,
             Optional<Instant> deliveredAt,
             Optional<Instant> synchronizedAt,
+            Optional<Instant> completedAt,
             Optional<Instant> externallyRemovedAt,
             Optional<Instant> suppressedAt,
             Instant createdAt,
@@ -88,6 +89,7 @@ public final class AchievementAnnouncement {
             discordMessageId = Objects.requireNonNull(discordMessageId, "discordMessageId");
             deliveredAt = Objects.requireNonNull(deliveredAt, "deliveredAt");
             synchronizedAt = Objects.requireNonNull(synchronizedAt, "synchronizedAt");
+            completedAt = Objects.requireNonNull(completedAt, "completedAt");
             externallyRemovedAt = Objects.requireNonNull(externallyRemovedAt, "externallyRemovedAt");
             suppressedAt = Objects.requireNonNull(suppressedAt, "suppressedAt");
             Objects.requireNonNull(createdAt, "createdAt");
@@ -113,6 +115,13 @@ public final class AchievementAnnouncement {
             }
             if ((deliveryState == DeliveryState.SUPPRESSED) != suppressedAt.isPresent()) {
                 throw new IllegalArgumentException("suppressedAt is required exactly for SUPPRESSED state");
+            }
+            boolean terminal = deliveryState == DeliveryState.SYNCHRONIZED
+                    || deliveryState == DeliveryState.FAILED_PERMANENT
+                    || deliveryState == DeliveryState.EXTERNALLY_REMOVED
+                    || deliveryState == DeliveryState.SUPPRESSED;
+            if (terminal != completedAt.isPresent()) {
+                throw new IllegalArgumentException("completedAt is required exactly for terminal delivery state");
             }
             if (deliveryState == DeliveryState.SYNCHRONIZED && discordMessageId.isEmpty()) {
                 throw new IllegalArgumentException("SYNCHRONIZED announcement requires confirmed Discord message");
