@@ -551,3 +551,26 @@ Inkrement 12 trennt den materialisierten aktuellen Rekordzustand, unveränderlic
 Bootstrap, Live-Auswertung, Tagesabschluss und Delivery verwenden jeweils konkrete persistente Arbeit mit tokengebundenem Claim, Lease, Retry und Recovery. Die kurze State-/Event-/Announcement-Transaktion endet vor jedem Discord-Aufruf. Unbekannte technische Fehler bleiben unverändert sichtbar; sie werden nicht als fachlicher Konflikt, permanenter Fehler oder erfolgreicher Abschluss umgedeutet.
 
 Der `/records`-Use-Case liest nur den Bootstrap-Status, materialisierte `record_state`-Zeilen und Spieleranzeigen. Er führt keine Auswertung, keine Claims und keine Persistenzänderung aus. `game` und `category` werden anhand der expliziten Definitionsmetadaten gefiltert; die JDA-Antwort einschließlich jeder Pagination bleibt ephemer und ohne Allowed Mentions.
+
+## 22. Achievements
+
+Inkrement 13 ergänzt mit `domain.achievement` und `application.achievement` einen eigenen fachlichen Bereich; die Paketübersicht in Abschnitt 3 ist insofern nur ein historischer Überblick und keine abschließende Aufzählung aller heute vorhandenen Fachpakete. Achievements werden weder als Record-Spezialisierung noch als generische Gamification-Plattform modelliert. Verbindlich sind `docs/requirements/achievements.md` und ADR 0020.
+
+Der codebasierte Katalog `achievements-v1` enthält genau 60 stabile Definitionen. Der reine `AchievementEvaluator` verarbeitet einen transportneutralen historischen Teilnehmer-Snapshot aus kanonischen Ergebnissen, ursprünglichen Share-Zeitpunkten, spielbezogenen Teilnahmezeiträumen und optionalen kanonischen QuadWords-Boarddetails. Er kennt weder JDA, Spring noch Persistenzadapter. Bestehende Serien-/Tagessemantik wird über die gemeinsame Streak-Domäne wiederverwendet.
+
+Der persistierte Achievement-Zustand trennt vier Anliegen:
+
+- `achievement_award_state` als materialisierte aktuelle Projektion,
+- `achievement_event` als append-only Audit-Historie,
+- `achievement_bootstrap_state` als restartfähigen Guild-/Definitionsversions-Claim,
+- `achievement_announcement` plus Items als persistente gewünschte Discord-Projektion und Delivery-Arbeit.
+
+Reconciliation ist participant-weit. Die Historie wird außerhalb der kurzen Schreibtransaktion ausgewertet; unter einer participant-bezogenen PostgreSQL-Fence wird geprüft, dass der Snapshot nicht inzwischen durch eine Korrektur veraltet ist. Nur dann werden Award-State, Event und gewünschte Announcement-Fakten konsistent geschrieben. `UNLOCK`, `INVALIDATE` und `REACTIVATE` sind persistente Übergänge; normale spätere Serienenden widerrufen rechtmäßig erworbene Achievements nicht. Eine Korrektur kann jedoch einen historisch nie erfüllten Award invalidieren. Invalidierungen erzeugen keine öffentliche Aberkennungsnachricht.
+
+Der historische Bootstrap verwendet dieselben Fachregeln wie Live-Reconciliation. Er ist claim-/lease- und restartfähig, umfasst auch historisch inaktive Teilnehmer und erzeugt pro Teilnehmer und Definitionsversion genau eine logische `HISTORICAL_INTRODUCTION`. Live-Announcements bleiben bis zum erfolgreichen Bootstrap gegatet; die Bootstrap-Endkante wird in PostgreSQL gefenced, damit ein gleichzeitig eintreffendes Ergebnis genau entweder der historischen Einführung oder dem Live-Pfad zugeordnet wird.
+
+Achievement-Delivery liegt vollständig außerhalb der DB-Transaktion. PostgreSQL-Claims, tokengebundene Leases und Heartbeats sichern konkurrierende Worker. Vor einem ersten Discord-Create wird ein geclaimter Batch participant-weit gegen den aktuellen Award-State revalidiert; vollständig obsolete noch nie veröffentlichte Live-Batches werden `SUPPRESSED`. Create verwendet eine stabile Publication-Identität. Bei Send-vor-ACK/Restart wird ausschließlich anhand dieser Identität gezielt reconciled; eine reine sichtbare Inhaltsgleichheit ist keine Delivery-Identität. Persistierte Message-IDs gewinnen, und Duplikatbereinigung betrifft ausschließlich Artefakte derselben logischen Create-Operation.
+
+`/achievements` ist dagegen ein strikt lesender Projektionspfad. Er verwendet nur den aktuellen Award-State und Katalogmetadaten, zeigt ausschließlich aktive Awards, löst keinen historischen Rebuild aus und führt keinen Player-Sync als Seiteneffekt aus. Selbst- und Fremdansicht sowie jede Pagination bleiben ephemer und mention-sicher.
+
+Die Achievement-Schemaerweiterung ist Liquibase-Migration 024. Betriebs- und Recoveryregeln sowie die vollständige 60-Fälle-Abnahmematrix stehen in `docs/operations/13-achievements-operations.md` und `docs/operations/13-achievements-acceptance.md`. Reale Discord-Abnahme bleibt eine bewusste manuelle Grenze vor Merge/RC; automatisierte Fake-Gateways ersetzen sie nicht.
