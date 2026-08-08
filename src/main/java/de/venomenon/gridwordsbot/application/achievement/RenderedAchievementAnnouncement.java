@@ -7,7 +7,7 @@ import java.util.Objects;
 public record RenderedAchievementAnnouncement(String publicationKey, String contentFingerprint,
                                                List<Embed> embeds) {
     public static final int MAXIMUM_EMBEDS = 10;
-    /** Discord permits 6,000 characters; the remaining headroom belongs to the stable recovery marker. */
+    /** Keep deliberate headroom below Discord's 6,000-character combined embed-text limit. */
     public static final int MAXIMUM_EMBED_TEXT = 5_850;
     public RenderedAchievementAnnouncement {
         Objects.requireNonNull(publicationKey, "publicationKey");
