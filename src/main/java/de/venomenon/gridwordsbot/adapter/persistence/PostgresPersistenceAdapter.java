@@ -49,6 +49,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
     private final ZoneId businessZone;
     private final ExcuseLifecycle excuseLifecycle;
     private final ExcuseLifecycle.Context excuseLifecycleContext;
+    private final ThreadLocal<ResultStorageOutcome> resultStorageOutcomes = new ThreadLocal<>();
 
     public PostgresPersistenceAdapter(JdbcTemplate jdbc, Clock clock) {
         this(jdbc, clock, clock.getZone());
@@ -174,6 +175,25 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
     @Override
     @Transactional
     public StoredSubmission storeResult(ResultStorage request) {
+        resultStorageOutcomes.remove();
+        ResultStorageOutcome outcome = storeResultWithOutcome(request);
+        resultStorageOutcomes.set(outcome);
+        return outcome.submission();
+    }
+
+    @Override
+    public ResultStorageOutcome consumeResultStorageOutcome(StoredSubmission submission) {
+        ResultStorageOutcome outcome = resultStorageOutcomes.get();
+        resultStorageOutcomes.remove();
+        if (outcome == null || outcome.submission().sourceMessageId() != submission.sourceMessageId()) {
+            return new ResultStorageOutcome(submission, ResultStorageKind.PREVIOUSLY_STORED);
+        }
+        return outcome;
+    }
+
+    @Override
+    @Transactional
+    public ResultStorageOutcome storeResultWithOutcome(ResultStorage request) {
         StoredSubmission existing = lockRequired(request.sourceMessageId());
         if (existing.authorPlayerId() != request.result().playerId()) {
             throw new SubmissionConflictException("result player does not match submission author");
@@ -184,7 +204,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
             StoredGameResult storedResult = findResultById(existing.gameResultId().orElseThrow(
                     () -> new IllegalStateException("stored submission has no linked game result")));
             if (equivalent(storedResult, retainStoredQuadWordsBoards(request, storedResult).result())) {
-                return existing;
+                return new ResultStorageOutcome(existing, ResultStorageKind.PREVIOUSLY_STORED);
             }
             throw new SubmissionConflictException("source message ID is already linked to a different result");
         }
@@ -198,16 +218,18 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         List<GameParticipationPeriod> periods = participationEnabled() ? findGameParticipationPeriods() : List.of();
         Optional<StoredGameResult> existingResult = findResultForUpdate(request.result());
         if (existingResult.isPresent()) {
-            return storeAgainstExistingResult(retainStoredQuadWordsBoards(request, existingResult.get()),
-                    existingResult.get(), before, periods);
+            return new ResultStorageOutcome(storeAgainstExistingResult(
+                    retainStoredQuadWordsBoards(request, existingResult.get()), existingResult.get(), before, periods),
+                    ResultStorageKind.REPLACED_RESULT);
         }
 
         Optional<StoredGameResult> insertedResult = insertResultIfAbsent(request.result(), clock.instant());
         if (insertedResult.isEmpty()) {
             StoredGameResult concurrentResult = findResultForUpdate(request.result())
                     .orElseThrow(() -> new IllegalStateException("concurrently inserted game result was not found"));
-            return storeAgainstExistingResult(retainStoredQuadWordsBoards(request, concurrentResult),
-                    concurrentResult, before, periods);
+            return new ResultStorageOutcome(storeAgainstExistingResult(
+                    retainStoredQuadWordsBoards(request, concurrentResult), concurrentResult, before, periods),
+                    ResultStorageKind.REPLACED_RESULT);
         }
 
         StoredGameResult result = insertedResult.get();
@@ -223,7 +245,7 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                 result.parsedResult().gameDate(), periods);
         linkStoredResult(request.sourceMessageId(), result.id(), publicationContext);
         prepareCanonicalPublication(request.sourceMessageId(), result.id());
-        return findRequired(request.sourceMessageId());
+        return new ResultStorageOutcome(findRequired(request.sourceMessageId()), ResultStorageKind.NEW_RESULT);
     }
 
     private StoredSubmission storeAgainstExistingResult(
@@ -841,6 +863,16 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
                     OR r.parser_version = 'quadwords-share-v2'
                   )
                 """, SUBMISSION, gameType.name());
+    }
+
+    @Override
+    public List<StoredSubmission> findAchievementRecoveryCandidates() {
+        return jdbc.query("""
+                SELECT * FROM submission
+                 WHERE game_result_id IS NOT NULL
+                   AND processing_state IN ('RESULT_STORED', 'FAILED_RETRYABLE')
+                 ORDER BY source_message_id
+                """, SUBMISSION);
     }
 
     @Override

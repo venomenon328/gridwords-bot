@@ -30,6 +30,14 @@ public final class StreakDayClassifier {
         return submitted ? StreakDayAssessment.met() : missing(dayClosed);
     }
 
+    /** Canonical personal participation condition for one concrete game. */
+    public StreakDayAssessment personalParticipation(long playerId, LocalDate day, GameType game, boolean dayClosed) {
+        Objects.requireNonNull(game, "game");
+        DailyGameParticipation participation = participation(day);
+        if (!participation.playersFor(game).contains(playerId)) return participationBoundary();
+        return games(playerId, day).containsKey(game) ? StreakDayAssessment.met() : missing(dayClosed);
+    }
+
     public StreakDayAssessment personalComplete(long playerId, LocalDate day, boolean dayClosed) {
         DailyGameParticipation participation = participation(day);
         if (!participation.bothGamesPlayers().contains(playerId)) return participationBoundary();

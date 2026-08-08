@@ -17,6 +17,33 @@ public interface SubmissionStore {
     /** Stores once; replay with equivalent data returns the stored submission, contradictory data raises a conflict. */
     StoredSubmission storeResult(ResultStorage request);
 
+    /**
+     * Small explicit result-storage outcome for downstream lifecycle handoffs.
+     *
+     * <p>The outcome is deliberately transient: normal handling consumes it immediately after the atomic result
+     * write, while restart recovery always uses the durable {@link #findAchievementRecoveryCandidates()} anchor and
+     * remains publicly silent.</p>
+     */
+    default ResultStorageOutcome storeResultWithOutcome(ResultStorage request) {
+        return new ResultStorageOutcome(storeResult(request), ResultStorageKind.PREVIOUSLY_STORED);
+    }
+
+    /**
+     * Consumes the transient classification associated with the immediately preceding result write.
+     *
+     * <p>Adapters that can distinguish a new result from a replacement override this method.  The conservative
+     * default keeps existing adapters and tests replay-safe: an unknown classification never triggers a live
+     * achievement handoff.</p>
+     */
+    default ResultStorageOutcome consumeResultStorageOutcome(StoredSubmission submission) {
+        return new ResultStorageOutcome(submission, ResultStorageKind.PREVIOUSLY_STORED);
+    }
+
+    /** Persisted result work which survived before the Achievement handoff could complete. */
+    default List<StoredSubmission> findAchievementRecoveryCandidates() {
+        return List.of();
+    }
+
     StoredSubmission reject(RejectedSubmission request);
 
     boolean transition(long sourceMessageId, SubmissionState expectedState, SubmissionState targetState);
@@ -165,6 +192,23 @@ public interface SubmissionStore {
             if (!playerRegistration.selection().gameTypes().equals(List.of(result.parsedResult().gameType()))) {
                 throw new IllegalArgumentException("player registration must activate exactly the result game type");
             }
+        }
+    }
+
+    enum ResultStorageKind {
+        NEW_RESULT,
+        REPLACED_RESULT,
+        PREVIOUSLY_STORED
+    }
+
+    record ResultStorageOutcome(StoredSubmission submission, ResultStorageKind kind) {
+        public ResultStorageOutcome {
+            Objects.requireNonNull(submission, "submission");
+            Objects.requireNonNull(kind, "kind");
+        }
+
+        public boolean requiresNormalAchievementHandoff() {
+            return kind == ResultStorageKind.NEW_RESULT || kind == ResultStorageKind.REPLACED_RESULT;
         }
     }
     record RejectedSubmission(long sourceMessageId, String errorCode) {

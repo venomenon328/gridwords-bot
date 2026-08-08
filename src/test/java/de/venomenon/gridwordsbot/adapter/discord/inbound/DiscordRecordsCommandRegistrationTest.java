@@ -3,6 +3,7 @@ package de.venomenon.gridwordsbot.adapter.discord.inbound;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -21,7 +22,7 @@ import org.mockito.ArgumentCaptor;
 
 class DiscordRecordsCommandRegistrationTest {
     @Test
-    void centralGuildCommandUpdateIncludesRecords() {
+    void centralGuildCommandUpdateIncludesRecordsAndAchievementCommandsExactlyOnce() {
         JDA jda = mock(JDA.class);
         Guild guild = mock(Guild.class);
         CommandListUpdateAction update = mock(CommandListUpdateAction.class);
@@ -29,15 +30,17 @@ class DiscordRecordsCommandRegistrationTest {
         when(guild.updateCommands()).thenReturn(update);
         when(update.addCommands(any(CommandData.class), any(CommandData.class), any(CommandData.class),
                 any(CommandData.class))).thenReturn(update);
+        when(update.addCommands(any(CommandData.class))).thenReturn(update);
 
         new DiscordParticipationCommandListener(
                 properties(), mock(PlayerParticipationUseCase.class), mock(PersonalStatusUseCase.class),
                 new PersonalStatusEmbedRenderer(ZoneId.of("Europe/Berlin")))
                 .registerCommands(jda);
 
-        ArgumentCaptor<CommandData> records = ArgumentCaptor.forClass(CommandData.class);
-        verify(update).addCommands(records.capture());
-        assertThat(records.getValue().getName()).isEqualTo("records");
+        ArgumentCaptor<CommandData> additional = ArgumentCaptor.forClass(CommandData.class);
+        verify(update, times(3)).addCommands(additional.capture());
+        assertThat(additional.getAllValues()).extracting(CommandData::getName)
+                .containsExactly("records", "achievements", "achievement-list");
         verify(update).queue();
     }
 

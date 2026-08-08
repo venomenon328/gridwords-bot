@@ -294,6 +294,38 @@ class ProcessSharedResultServiceTest {
     }
 
     @Test
+    void handsANewResultToAchievementsBeforeCanonicalPublication() {
+        InMemoryStore achievementAwareStore = new InMemoryStore() {
+            @Override
+            public ResultStorageOutcome consumeResultStorageOutcome(StoredSubmission submission) {
+                return new ResultStorageOutcome(submission, ResultStorageKind.NEW_RESULT);
+            }
+        };
+        achievementAwareStore.upsert(new PlayerStore.PlayerUpsert(TOBIAS, "Tobias", true, true));
+        AtomicReference<SubmissionStore.ResultStorageOutcome> handoff = new AtomicReference<>();
+        service = new ProcessSharedResultService(
+                new GridWordsShareParser(),
+                new QuadWordsShareParser(),
+                attachment -> { throw new AssertionError("no attachment expected"); },
+                new QuadWordsImageParser(),
+                Clock.fixed(RECEIVED_AT, ZoneOffset.UTC),
+                ZoneId.of("Europe/Berlin"),
+                achievementAwareStore,
+                achievementAwareStore,
+                ignored -> {
+                    assertThat(handoff.get()).isNotNull();
+                    return true;
+                },
+                ignored -> false,
+                ignored -> { },
+                handoff::set);
+
+        assertThat(service.process(message(24L, TOBIAS, gridWords(29, 3))))
+                .isEqualTo(new ProcessingResult.Accepted());
+        assertThat(handoff.get().kind()).isEqualTo(SubmissionStore.ResultStorageKind.NEW_RESULT);
+    }
+
+    @Test
     void statusRefreshUsesTheStoredBusinessDateAndFailureDoesNotRollBack() {
         AtomicReference<LocalDate> refreshed = new AtomicReference<>();
         service = new ProcessSharedResultService(
