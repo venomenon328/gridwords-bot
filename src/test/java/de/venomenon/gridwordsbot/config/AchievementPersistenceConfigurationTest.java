@@ -16,8 +16,8 @@ class AchievementPersistenceConfigurationTest {
     void exposesAchievementPersistenceOnlyWithDbProfileAndJdbcTemplate() {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
             context.getEnvironment().setActiveProfiles("db");
-            context.registerBean(JdbcTemplate.class, JdbcTemplate::new);
-            context.registerBean(Clock.class, Clock::systemUTC);
+            context.getBeanFactory().registerSingleton("jdbcTemplate", new JdbcTemplate());
+            context.getBeanFactory().registerSingleton("clock", Clock.systemUTC());
             context.register(AchievementPersistenceConfiguration.class);
             context.refresh();
 
