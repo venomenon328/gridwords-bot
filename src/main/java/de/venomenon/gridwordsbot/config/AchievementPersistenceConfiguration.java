@@ -5,36 +5,35 @@ import de.venomenon.gridwordsbot.adapter.persistence.PostgresAchievementAwardSta
 import de.venomenon.gridwordsbot.adapter.persistence.PostgresAchievementBootstrapStore;
 import de.venomenon.gridwordsbot.adapter.persistence.PostgresAchievementEventStore;
 import de.venomenon.gridwordsbot.adapter.persistence.PostgresAchievementHistoryQuery;
-import de.venomenon.gridwordsbot.application.achievement.AchievementReconciliationService;
 import de.venomenon.gridwordsbot.application.achievement.AchievementAnnouncementDeliveryCoordinator;
-import de.venomenon.gridwordsbot.application.achievement.AchievementEmojiResolver;
 import de.venomenon.gridwordsbot.application.achievement.AchievementBootstrapCoordinator;
+import de.venomenon.gridwordsbot.application.achievement.AchievementEmojiResolver;
+import de.venomenon.gridwordsbot.application.achievement.AchievementReconciliationService;
 import de.venomenon.gridwordsbot.application.achievement.AchievementResultLifecycle;
 import de.venomenon.gridwordsbot.domain.achievement.AchievementDefinitionCatalog;
 import de.venomenon.gridwordsbot.domain.achievement.AchievementEvaluator;
+import de.venomenon.gridwordsbot.port.out.AchievementAnnouncementMessageGateway;
 import de.venomenon.gridwordsbot.port.out.AchievementAnnouncementStore;
 import de.venomenon.gridwordsbot.port.out.AchievementAwardStateStore;
 import de.venomenon.gridwordsbot.port.out.AchievementBootstrapStore;
 import de.venomenon.gridwordsbot.port.out.AchievementEventStore;
 import de.venomenon.gridwordsbot.port.out.AchievementHistoryQuery;
 import de.venomenon.gridwordsbot.port.out.AchievementTransactionRunner;
-import de.venomenon.gridwordsbot.port.out.AchievementAnnouncementMessageGateway;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
 import de.venomenon.gridwordsbot.port.out.SubmissionStore;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionTemplate;
 
-@Configuration
+@Configuration(proxyBeanMethods = false)
 @Profile({"db", "database"})
-@ConditionalOnBean(JdbcTemplate.class)
 public class AchievementPersistenceConfiguration {
     @Bean
     AchievementAwardStateStore achievementAwardStateStore(JdbcTemplate jdbc, Clock clock) {
@@ -72,7 +71,7 @@ public class AchievementPersistenceConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean(TransactionTemplate.class)
+    @Profile("database")
     AchievementTransactionRunner achievementTransactionRunner(TransactionTemplate transactions, JdbcTemplate jdbc) {
         return new AchievementTransactionRunner() {
             @Override
@@ -117,7 +116,7 @@ public class AchievementPersistenceConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean(AchievementTransactionRunner.class)
+    @Profile("database")
     AchievementReconciliationService achievementReconciliationService(
             AchievementHistoryQuery history,
             AchievementDefinitionCatalog catalog,
@@ -139,7 +138,7 @@ public class AchievementPersistenceConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean({AchievementReconciliationService.class, SubmissionStore.class})
+    @Profile("database")
     AchievementResultLifecycle achievementResultLifecycle(
             AchievementBootstrapStore bootstraps,
             AchievementTransactionRunner transactions,
@@ -155,7 +154,7 @@ public class AchievementPersistenceConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean({AchievementResultLifecycle.class, PlayerStore.class})
+    @Profile("database")
     AchievementBootstrapCoordinator achievementBootstrapCoordinator(
             AchievementBootstrapStore bootstraps,
             AchievementTransactionRunner transactions,
@@ -169,6 +168,8 @@ public class AchievementPersistenceConfiguration {
     }
 
     @Bean(destroyMethod = "shutdown")
+    @Profile("database")
+    @ConditionalOnProperty(prefix = "gridwords.discord", name = "enabled", havingValue = "true")
     ScheduledExecutorService achievementAnnouncementHeartbeatExecutor() {
         return Executors.newSingleThreadScheduledExecutor(runnable -> {
             Thread thread = new Thread(runnable, "achievement-announcement-heartbeat");
@@ -178,7 +179,8 @@ public class AchievementPersistenceConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean(AchievementAnnouncementMessageGateway.class)
+    @Profile("database")
+    @ConditionalOnProperty(prefix = "gridwords.discord", name = "enabled", havingValue = "true")
     AchievementAnnouncementDeliveryCoordinator achievementAnnouncementDeliveryCoordinator(
             AchievementAnnouncementStore announcements,
             AchievementEventStore events,
@@ -199,13 +201,15 @@ public class AchievementPersistenceConfiguration {
     }
 
     @Bean(name = "achievementAnnouncementPollDelayMillis")
-    @ConditionalOnBean(AchievementAnnouncementDeliveryCoordinator.class)
+    @Profile("database")
+    @ConditionalOnProperty(prefix = "gridwords.discord", name = "enabled", havingValue = "true")
     long achievementAnnouncementPollDelayMillis(GridwordsBotProperties properties) {
         return properties.records().announcementPollDelay().toMillis();
     }
 
     @Bean
-    @ConditionalOnBean(AchievementAnnouncementDeliveryCoordinator.class)
+    @Profile("database")
+    @ConditionalOnProperty(prefix = "gridwords.discord", name = "enabled", havingValue = "true")
     org.springframework.boot.ApplicationRunner achievementAnnouncementDeliveryStartupRunner(
             AchievementAnnouncementDeliveryCoordinator coordinator) {
         return arguments -> coordinator.runNext();
