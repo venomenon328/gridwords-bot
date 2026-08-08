@@ -6,6 +6,8 @@ import de.venomenon.gridwordsbot.adapter.persistence.PostgresAchievementBootstra
 import de.venomenon.gridwordsbot.adapter.persistence.PostgresAchievementEventStore;
 import de.venomenon.gridwordsbot.adapter.persistence.PostgresAchievementHistoryQuery;
 import de.venomenon.gridwordsbot.application.achievement.AchievementReconciliationService;
+import de.venomenon.gridwordsbot.application.achievement.AchievementAnnouncementDeliveryCoordinator;
+import de.venomenon.gridwordsbot.application.achievement.AchievementEmojiResolver;
 import de.venomenon.gridwordsbot.application.achievement.AchievementBootstrapCoordinator;
 import de.venomenon.gridwordsbot.application.achievement.AchievementResultLifecycle;
 import de.venomenon.gridwordsbot.domain.achievement.AchievementDefinitionCatalog;
@@ -16,10 +18,13 @@ import de.venomenon.gridwordsbot.port.out.AchievementBootstrapStore;
 import de.venomenon.gridwordsbot.port.out.AchievementEventStore;
 import de.venomenon.gridwordsbot.port.out.AchievementHistoryQuery;
 import de.venomenon.gridwordsbot.port.out.AchievementTransactionRunner;
+import de.venomenon.gridwordsbot.port.out.AchievementAnnouncementMessageGateway;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
 import de.venomenon.gridwordsbot.port.out.SubmissionStore;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -156,5 +161,47 @@ public class AchievementPersistenceConfiguration {
         return new AchievementBootstrapCoordinator(
                 bootstraps, transactions, players, lifecycle, catalog, clock,
                 Duration.ofMinutes(2), Duration.ofMinutes(1));
+    }
+
+    @Bean(destroyMethod = "shutdown")
+    ScheduledExecutorService achievementAnnouncementHeartbeatExecutor() {
+        return Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "achievement-announcement-heartbeat");
+            thread.setDaemon(true);
+            return thread;
+        });
+    }
+
+    @Bean
+    @ConditionalOnBean(AchievementAnnouncementMessageGateway.class)
+    AchievementAnnouncementDeliveryCoordinator achievementAnnouncementDeliveryCoordinator(
+            AchievementAnnouncementStore announcements,
+            AchievementEventStore events,
+            AchievementAwardStateStore awards,
+            PlayerStore players,
+            AchievementAnnouncementMessageGateway messages,
+            AchievementDefinitionCatalog catalog,
+            Clock clock,
+            ScheduledExecutorService achievementAnnouncementHeartbeatExecutor,
+            GridwordsBotProperties properties) {
+        GridwordsBotProperties.Records delivery = properties.records();
+        return new AchievementAnnouncementDeliveryCoordinator(
+                announcements, events, awards, players, messages, catalog, AchievementEmojiResolver.unicodeOnly(), clock,
+                delivery.announcementLeaseDuration(), delivery.announcementHeartbeatInterval(),
+                delivery.announcementInitialRetryBackoff(), delivery.announcementMaxRetryBackoff(),
+                achievementAnnouncementHeartbeatExecutor);
+    }
+
+    @Bean(name = "achievementAnnouncementPollDelayMillis")
+    @ConditionalOnBean(AchievementAnnouncementDeliveryCoordinator.class)
+    long achievementAnnouncementPollDelayMillis(GridwordsBotProperties properties) {
+        return properties.records().announcementPollDelay().toMillis();
+    }
+
+    @Bean
+    @ConditionalOnBean(AchievementAnnouncementDeliveryCoordinator.class)
+    org.springframework.boot.ApplicationRunner achievementAnnouncementDeliveryStartupRunner(
+            AchievementAnnouncementDeliveryCoordinator coordinator) {
+        return arguments -> coordinator.runNext();
     }
 }

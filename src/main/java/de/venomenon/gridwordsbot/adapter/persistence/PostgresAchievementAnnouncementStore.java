@@ -5,6 +5,8 @@ import de.venomenon.gridwordsbot.domain.achievement.persistence.AchievementAnnou
 import de.venomenon.gridwordsbot.domain.achievement.persistence.AchievementWork;
 import de.venomenon.gridwordsbot.port.out.AchievementAnnouncementStore;
 import java.sql.Timestamp;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.HashSet;
@@ -13,6 +15,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.ConnectionCallback;
 
 public final class PostgresAchievementAnnouncementStore implements AchievementAnnouncementStore {
     private final JdbcTemplate jdbc;
@@ -156,6 +159,23 @@ public final class PostgresAchievementAnnouncementStore implements AchievementAn
                    SET delivery_state='CLAIMED', claim_token=?, claim_until=?, attempt_count=attempt_count+1,
                        next_retry_at=NULL, failure_category=NULL, safe_error=NULL, completed_at=NULL, updated_at=?
                  WHERE guild_id=? AND idempotency_key=?
+                   AND EXISTS (
+                       SELECT 1 FROM achievement_bootstrap_state bootstrap
+                        WHERE bootstrap.guild_id=achievement_announcement.guild_id
+                          AND bootstrap.definition_version=achievement_announcement.definition_version
+                          AND bootstrap.bootstrap_state='SUCCEEDED'
+                   )
+                   AND (
+                       announcement_type='HISTORICAL_INTRODUCTION'
+                       OR NOT EXISTS (
+                           SELECT 1 FROM achievement_announcement introduction
+                            WHERE introduction.guild_id=achievement_announcement.guild_id
+                              AND introduction.participant_id=achievement_announcement.participant_id
+                              AND introduction.definition_version=achievement_announcement.definition_version
+                              AND introduction.announcement_type='HISTORICAL_INTRODUCTION'
+                              AND introduction.delivery_state <> 'SYNCHRONIZED'
+                       )
+                   )
                    AND (
                        delivery_state='OPEN'
                        OR (delivery_state='RETRYABLE' AND next_retry_at <= ?)
@@ -172,9 +192,26 @@ public final class PostgresAchievementAnnouncementStore implements AchievementAn
         List<AchievementAnnouncement.Key> candidates = jdbc.query("""
                 SELECT guild_id, idempotency_key
                   FROM achievement_announcement
-                 WHERE delivery_state='OPEN'
+                 WHERE (delivery_state='OPEN'
                     OR (delivery_state='RETRYABLE' AND next_retry_at <= ?)
-                    OR (delivery_state='CLAIMED' AND claim_until <= ?)
+                    OR (delivery_state='CLAIMED' AND claim_until <= ?))
+                   AND EXISTS (
+                       SELECT 1 FROM achievement_bootstrap_state bootstrap
+                        WHERE bootstrap.guild_id=achievement_announcement.guild_id
+                          AND bootstrap.definition_version=achievement_announcement.definition_version
+                          AND bootstrap.bootstrap_state='SUCCEEDED'
+                   )
+                   AND (
+                       announcement_type='HISTORICAL_INTRODUCTION'
+                       OR NOT EXISTS (
+                           SELECT 1 FROM achievement_announcement introduction
+                            WHERE introduction.guild_id=achievement_announcement.guild_id
+                              AND introduction.participant_id=achievement_announcement.participant_id
+                              AND introduction.definition_version=achievement_announcement.definition_version
+                              AND introduction.announcement_type='HISTORICAL_INTRODUCTION'
+                              AND introduction.delivery_state <> 'SYNCHRONIZED'
+                       )
+                   )
                  ORDER BY created_at, id
                  LIMIT 8
                 """, (rs, row) -> new AchievementAnnouncement.Key(rs.getLong(1), rs.getString(2)),
@@ -295,5 +332,124 @@ public final class PostgresAchievementAnnouncementStore implements AchievementAn
                    AND delivery_state IN ('OPEN','RETRYABLE') AND discord_message_id IS NULL
                 """, Timestamp.from(suppressedAt), Timestamp.from(suppressedAt), Timestamp.from(suppressedAt),
                 key.guildId(), key.idempotencyKey()) == 1;
+    }
+
+    @Override
+    public boolean updateClaimedContent(
+            AchievementAnnouncement.Key key, UUID token, String rendererVersion, String contentFingerprint) {
+        Objects.requireNonNull(key, "key");
+        Objects.requireNonNull(token, "token");
+        if (rendererVersion == null || rendererVersion.isBlank() || contentFingerprint == null
+                || !contentFingerprint.matches("[0-9a-f]{64}")) {
+            throw new IllegalArgumentException("invalid renderer version or content fingerprint");
+        }
+        Instant now = clock.instant();
+        return jdbc.update("""
+                UPDATE achievement_announcement
+                   SET renderer_version=?, content_fingerprint=?, updated_at=?
+                 WHERE guild_id=? AND idempotency_key=? AND delivery_state='CLAIMED'
+                   AND claim_token=? AND claim_until > ? AND discord_message_id IS NULL
+                """, rendererVersion, contentFingerprint, Timestamp.from(now), key.guildId(), key.idempotencyKey(),
+                token, Timestamp.from(now)) == 1;
+    }
+
+    @Override
+    public boolean replaceClaimedItems(AchievementAnnouncement.Key key, UUID token, List<UUID> eventIds) {
+        Objects.requireNonNull(key, "key");
+        Objects.requireNonNull(token, "token");
+        List<UUID> requestedEventIds = List.copyOf(Objects.requireNonNull(eventIds, "eventIds"));
+        if (new HashSet<>(requestedEventIds).size() != requestedEventIds.size()) {
+            throw new IllegalArgumentException("announcement eventIds must be unique");
+        }
+        return Boolean.TRUE.equals(jdbc.execute((ConnectionCallback<Boolean>) connection -> {
+            boolean localTransaction = connection.getAutoCommit();
+            if (localTransaction) connection.setAutoCommit(false);
+            try {
+                long id;
+                try (PreparedStatement statement = connection.prepareStatement("""
+                        SELECT id FROM achievement_announcement
+                         WHERE guild_id=? AND idempotency_key=? AND delivery_state='CLAIMED'
+                           AND claim_token=? AND claim_until > ? AND discord_message_id IS NULL
+                         FOR UPDATE
+                        """)) {
+                    statement.setLong(1, key.guildId());
+                    statement.setString(2, key.idempotencyKey());
+                    statement.setObject(3, token);
+                    statement.setTimestamp(4, Timestamp.from(clock.instant()));
+                    try (var result = statement.executeQuery()) {
+                        if (!result.next()) {
+                            if (localTransaction) connection.commit();
+                            return false;
+                        }
+                        id = result.getLong(1);
+                    }
+                }
+                for (UUID eventId : requestedEventIds) {
+                    try (PreparedStatement statement = connection.prepareStatement("""
+                            SELECT count(*) FROM achievement_event WHERE event_id=? AND guild_id=? AND participant_id=?
+                            """)) {
+                        statement.setObject(1, eventId);
+                        statement.setLong(2, key.guildId());
+                        statement.setLong(3, participantIdForAnnouncement(connection, id));
+                        try (var result = statement.executeQuery()) {
+                            if (!result.next() || result.getInt(1) != 1) {
+                                throw new IllegalArgumentException("announcement event does not belong to announcement participant: " + eventId);
+                            }
+                        }
+                    }
+                }
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "DELETE FROM achievement_announcement_item WHERE announcement_id=?")) {
+                    statement.setLong(1, id);
+                    statement.executeUpdate();
+                }
+                try (PreparedStatement statement = connection.prepareStatement("""
+                        INSERT INTO achievement_announcement_item (announcement_id, item_position, event_id, created_at)
+                        VALUES (?, ?, ?, ?)
+                        """)) {
+                    for (int position = 0; position < requestedEventIds.size(); position++) {
+                        statement.setLong(1, id);
+                        statement.setInt(2, position);
+                        statement.setObject(3, requestedEventIds.get(position));
+                        statement.setTimestamp(4, Timestamp.from(clock.instant()));
+                        statement.addBatch();
+                    }
+                    statement.executeBatch();
+                }
+                if (localTransaction) connection.commit();
+                return true;
+            } catch (RuntimeException | java.sql.SQLException exception) {
+                if (localTransaction) connection.rollback();
+                throw exception;
+            } finally {
+                if (localTransaction) connection.setAutoCommit(true);
+            }
+        }));
+    }
+
+    private static long participantIdForAnnouncement(Connection connection, long announcementId) throws java.sql.SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT participant_id FROM achievement_announcement WHERE id=?")) {
+            statement.setLong(1, announcementId);
+            try (var result = statement.executeQuery()) {
+                if (!result.next()) throw new IllegalStateException("locked achievement announcement disappeared");
+                return result.getLong(1);
+            }
+        }
+    }
+
+    @Override
+    public boolean markSuppressed(AchievementAnnouncement.Key key, UUID token, Instant suppressedAt) {
+        Objects.requireNonNull(key, "key");
+        Objects.requireNonNull(token, "token");
+        Objects.requireNonNull(suppressedAt, "suppressedAt");
+        return jdbc.update("""
+                UPDATE achievement_announcement
+                   SET delivery_state='SUPPRESSED', claim_token=NULL, claim_until=NULL, next_retry_at=NULL,
+                       failure_category=NULL, safe_error=NULL, suppressed_at=?, completed_at=?, updated_at=?
+                 WHERE guild_id=? AND idempotency_key=? AND delivery_state='CLAIMED'
+                   AND claim_token=? AND claim_until > ? AND discord_message_id IS NULL
+                """, Timestamp.from(suppressedAt), Timestamp.from(suppressedAt), Timestamp.from(suppressedAt),
+                key.guildId(), key.idempotencyKey(), token, Timestamp.from(suppressedAt)) == 1;
     }
 }

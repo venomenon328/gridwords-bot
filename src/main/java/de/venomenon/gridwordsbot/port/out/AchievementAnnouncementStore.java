@@ -17,6 +17,14 @@ public interface AchievementAnnouncementStore {
     List<AchievementAnnouncement.Item> findItems(AchievementAnnouncement.Key key);
     boolean updatePendingContent(AchievementAnnouncement.Key key, String rendererVersion, String contentFingerprint);
     boolean replaceItems(AchievementAnnouncement.Key key, List<UUID> eventIds);
+    /** Revalidation immediately before Discord create; only the owning delivery claim may change it. */
+    default boolean updateClaimedContent(
+            AchievementAnnouncement.Key key, UUID token, String rendererVersion, String contentFingerprint) {
+        throw new UnsupportedOperationException("claimed announcement updates are not available");
+    }
+    default boolean replaceClaimedItems(AchievementAnnouncement.Key key, UUID token, List<UUID> eventIds) {
+        throw new UnsupportedOperationException("claimed announcement item replacement is not available");
+    }
     boolean wasSynchronized(long guildId, long participantId, AchievementKey achievementKey);
     Optional<AchievementWork.LeaseClaim> claim(
             AchievementAnnouncement.Key key, AchievementWork.LeaseClaimRequest request);
@@ -38,4 +46,7 @@ public interface AchievementAnnouncementStore {
             Instant completedAt);
     boolean markExternallyRemoved(AchievementAnnouncement.Key key, UUID token, Instant removedAt);
     boolean markSuppressed(AchievementAnnouncement.Key key, Instant suppressedAt);
+    default boolean markSuppressed(AchievementAnnouncement.Key key, UUID token, Instant suppressedAt) {
+        throw new UnsupportedOperationException("token-bound suppression is not available");
+    }
 }

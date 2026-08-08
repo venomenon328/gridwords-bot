@@ -168,6 +168,7 @@ class PostgresAchievementReconciliationIT {
         long resultId = insertResult(101, "GRIDWORDS", true, 1, Instant.parse("2026-08-07T21:30:00Z"));
         AchievementReconciliationService service = service(jdbc);
         service.reconcile(liveRequest("submission:101"));
+        bootstrapSucceeded();
         synchronize(pendingAnnouncement());
 
         jdbc.update("UPDATE game_result SET solved=FALSE, attempts_used=NULL, updated_at=? WHERE id=?",
@@ -310,6 +311,16 @@ class PostgresAchievementReconciliationIT {
                 new AchievementWork.LeaseClaimRequest(NOW, NOW.plusSeconds(60))).orElseThrow();
         assertThat(announcements.markDelivered(announcement.registration().key(), claim.token(), 999L, NOW)).isTrue();
         assertThat(announcements.markSynchronized(announcement.registration().key(), claim.token(), NOW)).isTrue();
+    }
+
+    private void bootstrapSucceeded() {
+        PostgresAchievementBootstrapStore bootstraps = new PostgresAchievementBootstrapStore(jdbc, CLOCK);
+        AchievementWork.BootstrapKey key = new AchievementWork.BootstrapKey(
+                GUILD_ID, AchievementDefinitionCatalog.achievementsV1().version());
+        bootstraps.register(key);
+        AchievementWork.LeaseClaim claim = bootstraps.claim(
+                key, new AchievementWork.LeaseClaimRequest(NOW, NOW.plusSeconds(60))).orElseThrow();
+        assertThat(bootstraps.markSucceeded(key, claim.token(), NOW)).isTrue();
     }
 
     private void insertPlayerAndParticipation() {
