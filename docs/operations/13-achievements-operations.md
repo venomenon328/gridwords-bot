@@ -103,17 +103,17 @@ Eine Korrektur, die erst nach dieser letzten Revalidation während des bereits b
 
 ## 6. Send-vor-ACK und Restart-Recovery
 
-Jede logische Achievement-Meldung besitzt eine stabile Publication-Identität. Beim Discord-Create werden Nonce beziehungsweise Hidden Marker verwendet; User-Mentions sind deaktiviert.
+Jede logische Achievement-Meldung besitzt eine stabile Publication-Identität. Beim Discord-Create wird daraus eine stabile, nicht im sichtbaren Embed-Inhalt enthaltene Nonce abgeleitet; User-Mentions sind deaktiviert. Discord liefert die Nonce im Message-Objekt zurück, sodass Discovery keine technischen Marker in der Nutzdarstellung benötigt.
 
 ### Fall A: Create erfolgreich, lokaler ACK unbekannt
 
 1. Der externe Create kann bereits erfolgreich gewesen sein, obwohl der lokale Aufruf retrybar endet.
 2. Die persistierte Announcement-Arbeit wird `RETRYABLE` und behält ihre logische Identität.
-3. Beim nächsten Versuch wird gezielt nach **dieser Publication-ID** gesucht.
+3. Beim nächsten Versuch wird gezielt anhand der stabilen Nonce nach **dieser Publication-ID** gesucht.
 4. Wird die vorhandene Nachricht gefunden, wird kein neuer dauerhafter Create benötigt.
 5. Bei mehreren Artefakten derselben logischen Create-Operation gewinnt deterministisch eine Nachricht; nur die Duplikatartefakte derselben Publication werden gelöscht.
 
-Eine reine sichtbare Inhaltsgleichheit reicht nicht als Discovery-Identität.
+Eine reine sichtbare Inhaltsgleichheit reicht nicht als Discovery-Identität. Interne Publication-IDs, Hashes oder Recovery-URLs werden nicht in den sichtbaren Embed-Inhalt geschrieben.
 
 ### Fall B: Message-ID persistiert, Prozess stirbt vor `SYNCHRONIZED`
 
@@ -145,7 +145,7 @@ Ein Fehler des Commands verändert keine Achievement-Persistenz.
 Diagnose soll zunächst read-only erfolgen. Hilfreiche Abfragen sind beispielsweise:
 
 ```sql
-SELECT guild_id, definition_version, bootstrap_state, claim_until, failure_category, failure_message
+SELECT guild_id, definition_version, bootstrap_state, claim_until, failure_category, safe_error
 FROM achievement_bootstrap_state
 ORDER BY guild_id, definition_version;
 ```
@@ -158,8 +158,8 @@ ORDER BY guild_id, participant_id, achievement_key;
 
 ```sql
 SELECT guild_id, participant_id, announcement_type, delivery_state,
-       attempt_count, next_attempt_at, claim_until, discord_message_id,
-       failure_category, failure_message, created_at, updated_at
+       attempt_count, next_retry_at, claim_until, discord_message_id,
+       failure_category, safe_error, created_at, updated_at
 FROM achievement_announcement
 ORDER BY created_at, id;
 ```
