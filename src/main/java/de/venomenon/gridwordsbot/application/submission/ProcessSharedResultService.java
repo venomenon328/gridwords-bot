@@ -47,6 +47,7 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
     private final LongPredicate canonicalPublisher;
     private final LongPredicate administrator;
     private final Consumer<LocalDate> statusRefresh;
+    private final Consumer<SubmissionStore.ResultStorageOutcome> achievementHandoff;
 
     public ProcessSharedResultService(GridWordsShareParser gridWordsParser, QuadWordsShareParser quadWordsParser,
             Clock clock, ZoneId timeZone, PlayerStore playerStore, SubmissionStore submissionStore) {
@@ -82,13 +83,33 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
             Clock clock, ZoneId timeZone, PlayerStore playerStore, SubmissionStore submissionStore,
             LongPredicate canonicalPublisher, LongPredicate administrator, Consumer<LocalDate> statusRefresh) {
         this(gridWordsParser, quadWordsParser, attachmentContentLoader, quadWordsImageParser, clock, timeZone,
-                LocalTime.of(6, 0), playerStore, submissionStore, canonicalPublisher, administrator, statusRefresh);
+                playerStore, submissionStore, canonicalPublisher, administrator, statusRefresh, ignored -> { });
+    }
+
+    public ProcessSharedResultService(GridWordsShareParser gridWordsParser, QuadWordsShareParser quadWordsParser,
+            AttachmentContentLoader attachmentContentLoader, QuadWordsImageParser quadWordsImageParser,
+            Clock clock, ZoneId timeZone, PlayerStore playerStore, SubmissionStore submissionStore,
+            LongPredicate canonicalPublisher, LongPredicate administrator, Consumer<LocalDate> statusRefresh,
+            Consumer<SubmissionStore.ResultStorageOutcome> achievementHandoff) {
+        this(gridWordsParser, quadWordsParser, attachmentContentLoader, quadWordsImageParser, clock, timeZone,
+                LocalTime.of(6, 0), playerStore, submissionStore, canonicalPublisher, administrator, statusRefresh,
+                achievementHandoff);
     }
 
     public ProcessSharedResultService(GridWordsShareParser gridWordsParser, QuadWordsShareParser quadWordsParser,
             AttachmentContentLoader attachmentContentLoader, QuadWordsImageParser quadWordsImageParser,
             Clock clock, ZoneId timeZone, LocalTime dayCloseTime, PlayerStore playerStore, SubmissionStore submissionStore,
             LongPredicate canonicalPublisher, LongPredicate administrator, Consumer<LocalDate> statusRefresh) {
+        this(gridWordsParser, quadWordsParser, attachmentContentLoader, quadWordsImageParser, clock, timeZone,
+                dayCloseTime, playerStore, submissionStore, canonicalPublisher, administrator, statusRefresh,
+                ignored -> { });
+    }
+
+    public ProcessSharedResultService(GridWordsShareParser gridWordsParser, QuadWordsShareParser quadWordsParser,
+            AttachmentContentLoader attachmentContentLoader, QuadWordsImageParser quadWordsImageParser,
+            Clock clock, ZoneId timeZone, LocalTime dayCloseTime, PlayerStore playerStore, SubmissionStore submissionStore,
+            LongPredicate canonicalPublisher, LongPredicate administrator, Consumer<LocalDate> statusRefresh,
+            Consumer<SubmissionStore.ResultStorageOutcome> achievementHandoff) {
         this.gridWordsParser = Objects.requireNonNull(gridWordsParser);
         this.quadWordsParser = Objects.requireNonNull(quadWordsParser);
         this.attachmentContentLoader = Objects.requireNonNull(attachmentContentLoader);
@@ -99,6 +120,7 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
         this.canonicalPublisher = Objects.requireNonNull(canonicalPublisher);
         this.administrator = Objects.requireNonNull(administrator);
         this.statusRefresh = Objects.requireNonNull(statusRefresh);
+        this.achievementHandoff = Objects.requireNonNull(achievementHandoff);
     }
 
     @Override
@@ -168,6 +190,8 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
         if (stored.state() == SubmissionStore.SubmissionState.SUPERSEDED) {
             return new ProcessingResult.Ignored();
         }
+        SubmissionStore.ResultStorageOutcome storage = submissionStore.consumeResultStorageOutcome(stored);
+        achievementHandoff.accept(storage);
         refreshStatusSafely(parsed.gameDate());
         if (!canonicalPublisher.test(message.messageId())) {
             return new ProcessingResult.Ignored();
