@@ -2,11 +2,13 @@ package de.venomenon.gridwordsbot.adapter.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import de.venomenon.gridwordsbot.application.achievement.AchievementCatalogQueryService;
 import de.venomenon.gridwordsbot.application.achievement.AchievementsQueryService;
 import de.venomenon.gridwordsbot.domain.achievement.AchievementDefinitionCatalog;
 import de.venomenon.gridwordsbot.domain.achievement.AchievementEvidence;
 import de.venomenon.gridwordsbot.domain.achievement.AchievementScope;
 import de.venomenon.gridwordsbot.domain.achievement.persistence.AchievementAwardState;
+import de.venomenon.gridwordsbot.port.in.AchievementCatalogQueryUseCase;
 import de.venomenon.gridwordsbot.port.in.AchievementsQueryUseCase;
 import java.time.Clock;
 import java.time.Instant;
@@ -78,6 +80,28 @@ class PostgresAchievementsQueryIT {
         assertThat(result.entries()).extracting(entry -> entry.key())
                 .containsExactly(gridDefinitions.get(0).key());
         assertThat(emptyForeignProfile.entries()).isEmpty();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM player", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM achievement_event", Integer.class)).isZero();
+    }
+
+    @Test
+    void fullCatalogQueryReturnsAllSixtyAndMarksOnlyActiveStateWithoutSideEffects() {
+        var first = catalog.definitions().get(0);
+        var second = catalog.definitions().get(1);
+        awards.initialize(
+                new AchievementAwardState.Key(1, 77, first.key()),
+                write(AchievementAwardState.Status.ACTIVE, Optional.empty(), "result:active"));
+        awards.initialize(
+                new AchievementAwardState.Key(1, 77, second.key()),
+                write(AchievementAwardState.Status.INVALIDATED, Optional.of(NOW), "result:invalidated"));
+
+        var result = new AchievementCatalogQueryService(awards, catalog)
+                .query(new AchievementCatalogQueryUseCase.Query(1, 77));
+
+        assertThat(result.entries()).hasSize(60);
+        assertThat(result.entries().get(0).achieved()).isTrue();
+        assertThat(result.entries().get(1).achieved()).isFalse();
+        assertThat(result.entries().stream().skip(2)).allMatch(entry -> !entry.achieved());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM player", Integer.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM achievement_event", Integer.class)).isZero();
     }
