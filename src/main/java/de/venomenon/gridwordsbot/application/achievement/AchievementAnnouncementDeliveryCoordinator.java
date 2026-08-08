@@ -97,6 +97,15 @@ public final class AchievementAnnouncementDeliveryCoordinator {
 
     private RunResult deliver(AchievementAnnouncement.Snapshot announcement, UUID token, LeaseHeartbeat heartbeat) {
         AchievementAnnouncement.Key key = announcement.registration().key();
+        if (announcement.discordMessageId().isPresent()) {
+            ensure(heartbeat);
+            if (!messages.exists(announcement.registration().channelId(), announcement.discordMessageId().orElseThrow())) {
+                return announcements.markExternallyRemoved(key, token, clock.instant())
+                        ? RunResult.EXTERNALLY_REMOVED : RunResult.LOST_LEASE;
+            }
+            ensure(heartbeat);
+            return announcements.markSynchronized(key, token, clock.instant()) ? RunResult.COMPLETED : RunResult.LOST_LEASE;
+        }
         List<AchievementEventFact.Snapshot> active = activeFacts(announcement);
         if (active.isEmpty() && announcement.registration().type() == AchievementAnnouncement.Type.LIVE_UNLOCK_BATCH) {
             ensure(heartbeat);
@@ -114,13 +123,6 @@ public final class AchievementAnnouncementDeliveryCoordinator {
             return RunResult.LOST_LEASE;
         }
         ensure(heartbeat);
-        if (announcement.discordMessageId().isPresent()) {
-            if (!messages.exists(announcement.registration().channelId(), announcement.discordMessageId().orElseThrow())) {
-                return announcements.markExternallyRemoved(key, token, clock.instant())
-                        ? RunResult.EXTERNALLY_REMOVED : RunResult.LOST_LEASE;
-            }
-            return announcements.markSynchronized(key, token, clock.instant()) ? RunResult.COMPLETED : RunResult.LOST_LEASE;
-        }
         long messageId = discoverOrCreate(announcement, rendered, heartbeat);
         ensure(heartbeat);
         if (!announcements.markDelivered(key, token, messageId, clock.instant())) return RunResult.LOST_LEASE;
