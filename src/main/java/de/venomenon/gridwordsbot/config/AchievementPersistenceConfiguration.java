@@ -58,11 +58,28 @@ public class AchievementPersistenceConfiguration {
 
     @Bean
     @ConditionalOnBean(TransactionTemplate.class)
-    AchievementTransactionRunner achievementTransactionRunner(TransactionTemplate transactions) {
+    AchievementTransactionRunner achievementTransactionRunner(TransactionTemplate transactions, JdbcTemplate jdbc) {
         return new AchievementTransactionRunner() {
             @Override
             public <T> T inTransaction(java.util.function.Supplier<T> work) {
                 return transactions.execute(status -> work.get());
+            }
+
+            @Override
+            public <T> T inParticipantTransaction(long participantId, java.util.function.Supplier<T> work) {
+                if (participantId <= 0) {
+                    throw new IllegalArgumentException("participantId must be positive");
+                }
+                return transactions.execute(status -> {
+                    Long lockedParticipant = jdbc.queryForObject(
+                            "SELECT discord_user_id FROM player WHERE discord_user_id=? FOR UPDATE",
+                            Long.class,
+                            participantId);
+                    if (lockedParticipant == null || lockedParticipant.longValue() != participantId) {
+                        throw new IllegalStateException("achievement participant lock could not be acquired");
+                    }
+                    return work.get();
+                });
             }
         };
     }
