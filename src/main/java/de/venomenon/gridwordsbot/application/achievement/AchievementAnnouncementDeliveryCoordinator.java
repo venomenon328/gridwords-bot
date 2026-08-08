@@ -1,6 +1,7 @@
 package de.venomenon.gridwordsbot.application.achievement;
 
 import de.venomenon.gridwordsbot.domain.achievement.AchievementDefinitionCatalog;
+import de.venomenon.gridwordsbot.domain.achievement.AchievementKey;
 import de.venomenon.gridwordsbot.domain.achievement.persistence.AchievementAnnouncement;
 import de.venomenon.gridwordsbot.domain.achievement.persistence.AchievementAwardState;
 import de.venomenon.gridwordsbot.domain.achievement.persistence.AchievementEventFact;
@@ -14,7 +15,9 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ScheduledExecutorService;
@@ -146,14 +149,25 @@ public final class AchievementAnnouncementDeliveryCoordinator {
     }
 
     private List<AchievementEventFact.Snapshot> activeFacts(AchievementAnnouncement.Snapshot announcement) {
+        Map<AchievementKey, AchievementAwardState.Snapshot> currentStates = new HashMap<>();
+        for (AchievementAwardState.Snapshot state : awards.findAll(
+                announcement.registration().guildId(), announcement.registration().participantId())) {
+            if (currentStates.put(state.key().achievementKey(), state) != null) {
+                throw new IllegalStateException("duplicate achievement award state during delivery revalidation");
+            }
+        }
         return announcements.findItems(announcement.registration().key()).stream()
                 .map(AchievementAnnouncement.Item::eventId)
                 .map(eventId -> events.find(eventId).orElseThrow(
                         () -> new IllegalStateException("achievement announcement references missing event: " + eventId)))
-                .filter(event -> awards.find(event.fact().awardKey())
-                        .map(state -> state.write().status() == AchievementAwardState.Status.ACTIVE)
-                        .orElseThrow(() -> new IllegalStateException("achievement event has no award state: "
-                                + event.fact().awardKey().achievementKey().value())))
+                .filter(event -> {
+                    AchievementAwardState.Snapshot state = currentStates.get(event.fact().awardKey().achievementKey());
+                    if (state == null) {
+                        throw new IllegalStateException("achievement event has no award state: "
+                                + event.fact().awardKey().achievementKey().value());
+                    }
+                    return state.write().status() == AchievementAwardState.Status.ACTIVE;
+                })
                 .toList();
     }
 
