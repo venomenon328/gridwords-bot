@@ -13,6 +13,7 @@ public interface AchievementAnnouncementStore {
     AchievementAnnouncement.Snapshot register(AchievementAnnouncement.Registration registration);
     Optional<AchievementAnnouncement.Snapshot> find(AchievementAnnouncement.Key key);
     List<AchievementAnnouncement.Item> findItems(AchievementAnnouncement.Key key);
+    boolean updatePendingContent(AchievementAnnouncement.Key key, String rendererVersion, String contentFingerprint);
     boolean replaceItems(AchievementAnnouncement.Key key, List<UUID> eventIds);
     boolean wasSynchronized(long guildId, long participantId, AchievementKey achievementKey);
     Optional<AchievementWork.LeaseClaim> claim(
