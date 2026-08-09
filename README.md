@@ -4,7 +4,7 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 ## Aktueller Stand
 
-Der funktionale Umfang bis einschließlich **Inkrement 13** ist implementiert, nach `main` gemergt, automatisiert gehärtet und produktiv ausgerollt.
+Der **produktive** funktionale Umfang bis einschließlich Inkrement 13 ist nach `main` gemergt, automatisiert gehärtet und ausgerollt.
 
 Der aktuelle Produktionsrelease ist **Version 1.4.0**. Der produktive Stand basiert auf dem Merge-Commit
 
@@ -12,6 +12,8 @@ Der aktuelle Produktionsrelease ist **Version 1.4.0**. Der produktive Stand basi
 
 **Inkrement 12 – Rekorde und Rekordmeldungen** wurde mit Version **1.3.0** produktiv eingeführt.  
 **Inkrement 13 – Achievements** wurde mit Version **1.4.0** produktiv eingeführt.
+
+**Inkrement 14 – UX- und QoL-Stärkung** befindet sich auf `feature/14-ux-qol` in der Abschlussabnahme für die geplante Version **1.5.0**. Die Pakete 14.1–14.4 sind implementiert und technisch paketweise abgenommen; offen sind das finale Hardening-/Operations-Gate sowie der reale Discord-/Report-Smoke. Inkrement 14 ist noch **nicht** nach `main` gemergt, nicht veröffentlicht und nicht produktiv ausgerollt.
 
 Für Inkrement 13 wurden vor dem Rollout Standardbuild, PostgreSQL-Integration, Migration/Upgrade sowie das vollständige Produktionscontainer-, Compose-, Backup-, Restore-, Resume- und Rollback-Gate erfolgreich ausgeführt. Der reale lokale Discord-Smoke deckte Startup, Migration 024, historischen Bootstrap, Introduction, `/achievements` und Restart-Idempotenz ab. Der anschließende Produktiv-Smoke/Canary wurde erfolgreich abgeschlossen.
 
@@ -22,10 +24,11 @@ Abnahmeprotokolle:
 - [`docs/operations/12-records-acceptance.md`](docs/operations/12-records-acceptance.md)
 - [`docs/operations/13-achievements-acceptance.md`](docs/operations/13-achievements-acceptance.md)
 - [`docs/operations/13-achievements-live-canary.md`](docs/operations/13-achievements-live-canary.md)
+- [`docs/operations/14-ux-qol-acceptance.md`](docs/operations/14-ux-qol-acceptance.md) – laufende Abnahme von Inkrement 14
 
 ## Fachlicher Funktionsumfang
 
-Der Bot unterstützt insbesondere:
+Der produktive Bot unterstützt insbesondere:
 
 - deterministische GridWords- und QuadWords-Textparser,
 - einen reinen QuadWords-Bildparser ohne OCR oder ML,
@@ -62,6 +65,19 @@ Der Bot unterstützt insbesondere:
 - Claim-, Lease-, Retry-, Recovery-, Supersession- und Duplikatschutz,
 - keine Discord-I/O innerhalb von Datenbanktransaktionen.
 
+Der noch nicht produktive Inkrement-14-Featurestand ergänzt zusätzlich:
+
+- Statussymbol sowie Ergebnis-/Dauer-Kurzinfo direkt in Tagesstatus-Dropdowns,
+- direkte Link-Buttons zu GridWords und QuadWords,
+- SELECTED-Ausrede, aktuell vom Ergebnis gehaltene Rekorde und am Spieltag freigeschaltete Achievements in den ephemeren Ergebnisdetails,
+- verständliche zeitliche Wirkung von Join/Activate und Leave/Deactivate,
+- Reminderstatus mit den tatsächlich konfigurierten Uhrzeiten,
+- `/status` als persönliches Dashboard mit heutigem Spielstand und allen fünf persönlichen Serien,
+- fachliches `earnedOn` in `/achievements`,
+- kombinierbare `game`-/`category`-/`status`-Filter in `/achievement-list`, weiterhin ohne Progressanzeige,
+- `scope`-Filter in `/records`,
+- Achievement-Anzahlen je Spieler und vollständige gültige Rekord-Highlights in Wochen- und Monatsberichten.
+
 Standardzeitzone ist `Europe/Berlin`.
 
 ## Projektdokumentation
@@ -76,17 +92,20 @@ Standardzeitzone ist `Europe/Berlin`.
 - [`docs/requirements/achievement-list.md`](docs/requirements/achievement-list.md) – vollständige persönliche Achievement-Liste
 - [`docs/requirements/daily-status-reminders.md`](docs/requirements/daily-status-reminders.md) – Tagesstatus, Reminder und Cleanup
 - [`docs/requirements/periodic-reports.md`](docs/requirements/periodic-reports.md) – Wochen- und Monatsberichte
+- [`docs/requirements/ux-qol.md`](docs/requirements/ux-qol.md) – verbindlicher Nachtrag für Inkrement 14
 - [`docs/requirements/production-deployment.md`](docs/requirements/production-deployment.md) – Produktions- und Deploymentweg
 - [`docs/architecture.md`](docs/architecture.md) – Architektur und Modulgrenzen
-- [`docs/implementation-plan.md`](docs/implementation-plan.md) – abgeschlossene Produktinkremente
+- [`docs/implementation-plan.md`](docs/implementation-plan.md) – abgeschlossene und in Abnahme befindliche Produktinkremente
 - [`docs/development-guide.md`](docs/development-guide.md) – lokaler Build, Docker und Tests
 - [`docs/increments/11-contextual-excuses.md`](docs/increments/11-contextual-excuses.md) – Inkrement 11
 - [`docs/increments/12-records.md`](docs/increments/12-records.md) – Inkrement 12
 - [`docs/increments/13-achievements.md`](docs/increments/13-achievements.md) – Inkrement 13
+- [`docs/increments/14-ux-qol.md`](docs/increments/14-ux-qol.md) – Inkrement 14
 - [`docs/operations/12-records-operations.md`](docs/operations/12-records-operations.md) – Record-Betrieb und Recovery
 - [`docs/operations/13-achievements-operations.md`](docs/operations/13-achievements-operations.md) – Achievement-Betrieb und Recovery
 - [`docs/operations/13-achievements-acceptance.md`](docs/operations/13-achievements-acceptance.md) – technische und reale Abnahme von Inkrement 13
 - [`docs/operations/13-achievements-live-canary.md`](docs/operations/13-achievements-live-canary.md) – dokumentierter Produktiv-Canary von Inkrement 13
+- [`docs/operations/14-ux-qol-acceptance.md`](docs/operations/14-ux-qol-acceptance.md) – technische und reale Abnahmematrix von Inkrement 14
 - [`docs/operations/`](docs/operations/) – Abnahmen, Betrieb, Deployment, Backup und Fehlerdiagnose
 - [`docs/adr/`](docs/adr/) – Architekturentscheidungen
 - [`AGENTS.md`](AGENTS.md) – Arbeitsregeln für Codex und Reviews
