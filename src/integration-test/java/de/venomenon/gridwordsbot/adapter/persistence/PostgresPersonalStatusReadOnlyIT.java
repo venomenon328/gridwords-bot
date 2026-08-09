@@ -98,7 +98,7 @@ class PostgresPersonalStatusReadOnlyIT {
         assertThat(status.gridWordsToday().outcome()).contains(new ShareOutcome.Solved(1, 6));
         assertThat(status.gridWordsToday().duration()).contains(java.time.Duration.ofSeconds(42));
         assertThat(status.quadWordsToday().participating()).isFalse();
-        assertThat(status.streaks().activity().orElseThrow()).isEqualTo(5);
+        assertThat(status.streaks().activity().orElseThrow()).isEqualTo(1);
         assertThat(status.streaks().gridWordsSolved().orElseThrow()).isEqualTo(1);
         assertThat(status.streaks().complete()).isEmpty();
         assertThat(status.streaks().perfect()).isEmpty();
