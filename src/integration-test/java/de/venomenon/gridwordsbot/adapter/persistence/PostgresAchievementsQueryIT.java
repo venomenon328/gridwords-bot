@@ -22,13 +22,13 @@ import de.venomenon.gridwordsbot.domain.reporting.ReportPeriod;
 import de.venomenon.gridwordsbot.port.in.AchievementCatalogQueryUseCase;
 import de.venomenon.gridwordsbot.port.in.AchievementsQueryUseCase;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.time.Duration;
 import liquibase.integration.spring.SpringLiquibase;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -137,6 +137,12 @@ class PostgresAchievementsQueryIT {
                 RecordEventType.RESULT_RECORD_BROKEN, RecordProcessingOrigin.LIVE_SUBMISSION));
         records.append(record("00000000-0000-0000-0000-000000000103", "silent-record", 77, LocalDate.of(2026, 8, 2),
                 RecordEventType.RESULT_RECORD_BROKEN, RecordProcessingOrigin.BACKFILL));
+        records.append(record("00000000-0000-0000-0000-000000000104", "tie-record", 77, LocalDate.of(2026, 8, 2),
+                RecordEventType.SERIES_RECORD_TIED_AT_END, RecordProcessingOrigin.DAY_CLOSE));
+        UUID invalidatedEvent = UUID.fromString("00000000-0000-0000-0000-000000000105");
+        records.append(record(invalidatedEvent.toString(), "invalidated-record", 77, LocalDate.of(2026, 8, 2),
+                RecordEventType.RESULT_RECORD_BROKEN, RecordProcessingOrigin.LIVE_SUBMISSION));
+        assertThat(records.invalidate(invalidatedEvent, NOW.plusSeconds(1))).isTrue();
 
         var facts = new PostgresReportHighlightQuery(awards, records).find(1,
                 new ReportPeriod(LocalDate.of(2026, 7, 27), LocalDate.of(2026, 8, 2)), Set.of(77L, 88L));
