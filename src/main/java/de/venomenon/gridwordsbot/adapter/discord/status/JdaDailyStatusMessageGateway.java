@@ -29,8 +29,8 @@ import net.dv8tion.jda.api.requests.restaction.MessageCreateAction;
 /** JDA-only edge adapter with stable, non-visible delivery keys for crash reconciliation. */
 public final class JdaDailyStatusMessageGateway implements DailyStatusMessageGateway, ReminderMessageGateway {
     private static final int PAGE_SIZE = 100;
-    private static final String GRIDWORDS_URL = "https://gridgames.app/gridwords";
-    private static final String QUADWORDS_URL = "https://gridgames.app/quadwords";
+    static final String GRIDWORDS_URL = "https://gridgames.app/gridwords";
+    static final String QUADWORDS_URL = "https://gridgames.app/quadwords";
 
     private final JDA jda;
     private final DailyStatusEmbedRenderer renderer = new DailyStatusEmbedRenderer();

@@ -133,6 +133,28 @@ class DailyResultDetailsEmbedRendererTest {
     }
 
     @Test
+    void rendersOnlyReadOnlyOptionalDetailBlocksInTheirSpecifiedOrder() {
+        ParsedGameResult result = new ParsedGameResult(
+                GameType.QUADWORDS, DATE, new ShareOutcome.Solved(4, 9), Duration.ofSeconds(90),
+                OptionalInt.empty(), Optional.empty(), Optional.empty());
+
+        var embed = renderer.render(new DailyResultDetailsUseCase.Found("Player", result,
+                Optional.of("Die Ausrede bleibt unverändert."),
+                List.of(new DailyResultDetailsUseCase.CurrentRecord("Schnellste Lösung", "Serverweit")),
+                List.of(new DailyResultDetailsUseCase.Achievement("🏆", "Globaler Erfolg"))));
+
+        assertThat(embed.getDescription()).contains(
+                "> Die Ausrede bleibt unverändert.",
+                "🏆 **Aktuelle Rekorde**", "• Serverweit · Schnellste Lösung",
+                "🏅 **An diesem Spieltag freigeschaltet**", "• 🏆 Globaler Erfolg")
+                .doesNotContain("Stil", "Template", "Anlass");
+        assertThat(embed.getDescription().indexOf("Ausrede bleibt"))
+                .isLessThan(embed.getDescription().indexOf("Aktuelle Rekorde"));
+        assertThat(embed.getDescription().indexOf("Aktuelle Rekorde"))
+                .isLessThan(embed.getDescription().indexOf("An diesem Spieltag"));
+    }
+
+    @Test
     void rendersRejectedSelectionWithoutInternalReason() {
         var embed = renderer.render(new DailyResultDetailsUseCase.Rejected(
                 DailyResultDetailsUseCase.Reason.STATUS_NOT_CURRENT));

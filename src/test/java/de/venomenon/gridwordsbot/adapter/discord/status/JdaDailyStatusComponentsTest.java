@@ -41,12 +41,13 @@ class JdaDailyStatusComponentsTest {
         fixture.gateway.publishOrEdit(12L, Optional.empty(), DailyStatusView.versionOne(status(1)), true);
 
         List<ActionRow> rows = capturedRows(create);
-        assertThat(rows).hasSize(2);
+        assertThat(rows).hasSize(3);
         assertThat(menu(rows.get(0)).getCustomId()).isEqualTo("daily-result:v1:2026-08-03:g:0");
         assertThat(menu(rows.get(1)).getCustomId()).isEqualTo("daily-result:v1:2026-08-03:q:0");
         assertThat(menu(rows.get(0)).getOptions())
                 .extracting(option -> option.getLabel() + ":" + option.getValue())
-                .containsExactly("Player 01:user:1");
+                .containsExactly("⬜ Player 01:user:1");
+        assertThat(rows.get(2).getComponents()).hasSize(2);
     }
 
     @Test
@@ -65,13 +66,13 @@ class JdaDailyStatusComponentsTest {
         fixture.gateway.publishOrEdit(12L, Optional.of(99L), DailyStatusView.versionOne(status(26)), true);
 
         List<ActionRow> rows = capturedRows(edit);
-        assertThat(rows).hasSize(4);
-        assertThat(rows).extracting(row -> menu(row).getCustomId()).containsExactly(
+        assertThat(rows).hasSize(5);
+        assertThat(rows.subList(0, 4)).extracting(row -> menu(row).getCustomId()).containsExactly(
                 "daily-result:v1:2026-08-03:g:0",
                 "daily-result:v1:2026-08-03:g:1",
                 "daily-result:v1:2026-08-03:q:0",
                 "daily-result:v1:2026-08-03:q:1");
-        assertThat(rows).extracting(row -> menu(row).getOptions().size()).containsExactly(25, 1, 25, 1);
+        assertThat(rows.subList(0, 4)).extracting(row -> menu(row).getOptions().size()).containsExactly(25, 1, 25, 1);
     }
 
     @Test
@@ -89,7 +90,7 @@ class JdaDailyStatusComponentsTest {
                 12L, Optional.of(99L), DailyStatusView.versionOne(status(1)), false);
 
         assertThat(replacement).isEqualTo(101L);
-        assertThat(capturedRows(create)).hasSize(2);
+        assertThat(capturedRows(create)).hasSize(3);
     }
 
     private static DailyStatus status(int playerCount) {
@@ -172,10 +173,11 @@ class JdaDailyStatusComponentsTest {
         fixture.gateway.publishOrEdit(12L, Optional.of(99L), DailyStatusView.versionOne(status), false);
 
         List<ActionRow> rows = capturedRows(create);
-        assertThat(rows).singleElement().satisfies(row -> {
+        assertThat(rows.getFirst()).satisfies(row -> {
             assertThat(menu(row).getCustomId()).isEqualTo("daily-result:v1:2026-08-03:g:0");
             assertThat(menu(row).getOptions()).singleElement()
                     .extracting(option -> option.getValue()).isEqualTo("user:1");
         });
+        assertThat(rows).hasSize(2);
     }
 }

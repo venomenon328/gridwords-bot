@@ -40,6 +40,9 @@ import de.venomenon.gridwordsbot.port.out.CanonicalRefreshWakeUp;
 import de.venomenon.gridwordsbot.port.out.ChannelMessageRetirementStore;
 import de.venomenon.gridwordsbot.port.out.DailyResultDetailsQuery;
 import de.venomenon.gridwordsbot.port.out.DailyStatusInteractionContextQuery;
+import de.venomenon.gridwordsbot.domain.record.RecordDefinitionCatalog;
+import de.venomenon.gridwordsbot.domain.achievement.AchievementDefinitionCatalog;
+import de.venomenon.gridwordsbot.application.achievement.AchievementEmojiResolver;
 import de.venomenon.gridwordsbot.port.out.GameResultStore;
 import de.venomenon.gridwordsbot.port.out.LatestValidSubmissionQuery;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
@@ -135,8 +138,11 @@ class DatabaseInboundConfiguration {
     @Bean
     DailyResultDetailsUseCase dailyResultDetailsUseCase(
             DailyStatusInteractionContextQuery contexts,
-            DailyResultDetailsQuery results) {
-        return new DailyResultDetailsService(contexts, results);
+            DailyResultDetailsQuery results,
+            RecordDefinitionCatalog recordCatalog,
+            AchievementDefinitionCatalog achievementCatalog,
+            AchievementEmojiResolver achievementEmojis) {
+        return new DailyResultDetailsService(contexts, results, recordCatalog, achievementCatalog, achievementEmojis);
     }
 
     @Bean
