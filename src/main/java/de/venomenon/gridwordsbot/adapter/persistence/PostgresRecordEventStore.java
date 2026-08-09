@@ -64,8 +64,6 @@ public final class PostgresRecordEventStore implements RecordEventStore {
         java.util.Objects.requireNonNull(period, "period");
         return jdbc.query(select() + """
                  WHERE guild_id=? AND validity='VALID'
-                   AND event_type IN ('RESULT_RECORD_BROKEN', 'SERIES_RECORD_CROSSED', 'RECORD_SERIES_FINISHED')
-                   AND processing_origin IN ('LIVE_SUBMISSION', 'NORMAL_CORRECTION', 'DAY_CLOSE')
                    AND ((new_source_type='GAME_RESULT'
                          AND split_part(new_source_key, ':', 5)::date BETWEEN ? AND ?)
                      OR (new_source_type='STREAK_RUN'
