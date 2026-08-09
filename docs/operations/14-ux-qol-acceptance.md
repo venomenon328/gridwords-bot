@@ -1,6 +1,6 @@
 # Inkrement 14 – UX-/QoL-Abnahme
 
-**Status:** technische Abschlussabnahme bestanden; realer Discord-/Report-Smoke noch ausstehend  
+**Status:** vollständig technisch und real abgenommen; Produktivsetzung ausstehend  
 **Stand:** 9. August 2026  
 **Umbrella-Issue:** #105  
 **Abschlusspaket:** #110
@@ -9,8 +9,7 @@ Dieses Dokument führt die Abnahme von Inkrement 14 zusammen. Es ist kein Ersatz
 
 Statuslegende:
 
-- ✅ automatisierter bzw. technischer Nachweis vollständig,
-- 🟨 automatisierter Nachweis vorhanden; reale sichtbare Discord-Abnahme steht noch aus,
+- ✅ Nachweis vollständig und abgenommen,
 - ⬜ noch offen.
 
 ## 1. Pflichtgates für den finalen Head
@@ -34,96 +33,95 @@ Zusätzlich vor dem Gesamtmerge nach `main`:
 
 Die Pakete 14.1–14.4 wurden jeweils auf ihrem finalen Review-Head mit Standardbuild und PostgreSQL-Integration geprüft; zusätzlich liefen die Migration-/Upgrade-Gates im Review beziehungsweise auf den kumulierten Sammelständen. Der kumulierte Stand nach 14.4 (`d4bf877a4c5bdcb00467bb1fbe3c19a3c97ef819`) bestand Standardbuild, PostgreSQL-Integration und Migration/Upgrade.
 
-Der technische 14.5-Abnahmelauf auf dem ausführbaren Stand vor dieser reinen Evidenzaktualisierung war vollständig grün:
+Der finale technische 14.5-Head `f00d56bbc22181395ad2ea9c1703bf3d77051d18` war vollständig grün:
 
-- GitHub Actions `CI` Run **#1664** / Run-ID `31323660350`: Standardbuild, PostgreSQL-Integration und Migration/Upgrade grün,
-- GitHub Actions `Container image` Run **#506** / Run-ID `31323660354`: Maven-Verifikation, Produktionsimage, Nicht-Root-/Runtime-Inhalte, Compose, Backup, Restore, Resume und Application-Rollback grün.
+- GitHub Actions `CI` Run **#1674** / Run-ID `31324466419`: Standardbuild, PostgreSQL-Integration und Migration/Upgrade grün,
+- GitHub Actions `Container image` Run **#511** / Run-ID `31324466410`: Maven-Verifikation, Produktionsimage, Nicht-Root-/Runtime-Inhalte, Compose, Backup, Restore, Resume und Application-Rollback grün,
+- PR #117 wurde anschließend als `29fc6c0ab45570bcb4e7c7800ca484a7635cb0ff` in `feature/14-ux-qol` integriert.
 
-Diese Evidenzaktualisierung verändert ausschließlich versionierte Dokumentation. Der daraus entstehende finale PR-Head wird vor dem technischen Merge erneut vollständig durch `CI` und `Container image` verifiziert; die finalen Run-IDs werden in PR #117 dokumentiert, ohne durch eine weitere reine Run-ID-Änderung erneut einen selbstreferenziellen Build auszulösen.
+Der reale Discord-/Report-Smoke wurde am 9. August 2026 durch den Betreiber auf separater Testanwendung/Testserver mit isolierter Testdatenbank gemäß Abschnitt 3 erfolgreich abgeschlossen. Es wurden keine Abweichungen gemeldet.
 
 ## 2. Akzeptanzmatrix
 
-| # | Bereich | Akzeptanzfall | Paket | Automatisierter Nachweis | Status |
+| # | Bereich | Akzeptanzfall | Paket | Nachweis | Status |
 |---:|---|---|---:|---|---|
-| 1 | Tagesstatus | `✅`-Dropdownoption mit Ergebnis und Dauer | 14.1 | `DailyStatusComponentRendererTest` | 🟨 |
-| 2 | Tagesstatus | `❌`-Dropdownoption mit `X/max` und Dauer | 14.1 | `DailyStatusComponentRendererTest` | 🟨 |
-| 3 | Tagesstatus | `⬜`-Dropdownoption mit `Noch nicht eingereicht` | 14.1 | `DailyStatusComponentRendererTest`, `JdaDailyStatusComponentsTest` | 🟨 |
+| 1 | Tagesstatus | `✅`-Dropdownoption mit Ergebnis und Dauer | 14.1 | `DailyStatusComponentRendererTest` + realer Smoke | ✅ |
+| 2 | Tagesstatus | `❌`-Dropdownoption mit `X/max` und Dauer | 14.1 | `DailyStatusComponentRendererTest` + realer Smoke | ✅ |
+| 3 | Tagesstatus | `⬜`-Dropdownoption mit `Noch nicht eingereicht` | 14.1 | `DailyStatusComponentRendererTest`, `JdaDailyStatusComponentsTest` + realer Smoke | ✅ |
 | 4 | Tagesstatus | spielbezogene Teilnehmermenge, Sortierung und Pagination unverändert | 14.1 | `DailyStatusComponentRendererTest`, `JdaDailyStatusComponentsTest`, vorhandene Interaction-Tests | ✅ |
-| 5 | Tagesstatus | beide Spiel-Link-Buttons auf neuen Nachrichten; kein Sonderrefresh alter Nachrichten | 14.1 | `DailyStatusComponentRendererTest`, `JdaDailyStatusComponentsTest`, `DailyStatusFingerprintTest` | 🟨 |
-| 6 | Ergebnisdetails | SELECTED-Ausrede exakt; andere Ausredenzustände unsichtbar | 14.1 | `PostgresDailyResultDetailsQueryIT`, `DailyResultDetailsEmbedRendererTest` | 🟨 |
-| 7 | Ergebnisdetails | ausschließlich aktuelle vom konkreten Resultat gehaltene Ergebnisrekorde | 14.1 | `PostgresDailyResultDetailsQueryIT` inkl. Ergebnisversions-/Definitionsversionsfall | 🟨 |
-| 8 | Ergebnisdetails | ACTIVE Awards mit `earnedOn = gameDate`, alle Scopes, nur Emoji + Name | 14.1 | `PostgresDailyResultDetailsQueryIT`, `DailyResultDetailsEmbedRendererTest` | 🟨 |
-| 9 | Ergebnisdetails | leere optionale Bereiche entfallen; Interaction bleibt read-only | 14.1 | `DailyResultDetailsServiceTest`, `DailyResultDetailsInteractionListenerTest`, `PostgresDailyResultDetailsQueryIT` | 🟨 |
-| 10 | Teilnahme | Join/Activate und Leave/Deactivate erklären zeitliche Wirksamkeit eindeutig | 14.2 | `PlayerParticipationServiceTest`, `DiscordParticipationCommandListenerTest` | 🟨 |
-| 11 | Reminder | Opt-out-Semantik verständlich; tatsächliche konfigurierte Zeiten sichtbar | 14.2 | `DiscordParticipationCommandListenerTest` | 🟨 |
-| 12 | `/status` | Reihenfolge Heute → fünf Serien → Teilnahme/Reminder → letzte Einreichungen | 14.2 | `PersonalStatusEmbedRendererTest` | 🟨 |
-| 13 | `/status` | heutige Zustände gelöst/ungelöst/offen/nicht teilgenommen korrekt | 14.2 | `PersonalStatusServiceTest`, `PersonalStatusEmbedRendererTest`, `PostgresPersonalStatusReadOnlyIT` | 🟨 |
-| 14 | `/achievements` | fachliches `earnedOn` statt technischem Erkennungszeitpunkt | 14.3 | `AchievementsQueryServiceTest`, `AchievementsOverviewEmbedRendererTest` | 🟨 |
-| 15 | `/achievement-list` | kombinierbare `game`/`category`/`status`-Filter; Global nur unter Alle | 14.3 | `AchievementCatalogQueryServiceTest`, `DiscordAchievementCatalogCommandListenerTest` | 🟨 |
-| 16 | `/achievement-list` | weiterhin binär ohne quantitative Progressanzeige; neutraler Leerzustand | 14.3 | `AchievementCatalogEmbedRendererTest`, `PostgresAchievementsQueryIT` | 🟨 |
-| 17 | `/records` | kombinierbarer Scope-Filter und unveränderte Fremdansichts-Autorisierung | 14.3 | `RecordsScopeFilterTest`, `DiscordRecordsCommandListenerTest`, `RecordsQueryReadOnlyInvariantTest` | 🟨 |
-| 18 | Reports | Achievement-Freischaltungen je Spieler nur als ACTIVE-Anzahl der Periode | 14.4 | `PostgresAchievementsQueryIT`, `PeriodicReportUseCaseTest`, `PeriodicReportRendererTest` | 🟨 |
-| 19 | Reports | alle geeigneten gültigen Rekordverbesserungen vollständig; keine Ties/Near Misses/stillen Origins | 14.4 | `PostgresAchievementsQueryIT`, `PeriodicReportRendererTest` | 🟨 |
-| 20 | Reports | Crossing+Finish derselben Serienquelle in einer Periode nicht doppelt; Pagination ohne Kürzung | 14.4 | `PeriodicReportRendererTest` | 🟨 |
+| 5 | Tagesstatus | beide Spiel-Link-Buttons auf neuen Nachrichten; kein Sonderrefresh alter Nachrichten | 14.1 | `DailyStatusComponentRendererTest`, `JdaDailyStatusComponentsTest`, `DailyStatusFingerprintTest` + realer Smoke | ✅ |
+| 6 | Ergebnisdetails | SELECTED-Ausrede exakt; andere Ausredenzustände unsichtbar | 14.1 | `PostgresDailyResultDetailsQueryIT`, `DailyResultDetailsEmbedRendererTest` + realer Smoke | ✅ |
+| 7 | Ergebnisdetails | ausschließlich aktuelle vom konkreten Resultat gehaltene Ergebnisrekorde | 14.1 | `PostgresDailyResultDetailsQueryIT` inkl. Ergebnisversions-/Definitionsversionsfall + realer Smoke | ✅ |
+| 8 | Ergebnisdetails | ACTIVE Awards mit `earnedOn = gameDate`, alle Scopes, nur Emoji + Name | 14.1 | `PostgresDailyResultDetailsQueryIT`, `DailyResultDetailsEmbedRendererTest` + realer Smoke | ✅ |
+| 9 | Ergebnisdetails | leere optionale Bereiche entfallen; Interaction bleibt read-only | 14.1 | `DailyResultDetailsServiceTest`, `DailyResultDetailsInteractionListenerTest`, `PostgresDailyResultDetailsQueryIT` + realer Smoke | ✅ |
+| 10 | Teilnahme | Join/Activate und Leave/Deactivate erklären zeitliche Wirksamkeit eindeutig | 14.2 | `PlayerParticipationServiceTest`, `DiscordParticipationCommandListenerTest` + realer Smoke | ✅ |
+| 11 | Reminder | Opt-out-Semantik verständlich; tatsächliche konfigurierte Zeiten sichtbar | 14.2 | `DiscordParticipationCommandListenerTest` + realer Smoke | ✅ |
+| 12 | `/status` | Reihenfolge Heute → fünf Serien → Teilnahme/Reminder → letzte Einreichungen | 14.2 | `PersonalStatusEmbedRendererTest` + realer Smoke | ✅ |
+| 13 | `/status` | heutige Zustände gelöst/ungelöst/offen/nicht teilgenommen korrekt | 14.2 | `PersonalStatusServiceTest`, `PersonalStatusEmbedRendererTest`, `PostgresPersonalStatusReadOnlyIT` + realer Smoke | ✅ |
+| 14 | `/achievements` | fachliches `earnedOn` statt technischem Erkennungszeitpunkt | 14.3 | `AchievementsQueryServiceTest`, `AchievementsOverviewEmbedRendererTest` + realer Smoke | ✅ |
+| 15 | `/achievement-list` | kombinierbare `game`/`category`/`status`-Filter; Global nur unter Alle | 14.3 | `AchievementCatalogQueryServiceTest`, `DiscordAchievementCatalogCommandListenerTest` + realer Smoke | ✅ |
+| 16 | `/achievement-list` | weiterhin binär ohne quantitative Progressanzeige; neutraler Leerzustand | 14.3 | `AchievementCatalogEmbedRendererTest`, `PostgresAchievementsQueryIT` + realer Smoke | ✅ |
+| 17 | `/records` | kombinierbarer Scope-Filter und unveränderte Fremdansichts-Autorisierung | 14.3 | `RecordsScopeFilterTest`, `DiscordRecordsCommandListenerTest`, `RecordsQueryReadOnlyInvariantTest` + realer Smoke | ✅ |
+| 18 | Reports | Achievement-Freischaltungen je Spieler nur als ACTIVE-Anzahl der Periode | 14.4 | `PostgresAchievementsQueryIT`, `PeriodicReportUseCaseTest`, `PeriodicReportRendererTest` + realer Smoke | ✅ |
+| 19 | Reports | alle geeigneten gültigen Rekordverbesserungen vollständig; keine Ties/Near Misses/stillen Origins | 14.4 | `PostgresAchievementsQueryIT`, `PeriodicReportRendererTest` + realer Smoke | ✅ |
+| 20 | Reports | Crossing+Finish derselben Serienquelle in einer Periode nicht doppelt; Pagination ohne Kürzung | 14.4 | `PeriodicReportRendererTest` + realer Smoke | ✅ |
 | 21 | Read-only | Commands/Interactions lösen keine History-Scans, Evaluatoren, Reconciler oder fachlichen Writes aus | 14.1–14.4 | `PostgresDailyResultDetailsQueryIT`, `PostgresPersonalStatusReadOnlyIT`, `RecordsQueryReadOnlyInvariantTest`, `PostgresAchievementsQueryIT` | ✅ |
-| 22 | Regression | Canonical-/Excuse-/Record-/Achievement-/Report-Delivery und Recoverypfade regressionsfrei | 14.5 | vollständige bestehende Unit-/Application-Suite, u. a. `PeriodicReportDeliveryServiceTest`, `PeriodicReportDeliveryServiceTerminalReplayTest`, `PeriodicReportDeliveryServiceTimeFenceTest`; CI #1664 | ✅ |
-| 23 | Discord | alle sichtbar geänderten Pfade real auf Testserver abgenommen | 14.5 | siehe Abschnitt 3 | ⬜ |
-| 24 | Operations | Standard-, PostgreSQL-, Migration- und Container-/Backup-/Restore-/Rollback-Gates grün | 14.5 | CI #1664 / `31323660350`, Container #506 / `31323660354`; finaler Evidenz-Head wird nochmals geprüft | ✅ |
+| 22 | Regression | Canonical-/Excuse-/Record-/Achievement-/Report-Delivery und Recoverypfade regressionsfrei | 14.5 | vollständige Unit-/Application-Suite und finale CI-Gates | ✅ |
+| 23 | Discord | alle sichtbar geänderten Pfade real auf Testserver abgenommen | 14.5 | Betreiber-Smoke vom 09.08.2026, Abschnitt 3 | ✅ |
+| 24 | Operations | Standard-, PostgreSQL-, Migration- und Container-/Backup-/Restore-/Rollback-Gates grün | 14.5 | CI #1674 / `31324466419`, Container #511 / `31324466410` | ✅ |
 
 ## 3. Realer Discord-Smoke
 
-Die folgenden Punkte werden bewusst nicht aus Unit-/Adaptertests als „real bestanden“ abgeleitet. Testdaten dürfen kontrolliert vorbereitet werden; Secrets und lokale IDs bleiben außerhalb des Repositories.
+Der Betreiber hat den vollständigen vereinbarten Smoke am 9. August 2026 als bestanden bestätigt. Es wurden keine Secrets, Discord-IDs oder personenbezogenen Testdaten dokumentiert.
 
 ### 3.1 Tagesstatus und Ergebnisdetails
 
-- [ ] `✅`-Option mit korrekter Kurzinfo
-- [ ] `❌`-Option mit korrekter Kurzinfo
-- [ ] `⬜`-Option
-- [ ] GridWords-Link-Button
-- [ ] QuadWords-Link-Button
-- [ ] SELECTED-Ausrede in Detailansicht
-- [ ] aktueller persönlicher Ergebnisrekord
-- [ ] aktueller serverweiter Ergebnisrekord
-- [ ] mehrere Achievements desselben Spieltags
-- [ ] leere Zusatzbereiche fehlen
-- [ ] Fremdspieler-Auswahl weiterhin erlaubt und ausschließlich ephemeral
-- [ ] Restart ohne flüchtigen Interaction-Zustand
+- [x] `✅`-Option mit korrekter Kurzinfo
+- [x] `❌`-Option mit korrekter Kurzinfo
+- [x] `⬜`-Option
+- [x] GridWords-Link-Button
+- [x] QuadWords-Link-Button
+- [x] SELECTED-Ausrede in Detailansicht
+- [x] aktueller persönlicher Ergebnisrekord
+- [x] aktueller serverweiter Ergebnisrekord
+- [x] mehrere Achievements desselben Spieltags
+- [x] leere Zusatzbereiche fehlen
+- [x] Fremdspieler-Auswahl weiterhin erlaubt und ausschließlich ephemeral
+- [x] Restart ohne flüchtigen Interaction-Zustand
 
 ### 3.2 Teilnahme, Reminder und `/status`
 
-- [ ] Join mit verständlicher Wirkung
-- [ ] Leave mit `heute noch aktiv` / Wirksamkeit ab morgen
-- [ ] Reminder on/off/status
-- [ ] tatsächlich konfigurierte Reminderzeiten
-- [ ] `/status`: heutiger Zustand
-- [ ] `/status`: alle fünf Serien
-- [ ] `/status`: Teilnahme/Reminder
-- [ ] `/status`: letzte Einreichungen
+- [x] Join mit verständlicher Wirkung
+- [x] Leave mit `heute noch aktiv` / Wirksamkeit ab morgen
+- [x] Reminder on/off/status
+- [x] tatsächlich konfigurierte Reminderzeiten
+- [x] `/status`: heutiger Zustand
+- [x] `/status`: alle fünf Serien
+- [x] `/status`: Teilnahme/Reminder
+- [x] `/status`: letzte Einreichungen
 
 ### 3.3 Achievement- und Record-Commands
 
-- [ ] `/achievements` mit historischem `earnedOn`
-- [ ] `/achievement-list` ohne Filter vollständig
-- [ ] `/achievement-list` mit repräsentativer Dreifach-Filterkombination
-- [ ] `/achievement-list` leerer Filterzustand
-- [ ] `/records scope:persönlich`
-- [ ] `/records scope:serverweit`
-- [ ] `/records scope:gemeinsam`
-- [ ] kombinierter Record-Filter
-- [ ] Nichtadmin-Fremdansicht weiterhin gesperrt
+- [x] `/achievements` mit historischem `earnedOn`
+- [x] `/achievement-list` ohne Filter vollständig
+- [x] `/achievement-list` mit repräsentativer Dreifach-Filterkombination
+- [x] `/achievement-list` leerer Filterzustand
+- [x] `/records scope:persönlich`
+- [x] `/records scope:serverweit`
+- [x] `/records scope:gemeinsam`
+- [x] kombinierter Record-Filter
+- [x] Nichtadmin-Fremdansicht weiterhin gesperrt
 
 ### 3.4 Reports
 
-Kontrollierte Daten-/Clock-Konstellation ist zulässig.
-
-- [ ] Achievement-Zahl je Spieler
-- [ ] persönlicher Ergebnisrekord
-- [ ] serverweiter Ergebnisrekord
-- [ ] gemeinsamer Serienrekord
-- [ ] Crossing+Finish derselben Serienquelle nur einmal im selben Report
-- [ ] Gleichstand/Near Miss fehlt
-- [ ] leerer Highlightbereich fehlt vollständig
-- [ ] mehrere Rekorde werden ohne Kürzung paginiert
+- [x] Achievement-Zahl je Spieler
+- [x] persönlicher Ergebnisrekord
+- [x] serverweiter Ergebnisrekord
+- [x] gemeinsamer Serienrekord
+- [x] Crossing+Finish derselben Serienquelle nur einmal im selben Report
+- [x] Gleichstand/Near Miss fehlt
+- [x] leerer Highlightbereich fehlt vollständig
+- [x] mehrere Rekorde werden ohne Kürzung paginiert
 
 ## 4. Paketnachweise
 
@@ -133,11 +131,8 @@ Kontrollierte Daten-/Clock-Konstellation ist zulässig.
 
 - PR: #112
 - finaler Review-Head: `03ba918…`
-- Squash-Merge in Sammelbranch: `cb667a72cdf6fa7aabf0056938a00bf37a2b0071`
-- Standardbuild: grün
-- PostgreSQL-Integration: grün
-- Migration/Upgrade auf Review-/Sammelstand: grün
-- Review-Nacharbeiten: Fingerprint-Kompatibilität alter Tagesstatusnachrichten, vollständige Record-Quellidentität inklusive Ergebnisversion, UTF-16-sichere Select-Kürzung, echter SELECTED-Ausreden-Readtest
+- Squash-Merge: `cb667a72cdf6fa7aabf0056938a00bf37a2b0071`
+- Standardbuild/PostgreSQL/Migration: grün
 
 ### Paket 14.2 / Issue #107
 
@@ -145,11 +140,9 @@ Kontrollierte Daten-/Clock-Konstellation ist zulässig.
 
 - PR: #113
 - finaler Paket-Head: `240752a73bf533ff54bd375af5bb0d9e8451338d`
-- Squash-Merge in Sammelbranch: `ee4a5e8bc639c7bfaf215c8ddc278d4d16d9e854`
-- Standardbuild: grün
-- PostgreSQL-Integration: grün
-- Migration/Upgrade: grün
-- besonderer Nachweis: `/status` ist über `PostgresPersonalStatusReadOnlyIT` ohne Profil-/Participation-Mutation abgesichert
+- Squash-Merge: `ee4a5e8bc639c7bfaf215c8ddc278d4d16d9e854`
+- Standardbuild/PostgreSQL/Migration: grün
+- `/status`-Read-only-Nachweis: `PostgresPersonalStatusReadOnlyIT`
 
 ### Paket 14.3 / Issue #108
 
@@ -157,11 +150,8 @@ Kontrollierte Daten-/Clock-Konstellation ist zulässig.
 
 - PR: #114
 - finaler Paket-Head: `d0e3fc5bcfb118eaff8e52ad90dba3c48fb16410`
-- Squash-Merge in Sammelbranch: `949115aa16fa4e4615bb17dbc7fb2cf95557c8ad`
-- Standardbuild: grün
-- PostgreSQL-Integration: grün
-- Migration/Upgrade: grün
-- keine neuen Persistenzqueries oder Migrationen
+- Squash-Merge: `949115aa16fa4e4615bb17dbc7fb2cf95557c8ad`
+- Standardbuild/PostgreSQL/Migration: grün
 
 ### Paket 14.4 / Issue #109
 
@@ -169,27 +159,23 @@ Kontrollierte Daten-/Clock-Konstellation ist zulässig.
 
 - PR: #115
 - finaler Review-Head: `88f2eb7a4babd290b4ec51c5359afa73b21947e5`
-- Squash-Merge in Sammelbranch: `d4bf877a4c5bdcb00467bb1fbe3c19a3c97ef819`
-- Standardbuild: grün
-- PostgreSQL-Integration: grün
-- Migration/Upgrade: grün
-- Review-Nacharbeiten: Record-Origin-Eligibility auf `publicAnnouncementEligible()` zentralisiert, stillen Highlight-Wiring-Fallback entfernt, PostgreSQL-Nachweis um BACKFILL/Gleichstand/Invalidierung ergänzt
+- Squash-Merge: `d4bf877a4c5bdcb00467bb1fbe3c19a3c97ef819`
+- Standardbuild/PostgreSQL/Migration: grün
 
 ### Paket 14.5 / Issue #110
 
-**Status:** technische Härtung bestanden; realer Discord-/Report-Smoke ausstehend.
+**Status:** vollständig technisch und real abgenommen.
 
 - PR: #117
-- Arbeitsbranch: `feature/14-5-ux-qol-hardening`
-- Ausgangsstand: `d4bf877a4c5bdcb00467bb1fbe3c19a3c97ef819`
-- erster vollständiger technischer Abnahmelauf: CI #1664 / `31323660350` grün
-- Container-/Operations-Gate: #506 / `31323660354` grün
-- finaler Evidenz-Head: vollständige Revalidierung vor Merge erforderlich; Nachweis in PR #117
-- Discord-Smoke: offen
-- Gesamt-PR: #111 bleibt bis zum realen Smoke im Draft
+- finaler Paket-Head: `f00d56bbc22181395ad2ea9c1703bf3d77051d18`
+- Squash-Merge: `29fc6c0ab45570bcb4e7c7800ca484a7635cb0ff`
+- CI #1674 / `31324466419`: alle drei Maven-Gates grün
+- Container #511 / `31324466410`: Produktionsimage und vollständige Operations-Gates grün
+- Discord-/Report-Smoke: bestanden am 09.08.2026
+- Gesamt-PR: #111 für Merge nach `main` freigegeben
 
 ## 5. Releasegrenze
 
-Der Merge des technischen 14.5-Hardening-Stands in `feature/14-ux-qol` ist **keine** Freigabe für `main` und kein Release. Issue #110 und Gesamt-PR #111 bleiben bis zum dokumentierten realen Discord-/Report-Smoke offen beziehungsweise im Draft.
+Inkrement 14 ist vollständig abgenommen und darf über Gesamt-PR #111 nach `main` integriert werden.
 
-RC-Build, Tag, GHCR-Publish und produktiver Rollout werden anschließend separat freigegeben und dürfen vor erfolgreichem Abschluss dieser Matrix nicht als erledigt dokumentiert werden.
+Der Merge nach `main` erzeugt **noch keinen** produktiven Release. RC-/Release-Tag, GHCR-Publish, Backup, produktives Deployment und Produktiv-Smoke werden anschließend separat durchgeführt und dokumentiert. Bis dahin bleibt der aktuelle Produktionsrelease Version 1.4.0.
