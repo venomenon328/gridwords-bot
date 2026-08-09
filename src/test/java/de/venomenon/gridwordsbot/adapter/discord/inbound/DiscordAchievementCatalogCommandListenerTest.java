@@ -61,9 +61,12 @@ class DiscordAchievementCatalogCommandListenerTest {
         AchievementCatalogQueryUseCase catalog = mock(AchievementCatalogQueryUseCase.class);
         when(catalog.query(any())).thenReturn(result());
         EventFixture fixture = event(GUILD);
-        when(fixture.event().getOption("game")).thenReturn(option("cross-game"));
-        when(fixture.event().getOption("category")).thenReturn(option("special"));
-        when(fixture.event().getOption("status")).thenReturn(option("open"));
+        OptionMapping game = option("cross-game");
+        OptionMapping category = option("special");
+        OptionMapping status = option("open");
+        when(fixture.event().getOption("game")).thenReturn(game);
+        when(fixture.event().getOption("category")).thenReturn(category);
+        when(fixture.event().getOption("status")).thenReturn(status);
 
         listener(catalog).onSlashCommandInteraction(fixture.event());
 
