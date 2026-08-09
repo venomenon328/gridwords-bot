@@ -11,11 +11,11 @@ import de.venomenon.gridwordsbot.domain.status.DailyStatus;
 import de.venomenon.gridwordsbot.domain.status.DailyStatusView;
 import de.venomenon.gridwordsbot.domain.streak.StreakSummary;
 import de.venomenon.gridwordsbot.port.out.DiscordDeliveryException;
-import java.time.LocalDate;
 import java.time.Duration;
+import java.time.LocalDate;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
-import java.util.Collections;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 
@@ -44,13 +44,29 @@ class DailyStatusComponentRendererTest {
 
         assertThat(rows).hasSize(3);
         var options = rows.getFirst().getComponents().getFirst().asStringSelectMenu().getOptions();
-        assertThat(options).extracting(option -> option.getLabel()).allSatisfy(label -> assertThat(label.length()).isLessThanOrEqualTo(100));
-        assertThat(options).extracting(option -> option.getLabel()).anySatisfy(label -> assertThat(label).startsWith("✅ "))
+        assertThat(options).extracting(option -> option.getLabel())
+                .allSatisfy(label -> assertThat(label.length()).isLessThanOrEqualTo(100));
+        assertThat(options).extracting(option -> option.getLabel())
+                .anySatisfy(label -> assertThat(label).startsWith("✅ "))
                 .anySatisfy(label -> assertThat(label).isEqualTo("❌ B"))
                 .anySatisfy(label -> assertThat(label).isEqualTo("⬜ C"));
-        assertThat(options).extracting(option -> option.getDescription()).contains("3/6 · 1:25", "X/6 · 1:25", "Noch nicht eingereicht");
+        assertThat(options).extracting(option -> option.getDescription())
+                .contains("3/6 · 1:25", "X/6 · 1:25", "Noch nicht eingereicht");
         assertThat(rows.getLast().getComponents()).extracting(component -> component.asButton().getUrl())
                 .containsExactly("https://gridgames.app/gridwords", "https://gridgames.app/quadwords");
+    }
+
+    @Test
+    void truncatesAstralDisplayNamesWithoutSplittingSurrogatePairs() {
+        DailyStatus.PlayerLine player = new DailyStatus.PlayerLine(
+                1L, "😀".repeat(80), Optional.empty(), Optional.empty(), streaks());
+
+        String label = new DailyStatusComponentRenderer().render(DailyStatusView.versionOne(
+                        new DailyStatus(LocalDate.of(2026, 8, 3), List.of(player), 0, 0)))
+                .getFirst().getComponents().getFirst().asStringSelectMenu().getOptions().getFirst().getLabel();
+
+        assertThat(label.length()).isLessThanOrEqualTo(100);
+        assertThat(Character.isHighSurrogate(label.charAt(label.length() - 1))).isFalse();
     }
 
     @Test
