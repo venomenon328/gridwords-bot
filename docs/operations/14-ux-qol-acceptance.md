@@ -1,6 +1,6 @@
 # Inkrement 14 – UX-/QoL-Abnahme
 
-**Status:** Pakete 14.1–14.4 automatisiert abgenommen und integriert; Abschlussgates von 14.5 sowie realer Discord-Smoke noch ausstehend  
+**Status:** technische Abschlussabnahme bestanden; realer Discord-/Report-Smoke noch ausstehend  
 **Stand:** 9. August 2026  
 **Umbrella-Issue:** #105  
 **Abschlusspaket:** #110
@@ -32,7 +32,14 @@ Zusätzlich vor dem Gesamtmerge nach `main`:
 - Application-Rollback,
 - realer Discord-Smoke auf separater Testanwendung/Testserver mit isolierter PostgreSQL-Testdatenbank.
 
-Die Pakete 14.1–14.4 wurden jeweils auf ihrem finalen Review-Head mit Standardbuild und PostgreSQL-Integration geprüft; zusätzlich liefen die Migration-/Upgrade-Gates im Review beziehungsweise auf den kumulierten Sammelständen. Der kumulierte Stand nach 14.4 (`d4bf877a4c5bdcb00467bb1fbe3c19a3c97ef819`) bestand Standardbuild, PostgreSQL-Integration und Migration/Upgrade. Die finalen 14.5-Gates werden auf dem Abschlussbranch erneut ausgeführt.
+Die Pakete 14.1–14.4 wurden jeweils auf ihrem finalen Review-Head mit Standardbuild und PostgreSQL-Integration geprüft; zusätzlich liefen die Migration-/Upgrade-Gates im Review beziehungsweise auf den kumulierten Sammelständen. Der kumulierte Stand nach 14.4 (`d4bf877a4c5bdcb00467bb1fbe3c19a3c97ef819`) bestand Standardbuild, PostgreSQL-Integration und Migration/Upgrade.
+
+Der technische 14.5-Abnahmelauf auf dem ausführbaren Stand vor dieser reinen Evidenzaktualisierung war vollständig grün:
+
+- GitHub Actions `CI` Run **#1664** / Run-ID `31323660350`: Standardbuild, PostgreSQL-Integration und Migration/Upgrade grün,
+- GitHub Actions `Container image` Run **#506** / Run-ID `31323660354`: Maven-Verifikation, Produktionsimage, Nicht-Root-/Runtime-Inhalte, Compose, Backup, Restore, Resume und Application-Rollback grün.
+
+Diese Evidenzaktualisierung verändert ausschließlich versionierte Dokumentation. Der daraus entstehende finale PR-Head wird vor dem technischen Merge erneut vollständig durch `CI` und `Container image` verifiziert; die finalen Run-IDs werden in PR #117 dokumentiert, ohne durch eine weitere reine Run-ID-Änderung erneut einen selbstreferenziellen Build auszulösen.
 
 ## 2. Akzeptanzmatrix
 
@@ -59,9 +66,9 @@ Die Pakete 14.1–14.4 wurden jeweils auf ihrem finalen Review-Head mit Standard
 | 19 | Reports | alle geeigneten gültigen Rekordverbesserungen vollständig; keine Ties/Near Misses/stillen Origins | 14.4 | `PostgresAchievementsQueryIT`, `PeriodicReportRendererTest` | 🟨 |
 | 20 | Reports | Crossing+Finish derselben Serienquelle in einer Periode nicht doppelt; Pagination ohne Kürzung | 14.4 | `PeriodicReportRendererTest` | 🟨 |
 | 21 | Read-only | Commands/Interactions lösen keine History-Scans, Evaluatoren, Reconciler oder fachlichen Writes aus | 14.1–14.4 | `PostgresDailyResultDetailsQueryIT`, `PostgresPersonalStatusReadOnlyIT`, `RecordsQueryReadOnlyInvariantTest`, `PostgresAchievementsQueryIT` | ✅ |
-| 22 | Regression | Canonical-/Excuse-/Record-/Achievement-/Report-Delivery und Recoverypfade regressionsfrei | 14.5 | vollständige bestehende Unit-/Application-Suite, u. a. `PeriodicReportDeliveryServiceTest`, `PeriodicReportDeliveryServiceTerminalReplayTest`, `PeriodicReportDeliveryServiceTimeFenceTest`; finales Gate in 14.5 | ✅ |
+| 22 | Regression | Canonical-/Excuse-/Record-/Achievement-/Report-Delivery und Recoverypfade regressionsfrei | 14.5 | vollständige bestehende Unit-/Application-Suite, u. a. `PeriodicReportDeliveryServiceTest`, `PeriodicReportDeliveryServiceTerminalReplayTest`, `PeriodicReportDeliveryServiceTimeFenceTest`; CI #1664 | ✅ |
 | 23 | Discord | alle sichtbar geänderten Pfade real auf Testserver abgenommen | 14.5 | siehe Abschnitt 3 | ⬜ |
-| 24 | Operations | Standard-, PostgreSQL-, Migration- und Container-/Backup-/Restore-/Rollback-Gates grün | 14.5 | finaler CI- und `Container image`-Workflow des 14.5-PR | ⬜ |
+| 24 | Operations | Standard-, PostgreSQL-, Migration- und Container-/Backup-/Restore-/Rollback-Gates grün | 14.5 | CI #1664 / `31323660350`, Container #506 / `31323660354`; finaler Evidenz-Head wird nochmals geprüft | ✅ |
 
 ## 3. Realer Discord-Smoke
 
@@ -138,7 +145,7 @@ Kontrollierte Daten-/Clock-Konstellation ist zulässig.
 
 - PR: #113
 - finaler Paket-Head: `240752a73bf533ff54bd375af5bb0d9e8451338d`
-- Squash-Merge in Sammelbranch: `ee4a5e8bc639c7bfaf215c8ddc278d4d16d9e854`
+- Squash-Merge in Sammelbranch: `ee4a5e8bc639c7bfaf0056938a00bf37a2b0071`
 - Standardbuild: grün
 - PostgreSQL-Integration: grün
 - Migration/Upgrade: grün
@@ -170,12 +177,14 @@ Kontrollierte Daten-/Clock-Konstellation ist zulässig.
 
 ### Paket 14.5 / Issue #110
 
-**Status:** technische Abschlussarbeiten laufen; realer Discord-Smoke folgt nach Merge des Hardening-Stands in den Sammelbranch.
+**Status:** technische Härtung bestanden; realer Discord-/Report-Smoke ausstehend.
 
+- PR: #117
 - Arbeitsbranch: `feature/14-5-ux-qol-hardening`
 - Ausgangsstand: `d4bf877a4c5bdcb00467bb1fbe3c19a3c97ef819`
-- vollständige Maven-Gates: auf finalem 14.5-Head erneut erforderlich
-- Container-/Operations-Gate: auf finalem 14.5-Head erforderlich
+- erster vollständiger technischer Abnahmelauf: CI #1664 / `31323660350` grün
+- Container-/Operations-Gate: #506 / `31323660354` grün
+- finaler Evidenz-Head: vollständige Revalidierung vor Merge erforderlich; Nachweis in PR #117
 - Discord-Smoke: offen
 - Gesamt-PR: #111 bleibt bis zum realen Smoke im Draft
 
