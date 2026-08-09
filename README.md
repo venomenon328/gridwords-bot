@@ -13,7 +13,7 @@ Der aktuelle Produktionsrelease ist **Version 1.4.0**. Der produktive Stand basi
 **Inkrement 12 – Rekorde und Rekordmeldungen** wurde mit Version **1.3.0** produktiv eingeführt.  
 **Inkrement 13 – Achievements** wurde mit Version **1.4.0** produktiv eingeführt.
 
-**Inkrement 14 – UX- und QoL-Stärkung** befindet sich auf `feature/14-ux-qol` in der Abschlussabnahme für die geplante Version **1.5.0**. Die Pakete 14.1–14.4 sind implementiert und technisch paketweise abgenommen; offen sind das finale Hardening-/Operations-Gate sowie der reale Discord-/Report-Smoke. Inkrement 14 ist noch **nicht** nach `main` gemergt, nicht veröffentlicht und nicht produktiv ausgerollt.
+**Inkrement 14 – UX- und QoL-Stärkung** befindet sich auf `feature/14-ux-qol` in der Abschlussabnahme für die geplante Version **1.5.0**. Die Pakete 14.1–14.4 sind implementiert und paketweise technisch abgenommen; das kumulative Hardening einschließlich Standardbuild, PostgreSQL-Integration, Migration/Upgrade sowie Produktionsimage-, Compose-, Backup-, Restore-, Resume- und Rollback-Gate ist ebenfalls grün. Offen ist ausschließlich die reale Discord-/Report-Abnahme. Inkrement 14 ist noch **nicht** nach `main` gemergt, nicht veröffentlicht und nicht produktiv ausgerollt.
 
 Für Inkrement 13 wurden vor dem Rollout Standardbuild, PostgreSQL-Integration, Migration/Upgrade sowie das vollständige Produktionscontainer-, Compose-, Backup-, Restore-, Resume- und Rollback-Gate erfolgreich ausgeführt. Der reale lokale Discord-Smoke deckte Startup, Migration 024, historischen Bootstrap, Introduction, `/achievements` und Restart-Idempotenz ab. Der anschließende Produktiv-Smoke/Canary wurde erfolgreich abgeschlossen.
 
