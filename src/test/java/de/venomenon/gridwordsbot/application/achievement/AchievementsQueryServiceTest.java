@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Test;
 class AchievementsQueryServiceTest {
     private static final AchievementDefinitionCatalog CATALOG = AchievementDefinitionCatalog.achievementsV1();
     private static final Instant NOW = Instant.parse("2026-08-08T12:00:00Z");
+    private static final LocalDate EARNED_ON = LocalDate.of(2026, 7, 18);
 
     @Test
     void allViewUsesCatalogOrderAcrossAllScopesAndHidesInvalidatedAwards() {
@@ -47,7 +48,23 @@ class AchievementsQueryServiceTest {
         assertThat(result.entries()).extracting(entry -> entry.scope())
                 .contains(AchievementScope.GRIDWORDS, AchievementScope.QUADWORDS, AchievementScope.CROSS_GAME, AchievementScope.GLOBAL);
         assertThat(result.entries()).extracting(entry -> entry.key()).doesNotContain(invalidated.key());
+        assertThat(result.entries()).allSatisfy(entry -> assertThat(entry.earnedOn()).isEqualTo(EARNED_ON));
         verify(store).findAll(1, 7);
+    }
+
+    @Test
+    void projectsHistoricalEarnedOnInsteadOfLaterDetectionTimestamp() {
+        AchievementAwardStateStore store = mock(AchievementAwardStateStore.class);
+        AchievementDefinition definition = definition(AchievementScope.GRIDWORDS);
+        when(store.findAll(1, 7)).thenReturn(List.of(active(definition)));
+
+        var result = new AchievementsQueryService(store, CATALOG)
+                .query(new AchievementsQueryUseCase.Query(1, 7, AchievementsQueryUseCase.GameFilter.ALL));
+
+        assertThat(result.entries()).singleElement().satisfies(entry -> {
+            assertThat(entry.earnedOn()).isEqualTo(EARNED_ON);
+            assertThat(entry.earnedOn()).isNotEqualTo(LocalDate.ofInstant(NOW, java.time.ZoneOffset.UTC));
+        });
     }
 
     @Test
@@ -104,7 +121,7 @@ class AchievementsQueryServiceTest {
 
     private AchievementAwardState.Snapshot state(AchievementKey key, AchievementAwardState.Status status) {
         AchievementAwardState.Write write = new AchievementAwardState.Write(
-                CATALOG.version(), status, LocalDate.of(2026, 8, 7), NOW,
+                CATALOG.version(), status, EARNED_ON, NOW,
                 AchievementEvidence.Kind.GAME_RESULT, "result:" + key.value(),
                 status == AchievementAwardState.Status.INVALIDATED ? Optional.of(NOW) : Optional.empty());
         return new AchievementAwardState.Snapshot(

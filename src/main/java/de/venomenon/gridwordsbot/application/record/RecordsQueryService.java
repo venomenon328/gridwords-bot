@@ -63,6 +63,7 @@ public final class RecordsQueryService implements RecordsQueryUseCase {
                 .map(definition -> entry(query.guildId(), personalPlayerId, definition, current, displays))
                 .flatMap(Optional::stream)
                 .filter(entry -> categoryMatches(entry, query.category()))
+                .filter(entry -> scopeMatches(entry, query.scope()))
                 .sorted(Comparator.comparing((Entry entry) -> entry.category().ordinal())
                         .thenComparing(entry -> entry.scope().ordinal())
                         .thenComparing(Entry::definitionKey))
@@ -115,5 +116,12 @@ public final class RecordsQueryService implements RecordsQueryUseCase {
         return filter == CategoryFilter.ALL
                 || (filter == CategoryFilter.RESULTS && entry.category() == Category.RESULTS)
                 || (filter == CategoryFilter.SERIES && entry.category() == Category.SERIES);
+    }
+
+    private static boolean scopeMatches(Entry entry, ScopeFilter filter) {
+        return filter == ScopeFilter.ALL
+                || (filter == ScopeFilter.PERSONAL && entry.scope() == Scope.PERSONAL)
+                || (filter == ScopeFilter.SERVER_INDIVIDUAL && entry.scope() == Scope.SERVER_INDIVIDUAL)
+                || (filter == ScopeFilter.SHARED && entry.scope() == Scope.SHARED);
     }
 }

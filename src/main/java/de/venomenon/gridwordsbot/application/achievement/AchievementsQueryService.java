@@ -37,22 +37,25 @@ public final class AchievementsQueryService implements AchievementsQueryUseCase 
 
         return new Result(catalog.definitions().stream()
                 .filter(definition -> scopeMatches(definition.scope(), query.game()))
-                .filter(definition -> {
-                    AchievementAwardState.Snapshot state = current.get(definition.key());
-                    return state != null && state.write().status() == AchievementAwardState.Status.ACTIVE;
-                })
-                .map(AchievementsQueryService::entry)
+                .filter(definition -> active(current.get(definition.key())))
+                .map(definition -> entry(definition, current.get(definition.key())))
                 .toList());
     }
 
-    private static Entry entry(AchievementDefinition definition) {
+    private static boolean active(AchievementAwardState.Snapshot state) {
+        return state != null && state.write().status() == AchievementAwardState.Status.ACTIVE;
+    }
+
+    private static Entry entry(AchievementDefinition definition, AchievementAwardState.Snapshot state) {
+        if (!active(state)) throw new IllegalArgumentException("achievement entry requires active award state");
         return new Entry(
                 definition.key(),
                 definition.category(),
                 definition.scope(),
                 definition.fallbackEmoji(),
                 definition.displayName(),
-                definition.description());
+                definition.description(),
+                state.write().earnedOn());
     }
 
     private static boolean scopeMatches(AchievementScope scope, GameFilter filter) {

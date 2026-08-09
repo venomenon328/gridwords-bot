@@ -9,7 +9,7 @@ import java.util.Objects;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.MessageEmbed;
 
-/** Dense one-interaction catalog rendering: every Achievement with only achieved/not-achieved status. */
+/** Dense one-interaction catalog rendering: every filtered Achievement with only achieved/not-achieved status. */
 public final class AchievementCatalogEmbedRenderer {
     private static final int EMBED_DESCRIPTION_LIMIT = 4_000;
     private static final int MESSAGE_EMBED_TEXT_LIMIT = 6_000;
@@ -22,8 +22,13 @@ public final class AchievementCatalogEmbedRenderer {
 
     public List<MessageEmbed> render(AchievementCatalogQueryUseCase.Result result) {
         Objects.requireNonNull(result, "result");
+        if (result.entries().isEmpty()) {
+            return List.of(new EmbedBuilder()
+                    .setTitle("🏅 Achievement-Liste")
+                    .setDescription("Keine Achievements entsprechen den gewählten Filtern.")
+                    .build());
+        }
         List<String> bodies = bodies(result.entries());
-        if (bodies.isEmpty()) throw new IllegalArgumentException("achievement catalog must not be empty");
         if (bodies.size() > MAXIMUM_EMBEDS) throw new IllegalArgumentException("achievement catalog exceeds Discord embed count");
 
         List<MessageEmbed> embeds = new ArrayList<>();

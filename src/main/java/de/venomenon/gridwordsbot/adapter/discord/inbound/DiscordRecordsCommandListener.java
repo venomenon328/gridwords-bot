@@ -41,7 +41,12 @@ public final class DiscordRecordsCommandListener extends ListenerAdapter {
                         new OptionData(OptionType.STRING, "category", "Rekordart filtern", false)
                                 .addChoice("Alle", "all")
                                 .addChoice("Ergebnisse", "results")
-                                .addChoice("Serien", "series"));
+                                .addChoice("Serien", "series"),
+                        new OptionData(OptionType.STRING, "scope", "Rekordscope filtern", false)
+                                .addChoice("Alle", "all")
+                                .addChoice("Persönlich", "personal")
+                                .addChoice("Serverweit", "server")
+                                .addChoice("Gemeinsam", "shared"));
     }
 
     @Override
@@ -61,7 +66,8 @@ public final class DiscordRecordsCommandListener extends ListenerAdapter {
                 userOption == null ? Optional.empty() : Optional.of(personalUser.getIdLong()),
                 administrator,
                 game(event.getOption("game")),
-                category(event.getOption("category"))));
+                category(event.getOption("category")),
+                scope(event.getOption("scope"))));
 
         var pages = renderer.render(result, personalDisplay);
         event.replyEmbeds(pages.getFirst())
@@ -92,6 +98,16 @@ public final class DiscordRecordsCommandListener extends ListenerAdapter {
             case "results" -> RecordsQueryUseCase.CategoryFilter.RESULTS;
             case "series" -> RecordsQueryUseCase.CategoryFilter.SERIES;
             default -> RecordsQueryUseCase.CategoryFilter.ALL;
+        };
+    }
+
+    private static RecordsQueryUseCase.ScopeFilter scope(OptionMapping option) {
+        if (option == null) return RecordsQueryUseCase.ScopeFilter.ALL;
+        return switch (option.getAsString()) {
+            case "personal" -> RecordsQueryUseCase.ScopeFilter.PERSONAL;
+            case "server" -> RecordsQueryUseCase.ScopeFilter.SERVER_INDIVIDUAL;
+            case "shared" -> RecordsQueryUseCase.ScopeFilter.SHARED;
+            default -> RecordsQueryUseCase.ScopeFilter.ALL;
         };
     }
 }

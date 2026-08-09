@@ -37,6 +37,17 @@ class AchievementCatalogEmbedRendererTest {
         for (var definition : definitions) {
             assertThat(text).contains(definition.displayName(), definition.description());
         }
-        assertThat(text).doesNotContain("von 10", "Fortschritt", "Tage geschafft");
+        assertThat(text).doesNotContain("von 10", "Fortschritt", "Tage geschafft", "%");
+    }
+
+    @Test
+    void rendersEmptyFilterResultAsNeutralState() {
+        List<MessageEmbed> embeds = new AchievementCatalogEmbedRenderer(AchievementEmojiResolver.unicodeOnly())
+                .render(new AchievementCatalogQueryUseCase.Result(List.of()));
+
+        assertThat(embeds).singleElement().satisfies(embed -> {
+            assertThat(embed.getTitle()).isEqualTo("🏅 Achievement-Liste");
+            assertThat(embed.getDescription()).isEqualTo("Keine Achievements entsprechen den gewählten Filtern.");
+        });
     }
 }

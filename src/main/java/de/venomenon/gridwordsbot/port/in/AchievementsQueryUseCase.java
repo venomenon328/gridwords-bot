@@ -3,6 +3,7 @@ package de.venomenon.gridwordsbot.port.in;
 import de.venomenon.gridwordsbot.domain.achievement.AchievementCategory;
 import de.venomenon.gridwordsbot.domain.achievement.AchievementKey;
 import de.venomenon.gridwordsbot.domain.achievement.AchievementScope;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Objects;
 
@@ -30,7 +31,8 @@ public interface AchievementsQueryUseCase {
             AchievementScope scope,
             String fallbackEmoji,
             String displayName,
-            String description) {
+            String description,
+            LocalDate earnedOn) {
         public Entry {
             Objects.requireNonNull(key, "key");
             Objects.requireNonNull(category, "category");
@@ -38,6 +40,7 @@ public interface AchievementsQueryUseCase {
             fallbackEmoji = required(fallbackEmoji, "fallbackEmoji");
             displayName = required(displayName, "displayName");
             description = required(description, "description");
+            Objects.requireNonNull(earnedOn, "earnedOn");
         }
 
         private static String required(String value, String name) {

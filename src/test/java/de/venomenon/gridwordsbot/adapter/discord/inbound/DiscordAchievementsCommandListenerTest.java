@@ -15,6 +15,7 @@ import de.venomenon.gridwordsbot.application.achievement.AchievementEmojiResolve
 import de.venomenon.gridwordsbot.config.GridwordsBotProperties;
 import de.venomenon.gridwordsbot.domain.achievement.AchievementDefinitionCatalog;
 import de.venomenon.gridwordsbot.port.in.AchievementsQueryUseCase;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.function.Consumer;
 import net.dv8tion.jda.api.entities.Guild;
@@ -85,7 +86,7 @@ class DiscordAchievementsCommandListenerTest {
         var entries = AchievementDefinitionCatalog.achievementsV1().definitions().stream()
                 .map(definition -> new AchievementsQueryUseCase.Entry(
                         definition.key(), definition.category(), definition.scope(), definition.fallbackEmoji(),
-                        definition.displayName(), definition.description()))
+                        definition.displayName(), definition.description(), LocalDate.of(2026, 7, 18)))
                 .toList();
         when(achievements.query(any())).thenReturn(new AchievementsQueryUseCase.Result(entries));
         EventFixture fixture = event(ACTOR, "Caller");
