@@ -48,11 +48,11 @@ class WeeklyReportReconciliationServiceTest {
         Fixture fixture = fixture(OPEN_NOW, Optional.empty());
         PeriodicReportReconciliationCandidate candidate = onlyCandidate(OPEN_NOW, Optional.empty());
         PeriodicReportNoOp result = new PeriodicReportNoOp(ReportType.WEEKLY, candidate.period());
-        when(fixture.reportUseCase.generate(ReportType.WEEKLY, candidate.period())).thenReturn(result);
+        when(fixture.reportUseCase.generate(GUILD_ID, ReportType.WEEKLY, candidate.period())).thenReturn(result);
 
         fixture.service.reconcile(GUILD_ID, CHANNEL_ID);
 
-        verify(fixture.reportUseCase).generate(ReportType.WEEKLY, candidate.period());
+        verify(fixture.reportUseCase).generate(GUILD_ID, ReportType.WEEKLY, candidate.period());
         verify(fixture.deliveryService).deliver(key(candidate), metadata(candidate), result);
         verify(fixture.store, never()).expire(any(), any());
     }
@@ -65,7 +65,7 @@ class WeeklyReportReconciliationServiceTest {
         fixture.service.reconcile(GUILD_ID, CHANNEL_ID);
 
         verify(fixture.store).expire(new PeriodicReportDeliveryExpiration(key(candidate), metadata(candidate)), CLOSED_NOW);
-        verify(fixture.reportUseCase, never()).generate(any(), any());
+        verify(fixture.reportUseCase, never()).generate(org.mockito.ArgumentMatchers.anyLong(), any(), any());
         verify(fixture.deliveryService, never()).deliver(any(), any(), any());
     }
 
@@ -76,7 +76,7 @@ class WeeklyReportReconciliationServiceTest {
         List<PeriodicReportReconciliationCandidate> candidates = candidates(OPEN_NOW, anchor);
         PeriodicReportReconciliationCandidate latest = candidates.getLast();
         PeriodicReportNoOp result = new PeriodicReportNoOp(ReportType.WEEKLY, latest.period());
-        when(fixture.reportUseCase.generate(ReportType.WEEKLY, latest.period())).thenReturn(result);
+        when(fixture.reportUseCase.generate(GUILD_ID, ReportType.WEEKLY, latest.period())).thenReturn(result);
 
         fixture.service.reconcile(GUILD_ID, CHANNEL_ID);
 
@@ -84,7 +84,7 @@ class WeeklyReportReconciliationServiceTest {
         for (PeriodicReportReconciliationCandidate candidate : candidates.subList(0, candidates.size() - 1)) {
             order.verify(fixture.store).expire(new PeriodicReportDeliveryExpiration(key(candidate), metadata(candidate)), OPEN_NOW);
         }
-        order.verify(fixture.reportUseCase).generate(ReportType.WEEKLY, latest.period());
+        order.verify(fixture.reportUseCase).generate(GUILD_ID, ReportType.WEEKLY, latest.period());
         order.verify(fixture.deliveryService).deliver(key(latest), metadata(latest), result);
         verify(fixture.store, times(2)).expire(any(), eq(OPEN_NOW));
     }
@@ -100,7 +100,7 @@ class WeeklyReportReconciliationServiceTest {
         for (PeriodicReportReconciliationCandidate candidate : candidates) {
             verify(fixture.store).expire(new PeriodicReportDeliveryExpiration(key(candidate), metadata(candidate)), CLOSED_NOW);
         }
-        verify(fixture.reportUseCase, never()).generate(any(), any());
+        verify(fixture.reportUseCase, never()).generate(org.mockito.ArgumentMatchers.anyLong(), any(), any());
         verify(fixture.deliveryService, never()).deliver(any(), any(), any());
     }
 
@@ -110,11 +110,11 @@ class WeeklyReportReconciliationServiceTest {
         Fixture fixture = fixture(OPEN_NOW, anchor);
         PeriodicReportReconciliationCandidate candidate = onlyCandidate(OPEN_NOW, anchor);
         PeriodicReportNoOp result = new PeriodicReportNoOp(ReportType.WEEKLY, candidate.period());
-        when(fixture.reportUseCase.generate(ReportType.WEEKLY, candidate.period())).thenReturn(result);
+        when(fixture.reportUseCase.generate(GUILD_ID, ReportType.WEEKLY, candidate.period())).thenReturn(result);
 
         fixture.service.reconcile(GUILD_ID, CHANNEL_ID);
 
-        verify(fixture.reportUseCase).generate(ReportType.WEEKLY, candidate.period());
+        verify(fixture.reportUseCase).generate(GUILD_ID, ReportType.WEEKLY, candidate.period());
         verify(fixture.deliveryService).deliver(key(candidate), metadata(candidate), result);
         verify(fixture.store, never()).expire(any(), any());
     }
@@ -126,12 +126,12 @@ class WeeklyReportReconciliationServiceTest {
         PeriodicReportNoOp result = new PeriodicReportNoOp(ReportType.WEEKLY, candidate.period());
         when(fixture.store.findLatestPeriodStart(SCOPE))
                 .thenReturn(Optional.empty(), Optional.of(candidate.period().startDate()));
-        when(fixture.reportUseCase.generate(ReportType.WEEKLY, candidate.period())).thenReturn(result);
+        when(fixture.reportUseCase.generate(GUILD_ID, ReportType.WEEKLY, candidate.period())).thenReturn(result);
 
         fixture.service.reconcile(GUILD_ID, CHANNEL_ID);
         fixture.service.reconcile(GUILD_ID, CHANNEL_ID);
 
-        verify(fixture.reportUseCase, times(2)).generate(ReportType.WEEKLY, candidate.period());
+        verify(fixture.reportUseCase, times(2)).generate(GUILD_ID, ReportType.WEEKLY, candidate.period());
         verify(fixture.deliveryService, times(2)).deliver(key(candidate), metadata(candidate), result);
         verify(fixture.store, never()).expire(any(), any());
     }
@@ -141,7 +141,7 @@ class WeeklyReportReconciliationServiceTest {
         Fixture fixture = fixture(OPEN_NOW, Optional.empty());
         PeriodicReportReconciliationCandidate candidate = onlyCandidate(OPEN_NOW, Optional.empty());
         PeriodicReportNoOp result = new PeriodicReportNoOp(ReportType.WEEKLY, candidate.period());
-        when(fixture.reportUseCase.generate(ReportType.WEEKLY, candidate.period())).thenReturn(result);
+        when(fixture.reportUseCase.generate(GUILD_ID, ReportType.WEEKLY, candidate.period())).thenReturn(result);
 
         fixture.service.reconcile(GUILD_ID, CHANNEL_ID);
 
@@ -161,7 +161,7 @@ class WeeklyReportReconciliationServiceTest {
         Fixture fixture = fixture(OPEN_NOW, Optional.empty());
         PeriodicReportReconciliationCandidate candidate = onlyCandidate(OPEN_NOW, Optional.empty());
         PeriodicReportNoOp noOp = new PeriodicReportNoOp(ReportType.WEEKLY, candidate.period());
-        when(fixture.reportUseCase.generate(ReportType.WEEKLY, candidate.period())).thenReturn(noOp);
+        when(fixture.reportUseCase.generate(GUILD_ID, ReportType.WEEKLY, candidate.period())).thenReturn(noOp);
 
         fixture.service.reconcile(GUILD_ID, CHANNEL_ID);
 
@@ -178,7 +178,7 @@ class WeeklyReportReconciliationServiceTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("database unavailable");
 
-        verify(fixture.reportUseCase, never()).generate(any(), any());
+        verify(fixture.reportUseCase, never()).generate(org.mockito.ArgumentMatchers.anyLong(), any(), any());
         verify(fixture.deliveryService, never()).deliver(any(), any(), any());
     }
 
@@ -188,7 +188,7 @@ class WeeklyReportReconciliationServiceTest {
 
         assertThatIllegalArgumentException().isThrownBy(() -> fixture.service.reconcile(GUILD_ID, CHANNEL_ID));
 
-        verify(fixture.reportUseCase, never()).generate(any(), any());
+        verify(fixture.reportUseCase, never()).generate(org.mockito.ArgumentMatchers.anyLong(), any(), any());
         verify(fixture.deliveryService, never()).deliver(any(), any(), any());
         verify(fixture.store, never()).expire(any(), any());
     }
@@ -197,7 +197,7 @@ class WeeklyReportReconciliationServiceTest {
     void propagatesGenerationErrorsWithoutCallingDelivery() {
         Fixture fixture = fixture(OPEN_NOW, Optional.empty());
         PeriodicReportReconciliationCandidate candidate = onlyCandidate(OPEN_NOW, Optional.empty());
-        when(fixture.reportUseCase.generate(ReportType.WEEKLY, candidate.period()))
+        when(fixture.reportUseCase.generate(GUILD_ID, ReportType.WEEKLY, candidate.period()))
                 .thenThrow(new IllegalStateException("generation unavailable"));
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> fixture.service.reconcile(GUILD_ID, CHANNEL_ID))

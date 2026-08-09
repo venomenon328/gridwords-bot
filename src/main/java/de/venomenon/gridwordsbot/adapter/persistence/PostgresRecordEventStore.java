@@ -7,6 +7,7 @@ import de.venomenon.gridwordsbot.domain.record.RecordEventType;
 import de.venomenon.gridwordsbot.domain.record.RecordEventValidity;
 import de.venomenon.gridwordsbot.domain.record.RecordStateKey;
 import de.venomenon.gridwordsbot.domain.record.RecordValue;
+import de.venomenon.gridwordsbot.domain.reporting.ReportPeriod;
 import de.venomenon.gridwordsbot.port.out.RecordEventStore;
 import de.venomenon.gridwordsbot.port.out.RecordEventIdempotencyConflictException;
 import java.sql.ResultSet;
@@ -55,6 +56,26 @@ public final class PostgresRecordEventStore implements RecordEventStore {
         if (guildId <= 0 || resultId <= 0) throw new IllegalArgumentException("guildId and resultId must be positive");
         return jdbc.query(select()+" WHERE guild_id=? AND new_source_type='GAME_RESULT' AND split_part(new_source_key,':',1)=? ORDER BY created_at,event_id",
                 (rs,row)->snapshot(rs), guildId, Long.toString(resultId));
+    }
+
+    @Override
+    public List<RecordEventSnapshot> findForReportPeriod(long guildId, ReportPeriod period) {
+        if (guildId <= 0) throw new IllegalArgumentException("guildId must be positive");
+        java.util.Objects.requireNonNull(period, "period");
+        return jdbc.query(select() + """
+                 WHERE guild_id=? AND validity='VALID'
+                   AND event_type IN ('RESULT_RECORD_BROKEN', 'SERIES_RECORD_CROSSED', 'RECORD_SERIES_FINISHED')
+                   AND processing_origin IN ('LIVE_SUBMISSION', 'NORMAL_CORRECTION', 'DAY_CLOSE')
+                   AND ((new_source_type='GAME_RESULT'
+                         AND split_part(new_source_key, ':', 5)::date BETWEEN ? AND ?)
+                     OR (new_source_type='STREAK_RUN'
+                         AND new_streak_end_date BETWEEN ? AND ?))
+                 ORDER BY CASE WHEN new_source_type='GAME_RESULT' THEN split_part(new_source_key, ':', 5)::date
+                               ELSE new_streak_end_date END,
+                          definition_key, definition_version, scope_type, scope_key,
+                          new_source_key, event_type, detected_at, event_id
+                """, (rs, row) -> snapshot(rs), guildId,
+                period.startDate(), period.endDate(), period.startDate(), period.endDate());
     }
 
     @Override

@@ -8,6 +8,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.time.LocalDate;
+import java.util.Set;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 public final class PostgresAchievementAwardStateStore implements AchievementAwardStateStore {
@@ -37,6 +39,32 @@ public final class PostgresAchievementAwardStateStore implements AchievementAwar
                  WHERE guild_id=? AND participant_id=?
                  ORDER BY achievement_key
                 """, AchievementJdbcMapping::award, guildId, participantId);
+    }
+
+    @Override
+    public List<AchievementAwardState.Snapshot> findActiveForPeriod(
+            long guildId, Set<Long> participantIds, LocalDate startDate, LocalDate endDate) {
+        if (guildId <= 0) throw new IllegalArgumentException("guildId must be positive");
+        Objects.requireNonNull(participantIds, "participantIds");
+        Objects.requireNonNull(startDate, "startDate");
+        Objects.requireNonNull(endDate, "endDate");
+        if (startDate.isAfter(endDate)) throw new IllegalArgumentException("startDate must not be after endDate");
+        if (participantIds.isEmpty()) return List.of();
+        if (participantIds.stream().anyMatch(id -> id == null || id <= 0)) {
+            throw new IllegalArgumentException("participantIds must be positive");
+        }
+        String placeholders = String.join(",", java.util.Collections.nCopies(participantIds.size(), "?"));
+        java.util.List<Object> parameters = new java.util.ArrayList<>();
+        parameters.add(guildId);
+        parameters.addAll(participantIds.stream().sorted().toList());
+        parameters.add(startDate);
+        parameters.add(endDate);
+        return jdbc.query("""
+                SELECT * FROM achievement_award_state
+                 WHERE guild_id=? AND participant_id IN (""" + placeholders + """
+                       ) AND award_status='ACTIVE' AND earned_on BETWEEN ? AND ?
+                 ORDER BY participant_id, earned_on, achievement_key
+                """, AchievementJdbcMapping::award, parameters.toArray());
     }
 
     @Override

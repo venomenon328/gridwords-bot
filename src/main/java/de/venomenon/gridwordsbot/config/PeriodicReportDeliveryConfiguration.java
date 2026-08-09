@@ -2,6 +2,7 @@ package de.venomenon.gridwordsbot.config;
 
 import de.venomenon.gridwordsbot.adapter.discord.reporting.JdaPeriodicReportMessageGateway;
 import de.venomenon.gridwordsbot.adapter.persistence.PostgresPeriodicReportDeliveryStore;
+import de.venomenon.gridwordsbot.adapter.persistence.PostgresReportHighlightQuery;
 import de.venomenon.gridwordsbot.application.reporting.MonthlyReportReconciliationService;
 import de.venomenon.gridwordsbot.application.reporting.PeriodicReportDeliveryService;
 import de.venomenon.gridwordsbot.application.reporting.PeriodicReportRenderer;
@@ -16,6 +17,9 @@ import de.venomenon.gridwordsbot.port.out.PeriodicReportMessageGateway;
 import de.venomenon.gridwordsbot.port.out.ReportGameResultQuery;
 import de.venomenon.gridwordsbot.port.out.ReportParticipantQuery;
 import de.venomenon.gridwordsbot.port.out.ReportStreakHistoryQuery;
+import de.venomenon.gridwordsbot.port.out.ReportHighlightQuery;
+import de.venomenon.gridwordsbot.port.out.AchievementAwardStateStore;
+import de.venomenon.gridwordsbot.port.out.RecordEventStore;
 import java.time.Clock;
 import net.dv8tion.jda.api.JDA;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -23,6 +27,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -74,11 +80,20 @@ class PeriodicReportDeliveryConfiguration {
     }
 
     @Bean
+    @ConditionalOnBean({AchievementAwardStateStore.class, RecordEventStore.class})
+    ReportHighlightQuery reportHighlightQuery(AchievementAwardStateStore awards, RecordEventStore events) {
+        return new PostgresReportHighlightQuery(awards, events);
+    }
+
+    @Bean
     PeriodicReportUseCase periodicReportUseCase(
             ReportParticipantProjector participants,
             ReportGameStatisticsProjector statistics,
-            ReportDayAndStreakProjector daysAndStreaks) {
-        return new PeriodicReportUseCase(participants, statistics, daysAndStreaks);
+            ReportDayAndStreakProjector daysAndStreaks,
+            ObjectProvider<ReportHighlightQuery> highlights) {
+        return new PeriodicReportUseCase(participants, statistics, daysAndStreaks,
+                highlights.getIfAvailable(() -> (guildId, period, participantIds) ->
+                        de.venomenon.gridwordsbot.domain.reporting.ReportHighlightFacts.empty()));
     }
 
     @Bean

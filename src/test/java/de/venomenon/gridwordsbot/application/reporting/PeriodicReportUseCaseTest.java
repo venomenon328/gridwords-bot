@@ -30,6 +30,7 @@ import de.venomenon.gridwordsbot.domain.reporting.ReportStreakHistory;
 import de.venomenon.gridwordsbot.domain.reporting.ReportStreakSnapshot;
 import de.venomenon.gridwordsbot.domain.reporting.ReportType;
 import de.venomenon.gridwordsbot.port.out.ReportParticipantQuery;
+import de.venomenon.gridwordsbot.port.out.ReportHighlightQuery;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
@@ -207,6 +208,29 @@ class PeriodicReportUseCaseTest {
                 history(participation(1, 20, null), perfect(1, 27), perfect(1, 30))));
 
         assertThat(withFuture).isEqualTo(withoutFuture);
+    }
+
+    @Test
+    void readsHighlightsWithTheExplicitGuildAndPreservesTheParticipantOrder() {
+        ReportParticipant first = participant(1, "First");
+        ReportParticipant second = participant(2, "Second");
+        ReportParticipantBasis basis = basis(second, first);
+        ReportParticipantProjector participants = mock(ReportParticipantProjector.class);
+        ReportGameStatisticsProjector statistics = mock(ReportGameStatisticsProjector.class);
+        ReportDayAndStreakProjector daysAndStreaks = mock(ReportDayAndStreakProjector.class);
+        ReportHighlightQuery highlights = mock(ReportHighlightQuery.class);
+        when(participants.project(PERIOD)).thenReturn(basis);
+        when(statistics.project(basis)).thenReturn(List.of(playerStatistics(1), playerStatistics(2)));
+        when(daysAndStreaks.project(basis)).thenReturn(new ReportDayAndStreakProjection(
+                List.of(snapshot(1), snapshot(2)), new ReportSharedDayCounts(0, 0, 0), zeroSharedStreaks()));
+        var facts = new de.venomenon.gridwordsbot.domain.reporting.ReportHighlightFacts(Map.of(2L, 2), List.of());
+        when(highlights.find(77L, PERIOD, Set.of(1L, 2L))).thenReturn(facts);
+
+        PeriodicReport report = complete(new PeriodicReportUseCase(participants, statistics, daysAndStreaks, highlights)
+                .generate(77L, ReportType.WEEKLY, PERIOD));
+
+        assertThat(report.highlights()).isEqualTo(facts);
+        verify(highlights).find(77L, PERIOD, Set.of(1L, 2L));
     }
 
     private static void assertInvalidStatistics(List<ReportPlayerGameStatistics> invalidStatistics, String message) {

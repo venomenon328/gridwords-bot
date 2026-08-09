@@ -50,7 +50,7 @@ class MonthlyReportReconciliationServiceTest {
         when(store.findLatestPeriodStart(scope)).thenReturn(Optional.empty());
         when(planner.plan(ReportType.MONTHLY, NOW, MONTHLY_TIME, BERLIN, Optional.empty()))
                 .thenReturn(new PeriodicReportReconciliationPlan(List.of(candidate)));
-        when(reports.generate(ReportType.MONTHLY, period)).thenReturn(new PeriodicReportNoOp(ReportType.MONTHLY, period));
+        when(reports.generate(GUILD_ID, ReportType.MONTHLY, period)).thenReturn(new PeriodicReportNoOp(ReportType.MONTHLY, period));
         MonthlyReportReconciliationService service = new MonthlyReportReconciliationService(
                 store, planner, reports, delivery, Clock.fixed(NOW, ZoneOffset.UTC), MONTHLY_TIME, BERLIN);
 
@@ -58,7 +58,7 @@ class MonthlyReportReconciliationServiceTest {
 
         verify(store).findLatestPeriodStart(scope);
         verify(planner).plan(ReportType.MONTHLY, NOW, MONTHLY_TIME, BERLIN, Optional.empty());
-        verify(reports).generate(ReportType.MONTHLY, period);
+        verify(reports).generate(GUILD_ID, ReportType.MONTHLY, period);
 
         assertThatNullPointerException().isThrownBy(() -> new MonthlyReportReconciliationService(
                 store, planner, reports, delivery, Clock.fixed(NOW, ZoneOffset.UTC), null, BERLIN));

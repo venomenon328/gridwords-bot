@@ -12,6 +12,8 @@ import de.venomenon.gridwordsbot.domain.reporting.ReportParticipantDayAndStreakS
 import de.venomenon.gridwordsbot.domain.reporting.ReportPeriod;
 import de.venomenon.gridwordsbot.domain.reporting.ReportPlayerGameStatistics;
 import de.venomenon.gridwordsbot.domain.reporting.ReportType;
+import de.venomenon.gridwordsbot.domain.reporting.ReportHighlightFacts;
+import de.venomenon.gridwordsbot.port.out.ReportHighlightQuery;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -25,17 +27,38 @@ public final class PeriodicReportUseCase {
     private final ReportParticipantProjector participantProjector;
     private final ReportGameStatisticsProjector gameStatisticsProjector;
     private final ReportDayAndStreakProjector dayAndStreakProjector;
+    private final ReportHighlightQuery highlights;
 
     public PeriodicReportUseCase(
             ReportParticipantProjector participantProjector,
             ReportGameStatisticsProjector gameStatisticsProjector,
             ReportDayAndStreakProjector dayAndStreakProjector) {
+        this(participantProjector, gameStatisticsProjector, dayAndStreakProjector,
+                (guildId, period, participantIds) -> ReportHighlightFacts.empty());
+    }
+
+    public PeriodicReportUseCase(
+            ReportParticipantProjector participantProjector,
+            ReportGameStatisticsProjector gameStatisticsProjector,
+            ReportDayAndStreakProjector dayAndStreakProjector,
+            ReportHighlightQuery highlights) {
         this.participantProjector = Objects.requireNonNull(participantProjector, "participantProjector");
         this.gameStatisticsProjector = Objects.requireNonNull(gameStatisticsProjector, "gameStatisticsProjector");
         this.dayAndStreakProjector = Objects.requireNonNull(dayAndStreakProjector, "dayAndStreakProjector");
+        this.highlights = Objects.requireNonNull(highlights, "highlights");
     }
 
     public PeriodicReportResult generate(ReportType reportType, ReportPeriod period) {
+        return generate(reportType, period, 0L);
+    }
+
+    /** Generates a report with its Guild-scoped, already materialized highlight facts. */
+    public PeriodicReportResult generate(long guildId, ReportType reportType, ReportPeriod period) {
+        if (guildId <= 0) throw new IllegalArgumentException("guildId must be positive");
+        return generate(reportType, period, guildId);
+    }
+
+    private PeriodicReportResult generate(ReportType reportType, ReportPeriod period, long guildId) {
         Objects.requireNonNull(reportType, "reportType");
         Objects.requireNonNull(period, "period");
         ReportParticipantBasis basis = Objects.requireNonNull(participantProjector.project(period), "participant basis");
@@ -55,9 +78,13 @@ public final class PeriodicReportUseCase {
         List<PeriodicReportParticipantSection> participants = basis.participants().stream()
                 .map(participant -> personalSection(participant, statisticsByParticipant, dayAndStreaksByParticipant))
                 .toList();
+        ReportHighlightFacts reportHighlights = guildId == 0
+                ? ReportHighlightFacts.empty()
+                : highlights.find(guildId, period, participantIds);
         return new PeriodicReport(reportType, period, participants,
-                new PeriodicReportSharedSection(dayAndStreaks.sharedDayCounts(), dayAndStreaks.sharedStreaks()));
+                new PeriodicReportSharedSection(dayAndStreaks.sharedDayCounts(), dayAndStreaks.sharedStreaks()), reportHighlights);
     }
+
 
     private static PeriodicReportParticipantSection personalSection(
             ReportParticipant participant,
