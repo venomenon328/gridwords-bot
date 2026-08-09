@@ -6,14 +6,26 @@ import de.venomenon.gridwordsbot.domain.achievement.AchievementScope;
 import java.util.List;
 import java.util.Objects;
 
-/** Read-only personal catalog view of every available Achievement and its current active status. */
+/** Read-only personal catalog view of available Achievements and their current active status. */
 public interface AchievementCatalogQueryUseCase {
     Result query(Query query);
 
-    record Query(long guildId, long participantId) {
+    record Query(
+            long guildId,
+            long participantId,
+            GameFilter game,
+            CategoryFilter category,
+            StatusFilter status) {
         public Query {
             if (guildId <= 0) throw new IllegalArgumentException("guildId must be positive");
             if (participantId <= 0) throw new IllegalArgumentException("participantId must be positive");
+            Objects.requireNonNull(game, "game");
+            Objects.requireNonNull(category, "category");
+            Objects.requireNonNull(status, "status");
+        }
+
+        public Query(long guildId, long participantId) {
+            this(guildId, participantId, GameFilter.ALL, CategoryFilter.ALL, StatusFilter.ALL);
         }
     }
 
@@ -46,4 +58,8 @@ public interface AchievementCatalogQueryUseCase {
             return value;
         }
     }
+
+    enum GameFilter { ALL, GRIDWORDS, QUADWORDS, CROSS_GAME }
+    enum CategoryFilter { ALL, EXPERIENCE, RELIABILITY, PERFORMANCE, SPECIAL }
+    enum StatusFilter { ALL, ACHIEVED, OPEN }
 }
