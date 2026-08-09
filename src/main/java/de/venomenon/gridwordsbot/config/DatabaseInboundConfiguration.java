@@ -18,6 +18,7 @@ import de.venomenon.gridwordsbot.application.excuse.ExcuseInteractionService;
 import de.venomenon.gridwordsbot.application.excuse.ExcuseOpenService;
 import de.venomenon.gridwordsbot.application.excuse.ExcuseExpirationService;
 import de.venomenon.gridwordsbot.application.status.DailyResultDetailsService;
+import de.venomenon.gridwordsbot.application.status.DailyStatusProjector;
 import de.venomenon.gridwordsbot.application.status.DailyStatusRefreshService;
 import de.venomenon.gridwordsbot.application.submission.ProcessSharedResultService;
 import de.venomenon.gridwordsbot.application.achievement.AchievementBootstrapCoordinator;
@@ -270,13 +271,14 @@ class DatabaseInboundConfiguration {
             Clock clock,
             GridwordsBotProperties properties,
             PlayerStore players,
-            LatestValidSubmissionQuery submissions) {
+            LatestValidSubmissionQuery submissions,
+            DailyStatusProjector dailyStatus) {
         return new PersonalStatusService(
                 players,
                 submissions,
+                dailyStatus,
                 clock,
-                properties.schedule().timeZone(),
-                Set.copyOf(properties.discord().adminUserIds()));
+                properties.schedule().timeZone());
     }
 
     @Bean

@@ -14,9 +14,9 @@ import de.venomenon.gridwordsbot.port.in.PersonalStatusUseCase;
 import de.venomenon.gridwordsbot.port.in.PlayerParticipationUseCase;
 import de.venomenon.gridwordsbot.port.in.PlayerParticipationUseCase.PlayerIdentity;
 import de.venomenon.gridwordsbot.port.in.PlayerParticipationUseCase.PlayerStatus;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.List;
-import java.util.Optional;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
@@ -28,8 +28,8 @@ import net.dv8tion.jda.api.interactions.commands.build.CommandData;
 import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
 import net.dv8tion.jda.api.requests.restaction.interactions.ReplyCallbackAction;
-import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 class DiscordParticipationCommandListenerTest {
     private static final long GUILD_ID = 11L;
@@ -40,11 +40,10 @@ class DiscordParticipationCommandListenerTest {
     void delegatesSelfServiceWithTheServerDisplayNameAndRepliesEphemerally() {
         PlayerParticipationUseCase useCase = mock(PlayerParticipationUseCase.class);
         EventFixture fixture = event("participation", "join", GUILD_ID, ACTOR_ID, "Server Actor");
-        PlayerStatus status = new PlayerStatus(true, true, true, false, "Teilnahme ist ab heute aktiv.");
+        PlayerStatus status = new PlayerStatus(true, true, true, false, "GridWords: ab heute aktiv");
         when(useCase.join(new PlayerIdentity(ACTOR_ID, "Server Actor"), GameParticipationSelection.BOTH)).thenReturn(status);
 
-        listener(useCase, mock(PersonalStatusUseCase.class))
-                .onSlashCommandInteraction(fixture.event());
+        listener(useCase, mock(PersonalStatusUseCase.class)).onSlashCommandInteraction(fixture.event());
 
         verify(useCase).join(new PlayerIdentity(ACTOR_ID, "Server Actor"), GameParticipationSelection.BOTH);
         verify(fixture.event()).reply(status.message());
@@ -59,7 +58,8 @@ class DiscordParticipationCommandListenerTest {
         OptionMapping game = mock(OptionMapping.class);
         when(fixture.event().getOption("game")).thenReturn(game);
         when(game.getAsString()).thenReturn("quadwords");
-        PlayerStatus status = new PlayerStatus(true, true, true, false, "Teilnahme endet ab morgen.");
+        PlayerStatus status = new PlayerStatus(true, true, true, false,
+                "QuadWords: heute noch aktiv · ab 10.08.2026 inaktiv");
         when(useCase.leave(new PlayerIdentity(ACTOR_ID, "Server Actor"), GameParticipationSelection.QUADWORDS))
                 .thenReturn(status);
 
@@ -82,12 +82,12 @@ class DiscordParticipationCommandListenerTest {
         when(target.getIdLong()).thenReturn(TARGET_ID);
         when(target.getName()).thenReturn("global-target");
         when(targetMember.getEffectiveName()).thenReturn("Server Target");
-        PlayerStatus status = new PlayerStatus(true, true, false, false, "Teilnahme: inaktiv; Reminder: aus.");
+        PlayerStatus status = new PlayerStatus(true, true, false, false,
+                "GridWords: inaktiv; QuadWords: inaktiv; Reminder: aus.");
         when(useCase.status(new PlayerIdentity(ACTOR_ID, "Admin"), new PlayerIdentity(TARGET_ID, "Server Target")))
                 .thenReturn(status);
 
-        listener(useCase, mock(PersonalStatusUseCase.class))
-                .onSlashCommandInteraction(fixture.event());
+        listener(useCase, mock(PersonalStatusUseCase.class)).onSlashCommandInteraction(fixture.event());
 
         verify(useCase).status(
                 new PlayerIdentity(ACTOR_ID, "Admin"),
@@ -97,12 +97,47 @@ class DiscordParticipationCommandListenerTest {
     }
 
     @Test
+    void reminderOffExplainsCleartextSemanticsAndUsesConfiguredTimes() {
+        PlayerParticipationUseCase useCase = mock(PlayerParticipationUseCase.class);
+        EventFixture fixture = event("reminders", "off", GUILD_ID, ACTOR_ID, "Server Actor");
+        PlayerStatus status = new PlayerStatus(true, true, false, false, "Reminder: aus");
+        when(useCase.disableReminders(new PlayerIdentity(ACTOR_ID, "Server Actor"))).thenReturn(status);
+
+        listener(useCase, mock(PersonalStatusUseCase.class)).onSlashCommandInteraction(fixture.event());
+
+        ArgumentCaptor<String> message = ArgumentCaptor.forClass(String.class);
+        verify(fixture.event()).reply(message.capture());
+        assertThat(message.getValue()).contains(
+                "🔕 Reminder: aus",
+                "nicht erwähnt",
+                "ohne Ping",
+                "Geplante Erinnerungen: 16:05 und 22:35 Uhr");
+        verify(fixture.reply()).setEphemeral(true);
+    }
+
+    @Test
+    void reminderOnExplainsMentionSemanticsAndUsesConfiguredTimes() {
+        PlayerParticipationUseCase useCase = mock(PlayerParticipationUseCase.class);
+        EventFixture fixture = event("reminders", "status", GUILD_ID, ACTOR_ID, "Server Actor");
+        PlayerStatus status = new PlayerStatus(true, true, false, true, "Reminder: an");
+        when(useCase.reminderStatus(new PlayerIdentity(ACTOR_ID, "Server Actor"))).thenReturn(status);
+
+        listener(useCase, mock(PersonalStatusUseCase.class)).onSlashCommandInteraction(fixture.event());
+
+        ArgumentCaptor<String> message = ArgumentCaptor.forClass(String.class);
+        verify(fixture.event()).reply(message.capture());
+        assertThat(message.getValue()).contains(
+                "🔔 Reminder: an",
+                "wirst du in den geplanten Erinnerungen erwähnt",
+                "Geplante Erinnerungen: 16:05 und 22:35 Uhr");
+    }
+
+    @Test
     void ignoresCommandsOutsideTheConfiguredGuild() {
         PlayerParticipationUseCase useCase = mock(PlayerParticipationUseCase.class);
         EventFixture fixture = event("reminders", "on", GUILD_ID + 1, ACTOR_ID, "Actor");
 
-        listener(useCase, mock(PersonalStatusUseCase.class))
-                .onSlashCommandInteraction(fixture.event());
+        listener(useCase, mock(PersonalStatusUseCase.class)).onSlashCommandInteraction(fixture.event());
 
         verifyNoInteractions(useCase);
     }
@@ -112,9 +147,7 @@ class DiscordParticipationCommandListenerTest {
         PlayerParticipationUseCase commands = mock(PlayerParticipationUseCase.class);
         PersonalStatusUseCase personalStatus = mock(PersonalStatusUseCase.class);
         EventFixture fixture = event("status", null, GUILD_ID, ACTOR_ID, "Server Actor");
-        PersonalStatusUseCase.PersonalStatus status = new PersonalStatusUseCase.PersonalStatus(
-                new PersonalStatusUseCase.ParticipationStatus(false, Optional.empty(), Optional.empty()),
-                false, Optional.empty(), Optional.empty());
+        PersonalStatusUseCase.PersonalStatus status = PersonalStatusUseCase.PersonalStatus.unknown();
         when(personalStatus.status(new PersonalStatusUseCase.PlayerIdentity(ACTOR_ID, "Server Actor")))
                 .thenReturn(status);
 
@@ -154,7 +187,6 @@ class DiscordParticipationCommandListenerTest {
                 .containsExactly("join", "leave");
         assertThat(participation.getSubcommands()).allSatisfy(subcommand -> {
             assertThat(subcommand.getOptions()).extracting(option -> option.getName()).containsExactly("game");
-
             assertThat(subcommand.getOptions().getFirst().isRequired()).isFalse();
         });
         SlashCommandData status = (SlashCommandData) commandData.getAllValues().stream()
@@ -215,8 +247,14 @@ class DiscordParticipationCommandListenerTest {
     private static GridwordsBotProperties properties() {
         return new GridwordsBotProperties(
                 new GridwordsBotProperties.Discord(true, "token", GUILD_ID, 12L, List.of(ACTOR_ID)),
-                null,
-                null);
+                new GridwordsBotProperties.Schedule(
+                        LocalTime.of(16, 5),
+                        LocalTime.of(22, 35),
+                        LocalTime.of(8, 0),
+                        LocalTime.of(8, 15),
+                        LocalTime.of(6, 0),
+                        ZoneId.of("Europe/Berlin")),
+                new GridwordsBotProperties.Storage(24));
     }
 
     private record EventFixture(SlashCommandInteractionEvent event, ReplyCallbackAction reply) { }

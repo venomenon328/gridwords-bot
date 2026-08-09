@@ -8,16 +8,22 @@ import de.venomenon.gridwordsbot.port.out.PlayerStore;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /** Application service for idempotent participation and reminder commands. */
 public final class PlayerParticipationService implements PlayerParticipationUseCase {
     private static final Logger LOGGER = LoggerFactory.getLogger(PlayerParticipationService.class);
+    private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("dd.MM.uuuu");
+
     private final PlayerStore players;
     private final Clock clock;
     private final ZoneId zoneId;
@@ -40,75 +46,154 @@ public final class PlayerParticipationService implements PlayerParticipationUseC
     @Override
     public PlayerStatus join(PlayerIdentity actor, GameParticipationSelection selection) {
         LocalDate today = today();
-        PlayerStatus result = changed(actor, activate(actor, selection, today), "Teilnahme ist ab heute aktiv.");
+        Map<GameType, Optional<GameParticipationPeriod>> before = selectedPeriods(actor.discordUserId(), selection, today);
+        PlayerStatus result = changed(actor, activate(actor, selection, today), activationMessage(selection, before));
         refreshSafely(today);
         return result;
     }
 
     @Override
     public PlayerStatus leave(PlayerIdentity actor, GameParticipationSelection selection) {
-        return changed(actor, deactivate(actor, selection, today().plusDays(1)), "Teilnahme endet ab morgen.");
+        LocalDate today = today();
+        LocalDate effectiveDate = today.plusDays(1);
+        Map<GameType, Optional<GameParticipationPeriod>> before = selectedPeriods(actor.discordUserId(), selection, today);
+        return changed(actor, deactivate(actor, selection, effectiveDate),
+                deactivationMessage(selection, before, effectiveDate));
     }
 
     @Override
     public PlayerStatus activate(PlayerIdentity actor, PlayerIdentity target, GameParticipationSelection selection) {
-        if (!authorize(actor)) return denied();
+        if (!authorizeMutation(actor)) return denied();
         LocalDate today = today();
-        PlayerStatus result = changed(target, activate(target, selection, today), "Teilnahme ist ab heute aktiv.");
+        Map<GameType, Optional<GameParticipationPeriod>> before = selectedPeriods(target.discordUserId(), selection, today);
+        PlayerStatus result = changed(target, activate(target, selection, today), activationMessage(selection, before));
         refreshSafely(today);
         return result;
     }
 
     @Override
     public PlayerStatus deactivate(PlayerIdentity actor, PlayerIdentity target, GameParticipationSelection selection) {
-        if (!authorize(actor)) return denied();
-        return changed(target, deactivate(target, selection, today().plusDays(1)), "Teilnahme endet ab morgen.");
+        if (!authorizeMutation(actor)) return denied();
+        LocalDate today = today();
+        LocalDate effectiveDate = today.plusDays(1);
+        Map<GameType, Optional<GameParticipationPeriod>> before = selectedPeriods(target.discordUserId(), selection, today);
+        return changed(target, deactivate(target, selection, effectiveDate),
+                deactivationMessage(selection, before, effectiveDate));
     }
 
     @Override
     public PlayerStatus status(PlayerIdentity actor, PlayerIdentity target) {
-        if (!authorize(actor)) return denied();
-        return statusFor(target);
+        if (!isAdministrator(actor)) return denied();
+        return statusForExisting(target);
     }
 
     @Override
     public PlayerStatus enableReminders(PlayerIdentity actor) {
-        return changed(actor, players.setReminderOptIn(profile(actor), true), "Reminder sind aktiviert.");
+        PlayerStore.StoredPlayer player = players.setReminderOptIn(profile(actor), true);
+        return changed(actor, player, "Reminder: an");
     }
 
     @Override
     public PlayerStatus disableReminders(PlayerIdentity actor) {
-        return changed(actor, players.setReminderOptIn(profile(actor), false), "Reminder sind deaktiviert.");
+        PlayerStore.StoredPlayer player = players.setReminderOptIn(profile(actor), false);
+        return changed(actor, player, "Reminder: aus");
     }
 
     @Override
     public PlayerStatus reminderStatus(PlayerIdentity actor) {
-        return statusFor(actor);
+        PlayerStore.StoredPlayer player = findExisting(actor.discordUserId()).orElse(null);
+        if (player == null) {
+            return unknown("Reminder: kein Spielerprofil vorhanden.");
+        }
+        return currentStatus(actor, player, "Reminder: " + (player.reminderOptIn() ? "an" : "aus"));
     }
 
-    private PlayerStatus statusFor(PlayerIdentity identity) {
-        PlayerStore.StoredPlayer player = players.synchronizeProfile(profile(identity));
-        return status(identity, player, "Status");
+    private PlayerStatus statusForExisting(PlayerIdentity identity) {
+        PlayerStore.StoredPlayer player = findExisting(identity.discordUserId()).orElse(null);
+        if (player == null) {
+            return unknown("Kein Spielerprofil vorhanden.");
+        }
+        ParticipationStatus gridWords = participation(identity.discordUserId(), GameType.GRIDWORDS, today());
+        ParticipationStatus quadWords = participation(identity.discordUserId(), GameType.QUADWORDS, today());
+        return new PlayerStatus(true, true, gridWords, quadWords, player.reminderOptIn(),
+                "GridWords: " + participationText(gridWords)
+                        + "; QuadWords: " + participationText(quadWords)
+                        + "; Reminder: " + (player.reminderOptIn() ? "an" : "aus") + ".");
     }
 
     private PlayerStatus changed(PlayerIdentity identity, PlayerStore.StoredPlayer player, String message) {
-        return status(identity, player, message);
+        return currentStatus(identity, player, message);
     }
 
-    private PlayerStatus status(PlayerIdentity identity, PlayerStore.StoredPlayer player, String action) {
+    private PlayerStatus currentStatus(PlayerIdentity identity, PlayerStore.StoredPlayer player, String message) {
         LocalDate date = today();
         ParticipationStatus gridWords = participation(identity.discordUserId(), GameType.GRIDWORDS, date);
         ParticipationStatus quadWords = participation(identity.discordUserId(), GameType.QUADWORDS, date);
-        return new PlayerStatus(true, true, gridWords, quadWords, player.reminderOptIn(),
-                action + " " + statusMessage(gridWords, quadWords, player.reminderOptIn()));
+        return new PlayerStatus(true, true, gridWords, quadWords, player.reminderOptIn(), message);
     }
 
     private ParticipationStatus participation(long playerId, GameType gameType, LocalDate date) {
-        Optional<GameParticipationPeriod> period = players.findGameParticipationPeriod(playerId, gameType, date);
-        return new ParticipationStatus(period.isPresent());
+        return new ParticipationStatus(players.findGameParticipationPeriod(playerId, gameType, date).isPresent());
     }
 
-    private boolean authorize(PlayerIdentity actor) {
+    private Map<GameType, Optional<GameParticipationPeriod>> selectedPeriods(
+            long playerId, GameParticipationSelection selection, LocalDate date) {
+        EnumMap<GameType, Optional<GameParticipationPeriod>> periods = new EnumMap<>(GameType.class);
+        selection.gameTypes().forEach(gameType -> periods.put(
+                gameType, players.findGameParticipationPeriod(playerId, gameType, date)));
+        return Map.copyOf(periods);
+    }
+
+    private static String activationMessage(
+            GameParticipationSelection selection,
+            Map<GameType, Optional<GameParticipationPeriod>> before) {
+        return selection.gameTypes().stream()
+                .map(gameType -> gameName(gameType) + ": " + activationEffect(before.get(gameType)))
+                .collect(Collectors.joining("\n"));
+    }
+
+    private static String activationEffect(Optional<GameParticipationPeriod> current) {
+        if (current == null || current.isEmpty()) {
+            return "ab heute aktiv";
+        }
+        GameParticipationPeriod period = current.orElseThrow();
+        if (period.inactiveFrom() != null) {
+            return "heute aktiv · endet bereits ab " + DATE.format(period.inactiveFrom());
+        }
+        return "bereits aktiv";
+    }
+
+    private static String deactivationMessage(
+            GameParticipationSelection selection,
+            Map<GameType, Optional<GameParticipationPeriod>> before,
+            LocalDate effectiveDate) {
+        return selection.gameTypes().stream()
+                .map(gameType -> gameName(gameType) + ": " + deactivationEffect(before.get(gameType), effectiveDate))
+                .collect(Collectors.joining("\n"));
+    }
+
+    private static String deactivationEffect(Optional<GameParticipationPeriod> current, LocalDate effectiveDate) {
+        if (current == null || current.isEmpty()) {
+            return "bereits inaktiv";
+        }
+        GameParticipationPeriod period = current.orElseThrow();
+        if (period.inactiveFrom() != null) {
+            return "endet bereits ab " + DATE.format(period.inactiveFrom());
+        }
+        return "heute noch aktiv · ab " + DATE.format(effectiveDate) + " inaktiv";
+    }
+
+    private static String gameName(GameType gameType) {
+        return gameType == GameType.GRIDWORDS ? "GridWords" : "QuadWords";
+    }
+
+    private Optional<PlayerStore.StoredPlayer> findExisting(long discordUserId) {
+        return players.findAllPlayers().stream()
+                .filter(player -> player.discordUserId() == discordUserId)
+                .findFirst();
+    }
+
+    private boolean authorizeMutation(PlayerIdentity actor) {
         if (!isAdministrator(actor)) return false;
         players.synchronizeProfile(profile(actor));
         return true;
@@ -148,10 +233,8 @@ public final class PlayerParticipationService implements PlayerParticipationUseC
         return new PlayerStatus(false, false, false, false, "Keine Berechtigung.");
     }
 
-    private static String statusMessage(
-            ParticipationStatus gridWords, ParticipationStatus quadWords, boolean reminders) {
-        return "GridWords: " + participationText(gridWords) + "; QuadWords: " + participationText(quadWords)
-                + "; Reminder für aktive Spiele: " + (reminders ? "an" : "aus") + ".";
+    private static PlayerStatus unknown(String message) {
+        return new PlayerStatus(true, false, false, false, message);
     }
 
     private static String participationText(ParticipationStatus participation) {
