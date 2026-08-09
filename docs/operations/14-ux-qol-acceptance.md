@@ -145,7 +145,7 @@ Kontrollierte Daten-/Clock-Konstellation ist zulässig.
 
 - PR: #113
 - finaler Paket-Head: `240752a73bf533ff54bd375af5bb0d9e8451338d`
-- Squash-Merge in Sammelbranch: `ee4a5e8bc639c7bfaf0056938a00bf37a2b0071`
+- Squash-Merge in Sammelbranch: `ee4a5e8bc639c7bfaf215c8ddc278d4d16d9e854`
 - Standardbuild: grün
 - PostgreSQL-Integration: grün
 - Migration/Upgrade: grün
