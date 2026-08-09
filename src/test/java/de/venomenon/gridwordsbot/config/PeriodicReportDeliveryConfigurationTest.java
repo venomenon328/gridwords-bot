@@ -9,6 +9,7 @@ import de.venomenon.gridwordsbot.application.reporting.PeriodicReportRenderer;
 import de.venomenon.gridwordsbot.port.out.PeriodicReportDeliveryStore;
 import de.venomenon.gridwordsbot.port.out.PeriodicReportMessageGateway;
 import de.venomenon.gridwordsbot.port.out.ReportGameResultQuery;
+import de.venomenon.gridwordsbot.port.out.ReportHighlightQuery;
 import de.venomenon.gridwordsbot.port.out.ReportParticipantQuery;
 import de.venomenon.gridwordsbot.port.out.ReportStreakHistoryQuery;
 import java.time.Clock;
@@ -40,6 +41,7 @@ class PeriodicReportDeliveryConfigurationTest {
             assertThat(context.getBean(PeriodicReportDeliveryStore.class)).isNotNull();
             assertThat(context.getBean(PeriodicReportRenderer.class)).isNotNull();
             assertThat(context.getBean(PeriodicReportDeliveryService.class)).isNotNull();
+            assertThat(context.getBean(ReportHighlightQuery.class)).isNotNull();
             assertThat(context.getBeansOfType(JDA.class)).isEmpty();
         }
     }
@@ -59,6 +61,7 @@ class PeriodicReportDeliveryConfigurationTest {
             assertThat(context.getBean(PeriodicReportMessageGateway.class))
                     .isInstanceOf(JdaPeriodicReportMessageGateway.class);
             assertThat(context.getBean(PeriodicReportDeliveryService.class)).isNotNull();
+            assertThat(context.getBean(ReportHighlightQuery.class)).isNotNull();
         }
     }
 
@@ -94,5 +97,7 @@ class PeriodicReportDeliveryConfigurationTest {
                 () -> mock(ReportGameResultQuery.class));
         context.registerBean(ReportStreakHistoryQuery.class,
                 () -> mock(ReportStreakHistoryQuery.class));
+        context.registerBean(ReportHighlightQuery.class,
+                () -> mock(ReportHighlightQuery.class));
     }
 }
