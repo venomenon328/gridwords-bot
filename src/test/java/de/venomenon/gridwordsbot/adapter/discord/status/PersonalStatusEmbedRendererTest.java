@@ -61,6 +61,28 @@ class PersonalStatusEmbedRendererTest {
     }
 
     @Test
+    void rendersTodaysUnsolvedResultWithXAndDuration() {
+        PersonalStatusUseCase.PersonalStatus status = new PersonalStatusUseCase.PersonalStatus(
+                true,
+                PersonalStatusUseCase.TodayGameStatus.notParticipating(GameType.GRIDWORDS),
+                PersonalStatusUseCase.TodayGameStatus.submitted(
+                        GameType.QUADWORDS, new ShareOutcome.Unsolved(9), Duration.ofSeconds(125)),
+                new PersonalStatusUseCase.PersonalStreaks(
+                        OptionalInt.of(1), OptionalInt.empty(), OptionalInt.empty(), OptionalInt.of(0), OptionalInt.empty()),
+                PersonalStatusUseCase.ParticipationStatus.inactive(),
+                new PersonalStatusUseCase.ParticipationStatus(
+                        true, Optional.of(LocalDate.of(2026, 8, 9)), Optional.empty()),
+                true,
+                Optional.empty(),
+                Optional.empty());
+
+        MessageEmbed embed = renderer.render(status);
+
+        assertThat(embed.getFields().getFirst().getValue()).isEqualTo(
+                "🟩 GridWords: — keine Teilnahme\n🟦 QuadWords: ❌ X/9 · 2:05");
+    }
+
+    @Test
     void rendersNonParticipationAndNonApplicableStreaksAsDashInsteadOfZero() {
         PersonalStatusUseCase.PersonalStatus status = new PersonalStatusUseCase.PersonalStatus(
                 true,
