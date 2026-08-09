@@ -21,12 +21,29 @@ import de.venomenon.gridwordsbot.domain.reporting.ReportSharedDayCounts;
 import de.venomenon.gridwordsbot.domain.reporting.ReportSharedStreaks;
 import de.venomenon.gridwordsbot.domain.reporting.ReportStreakSnapshot;
 import de.venomenon.gridwordsbot.domain.reporting.ReportType;
+import de.venomenon.gridwordsbot.domain.reporting.ReportHighlightFacts;
+import de.venomenon.gridwordsbot.domain.record.AttemptsDurationRecordValue;
+import de.venomenon.gridwordsbot.domain.record.RecordDefinitionKey;
+import de.venomenon.gridwordsbot.domain.record.RecordDefinitionVersion;
+import de.venomenon.gridwordsbot.domain.record.RecordEventDraft;
+import de.venomenon.gridwordsbot.domain.record.RecordEventSnapshot;
+import de.venomenon.gridwordsbot.domain.record.RecordEventType;
+import de.venomenon.gridwordsbot.domain.record.RecordEventValidity;
+import de.venomenon.gridwordsbot.domain.record.RecordProcessingOrigin;
+import de.venomenon.gridwordsbot.domain.record.RecordScope;
+import de.venomenon.gridwordsbot.domain.record.RecordSourceReference;
+import de.venomenon.gridwordsbot.domain.record.RecordStateKey;
+import de.venomenon.gridwordsbot.domain.record.StreakRecordMetric;
+import de.venomenon.gridwordsbot.domain.record.StreakRecordValue;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Map;
+import java.util.UUID;
 import java.util.TimeZone;
 import org.junit.jupiter.api.Test;
 
@@ -148,6 +165,41 @@ class PeriodicReportRendererTest {
         String name = rendered.pages().getFirst().fields().getFirst().name();
         assertThat(name).doesNotContain("@", "<", ">", "*", "_", "\n", "#");
         assertThat(name).contains("＠everyone", "‹＠123›", "＊＊bold＊＊");
+    }
+
+    @Test
+    void rendersOnlyAwardCountsAndCompleteRecordFactsAsOptionalHighlights() {
+        PeriodicReport base = report(ReportType.WEEKLY, new ReportPeriod(date(2026, 7, 27), date(2026, 8, 2)),
+                player(1, "Anna", 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+                player(2, "Bernd", 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
+        PeriodicReport highlighted = new PeriodicReport(base.reportType(), base.period(), base.participants(), base.shared(),
+                new ReportHighlightFacts(Map.of(1L, 2), List.of(resultRecord(1, date(2026, 8, 1)))));
+
+        var rendered = renderer.render(highlighted);
+
+        List<RenderedReportField> fields = rendered.pages().stream().flatMap(page -> page.fields().stream()).toList();
+        assertThat(fields).extracting(RenderedReportField::name).contains("🏅 Achievements", "🏆 Rekorde");
+        assertThat(fields.stream().filter(field -> field.name().equals("🏅 Achievements")).findFirst().orElseThrow().value())
+                .isEqualTo("Anna: 2 Achievements freigeschaltet");
+        assertThat(fields.stream().filter(field -> field.name().equals("🏆 Rekorde")).findFirst().orElseThrow().value())
+                .isEqualTo("Anna: neuer persönlicher GridWords Rekord · wenigste Versuche · 4 Versuche · 1:38");
+        assertThat(rendered.contentFingerprint()).isNotEqualTo(renderer.render(base).contentFingerprint());
+    }
+
+    @Test
+    void reducesACrossingAndFinishOfTheSameStreakRunInOnePeriodToTheFinish() {
+        PeriodicReport base = report(ReportType.WEEKLY, new ReportPeriod(date(2026, 7, 27), date(2026, 8, 2)),
+                player(1, "Anna", 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
+        PeriodicReport highlighted = new PeriodicReport(base.reportType(), base.period(), base.participants(), base.shared(),
+                new ReportHighlightFacts(Map.of(), List.of(
+                        streakRecord("00000000-0000-0000-0000-000000000201", RecordEventType.SERIES_RECORD_CROSSED, 7),
+                        streakRecord("00000000-0000-0000-0000-000000000202", RecordEventType.RECORD_SERIES_FINISHED, 8))));
+
+        List<RenderedReportField> fields = renderer.render(highlighted).pages().stream()
+                .flatMap(page -> page.fields().stream()).filter(field -> field.name().startsWith("🏆 Rekorde")).toList();
+
+        assertThat(fields).singleElement().extracting(RenderedReportField::value)
+                .isEqualTo("Anna: neuer persönlicher Rekord · Perfektserie · 8 Tage");
     }
 
     @Test
@@ -313,6 +365,32 @@ class PeriodicReportRendererTest {
 
     private static LocalDate date(int year, int month, int day) {
         return LocalDate.of(year, month, day);
+    }
+
+    private static RecordEventSnapshot resultRecord(long playerId, LocalDate gameDate) {
+        var source = new RecordSourceReference.GameResult(91, 0, playerId, GameType.GRIDWORDS, gameDate);
+        var draft = new RecordEventDraft(UUID.fromString("00000000-0000-0000-0000-000000000091"), "report-result-91",
+                new RecordStateKey(1, new RecordDefinitionKey("result.gridwords.fewest-attempts.personal"),
+                        RecordDefinitionVersion.RECORDS_V1, new RecordScope.Personal(playerId)),
+                RecordEventType.RESULT_RECORD_BROKEN, Optional.empty(),
+                new AttemptsDurationRecordValue(4, Duration.ofSeconds(98)), Optional.empty(), Optional.of(playerId),
+                Optional.empty(), source, "report-result-91", RecordProcessingOrigin.LIVE_SUBMISSION,
+                Instant.parse("2026-08-09T12:00:00Z"));
+        return new RecordEventSnapshot(draft, RecordEventValidity.VALID, Optional.empty(), Optional.empty(),
+                Instant.parse("2026-08-09T12:00:00Z"), Instant.parse("2026-08-09T12:00:00Z"));
+    }
+
+    private static RecordEventSnapshot streakRecord(String eventId, RecordEventType type, int length) {
+        LocalDate start = date(2026, 7, 26);
+        var source = new RecordSourceReference.StreakRun(StreakRecordMetric.PERFECT,
+                new RecordSourceReference.StreakRunOwner.Player(1), start);
+        Instant detected = Instant.parse("2026-08-09T12:00:00Z");
+        var draft = new RecordEventDraft(UUID.fromString(eventId), "report-" + eventId,
+                new RecordStateKey(1, new RecordDefinitionKey("streak.perfect.personal"),
+                        RecordDefinitionVersion.RECORDS_V1, new RecordScope.Personal(1)), type, Optional.empty(),
+                new StreakRecordValue(length, start, start.plusDays(length - 1L)), Optional.empty(), Optional.of(1L),
+                Optional.empty(), source, "report-" + eventId, RecordProcessingOrigin.DAY_CLOSE, detected);
+        return new RecordEventSnapshot(draft, RecordEventValidity.VALID, Optional.empty(), Optional.empty(), detected, detected);
     }
 
     private static ReportStreakSnapshot zero() {

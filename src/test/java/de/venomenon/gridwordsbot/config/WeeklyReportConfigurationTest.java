@@ -21,6 +21,7 @@ import de.venomenon.gridwordsbot.domain.reporting.ReportType;
 import de.venomenon.gridwordsbot.port.out.PeriodicReportDeliveryStore;
 import de.venomenon.gridwordsbot.port.out.PeriodicReportMessageGateway;
 import de.venomenon.gridwordsbot.port.out.ReportGameResultQuery;
+import de.venomenon.gridwordsbot.port.out.ReportHighlightQuery;
 import de.venomenon.gridwordsbot.port.out.ReportParticipantQuery;
 import de.venomenon.gridwordsbot.port.out.ReportStreakHistoryQuery;
 import java.time.Clock;
@@ -60,6 +61,7 @@ class WeeklyReportConfigurationTest {
             assertThat(context.getBeansOfType(ReportParticipantProjector.class)).hasSize(1);
             assertThat(context.getBeansOfType(ReportGameStatisticsProjector.class)).hasSize(1);
             assertThat(context.getBeansOfType(ReportDayAndStreakProjector.class)).hasSize(1);
+            assertThat(context.getBeansOfType(ReportHighlightQuery.class)).hasSize(1);
             assertThat(context.getBeansOfType(PeriodicReportUseCase.class)).hasSize(1);
             assertThat(context.getBeansOfType(PeriodicReportReconciliationPlanner.class)).hasSize(1);
             assertThat(context.getBeansOfType(PeriodicReportDeliveryService.class)).isEmpty();
@@ -102,6 +104,7 @@ class WeeklyReportConfigurationTest {
         assertThat(context.getBeansOfType(ReportParticipantProjector.class)).hasSize(1);
         assertThat(context.getBeansOfType(ReportGameStatisticsProjector.class)).hasSize(1);
         assertThat(context.getBeansOfType(ReportDayAndStreakProjector.class)).hasSize(1);
+        assertThat(context.getBeansOfType(ReportHighlightQuery.class)).hasSize(1);
         assertThat(context.getBeansOfType(PeriodicReportUseCase.class)).hasSize(1);
         assertThat(context.getBeansOfType(PeriodicReportReconciliationPlanner.class)).hasSize(1);
         assertThat(context.getBeansOfType(PeriodicReportDeliveryService.class)).hasSize(1);
@@ -128,6 +131,8 @@ class WeeklyReportConfigurationTest {
                 () -> mock(ReportGameResultQuery.class));
         context.registerBean(ReportStreakHistoryQuery.class,
                 () -> mock(ReportStreakHistoryQuery.class));
+        context.registerBean(ReportHighlightQuery.class,
+                () -> mock(ReportHighlightQuery.class));
         if (gatewayAvailable) {
             context.registerBean(PeriodicReportMessageGateway.class,
                     () -> mock(PeriodicReportMessageGateway.class));

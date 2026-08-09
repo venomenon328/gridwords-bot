@@ -54,7 +54,7 @@ public final class PeriodicReportReconciliationService {
             if (candidate.action() == PeriodicReportReconciliationAction.EXPIRE) {
                 store.expire(new PeriodicReportDeliveryExpiration(key, metadata), now);
             } else {
-                deliveryService.deliver(key, metadata, reportUseCase.generate(reportType, candidate.period()));
+                deliveryService.deliver(key, metadata, reportUseCase.generate(guildId, reportType, candidate.period()));
             }
         }
     }

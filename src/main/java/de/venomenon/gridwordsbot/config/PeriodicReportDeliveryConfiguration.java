@@ -2,6 +2,7 @@ package de.venomenon.gridwordsbot.config;
 
 import de.venomenon.gridwordsbot.adapter.discord.reporting.JdaPeriodicReportMessageGateway;
 import de.venomenon.gridwordsbot.adapter.persistence.PostgresPeriodicReportDeliveryStore;
+import de.venomenon.gridwordsbot.adapter.persistence.PostgresReportHighlightQuery;
 import de.venomenon.gridwordsbot.application.reporting.MonthlyReportReconciliationService;
 import de.venomenon.gridwordsbot.application.reporting.PeriodicReportDeliveryService;
 import de.venomenon.gridwordsbot.application.reporting.PeriodicReportRenderer;
@@ -11,9 +12,12 @@ import de.venomenon.gridwordsbot.application.reporting.ReportGameStatisticsProje
 import de.venomenon.gridwordsbot.application.reporting.ReportParticipantProjector;
 import de.venomenon.gridwordsbot.application.reporting.WeeklyReportReconciliationService;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportReconciliationPlanner;
+import de.venomenon.gridwordsbot.port.out.AchievementAwardStateStore;
 import de.venomenon.gridwordsbot.port.out.PeriodicReportDeliveryStore;
 import de.venomenon.gridwordsbot.port.out.PeriodicReportMessageGateway;
+import de.venomenon.gridwordsbot.port.out.RecordEventStore;
 import de.venomenon.gridwordsbot.port.out.ReportGameResultQuery;
+import de.venomenon.gridwordsbot.port.out.ReportHighlightQuery;
 import de.venomenon.gridwordsbot.port.out.ReportParticipantQuery;
 import de.venomenon.gridwordsbot.port.out.ReportStreakHistoryQuery;
 import java.time.Clock;
@@ -74,11 +78,18 @@ class PeriodicReportDeliveryConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(ReportHighlightQuery.class)
+    ReportHighlightQuery reportHighlightQuery(AchievementAwardStateStore awards, RecordEventStore events) {
+        return new PostgresReportHighlightQuery(awards, events);
+    }
+
+    @Bean
     PeriodicReportUseCase periodicReportUseCase(
             ReportParticipantProjector participants,
             ReportGameStatisticsProjector statistics,
-            ReportDayAndStreakProjector daysAndStreaks) {
-        return new PeriodicReportUseCase(participants, statistics, daysAndStreaks);
+            ReportDayAndStreakProjector daysAndStreaks,
+            ReportHighlightQuery highlights) {
+        return new PeriodicReportUseCase(participants, statistics, daysAndStreaks, highlights);
     }
 
     @Bean
