@@ -234,7 +234,7 @@ public final class PlayerParticipationService implements PlayerParticipationUseC
     }
 
     private static PlayerStatus unknown(String message) {
-        return new PlayerStatus(false, false, false, false, message);
+        return new PlayerStatus(true, false, false, false, message);
     }
 
     private static String participationText(ParticipationStatus participation) {
