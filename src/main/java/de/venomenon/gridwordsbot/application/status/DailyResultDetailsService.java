@@ -56,7 +56,12 @@ public final class DailyResultDetailsService implements DailyResultDetailsUseCas
         if (page.options().stream().noneMatch(player -> player.discordUserId() == request.targetDiscordUserId())) {
             return new Rejected(Reason.TARGET_NOT_ON_PAGE);
         }
-        return results.find(request.guildId(), request.targetDiscordUserId(), request.gameType(), request.gameDate())
+        return results.find(
+                        request.guildId(),
+                        request.targetDiscordUserId(),
+                        request.gameType(),
+                        request.gameDate(),
+                        recordCatalog.version())
                 .<Result>map(result -> found(target.get().displayName(), result))
                 .orElseGet(() -> new Missing(target.get().displayName(), request.gameType(), request.gameDate()));
     }
