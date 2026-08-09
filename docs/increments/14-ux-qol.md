@@ -1,6 +1,6 @@
 # Inkrement 14 – UX- und QoL-Stärkung
 
-**Status:** fachlicher Lieferumfang 14.1–14.4 implementiert und in `feature/14-ux-qol` integriert; technisches Abschlusspaket 14.5 in Arbeit, realer Discord-Smoke ausstehend  
+**Status:** fachlicher Lieferumfang 14.1–14.4 integriert; technisches Abschlusspaket 14.5 automatisiert abgenommen, realer Discord-/Report-Smoke ausstehend  
 **Stand:** 9. August 2026  
 **Umbrella-Issue:** #105  
 **Sammelbranch:** `feature/14-ux-qol`  
@@ -64,7 +64,7 @@ Für alle Pakete gilt:
 | 14.2 | #107 | `feature/14-2-personal-command-ux` | Teilnahmebestätigungen, Reminderstatus/-zeiten, `/status`-Dashboard | ✅ PR #113 / Merge `ee4a5e8b…` |
 | 14.3 | #108 | `feature/14-3-read-command-ux` | `earnedOn`, `/achievement-list`-Filter, `/records`-Scopefilter | ✅ PR #114 / Merge `949115aa…` |
 | 14.4 | #109 | `feature/14-4-report-highlights` | Achievement-/Record-Highlights in periodischen Berichten | ✅ PR #115 / Merge `d4bf877a…` |
-| 14.5 | #110 | `feature/14-5-ux-qol-hardening` | Gesamthärtung, reale Abnahme und Releasevorbereitung | 🔄 technische Härtung; realer Smoke ausstehend |
+| 14.5 | #110 | `feature/14-5-ux-qol-hardening` | Gesamthärtung, reale Abnahme und Releasevorbereitung | ✅ technische Gates in PR #117; ⬜ realer Smoke |
 
 ---
 
@@ -258,8 +258,9 @@ Alle drei Maven-Gates waren auf dem finalen Reviewstand grün. Reale Report-/Dis
 
 # Paket 14.5 – Gesamthärtung, Abnahme und Releasevorbereitung
 
-**Status:** technische Härtung und Dokumentationsabschluss in Arbeit; realer Discord-Smoke ausstehend  
+**Status:** technische Härtung und automatisierte Operations-Abnahme bestanden; realer Discord-/Report-Smoke ausstehend  
 **Issue:** #110  
+**PR:** #117  
 **Arbeitsbranch:** `feature/14-5-ux-qol-hardening`  
 **Ausgangsstand:** `d4bf877a4c5bdcb00467bb1fbe3c19a3c97ef819`
 
@@ -267,14 +268,14 @@ Alle drei Maven-Gates waren auf dem finalen Reviewstand grün. Reale Report-/Dis
 
 Kumulierten Stand ohne neuen Fachumfang technisch abnehmen, automatisierte Nachweislücken schließen, Dokumentation synchronisieren und den realen Discord-/Report-Smoke so vorbereiten, dass anschließend nur noch die externe Sichtprüfung dokumentiert werden muss.
 
-## Lieferumfang
+## Ergebnis der technischen Härtung
 
-- vollständige fachliche Konsistenzprüfung aller zehn Erweiterungen,
-- gezielte Regressionshärtung,
-- Abschlussdokumentation und Akzeptanzmatrix,
-- vollständige Maven-/PostgreSQL-/Migration-/Container-/Backup-/Restore-/Resume-/Rollback-Gates,
-- technischer Merge des vollständig grünen Hardening-Stands in den Sammelbranch,
-- anschließend realer Discord-Smoke aller sichtbar geänderten Pfade und kontrollierte Report-Abnahme.
+- keine fachliche oder technische Code-Regression gefunden, die eine weitere Produktivcodeänderung erfordert,
+- Abschlussdiff besteht ausschließlich aus Dokumentations-/Nachweisänderungen,
+- Akzeptanzmatrix mit konkreten Paket-, Test- und Reviewnachweisen synchronisiert,
+- erster vollständiger Abschlusslauf: CI #1664 / Run-ID `31323660350` grün,
+- vollständiger `Container image`-Workflow #506 / Run-ID `31323660354` grün einschließlich Produktionsimage, Nicht-Root-/Runtime-Check, Compose, Backup, Restore, Resume und Application-Rollback,
+- finaler Evidenz-Head wird vor technischem Merge nochmals vollständig revalidiert; finale Run-IDs stehen in PR #117.
 
 ## Pflichtgates
 
