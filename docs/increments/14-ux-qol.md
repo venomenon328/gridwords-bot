@@ -1,6 +1,6 @@
 # Inkrement 14 – UX- und QoL-Stärkung
 
-**Status:** fachlich spezifiziert und für Umsetzung vorbereitet  
+**Status:** fachlicher Lieferumfang 14.1–14.4 integriert; technisches Abschlusspaket 14.5 automatisiert abgenommen, realer Discord-/Report-Smoke ausstehend  
 **Stand:** 9. August 2026  
 **Umbrella-Issue:** #105  
 **Sammelbranch:** `feature/14-ux-qol`  
@@ -49,30 +49,31 @@ Für alle Pakete gilt:
 ## 4. Branch- und PR-Modell
 
 - Sammelbranch: `feature/14-ux-qol`.
-- Pakete 14.1–14.4 erhalten je einen Arbeitsbranch auf Basis des jeweils aktuellen Sammelbranches.
-- Paket-PRs zielen als Draft auf `feature/14-ux-qol`.
-- Paket 14.5 startet erst nach Integration von 14.1–14.4.
-- Nach Abschluss von 14.5 wird der kumulierte Sammelbranch als Gesamt-PR gegen `main` reviewt.
-- Release Candidate, Tag, GHCR-Publish und produktiver Rollout erfolgen erst nach Merge und separater Release-/Deploymentfreigabe.
+- Pakete 14.1–14.4 wurden auf eigenen Arbeitsbranches umgesetzt und jeweils nach Review in den Sammelbranch gesquasht.
+- Paket 14.5 arbeitet auf dem kumulierten Stand nach 14.4.
+- Der **technische** 14.5-Hardening-/Dokumentationsstand darf nach vollständig grünen automatisierten Gates in `feature/14-ux-qol` integriert werden.
+- Dieser technische Merge schließt Issue #110 ausdrücklich noch nicht: reale Discord-/Report-Abnahme bleibt dessen letzter manueller Nachweis.
+- Gesamt-PR #111 gegen `main` bleibt bis zum dokumentierten realen Smoke im Draft.
+- Release Candidate, Tag, GHCR-Publish und produktiver Rollout erfolgen erst nach vollständiger Abnahme, Merge nach `main` und separater Release-/Deploymentfreigabe.
 
 ## 5. Paketübersicht
 
-| Paket | Issue | Branch | Inhalt | Abhängigkeit |
+| Paket | Issue | Branch | Inhalt | Stand |
 |---|---:|---|---|---|
-| 14.1 | #106 | `feature/14-1-daily-status-details-ux` | Tagesstatus-Dropdowns, Spiel-Link-Buttons, angereicherte Ergebnisdetails | – |
-| 14.2 | #107 | `feature/14-2-personal-command-ux` | Teilnahmebestätigungen, Reminderstatus/-zeiten, `/status`-Dashboard | – |
-| 14.3 | #108 | `feature/14-3-read-command-ux` | `earnedOn`, `/achievement-list`-Filter, `/records`-Scopefilter | – |
-| 14.4 | #109 | `feature/14-4-report-highlights` | Achievement-/Record-Highlights in periodischen Berichten | bestehende produktive Record-/Achievement-Projektionen |
-| 14.5 | #110 | `feature/14-5-ux-qol-hardening` | Gesamthärtung, reale Abnahme und Releasevorbereitung | 14.1–14.4 |
-
-Pakete 14.1–14.4 sind fachlich weitgehend unabhängig. Gemeinsame kleine Read-Verträge dürfen nur dann in einem früheren Paket ergänzt werden, wenn sie dessen eigenen Umfang unmittelbar benötigen; keine vorauseilende Plattformbildung.
+| 14.1 | #106 | `feature/14-1-daily-status-details-ux` | Tagesstatus-Dropdowns, Spiel-Link-Buttons, angereicherte Ergebnisdetails | ✅ PR #112 / Merge `cb667a72…` |
+| 14.2 | #107 | `feature/14-2-personal-command-ux` | Teilnahmebestätigungen, Reminderstatus/-zeiten, `/status`-Dashboard | ✅ PR #113 / Merge `ee4a5e8b…` |
+| 14.3 | #108 | `feature/14-3-read-command-ux` | `earnedOn`, `/achievement-list`-Filter, `/records`-Scopefilter | ✅ PR #114 / Merge `949115aa…` |
+| 14.4 | #109 | `feature/14-4-report-highlights` | Achievement-/Record-Highlights in periodischen Berichten | ✅ PR #115 / Merge `d4bf877a…` |
+| 14.5 | #110 | `feature/14-5-ux-qol-hardening` | Gesamthärtung, reale Abnahme und Releasevorbereitung | ✅ technische Gates in PR #117; ⬜ realer Smoke |
 
 ---
 
 # Paket 14.1 – Tagesstatus und Ergebnisdetails UX
 
-**Status:** vorbereitet; Umsetzung noch nicht begonnen  
+**Status:** abgeschlossen und in den Sammelbranch integriert  
 **Issue:** #106  
+**PR:** #112  
+**Squash-Merge:** `cb667a72cdf6fa7aabf0056938a00bf37a2b0071`  
 **Arbeitsbranch:** `feature/14-1-daily-status-details-ux`  
 **PR-Ziel:** `feature/14-ux-qol`
 
@@ -87,7 +88,7 @@ Die Tagesstatusnachricht wird als zentraler Einstiegspunkt gestärkt. Nutzer erk
 - Statussymbol `✅`, `❌` oder `⬜` im Label,
 - Description mit `n/max · Dauer`, `X/max · Dauer` oder `Noch nicht eingereicht`,
 - bestehende spielbezogene Teilnehmermenge, Sortierung und Pagination unverändert,
-- transportneutrales View-Modell trägt die erforderlichen Statusdaten.
+- Präsentationsinformationen werden aus dem transportneutral vorhandenen Tagesstatus abgeleitet, ohne den persistierten Fingerprint historischer Nachrichten allein durch den Deploymentwechsel zu verändern.
 
 ### Spiel-Link-Buttons
 
@@ -104,131 +105,116 @@ Die Tagesstatusnachricht wird als zentraler Einstiegspunkt gestärkt. Nutzer erk
 Zusätzlich zur vorhandenen Ergebnis-/Boarddarstellung:
 
 - SELECTED-Ausrede: exakt persistierter Text,
-- aktuelle Rekorde: nur aktueller `record_state`, dessen GameResult-Quelle exakt die ausgewählte Ergebnis-ID ist,
+- aktuelle Rekorde: nur aktueller `record_state`, dessen GameResult-Quelle exakt die ausgewählte Ergebnis-ID **und aktuelle Ergebnisversion** verwendet,
+- aktive Record-Definitionsversion wird berücksichtigt,
 - Achievements: alle aktuell ACTIVE Awards des Spielers mit `earnedOn == gameDate`, nur Emoji + Anzeigename,
 - optionale leere Blöcke vollständig auslassen.
 
-## Tests
+## Automatisierte Nachweise
 
-Mindestens die in Issue #106 und `ux-qol.md` definierten Fälle, insbesondere:
+Insbesondere:
 
-- alle drei Dropdownzustände,
-- 1–25 und 26–50 Teilnehmer,
-- vollständige Komponenten bei Create/Edit/Recreate,
-- SELECTED-/Nicht-SELECTED-Ausrede,
-- aktueller persönlicher/serverweiter Ergebnisrekord versus gebrochener historischer Rekord,
-- aktive/invalidierte Awards und Cross-Game/Global am Spieltag,
-- strikt read-only auf echtem PostgreSQL,
-- bestehende Interaction-Manipulations- und Restartfälle.
+- `DailyStatusComponentRendererTest`,
+- `JdaDailyStatusComponentsTest`,
+- `DailyStatusFingerprintTest`,
+- `DailyResultDetailsServiceTest`,
+- `DailyResultDetailsInteractionListenerTest`,
+- `DailyResultDetailsEmbedRendererTest`,
+- `PostgresDailyResultDetailsQueryIT`.
 
-## Verifikation
-
-```text
-mvn --batch-mode --no-transfer-progress clean verify
-mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
-```
-
-## Nicht Bestandteil
-
-- Rekord-/Achievement-Neuberechnung,
-- historische Rekordchronik,
-- Achievement-Kausalitätsanalyse,
-- Achievement-Beschreibungen,
-- Progressanzeigen,
-- Reminder-/Status-/Reportänderungen späterer Pakete,
-- Components-V2-Umbau.
-
-## Definition of Done
-
-- Issue #106 vollständig erfüllt,
-- Standardbuild und PostgreSQL-Profil grün,
-- keine Migration ohne nachgewiesene Lücke,
-- Änderungen vollständig committen und pushen,
-- Draft-PR gegen `feature/14-ux-qol` mit `Closes #106`,
-- bis zur vollständigen Abnahme im Draft lassen.
+Standardbuild, PostgreSQL-Integration und Migration/Upgrade waren auf dem finalen Reviewstand grün. Reale sichtbare Discord-Abnahme erfolgt gesammelt in 14.5.
 
 ---
 
 # Paket 14.2 – Persönlicher Status, Teilnahme und Reminder UX
 
-**Status:** vorbereitet; Umsetzung noch nicht begonnen  
+**Status:** abgeschlossen und in den Sammelbranch integriert  
 **Issue:** #107  
+**PR:** #113  
+**Finaler Paket-Head:** `240752a73bf533ff54bd375af5bb0d9e8451338d`  
+**Squash-Merge:** `ee4a5e8bc639c7bfaf215c8ddc278d4d16d9e854`  
 **Arbeitsbranch:** `feature/14-2-personal-command-ux`
 
-## Ziel
-
-Teilnahme-/Reminder-Self-Service wird verständlicher und `/status` beantwortet zuerst den aktuellen Spielzustand.
-
-## Lieferumfang
+## Ziel und Lieferumfang
 
 - Join/Activate: `ab heute aktiv` beziehungsweise idempotent `bereits aktiv`,
 - Leave/Deactivate: heutigen Zustand und konkrete Wirksamkeit ab morgen eindeutig darstellen,
+- wiederholte/pending Änderungen werden ehrlich beschrieben,
+- Self-Service- und Adminpfade verwenden dieselbe Effektsemantik,
 - Reminder on/off/status erklärt Mention versus Klartextname,
 - `/reminders status` zeigt tatsächlich konfigurierte Zeiten,
 - `/status` in Reihenfolge:
   1. Heute je Spiel,
   2. alle fünf persönlichen Serien,
   3. Teilnahmezeiträume + kompakter Reminderstatus,
-  4. letzte Einreichungen.
-- `/status` bleibt strikt read-only und verwendet die vorhandene Serien-/Tagessemantik.
+  4. letzte Einreichungen,
+- `/status` ist strikt read-only und verwendet die vorhandene `DailyStatusProjector`-/Seriensemantik,
+- unbekannte `/status`-Aufrufer werden nicht implizit registriert.
 
-## Verifikation
+## Automatisierte Nachweise
 
-```text
-mvn --batch-mode --no-transfer-progress clean verify
-mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
-```
+Insbesondere:
 
-## Definition of Done
+- `PlayerParticipationServiceTest`,
+- `DiscordParticipationCommandListenerTest`,
+- `PersonalStatusServiceTest`,
+- `PersonalStatusEmbedRendererTest`,
+- `PostgresPersonalStatusReadOnlyIT`.
 
-Issue #107 vollständig erfüllt; Draft-PR gegen Sammelbranch; keine neue Fach- oder Persistenzsemantik.
+Alle drei Maven-Gates waren auf dem finalen Paketstand grün. Reale sichtbare Discord-Abnahme erfolgt gesammelt in 14.5.
 
 ---
 
 # Paket 14.3 – Achievement- und Record-Command UX
 
-**Status:** vorbereitet; Umsetzung noch nicht begonnen  
+**Status:** abgeschlossen und in den Sammelbranch integriert  
 **Issue:** #108  
+**PR:** #114  
+**Finaler Paket-Head:** `d0e3fc5bcfb118eaff8e52ad90dba3c48fb16410`  
+**Squash-Merge:** `949115aa16fa4e4615bb17dbc7fb2cf95557c8ad`  
 **Arbeitsbranch:** `feature/14-3-read-command-ux`
 
-## Ziel
-
-Die bestehenden read-only Nachschlagecommands werden informativer und gezielter filterbar.
-
-## Lieferumfang
+## Ziel und Lieferumfang
 
 - `/achievements`: `earnedOn` als fachliches Freischaltdatum,
 - `/achievement-list`: kombinierbare Filter `game`, `category`, `status`,
 - Global-Achievements nur bei `game=Alle`, kein eigener `Allgemein`-Choice,
 - binäre ✅/❌-Semantik unverändert, kein Progress,
+- neutraler Leerzustand bei Filterkombination ohne Treffer,
 - `/records`: optionaler Scope `Alle|Persönlich|Serverweit|Gemeinsam`, kombinierbar mit bestehenden Filtern,
-- bestehende Fremdansichts-Autorisierung unverändert,
-- alle Commands read-only, ephemeral und mention-sicher.
+- bestehende Fremdansichts-Autorisierung greift vor Record-State-/Bootstrap-Zugriff und bleibt unverändert,
+- alle Commands read-only, ephemeral und mention-sicher,
+- keine neuen Persistenzqueries oder Migrationen.
 
-## Verifikation
+## Automatisierte Nachweise
 
-```text
-mvn --batch-mode --no-transfer-progress clean verify
-mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
-```
+Insbesondere:
 
-## Definition of Done
+- `AchievementsQueryServiceTest`,
+- `AchievementsOverviewEmbedRendererTest`,
+- `AchievementCatalogQueryServiceTest`,
+- `AchievementCatalogEmbedRendererTest`,
+- `DiscordAchievementCatalogCommandListenerTest`,
+- `DiscordAchievementsCommandListenerTest`,
+- `RecordsScopeFilterTest`,
+- `RecordsQueryReadOnlyInvariantTest`,
+- `DiscordRecordsCommandListenerTest`,
+- `PostgresAchievementsQueryIT`.
 
-Issue #108 vollständig erfüllt; Draft-PR gegen Sammelbranch; keine History-/Evaluator-/Reconciliation-Arbeit pro Command.
+Alle drei Maven-Gates waren auf dem finalen Paketstand grün. Reale sichtbare Discord-Abnahme erfolgt gesammelt in 14.5.
 
 ---
 
 # Paket 14.4 – Highlights in Wochen- und Monatsberichten
 
-**Status:** vorbereitet; Umsetzung noch nicht begonnen  
+**Status:** abgeschlossen und in den Sammelbranch integriert  
 **Issue:** #109  
+**PR:** #115  
+**Finaler Review-Head:** `88f2eb7a4babd290b4ec51c5359afa73b21947e5`  
+**Squash-Merge:** `d4bf877a4c5bdcb00467bb1fbe3c19a3c97ef819`  
 **Arbeitsbranch:** `feature/14-4-report-highlights`
 
-## Ziel
-
-Die seit Inkrement 10 hinzugekommenen Achievement- und Record-Fakten werden kompakt in periodischen Berichten sichtbar, ohne Rankings oder neue Vergleichslogik.
-
-## Lieferumfang
+## Ziel und Lieferumfang
 
 ### Achievements
 
@@ -238,52 +224,58 @@ Die seit Inkrement 10 hinzugekommenen Achievement- und Record-Fakten werden komp
 
 ### Rekorde
 
-- ausschließlich VALID Events der Typen `RESULT_RECORD_BROKEN`, `SERIES_RECORD_CROSSED`, `RECORD_SERIES_FINISHED`,
-- nur `processingOrigin.publicAnnouncementEligible()`,
-- Periodendatum aus GameResult-Spieltag beziehungsweise StreakRecordValue-Enddatum,
-- Gleichstand, Near Miss, Initialisierung und stille Origins auslassen,
-- Crossing+Finish derselben StateKey/StreakRun-Kombination innerhalb derselben Periode auf Finish reduzieren,
-- mehrere echte Ergebnisrekordverbesserungen nicht pauschal deduplizieren,
-- jeden verbleibenden Rekord vollständig nennen,
-- keine künstliche Maximalzahl; vorhandene deterministische Pagination erweitern/nutzen.
+- Quelle sind VALID Record-Events mit fachlichem GameResult-Spieltag beziehungsweise Streak-Enddatum in der Periode,
+- geeignete Eventtypen: `RESULT_RECORD_BROKEN`, `SERIES_RECORD_CROSSED`, `RECORD_SERIES_FINISHED`,
+- öffentliche Eignung wird zentral über `processingOrigin.publicAnnouncementEligible()` bestimmt,
+- Gleichstand, Near Miss, Initialisierung, invalidierte/supersedete Events und stille Origins werden ausgelassen,
+- Crossing+Finish derselben StateKey/StreakRun-Kombination innerhalb derselben Periode werden auf Finish reduziert,
+- mehrere echte Ergebnisrekordverbesserungen werden nicht pauschal dedupliziert,
+- jeder verbleibende Rekord wird vollständig genannt,
+- keine künstliche Maximalzahl; vorhandene deterministische Pagination wird genutzt.
 
-### Snapshot
+### Snapshot und Wiring
 
 - bestehende Report-Snapshot-/Catch-up-Semantik unverändert,
+- Guild-ID wird explizit aus der Reconciliation an die Read-Projektion weitergereicht,
+- im `database`-Profil gibt es keinen stillen Empty-Fallback für ein fehlendes Highlight-Readmodell,
 - keine neue persistierte Report-Fachwahrheit,
-- keine Announcement-Texte als Datenquelle.
+- keine Announcement-Texte als Datenquelle,
+- keine Migration.
 
-## Verifikation
+## Automatisierte Nachweise
 
-```text
-mvn --batch-mode --no-transfer-progress clean verify
-mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
-```
+Insbesondere:
 
-## Definition of Done
+- `PeriodicReportUseCaseTest`,
+- `PeriodicReportRendererTest`,
+- `PeriodicReportDeliveryConfigurationTest`,
+- bestehende `PeriodicReportDeliveryService*`-Regressionstests,
+- `PostgresAchievementsQueryIT` mit ACTIVE-/Perioden-, BACKFILL-, Gleichstand- und Invalidierungsfällen.
 
-Issue #109 vollständig erfüllt; Perioden- und Deduplizierungsfälle mit echtem PostgreSQL abgesichert; Draft-PR gegen Sammelbranch.
+Alle drei Maven-Gates waren auf dem finalen Reviewstand grün. Reale Report-/Discord-Abnahme erfolgt gesammelt in 14.5.
 
 ---
 
 # Paket 14.5 – Gesamthärtung, Abnahme und Releasevorbereitung
 
-**Status:** wartet auf 14.1–14.4  
+**Status:** technische Härtung und automatisierte Operations-Abnahme bestanden; realer Discord-/Report-Smoke ausstehend  
 **Issue:** #110  
-**Arbeitsbranch:** `feature/14-5-ux-qol-hardening`
+**PR:** #117  
+**Arbeitsbranch:** `feature/14-5-ux-qol-hardening`  
+**Ausgangsstand:** `d4bf877a4c5bdcb00467bb1fbe3c19a3c97ef819`
 
 ## Ziel
 
-Kumulierten Stand ohne neuen Fachumfang technisch und real abnehmen und für den Gesamt-PR gegen `main` vorbereiten.
+Kumulierten Stand ohne neuen Fachumfang technisch abnehmen, automatisierte Nachweislücken schließen, Dokumentation synchronisieren und den realen Discord-/Report-Smoke so vorbereiten, dass anschließend nur noch die externe Sichtprüfung dokumentiert werden muss.
 
-## Lieferumfang
+## Ergebnis der technischen Härtung
 
-- vollständige fachliche Konsistenzprüfung aller zehn Erweiterungen,
-- gezielte Regressionshärtung,
-- Abschlussdokumentation und Akzeptanzmatrix,
-- realer Discord-Smoke aller sichtbar geänderten Pfade,
-- kontrollierte Report-Abnahme,
-- vollständige Maven-/PostgreSQL-/Migration-/Container-/Backup-/Restore-/Resume-/Rollback-Gates.
+- keine fachliche oder technische Code-Regression gefunden, die eine weitere Produktivcodeänderung erfordert,
+- Abschlussdiff besteht ausschließlich aus Dokumentations-/Nachweisänderungen,
+- Akzeptanzmatrix mit konkreten Paket-, Test- und Reviewnachweisen synchronisiert,
+- erster vollständiger Abschlusslauf: CI #1664 / Run-ID `31323660350` grün,
+- vollständiger `Container image`-Workflow #506 / Run-ID `31323660354` grün einschließlich Produktionsimage, Nicht-Root-/Runtime-Check, Compose, Backup, Restore, Resume und Application-Rollback,
+- finaler Evidenz-Head wird vor technischem Merge nochmals vollständig revalidiert; finale Run-IDs stehen in PR #117.
 
 ## Pflichtgates
 
@@ -293,17 +285,18 @@ mvn --batch-mode --no-transfer-progress -Pdatabase-integration clean verify
 mvn --batch-mode --no-transfer-progress -Pmigration-clean-install verify
 ```
 
-Zusätzlich der vollständige vorhandene `Container image`-Workflow beziehungsweise äquivalente lokale/CI-Operationsgates.
+Zusätzlich der vollständige vorhandene `Container image`-Workflow einschließlich Produktionsimage, Nicht-Root-/Runtime-Check, Compose, Backup, Restore, Resume und Application-Rollback.
 
-## Definition of Done
+## Abschlussgrenze
 
-- Issues #106–#109 integriert und ohne offene Blocker,
-- Issue #110 vollständig erfüllt,
-- `docs/operations/14-ux-qol-acceptance.md` vollständig befüllt,
-- alle technischen und realen Abnahmen grün,
-- Dokumentation synchron,
-- Gesamt-PR von `feature/14-ux-qol` gegen `main` reviewbereit,
-- Release/Produktivrollout weiterhin separater Schritt.
+Der technische 14.5-PR darf nach vollständig grünen automatisierten Gates in `feature/14-ux-qol` gemergt werden. Danach gilt:
+
+- Issue #110 bleibt offen,
+- Gesamt-PR #111 bleibt Draft,
+- `docs/operations/14-ux-qol-acceptance.md` weist den Discord-Smoke weiter als offen aus,
+- erst der dokumentierte erfolgreiche reale Smoke vervollständigt die Definition of Done von #110.
+
+Release/Produktivrollout bleiben ein separater Schritt.
 
 ---
 
