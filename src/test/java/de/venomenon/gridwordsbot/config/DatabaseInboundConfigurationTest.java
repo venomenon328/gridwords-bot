@@ -9,6 +9,7 @@ import de.venomenon.gridwordsbot.adapter.discord.inbound.ExcuseOpenInteractionLi
 import de.venomenon.gridwordsbot.adapter.discord.inbound.ExcuseInteractionListener;
 import de.venomenon.gridwordsbot.application.excuse.ExcuseInteractionService;
 import de.venomenon.gridwordsbot.application.excuse.ExcuseOpenService;
+import de.venomenon.gridwordsbot.application.status.DailyStatusProjector;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseCatalog;
 import de.venomenon.gridwordsbot.domain.achievement.AchievementDefinitionCatalog;
 import de.venomenon.gridwordsbot.domain.record.RecordDefinitionCatalog;
@@ -135,5 +136,6 @@ class DatabaseInboundConfigurationTest {
         context.registerBean(RecordDefinitionCatalog.class, RecordDefinitionCatalog::recordsV1);
         context.registerBean(AchievementDefinitionCatalog.class, AchievementDefinitionCatalog::achievementsV1);
         context.registerBean(AchievementEmojiResolver.class, AchievementEmojiResolver::unicodeOnly);
+        context.registerBean(DailyStatusProjector.class, () -> mock(DailyStatusProjector.class));
     }
 }
