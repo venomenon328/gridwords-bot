@@ -82,8 +82,18 @@ final class DailyStatusComponentRenderer {
         return normalized.isBlank() ? "Unbekannter Spieler" : normalized;
     }
 
+    /**
+     * JDA applies Discord's component limit to the Java string length. Avoid splitting a surrogate pair while keeping
+     * the resulting UTF-16 length within that bound.
+     */
     private static String limit(String text, int maximum) {
-        if (text.codePointCount(0, text.length()) <= maximum) return text;
-        return text.substring(0, text.offsetByCodePoints(0, maximum));
+        if (text.length() <= maximum) return text;
+        int end = maximum;
+        if (Character.isHighSurrogate(text.charAt(end - 1))
+                && end < text.length()
+                && Character.isLowSurrogate(text.charAt(end))) {
+            end--;
+        }
+        return text.substring(0, end);
     }
 }
