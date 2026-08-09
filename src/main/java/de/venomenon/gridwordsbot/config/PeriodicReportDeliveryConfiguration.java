@@ -12,14 +12,14 @@ import de.venomenon.gridwordsbot.application.reporting.ReportGameStatisticsProje
 import de.venomenon.gridwordsbot.application.reporting.ReportParticipantProjector;
 import de.venomenon.gridwordsbot.application.reporting.WeeklyReportReconciliationService;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportReconciliationPlanner;
+import de.venomenon.gridwordsbot.port.out.AchievementAwardStateStore;
 import de.venomenon.gridwordsbot.port.out.PeriodicReportDeliveryStore;
 import de.venomenon.gridwordsbot.port.out.PeriodicReportMessageGateway;
+import de.venomenon.gridwordsbot.port.out.RecordEventStore;
 import de.venomenon.gridwordsbot.port.out.ReportGameResultQuery;
+import de.venomenon.gridwordsbot.port.out.ReportHighlightQuery;
 import de.venomenon.gridwordsbot.port.out.ReportParticipantQuery;
 import de.venomenon.gridwordsbot.port.out.ReportStreakHistoryQuery;
-import de.venomenon.gridwordsbot.port.out.ReportHighlightQuery;
-import de.venomenon.gridwordsbot.port.out.AchievementAwardStateStore;
-import de.venomenon.gridwordsbot.port.out.RecordEventStore;
 import java.time.Clock;
 import net.dv8tion.jda.api.JDA;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -27,8 +27,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -80,7 +78,7 @@ class PeriodicReportDeliveryConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean({AchievementAwardStateStore.class, RecordEventStore.class})
+    @ConditionalOnMissingBean(ReportHighlightQuery.class)
     ReportHighlightQuery reportHighlightQuery(AchievementAwardStateStore awards, RecordEventStore events) {
         return new PostgresReportHighlightQuery(awards, events);
     }
@@ -90,10 +88,8 @@ class PeriodicReportDeliveryConfiguration {
             ReportParticipantProjector participants,
             ReportGameStatisticsProjector statistics,
             ReportDayAndStreakProjector daysAndStreaks,
-            ObjectProvider<ReportHighlightQuery> highlights) {
-        return new PeriodicReportUseCase(participants, statistics, daysAndStreaks,
-                highlights.getIfAvailable(() -> (guildId, period, participantIds) ->
-                        de.venomenon.gridwordsbot.domain.reporting.ReportHighlightFacts.empty()));
+            ReportHighlightQuery highlights) {
+        return new PeriodicReportUseCase(participants, statistics, daysAndStreaks, highlights);
     }
 
     @Bean
