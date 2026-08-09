@@ -2,11 +2,11 @@ package de.venomenon.gridwordsbot.application.status;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import de.venomenon.gridwordsbot.domain.achievement.AchievementDefinitionCatalog;
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.model.NormalizedBoard;
 import de.venomenon.gridwordsbot.domain.model.ParsedGameResult;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
-import de.venomenon.gridwordsbot.domain.achievement.AchievementDefinitionCatalog;
 import de.venomenon.gridwordsbot.domain.record.RecordDefinitionCatalog;
 import de.venomenon.gridwordsbot.domain.record.RecordScopeType;
 import de.venomenon.gridwordsbot.port.in.DailyResultDetailsUseCase;
@@ -26,7 +26,7 @@ class DailyResultDetailsServiceTest {
 
     @Test
     void returnsCurrentResultOnlyAfterGameSpecificPageValidation() {
-        var resultQuery = (DailyResultDetailsQuery) (guild, player, type, date) -> Optional.of(details());
+        var resultQuery = (DailyResultDetailsQuery) (guild, player, type, date, version) -> Optional.of(details());
         var service = service(
                 List.of(participant(2L, "B"), participant(1L, "a")),
                 List.of(participant(1L, "a")),
@@ -80,7 +80,7 @@ class DailyResultDetailsServiceTest {
     @Test
     void rejectsAllPagesWhenOneGameExceedsTheDeliveredLimit() {
         AtomicInteger resultReads = new AtomicInteger();
-        DailyResultDetailsQuery query = (guild, player, type, date) -> {
+        DailyResultDetailsQuery query = (guild, player, type, date, version) -> {
             resultReads.incrementAndGet();
             return Optional.of(details());
         };
@@ -98,7 +98,7 @@ class DailyResultDetailsServiceTest {
         var result = service(
                 List.of(participant(1L, "A")),
                 List.of(),
-                (g, p, t, d) -> Optional.empty())
+                (g, p, t, d, version) -> Optional.empty())
                 .get(request(GameType.GRIDWORDS, 0, 1));
 
         assertThat(result).isEqualTo(new DailyResultDetailsUseCase.Missing("A", GameType.GRIDWORDS, DATE));
@@ -116,7 +116,7 @@ class DailyResultDetailsServiceTest {
 
     @Test
     void derivesOptionalDetailBlocksOnlyFromTheProvidedReadProjection() {
-        DailyResultDetailsQuery projection = (guild, player, type, date) -> Optional.of(
+        DailyResultDetailsQuery projection = (guild, player, type, date, version) -> Optional.of(
                 new DailyResultDetailsQuery.Details(42L, grid(), Optional.of("Genau so gespeichert."), List.of(
                         new DailyResultDetailsQuery.CurrentRecord(
                                 "result.gridwords.fewest-attempts.personal", RecordScopeType.PERSONAL),
@@ -149,7 +149,7 @@ class DailyResultDetailsServiceTest {
     }
 
     private static DailyResultDetailsQuery neverRead() {
-        return (guild, player, type, date) -> {
+        return (guild, player, type, date, version) -> {
             throw new AssertionError("result query must not be invoked");
         };
     }
