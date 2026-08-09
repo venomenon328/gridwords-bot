@@ -3,6 +3,7 @@ package de.venomenon.gridwordsbot.adapter.discord.achievement;
 import de.venomenon.gridwordsbot.application.achievement.AchievementEmojiResolver;
 import de.venomenon.gridwordsbot.domain.achievement.AchievementCategory;
 import de.venomenon.gridwordsbot.port.in.AchievementsQueryUseCase;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -12,6 +13,7 @@ import net.dv8tion.jda.api.entities.MessageEmbed;
 /** JDA-only presentation of the transport-neutral materialized Achievement profile. */
 public final class AchievementsOverviewEmbedRenderer {
     private static final int PAGE_DESCRIPTION_LIMIT = 3_800;
+    private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("dd.MM.uuuu");
     private final AchievementEmojiResolver emojis;
 
     public AchievementsOverviewEmbedRenderer(AchievementEmojiResolver emojis) {
@@ -74,7 +76,8 @@ public final class AchievementsOverviewEmbedRenderer {
 
     private String renderEntry(AchievementsQueryUseCase.Entry entry) {
         String emoji = emojis.resolve(entry.key()).filter(value -> !value.isBlank()).orElse(entry.fallbackEmoji());
-        return emoji + " **" + entry.displayName() + "**\n" + entry.description();
+        return emoji + " **" + entry.displayName() + "**\n" + entry.description()
+                + "\nFreigeschaltet am " + DATE.format(entry.earnedOn());
     }
 
     private static String heading(AchievementCategory category) {
