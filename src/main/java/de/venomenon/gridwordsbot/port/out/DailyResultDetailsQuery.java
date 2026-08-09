@@ -2,6 +2,7 @@ package de.venomenon.gridwordsbot.port.out;
 
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.model.ParsedGameResult;
+import de.venomenon.gridwordsbot.domain.record.RecordDefinitionVersion;
 import de.venomenon.gridwordsbot.domain.record.RecordScopeType;
 import java.time.LocalDate;
 import java.util.List;
@@ -9,7 +10,12 @@ import java.util.Optional;
 
 /** Read-only lookup of the current result, deliberately independent from submission history. */
 public interface DailyResultDetailsQuery {
-    Optional<Details> find(long guildId, long discordUserId, GameType gameType, LocalDate gameDate);
+    Optional<Details> find(
+            long guildId,
+            long discordUserId,
+            GameType gameType,
+            LocalDate gameDate,
+            RecordDefinitionVersion recordDefinitionVersion);
 
     record Details(long gameResultId, ParsedGameResult result, Optional<String> selectedExcuse,
                    List<CurrentRecord> currentRecords, List<String> activeAchievementKeys) {
