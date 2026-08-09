@@ -2,6 +2,8 @@ package de.venomenon.gridwordsbot.adapter.persistence;
 
 import de.venomenon.gridwordsbot.domain.achievement.persistence.AchievementAwardState;
 import de.venomenon.gridwordsbot.domain.record.RecordEventSnapshot;
+import de.venomenon.gridwordsbot.domain.record.RecordEventType;
+import de.venomenon.gridwordsbot.domain.record.RecordEventValidity;
 import de.venomenon.gridwordsbot.domain.reporting.ReportHighlightFacts;
 import de.venomenon.gridwordsbot.domain.reporting.ReportPeriod;
 import de.venomenon.gridwordsbot.port.out.AchievementAwardStateStore;
@@ -34,7 +36,17 @@ public final class PostgresReportHighlightQuery implements ReportHighlightQuery 
         Map<Long, Integer> awardCounts = new LinkedHashMap<>();
         awards.findActiveForPeriod(guildId, participantIds, period.startDate(), period.endDate())
                 .forEach(award -> awardCounts.merge(award.key().participantId(), 1, Integer::sum));
-        List<RecordEventSnapshot> recordEvents = events.findForReportPeriod(guildId, period);
+        List<RecordEventSnapshot> recordEvents = events.findForReportPeriod(guildId, period).stream()
+                .filter(event -> event.validity() == RecordEventValidity.VALID)
+                .filter(event -> recordImprovement(event.draft().type()))
+                .filter(event -> event.draft().processingOrigin().publicAnnouncementEligible())
+                .toList();
         return new ReportHighlightFacts(awardCounts, recordEvents);
+    }
+
+    private static boolean recordImprovement(RecordEventType type) {
+        return type == RecordEventType.RESULT_RECORD_BROKEN
+                || type == RecordEventType.SERIES_RECORD_CROSSED
+                || type == RecordEventType.RECORD_SERIES_FINISHED;
     }
 }
