@@ -164,9 +164,9 @@ class PlayerParticipationServiceTest {
 
         assertThat(read.message()).isEqualTo("Reminder: aus");
         verify(store, never()).synchronizeProfile(any());
-        verify(store, never()).setReminderOptIn(any(), any(Boolean.class));
+        verify(store, never()).setReminderOptIn(any(), org.mockito.ArgumentMatchers.anyBoolean());
 
-        when(store.setReminderOptIn(any(), any(Boolean.class))).thenReturn(player(false, true));
+        when(store.setReminderOptIn(any(), org.mockito.ArgumentMatchers.anyBoolean())).thenReturn(player(false, true));
         var changed = service(store).enableReminders(identity(PLAYER));
         assertThat(changed.message()).isEqualTo("Reminder: an");
         verify(store).setReminderOptIn(new PlayerStore.ProfileUpdate(PLAYER, "Player", false), true);
