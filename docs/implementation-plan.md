@@ -173,6 +173,44 @@ Verbindlich:
 - ADR 0020
 - Issue #86
 
+## In Abnahme
+
+### Inkrement 14 – UX- und QoL-Stärkung bestehender Funktionen
+
+**Status:** fachlicher Lieferumfang der Pakete 14.1–14.4 in `feature/14-ux-qol` integriert; das kumulative technische Hardening einschließlich Maven-, PostgreSQL-, Migration-/Upgrade- und vollständigem Container-/Operations-Gate ist bestanden. Offen ist ausschließlich der reale Discord-/Report-Smoke. Geplanter Release **1.5.0**.
+
+Inkrement 14 führt bewusst kein neues großes Fachsystem ein. Es verbessert die sichtbaren und lesenden Oberflächen der bestehenden Funktionen:
+
+- informative Tagesstatus-Dropdowns und direkte Spiel-Links,
+- angereicherte ephemere Ergebnisdetails mit gewählter Ausrede, aktuellen Ergebnisrekorden und Spieltag-Achievements,
+- verständliche zeitliche Teilnahmebestätigungen,
+- Reminderstatus mit tatsächlich konfigurierten Zeiten,
+- `/status` als persönliches Dashboard mit heutigem Zustand und allen fünf persönlichen Serien,
+- historisches `earnedOn` in `/achievements`,
+- kombinierbare `game`-/`category`-/`status`-Filter in `/achievement-list`, weiterhin ohne quantitative Fortschrittsanzeige,
+- Scopefilter in `/records`,
+- Achievement-Anzahlen und gültige Record-Highlights in Wochen- und Monatsberichten.
+
+Die Umsetzung bleibt auf vorhandenen kanonischen Daten und materialisierten Fachprojektionen. Read-only-Pfade lösen keine neue Fachauswertung oder Reconciliation aus. Für das Inkrement war keine Liquibase-Migration notwendig.
+
+Paketstand:
+
+- #106 / PR #112 – abgeschlossen,
+- #107 / PR #113 – abgeschlossen,
+- #108 / PR #114 – abgeschlossen,
+- #109 / PR #115 – abgeschlossen,
+- #110 / PR #117 – technische Härtung bestanden; reale Discord-/Report-Abnahme offen.
+
+Verbindlich:
+
+- `docs/requirements/ux-qol.md`
+- `docs/increments/14-ux-qol.md`
+- `docs/operations/14-ux-qol-acceptance.md`
+- Umbrella-Issue #105
+- Gesamt-PR #111
+
+Vor Abschluss von Inkrement 14 muss nur noch der reale Discord-/Report-Smoke erfolgreich dokumentiert sein. Erst danach darf #110 geschlossen und Gesamt-PR #111 aus dem Draft genommen werden.
+
 ## Versionsstände
 
 ### Version 1.0.x
@@ -201,6 +239,12 @@ Rekorde, Serienrekorde, aggregierte Rekordmeldungen sowie `/records`.
 
 **Status:** veröffentlicht, produktiv deployt und durch den Live-Smoke/Canary bestätigt.
 
+### Version 1.5.0
+
+UX-/QoL-Stärkung bestehender Funktionen gemäß Inkrement 14.
+
+**Status:** geplant; Implementierung und technische Abschlussabnahme auf dem Feature-Branch bestanden, realer Discord-/Report-Smoke noch ausstehend. Nicht veröffentlicht und nicht produktiv deployt.
+
 ## Obsolet gewordene frühere Roadmap-Platzhalter
 
 Die früher vorgemerkten Folgeinkremente
@@ -212,7 +256,7 @@ werden nicht weiterverfolgt. Sie waren keine umgesetzten oder abgenommenen Anfor
 
 ## Aktive Roadmap
 
-Aktuell ist kein weiteres Produktinkrement in diesem Plan verbindlich freigegeben. Neue Funktionen werden über eigene priorisierte Issues und eine neue Paketplanung aufgenommen.
+Inkrement 14 befindet sich nur noch in der realen Abschlussabnahme. Ein weiteres Produktinkrement ist derzeit nicht verbindlich freigegeben. Neue Funktionen werden erst nach separater Priorisierung über eigene Issues und Paketplanung aufgenommen.
 
 Spätere Achievement-Erweiterungen, insbesondere persönliche Rekord-, Durchschnitts-, Verbesserungs- oder Schwierigkeits-Achievements, benötigen eine eigene fachliche Entscheidung. Falls rekordbezogene Achievements ergänzt werden, dürfen sie auf den in Inkrement 12 eingeführten gültigen Rekordereignissen aufbauen und keine Rekordlogik duplizieren.
 

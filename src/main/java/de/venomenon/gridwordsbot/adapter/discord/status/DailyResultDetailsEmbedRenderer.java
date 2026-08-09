@@ -42,6 +42,17 @@ public final class DailyResultDetailsEmbedRenderer {
         } else {
             description.append("\n\nFür dieses Ergebnis ist kein Board gespeichert.");
         }
+        found.selectedExcuse().ifPresent(excuse -> description.append("\n\n> ").append(excuse));
+        if (!found.currentRecords().isEmpty()) {
+            description.append("\n\n🏆 **Aktuelle Rekorde**");
+            found.currentRecords().forEach(record -> description.append("\n• ").append(record.scope())
+                    .append(" · ").append(record.metric()));
+        }
+        if (!found.achievements().isEmpty()) {
+            description.append("\n\n🏅 **An diesem Spieltag freigeschaltet**");
+            found.achievements().forEach(achievement -> description.append("\n• ").append(achievement.emoji())
+                    .append(" ").append(achievement.displayName()));
+        }
         return embed(title(result.gameType(), result.gameDate()), description.toString());
     }
 

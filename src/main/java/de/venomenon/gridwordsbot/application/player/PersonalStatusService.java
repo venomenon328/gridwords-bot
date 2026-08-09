@@ -1,7 +1,10 @@
 package de.venomenon.gridwordsbot.application.player;
 
+import de.venomenon.gridwordsbot.application.status.DailyStatusProjector;
 import de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod;
 import de.venomenon.gridwordsbot.domain.model.GameType;
+import de.venomenon.gridwordsbot.domain.status.DailyStatus;
+import de.venomenon.gridwordsbot.domain.streak.StreakSummary;
 import de.venomenon.gridwordsbot.port.in.PersonalStatusUseCase;
 import de.venomenon.gridwordsbot.port.out.LatestValidSubmissionQuery;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
@@ -12,49 +15,101 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
+import java.util.OptionalInt;
 
-/** Projects the calling player's participation, reminder preference and latest valid results. */
+/** Projects the calling player's current dashboard without mutating profile or participation state. */
 public final class PersonalStatusService implements PersonalStatusUseCase {
     private final PlayerStore players;
     private final LatestValidSubmissionQuery submissions;
+    private final DailyStatusProjector dailyStatus;
     private final Clock clock;
     private final ZoneId zoneId;
-    private final Set<Long> administratorIds;
 
     public PersonalStatusService(
             PlayerStore players,
             LatestValidSubmissionQuery submissions,
+            DailyStatusProjector dailyStatus,
             Clock clock,
-            ZoneId zoneId,
-            Set<Long> administratorIds) {
+            ZoneId zoneId) {
         this.players = Objects.requireNonNull(players, "players");
         this.submissions = Objects.requireNonNull(submissions, "submissions");
+        this.dailyStatus = Objects.requireNonNull(dailyStatus, "dailyStatus");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.zoneId = Objects.requireNonNull(zoneId, "zoneId");
-        this.administratorIds = Set.copyOf(Objects.requireNonNull(administratorIds, "administratorIds"));
     }
 
     @Override
     public PersonalStatus status(PlayerIdentity actor) {
         Objects.requireNonNull(actor, "actor");
         LocalDate today = clock.instant().atZone(zoneId).toLocalDate();
-        PlayerStore.StoredPlayer player = players.synchronizeProfile(new PlayerStore.ProfileUpdate(
-                actor.discordUserId(), actor.displayName(), administratorIds.contains(actor.discordUserId())));
+        PlayerStore.StoredPlayer player = players.findAllPlayers().stream()
+                .filter(candidate -> candidate.discordUserId() == actor.discordUserId())
+                .findFirst()
+                .orElse(null);
+        if (player == null) {
+            return PersonalStatus.unknown();
+        }
+
+        ParticipationStatus gridWordsParticipation = participation(
+                players.findGameParticipationPeriod(actor.discordUserId(), GameType.GRIDWORDS, today));
+        ParticipationStatus quadWordsParticipation = participation(
+                players.findGameParticipationPeriod(actor.discordUserId(), GameType.QUADWORDS, today));
+        DailyStatus projectedToday = dailyStatus.project(today, today);
+        Optional<DailyStatus.PlayerLine> line = projectedToday.players().stream()
+                .filter(candidate -> candidate.discordUserId() == actor.discordUserId())
+                .findFirst();
+        boolean participatesToday = gridWordsParticipation.active() || quadWordsParticipation.active();
+        if (participatesToday && line.isEmpty()) {
+            throw new IllegalStateException("daily status is missing a participating player");
+        }
+
         EnumMap<GameType, LatestSubmission> latest = latestByGameType(
                 submissions.findLatestValidSubmissions(actor.discordUserId()));
-
         return new PersonalStatus(
-                participation(players.findGameParticipationPeriod(actor.discordUserId(), GameType.GRIDWORDS, today)),
-                participation(players.findGameParticipationPeriod(actor.discordUserId(), GameType.QUADWORDS, today)),
+                true,
+                today(GameType.GRIDWORDS, gridWordsParticipation, line),
+                today(GameType.QUADWORDS, quadWordsParticipation, line),
+                streaks(gridWordsParticipation.active(), quadWordsParticipation.active(), line),
+                gridWordsParticipation,
+                quadWordsParticipation,
                 player.reminderOptIn(),
                 Optional.ofNullable(latest.get(GameType.GRIDWORDS)),
                 Optional.ofNullable(latest.get(GameType.QUADWORDS)));
     }
 
+    private static TodayGameStatus today(
+            GameType gameType,
+            ParticipationStatus participation,
+            Optional<DailyStatus.PlayerLine> line) {
+        if (!participation.active()) {
+            return TodayGameStatus.notParticipating(gameType);
+        }
+        Optional<de.venomenon.gridwordsbot.domain.model.ParsedGameResult> result = line.orElseThrow().result(gameType);
+        return result
+                .map(parsed -> TodayGameStatus.submitted(gameType, parsed.outcome(), parsed.duration()))
+                .orElseGet(() -> TodayGameStatus.open(gameType));
+    }
+
+    private static PersonalStreaks streaks(
+            boolean gridWordsActive,
+            boolean quadWordsActive,
+            Optional<DailyStatus.PlayerLine> line) {
+        if (!gridWordsActive && !quadWordsActive) {
+            return PersonalStreaks.none();
+        }
+        StreakSummary summary = line.orElseThrow().streaks();
+        boolean both = gridWordsActive && quadWordsActive;
+        return new PersonalStreaks(
+                OptionalInt.of(summary.personalActivity()),
+                both ? OptionalInt.of(summary.personalComplete()) : OptionalInt.empty(),
+                gridWordsActive ? OptionalInt.of(summary.personalGridWordsSolved()) : OptionalInt.empty(),
+                quadWordsActive ? OptionalInt.of(summary.personalQuadWordsSolved()) : OptionalInt.empty(),
+                both ? OptionalInt.of(summary.personalPerfect()) : OptionalInt.empty());
+    }
+
     private static ParticipationStatus participation(Optional<GameParticipationPeriod> currentPeriod) {
         if (currentPeriod.isEmpty()) {
-            return new ParticipationStatus(false, Optional.empty(), Optional.empty());
+            return ParticipationStatus.inactive();
         }
         GameParticipationPeriod period = currentPeriod.orElseThrow();
         return new ParticipationStatus(

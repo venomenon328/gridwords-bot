@@ -10,12 +10,21 @@ public record PeriodicReport(
         ReportType reportType,
         ReportPeriod period,
         List<PeriodicReportParticipantSection> participants,
-        PeriodicReportSharedSection shared) implements PeriodicReportResult {
+        PeriodicReportSharedSection shared,
+        ReportHighlightFacts highlights) implements PeriodicReportResult {
+    public PeriodicReport(
+            ReportType reportType,
+            ReportPeriod period,
+            List<PeriodicReportParticipantSection> participants,
+            PeriodicReportSharedSection shared) {
+        this(reportType, period, participants, shared, ReportHighlightFacts.empty());
+    }
     public PeriodicReport {
         Objects.requireNonNull(reportType, "reportType");
         Objects.requireNonNull(period, "period");
         participants = List.copyOf(Objects.requireNonNull(participants, "participants"));
         Objects.requireNonNull(shared, "shared");
+        Objects.requireNonNull(highlights, "highlights");
         if (participants.isEmpty()) throw new IllegalArgumentException("periodic report needs participants");
         Set<Long> participantIds = new HashSet<>();
         for (PeriodicReportParticipantSection participant : participants) {

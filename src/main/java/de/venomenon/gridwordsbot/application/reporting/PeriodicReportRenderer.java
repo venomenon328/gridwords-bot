@@ -1,6 +1,18 @@
 package de.venomenon.gridwordsbot.application.reporting;
 
 import de.venomenon.gridwordsbot.domain.model.GameType;
+import de.venomenon.gridwordsbot.domain.record.AttemptsDurationRecordValue;
+import de.venomenon.gridwordsbot.domain.record.DurationRecordValue;
+import de.venomenon.gridwordsbot.domain.record.RecordDefinition;
+import de.venomenon.gridwordsbot.domain.record.RecordDefinitionCatalog;
+import de.venomenon.gridwordsbot.domain.record.RecordEventSnapshot;
+import de.venomenon.gridwordsbot.domain.record.RecordEventType;
+import de.venomenon.gridwordsbot.domain.record.RecordScope;
+import de.venomenon.gridwordsbot.domain.record.RecordSourceReference;
+import de.venomenon.gridwordsbot.domain.record.RecordValue;
+import de.venomenon.gridwordsbot.domain.record.ResultRecordMetric;
+import de.venomenon.gridwordsbot.domain.record.StreakRecordMetric;
+import de.venomenon.gridwordsbot.domain.record.StreakRecordValue;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReport;
 import de.venomenon.gridwordsbot.domain.reporting.PeriodicReportParticipantSection;
 import de.venomenon.gridwordsbot.domain.reporting.RenderedPeriodicReport;
@@ -16,10 +28,14 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Comparator;
+import java.util.Map;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
@@ -35,6 +51,7 @@ public final class PeriodicReportRenderer {
         List<RenderedReportField> fields = new ArrayList<>();
         report.participants().forEach(section -> fields.add(personalField(section)));
         fields.add(sharedField(report));
+        fields.addAll(highlightFields(report));
         List<RenderedReportPage> pages = paginate(title, fields);
         return new RenderedPeriodicReport(pages, fingerprint(pages));
     }
@@ -79,6 +96,150 @@ public final class PeriodicReportRenderer {
                         + "\nKomplettserie (Stand/Rekord): " + streak(streaks.complete())
                         + " · Perfektserie (Stand/Rekord): " + streak(streaks.perfect()));
     }
+
+    private static List<RenderedReportField> highlightFields(PeriodicReport report) {
+        List<RenderedReportField> fields = new ArrayList<>();
+        List<String> awards = new ArrayList<>();
+        for (PeriodicReportParticipantSection section : report.participants()) {
+            Integer count = report.highlights().activeAwardsByParticipant().get(section.participant().discordUserId());
+            if (count != null) {
+                awards.add(safeDisplayName(section.participant().displayName()) + ": " + count
+                        + (count == 1 ? " Achievement freigeschaltet" : " Achievements freigeschaltet"));
+            }
+        }
+        addSplitFields(fields, "🏅 Achievements", awards);
+
+        Map<Long, String> names = new LinkedHashMap<>();
+        report.participants().forEach(section -> names.put(section.participant().discordUserId(),
+                safeDisplayName(section.participant().displayName())));
+        List<String> records = deduplicatedRecordEvents(report.highlights().recordEvents()).stream()
+                .map(event -> recordLine(event, names))
+                .toList();
+        addSplitFields(fields, "🏆 Rekorde", records);
+        return List.copyOf(fields);
+    }
+
+    private static void addSplitFields(List<RenderedReportField> fields, String title, List<String> lines) {
+        if (lines.isEmpty()) return;
+        List<String> chunks = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        for (String line : lines) {
+            if (line.length() > RenderedReportField.MAX_VALUE_LENGTH) {
+                throw new ReportRenderingException("report highlight line exceeds Discord field limit");
+            }
+            int separator = current.isEmpty() ? 0 : 1;
+            if (current.length() + separator + line.length() > RenderedReportField.MAX_VALUE_LENGTH) {
+                chunks.add(current.toString());
+                current.setLength(0);
+            }
+            if (!current.isEmpty()) current.append('\n');
+            current.append(line);
+        }
+        if (!current.isEmpty()) chunks.add(current.toString());
+        for (int index = 0; index < chunks.size(); index++) {
+            fields.add(new RenderedReportField(index == 0 ? title : title + " (Fortsetzung)", chunks.get(index)));
+        }
+    }
+
+    private static List<RecordEventSnapshot> deduplicatedRecordEvents(List<RecordEventSnapshot> events) {
+        Map<StreakRecordIdentity, RecordEventSnapshot> streaks = new LinkedHashMap<>();
+        List<RecordEventSnapshot> results = new ArrayList<>();
+        for (RecordEventSnapshot event : events) {
+            if (event.draft().newSource() instanceof RecordSourceReference.StreakRun source) {
+                StreakRecordIdentity key = new StreakRecordIdentity(event.draft().stateKey(), source);
+                RecordEventSnapshot existing = streaks.get(key);
+                if (existing == null || preferredStreakEvent(event, existing)) streaks.put(key, event);
+            } else {
+                results.add(event);
+            }
+        }
+        results.addAll(streaks.values());
+        return results.stream().sorted(Comparator
+                .comparing(PeriodicReportRenderer::businessDate)
+                .thenComparing(event -> event.draft().stateKey().definitionKey().value())
+                .thenComparing(event -> event.draft().stateKey().scopeKey())
+                .thenComparing(event -> event.draft().newSource().toString())
+                .thenComparing(event -> event.draft().detectedAt())
+                .thenComparing(event -> event.draft().eventId())).toList();
+    }
+
+    private static boolean preferredStreakEvent(RecordEventSnapshot candidate, RecordEventSnapshot current) {
+        boolean candidateFinish = candidate.draft().type() == RecordEventType.RECORD_SERIES_FINISHED;
+        boolean currentFinish = current.draft().type() == RecordEventType.RECORD_SERIES_FINISHED;
+        if (candidateFinish != currentFinish) return candidateFinish;
+        int dateComparison = businessDate(candidate).compareTo(businessDate(current));
+        if (dateComparison != 0) return dateComparison > 0;
+        return candidate.draft().detectedAt().isAfter(current.draft().detectedAt())
+                || (candidate.draft().detectedAt().equals(current.draft().detectedAt())
+                && candidate.draft().eventId().compareTo(current.draft().eventId()) > 0);
+    }
+
+    private static LocalDate businessDate(RecordEventSnapshot event) {
+        return switch (event.draft().newSource()) {
+            case RecordSourceReference.GameResult result -> result.gameDate();
+            case RecordSourceReference.StreakRun ignored -> ((StreakRecordValue) event.draft().newValue()).endDate();
+        };
+    }
+
+    private static String recordLine(RecordEventSnapshot event, Map<Long, String> names) {
+        RecordDefinition<?> definition = RecordDefinitionCatalog.recordsV1().find(event.draft().stateKey().definitionKey())
+                .orElseThrow(() -> new IllegalStateException("record event references an unknown definition"));
+        String subject = switch (event.draft().stateKey().scope()) {
+            case RecordScope.Shared ignored -> "Gemeinsam";
+            case RecordScope.Personal personal -> playerName(personal.playerId(), event, names);
+            case RecordScope.ServerIndividual ignored -> playerName(event.draft().newHolderPlayerId()
+                    .orElseGet(() -> playerId(event.draft().newSource())), event, names);
+        };
+        String scope = switch (event.draft().stateKey().scope()) {
+            case RecordScope.Personal ignored -> "persönlicher";
+            case RecordScope.ServerIndividual ignored -> "serverweiter";
+            case RecordScope.Shared ignored -> "gemeinsamer";
+        };
+        String game = definition.game().map(value -> value == GameType.GRIDWORDS ? "GridWords " : "QuadWords ").orElse("");
+        return subject + ": neuer " + scope + " " + game + "Rekord · " + metric(definition) + " · "
+                + value(event.draft().newValue());
+    }
+
+    private static long playerId(RecordSourceReference source) {
+        if (source instanceof RecordSourceReference.GameResult result) return result.playerId();
+        if (source instanceof RecordSourceReference.StreakRun streak
+                && streak.owner() instanceof RecordSourceReference.StreakRunOwner.Player player) return player.playerId();
+        throw new IllegalStateException("individual record event has no player source");
+    }
+
+    private static String playerName(long playerId, RecordEventSnapshot event, Map<Long, String> names) {
+        String name = names.get(playerId);
+        if (name == null) throw new IllegalStateException("record event player is not a report participant: " + event.draft().eventId());
+        return name;
+    }
+
+    private static String metric(RecordDefinition<?> definition) {
+        return switch (definition.metric()) {
+            case ResultRecordMetric.FEWEST_ATTEMPTS -> "wenigste Versuche";
+            case ResultRecordMetric.FASTEST_SOLUTION -> "Bestzeit";
+            case ResultRecordMetric.SLOWEST_SUCCESSFUL_SOLUTION -> "langsamste erfolgreiche Lösung";
+            case StreakRecordMetric.ACTIVITY -> "Aktivitätsserie";
+            case StreakRecordMetric.COMPLETE -> "Komplettserie";
+            case StreakRecordMetric.GRIDWORDS_SOLVED -> "GridWords-Lösungsserie";
+            case StreakRecordMetric.QUADWORDS_SOLVED -> "QuadWords-Lösungsserie";
+            case StreakRecordMetric.PERFECT -> "Perfektserie";
+            case StreakRecordMetric.GRIDWORDS_DROUGHT -> "GridWords-Durststrecke";
+            case StreakRecordMetric.QUADWORDS_DROUGHT -> "QuadWords-Durststrecke";
+            case StreakRecordMetric.WITHOUT_PERFECT_DAY -> "Tage ohne perfekten Tag";
+        };
+    }
+
+    private static String value(RecordValue value) {
+        return switch (value) {
+            case AttemptsDurationRecordValue attempts -> attempts.attempts() + " Versuche · " + duration(attempts.duration());
+            case DurationRecordValue duration -> duration(duration.duration());
+            case StreakRecordValue streak -> streak.length() + (streak.length() == 1 ? " Tag" : " Tage");
+        };
+    }
+
+    private record StreakRecordIdentity(
+            de.venomenon.gridwordsbot.domain.record.RecordStateKey stateKey,
+            RecordSourceReference.StreakRun source) { }
 
     private static String percentage(int solved, int submitted) {
         return submitted == 0 ? UNDEFINED : decimal(BigDecimal.valueOf(solved).multiply(BigDecimal.valueOf(100)), submitted) + " %";

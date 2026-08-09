@@ -53,7 +53,7 @@ class PeriodicReportReconciliationServiceTest {
         when(fixture.store.findLatestPeriodStart(scope)).thenReturn(Optional.of(anchor));
         when(fixture.planner.plan(ReportType.MONTHLY, NOW, MONTHLY_TIME, BERLIN, Optional.of(anchor)))
                 .thenReturn(new PeriodicReportReconciliationPlan(List.of(candidate)));
-        when(fixture.reports.generate(ReportType.MONTHLY, candidate.period())).thenReturn(report);
+        when(fixture.reports.generate(GUILD_ID, ReportType.MONTHLY, candidate.period())).thenReturn(report);
 
         fixture.service.reconcile(GUILD_ID, CHANNEL_ID, ReportType.MONTHLY, MONTHLY_TIME, BERLIN);
 
@@ -73,7 +73,7 @@ class PeriodicReportReconciliationServiceTest {
         fixture.service.reconcile(GUILD_ID, CHANNEL_ID, ReportType.WEEKLY, WEEKLY_TIME, BERLIN);
 
         verify(fixture.store).expire(new PeriodicReportDeliveryExpiration(key(candidate), metadata(candidate)), NOW);
-        verify(fixture.reports, never()).generate(any(), any());
+        verify(fixture.reports, never()).generate(org.mockito.ArgumentMatchers.anyLong(), any(), any());
         verify(fixture.delivery, never()).deliver(any(), any(), any());
     }
 
@@ -88,14 +88,14 @@ class PeriodicReportReconciliationServiceTest {
                 ReportType.WEEKLY, LocalDate.of(2026, 7, 20), PeriodicReportReconciliationAction.DELIVER_OR_RECONCILE);
         PeriodicReportNoOp report = new PeriodicReportNoOp(ReportType.WEEKLY, latest.period());
         stubPlan(fixture, ReportType.WEEKLY, WEEKLY_TIME, List.of(first, second, latest));
-        when(fixture.reports.generate(ReportType.WEEKLY, latest.period())).thenReturn(report);
+        when(fixture.reports.generate(GUILD_ID, ReportType.WEEKLY, latest.period())).thenReturn(report);
 
         fixture.service.reconcile(GUILD_ID, CHANNEL_ID, ReportType.WEEKLY, WEEKLY_TIME, BERLIN);
 
         InOrder order = inOrder(fixture.store, fixture.reports, fixture.delivery);
         order.verify(fixture.store).expire(new PeriodicReportDeliveryExpiration(key(first), metadata(first)), NOW);
         order.verify(fixture.store).expire(new PeriodicReportDeliveryExpiration(key(second), metadata(second)), NOW);
-        order.verify(fixture.reports).generate(ReportType.WEEKLY, latest.period());
+        order.verify(fixture.reports).generate(GUILD_ID, ReportType.WEEKLY, latest.period());
         order.verify(fixture.delivery).deliver(key(latest), metadata(latest), report);
     }
 
@@ -108,9 +108,9 @@ class PeriodicReportReconciliationServiceTest {
                 ReportType.MONTHLY, LocalDate.of(2026, 7, 1), PeriodicReportReconciliationAction.DELIVER_OR_RECONCILE);
         stubPlan(fixture, ReportType.WEEKLY, WEEKLY_TIME, List.of(weekly));
         stubPlan(fixture, ReportType.MONTHLY, MONTHLY_TIME, List.of(monthly));
-        when(fixture.reports.generate(ReportType.WEEKLY, weekly.period()))
+        when(fixture.reports.generate(GUILD_ID, ReportType.WEEKLY, weekly.period()))
                 .thenReturn(new PeriodicReportNoOp(ReportType.WEEKLY, weekly.period()));
-        when(fixture.reports.generate(ReportType.MONTHLY, monthly.period()))
+        when(fixture.reports.generate(GUILD_ID, ReportType.MONTHLY, monthly.period()))
                 .thenReturn(new PeriodicReportNoOp(ReportType.MONTHLY, monthly.period()));
 
         fixture.service.reconcile(GUILD_ID, CHANNEL_ID, ReportType.WEEKLY, WEEKLY_TIME, BERLIN);

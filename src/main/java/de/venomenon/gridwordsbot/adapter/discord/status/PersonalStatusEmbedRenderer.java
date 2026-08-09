@@ -1,5 +1,6 @@
 package de.venomenon.gridwordsbot.adapter.discord.status;
 
+import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
 import de.venomenon.gridwordsbot.port.in.PersonalStatusUseCase;
 import java.time.Duration;
@@ -8,6 +9,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.MessageEmbed;
 
@@ -23,23 +25,61 @@ public final class PersonalStatusEmbedRenderer {
 
     public MessageEmbed render(PersonalStatusUseCase.PersonalStatus status) {
         Objects.requireNonNull(status, "status");
-        return new EmbedBuilder()
-                .setTitle("Dein Status")
-                .addField("GridWords-Teilnahme", participation(status.gridWordsParticipation()), true)
-                .addField("QuadWords-Teilnahme", participation(status.quadWordsParticipation()), true)
-                .addField("Reminder für aktive Spiele", status.reminderOptIn() ? "An" : "Aus", false)
+        EmbedBuilder embed = new EmbedBuilder().setTitle("Dein Status");
+        if (!status.known()) {
+            return embed.setDescription("Du hast noch kein Spielerprofil im Bot.").build();
+        }
+        return embed
+                .addField("Heute", today(status.gridWordsToday()) + "\n" + today(status.quadWordsToday()), false)
+                .addField("Laufende Serien", streaks(status.streaks()), false)
+                .addField("Teilnahme & Reminder", participationAndReminder(status), false)
                 .addField("Letzte GridWords-Einreichung", submission(status.latestGridWordsSubmission()), false)
                 .addField("Letzte QuadWords-Einreichung", submission(status.latestQuadWordsSubmission()), false)
                 .build();
     }
 
+    private static String today(PersonalStatusUseCase.TodayGameStatus status) {
+        String game = status.gameType() == GameType.GRIDWORDS ? "🟩 GridWords" : "🟦 QuadWords";
+        if (!status.participating()) {
+            return game + ": — keine Teilnahme";
+        }
+        if (status.outcome().isEmpty()) {
+            return game + ": ⬜ noch nicht eingereicht";
+        }
+        ShareOutcome outcome = status.outcome().orElseThrow();
+        String score = outcome instanceof ShareOutcome.Solved solved
+                ? "✅ " + solved.attemptsUsed() + "/" + solved.maxAttempts()
+                : "❌ X/" + outcome.maxAttempts();
+        return game + ": " + score + " · " + duration(status.duration().orElseThrow());
+    }
+
+    private static String streaks(PersonalStatusUseCase.PersonalStreaks streaks) {
+        return "🔥 Aktivität: " + streak(streaks.activity())
+                + "\n✅ Komplett: " + streak(streaks.complete())
+                + "\n🟩 GridWords gelöst: " + streak(streaks.gridWordsSolved())
+                + "\n🟦 QuadWords gelöst: " + streak(streaks.quadWordsSolved())
+                + "\n💎 Perfekt: " + streak(streaks.perfect());
+    }
+
+    private static String streak(OptionalInt value) {
+        if (value.isEmpty()) return "—";
+        int days = value.getAsInt();
+        return days + (days == 1 ? " Tag" : " Tage");
+    }
+
+    private static String participationAndReminder(PersonalStatusUseCase.PersonalStatus status) {
+        return "GridWords: " + participation(status.gridWordsParticipation())
+                + "\nQuadWords: " + participation(status.quadWordsParticipation())
+                + "\n" + (status.reminderOptIn() ? "🔔 Reminder: an" : "🔕 Reminder: aus");
+    }
+
     private static String participation(PersonalStatusUseCase.ParticipationStatus participation) {
         if (!participation.active()) {
-            return "Inaktiv";
+            return "inaktiv";
         }
-        String value = "Aktiv seit " + DATE.format(participation.activeFrom().orElseThrow());
+        String value = "aktiv seit " + DATE.format(participation.activeFrom().orElseThrow());
         return participation.activeUntil()
-                .map(end -> value + "\nBis einschließlich " + DATE.format(end))
+                .map(end -> value + " · bis einschließlich " + DATE.format(end))
                 .orElse(value);
     }
 

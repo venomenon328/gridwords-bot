@@ -7,6 +7,7 @@ import de.venomenon.gridwordsbot.domain.record.RecordSourceReference;
 import de.venomenon.gridwordsbot.domain.record.RecordStateKey;
 import java.time.Instant;
 import java.time.LocalDate;
+import de.venomenon.gridwordsbot.domain.reporting.ReportPeriod;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -25,6 +26,8 @@ public interface RecordEventStore {
     /** Streak facts in the exact definition/scope families affected from one historical date onward. */
     default List<RecordEventSnapshot> findStreakFamily(
             long guildId, List<RecordStateKey> families, LocalDate affectedFrom) { return List.of(); }
+    /** Existing VALID audit facts whose canonical source date belongs to one completed report period. */
+    default List<RecordEventSnapshot> findForReportPeriod(long guildId, ReportPeriod period) { return List.of(); }
     boolean invalidate(UUID eventId, Instant invalidatedAt);
     boolean supersede(UUID eventId, UUID supersedingEventId, Instant invalidatedAt);
 }

@@ -5,6 +5,9 @@ import de.venomenon.gridwordsbot.config.GridwordsBotProperties;
 import de.venomenon.gridwordsbot.domain.model.GameParticipationSelection;
 import de.venomenon.gridwordsbot.port.in.PersonalStatusUseCase;
 import de.venomenon.gridwordsbot.port.in.PlayerParticipationUseCase;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.User;
@@ -18,6 +21,8 @@ import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
 
 /** Thin Discord adapter for the transport-neutral player participation commands. */
 public final class DiscordParticipationCommandListener extends ListenerAdapter {
+    private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT);
+
     private final GridwordsBotProperties properties;
     private final PlayerParticipationUseCase commands;
     private final PersonalStatusUseCase personalStatus;
@@ -69,7 +74,10 @@ public final class DiscordParticipationCommandListener extends ListenerAdapter {
             case "player" -> player(event.getSubcommandName(), actor, event.getOption("user"), event.getOption("game"));
             default -> null;
         };
-        if (status != null) event.reply(status.message()).setEphemeral(true).queue();
+        if (status != null) {
+            String message = event.getName().equals("reminders") ? reminderMessage(status) : status.message();
+            event.reply(message).setEphemeral(true).queue();
+        }
     }
 
     private PlayerParticipationUseCase.PlayerStatus participation(
@@ -102,6 +110,30 @@ public final class DiscordParticipationCommandListener extends ListenerAdapter {
             case "status" -> commands.status(actor, target);
             default -> null;
         };
+    }
+
+    private String reminderMessage(PlayerParticipationUseCase.PlayerStatus status) {
+        if (!status.known()) {
+            return status.message();
+        }
+        boolean enabled = status.reminderOptIn();
+        StringBuilder message = new StringBuilder(enabled ? "🔔 Reminder: an" : "🔕 Reminder: aus");
+        if (enabled) {
+            message.append("\nBei offenen Spielen wirst du in den geplanten Erinnerungen erwähnt.");
+        } else {
+            message.append("\nDu wirst bei offenen Spielen nicht erwähnt.")
+                    .append("\nDein Name kann weiterhin ohne Ping in der gemeinsamen Reminder-Übersicht erscheinen.");
+        }
+        message.append("\n\nGeplante Erinnerungen: ")
+                .append(time(properties.schedule().firstReminder()))
+                .append(" und ")
+                .append(time(properties.schedule().secondReminder()))
+                .append(" Uhr");
+        return message.toString();
+    }
+
+    private static String time(LocalTime time) {
+        return TIME.format(time);
     }
 
     private static SubcommandData participationCommand(String name, String description) {

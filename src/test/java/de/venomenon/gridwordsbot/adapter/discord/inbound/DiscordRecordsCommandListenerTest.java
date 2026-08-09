@@ -27,17 +27,19 @@ class DiscordRecordsCommandListenerTest {
     private static final long ACTOR = 101L;
 
     @Test
-    void registersThePackageOptionsOnly() {
+    void registersThePackageOptionsIncludingScope() {
         var command = DiscordRecordsCommandListener.commandData();
 
         assertThat(command.getName()).isEqualTo("records");
         assertThat(command.getOptions()).extracting(option -> option.getName())
-                .containsExactly("user", "game", "category");
+                .containsExactly("user", "game", "category", "scope");
         assertThat(command.getOptions()).allSatisfy(option -> assertThat(option.isRequired()).isFalse());
+        assertThat(command.getOptions().get(3).getChoices()).extracting(choice -> choice.getName())
+                .containsExactly("Alle", "Persönlich", "Serverweit", "Gemeinsam");
     }
 
     @Test
-    void standardUserDefaultsPersonalViewToCallerAndRepliesEphemerallyWithoutMentions() {
+    void standardUserDefaultsPersonalViewToCallerAndAllFiltersAndRepliesEphemerallyWithoutMentions() {
         RecordsQueryUseCase records = mock(RecordsQueryUseCase.class);
         when(records.query(any())).thenReturn(new RecordsQueryUseCase.Ready(List.of()));
         EventFixture fixture = event(GUILD, ACTOR, "Server Actor");
@@ -51,6 +53,7 @@ class DiscordRecordsCommandListenerTest {
         assertThat(query.getValue().requesterAdministrator()).isFalse();
         assertThat(query.getValue().game()).isEqualTo(RecordsQueryUseCase.GameFilter.ALL);
         assertThat(query.getValue().category()).isEqualTo(RecordsQueryUseCase.CategoryFilter.ALL);
+        assertThat(query.getValue().scope()).isEqualTo(RecordsQueryUseCase.ScopeFilter.ALL);
         verify(fixture.event()).replyEmbeds(any(MessageEmbed.class));
         verify(fixture.reply()).setEphemeral(true);
         verify(fixture.reply()).setAllowedMentions(List.of());
@@ -58,12 +61,13 @@ class DiscordRecordsCommandListenerTest {
     }
 
     @Test
-    void administratorTargetGameAndCategoryFiltersArePassedReadOnlyToUseCase() {
+    void administratorTargetGameCategoryAndScopeFiltersArePassedReadOnlyToUseCase() {
         RecordsQueryUseCase records = mock(RecordsQueryUseCase.class);
         when(records.query(any())).thenReturn(new RecordsQueryUseCase.Ready(List.of()));
         EventFixture fixture = event(GUILD, ACTOR, "Admin");
         OptionMapping game = option("quadwords");
         OptionMapping category = option("series");
+        OptionMapping scope = option("shared");
         OptionMapping userOption = mock(OptionMapping.class);
         User target = mock(User.class);
         Member targetMember = mock(Member.class);
@@ -74,6 +78,7 @@ class DiscordRecordsCommandListenerTest {
         when(userOption.getAsMember()).thenReturn(targetMember);
         when(fixture.event().getOption("game")).thenReturn(game);
         when(fixture.event().getOption("category")).thenReturn(category);
+        when(fixture.event().getOption("scope")).thenReturn(scope);
         when(fixture.event().getOption("user")).thenReturn(userOption);
 
         listener(records, List.of(ACTOR)).onSlashCommandInteraction(fixture.event());
@@ -84,6 +89,7 @@ class DiscordRecordsCommandListenerTest {
         assertThat(query.getValue().requesterAdministrator()).isTrue();
         assertThat(query.getValue().game()).isEqualTo(RecordsQueryUseCase.GameFilter.QUADWORDS);
         assertThat(query.getValue().category()).isEqualTo(RecordsQueryUseCase.CategoryFilter.SERIES);
+        assertThat(query.getValue().scope()).isEqualTo(RecordsQueryUseCase.ScopeFilter.SHARED);
     }
 
     @Test
@@ -92,9 +98,9 @@ class DiscordRecordsCommandListenerTest {
         when(records.query(any())).thenReturn(new RecordsQueryUseCase.Ready(List.of()));
         EventFixture fixture = event(GUILD, ACTOR, "Actor");
         OptionMapping unexpected = option("unexpected");
-        OptionMapping unexpectedCategory = option("unexpected");
         when(fixture.event().getOption("game")).thenReturn(unexpected);
-        when(fixture.event().getOption("category")).thenReturn(unexpectedCategory);
+        when(fixture.event().getOption("category")).thenReturn(unexpected);
+        when(fixture.event().getOption("scope")).thenReturn(unexpected);
 
         listener(records, List.of()).onSlashCommandInteraction(fixture.event());
 
@@ -102,6 +108,7 @@ class DiscordRecordsCommandListenerTest {
         verify(records).query(query.capture());
         assertThat(query.getValue().game()).isEqualTo(RecordsQueryUseCase.GameFilter.ALL);
         assertThat(query.getValue().category()).isEqualTo(RecordsQueryUseCase.CategoryFilter.ALL);
+        assertThat(query.getValue().scope()).isEqualTo(RecordsQueryUseCase.ScopeFilter.ALL);
     }
 
     @Test
