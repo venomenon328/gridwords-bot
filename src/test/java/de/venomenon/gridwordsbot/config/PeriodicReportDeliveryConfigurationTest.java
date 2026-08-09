@@ -4,10 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import de.venomenon.gridwordsbot.adapter.discord.reporting.JdaPeriodicReportMessageGateway;
+import de.venomenon.gridwordsbot.adapter.persistence.PostgresReportHighlightQuery;
 import de.venomenon.gridwordsbot.application.reporting.PeriodicReportDeliveryService;
 import de.venomenon.gridwordsbot.application.reporting.PeriodicReportRenderer;
+import de.venomenon.gridwordsbot.port.out.AchievementAwardStateStore;
 import de.venomenon.gridwordsbot.port.out.PeriodicReportDeliveryStore;
 import de.venomenon.gridwordsbot.port.out.PeriodicReportMessageGateway;
+import de.venomenon.gridwordsbot.port.out.RecordEventStore;
 import de.venomenon.gridwordsbot.port.out.ReportGameResultQuery;
 import de.venomenon.gridwordsbot.port.out.ReportHighlightQuery;
 import de.venomenon.gridwordsbot.port.out.ReportParticipantQuery;
@@ -65,6 +68,28 @@ class PeriodicReportDeliveryConfigurationTest {
         }
     }
 
+    @Test
+    void databaseProfileCreatesConcreteHighlightReadWhenAwardAndRecordStoresExist() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            configureDiscord(context, false);
+            registerProperties(context, false);
+            context.registerBean(Clock.class, Clock::systemUTC);
+            context.registerBean(JdbcTemplate.class, () -> mock(JdbcTemplate.class));
+            context.registerBean(PeriodicReportMessageGateway.class,
+                    () -> mock(PeriodicReportMessageGateway.class));
+            registerBaseReportQueries(context);
+            context.registerBean(AchievementAwardStateStore.class,
+                    () -> mock(AchievementAwardStateStore.class));
+            context.registerBean(RecordEventStore.class,
+                    () -> mock(RecordEventStore.class));
+            context.register(PeriodicReportDeliveryConfiguration.class);
+            context.refresh();
+
+            assertThat(context.getBean(ReportHighlightQuery.class))
+                    .isInstanceOf(PostgresReportHighlightQuery.class);
+        }
+    }
+
     private static void configureDiscord(
             AnnotationConfigApplicationContext context,
             boolean enabled) {
@@ -91,13 +116,17 @@ class PeriodicReportDeliveryConfigurationTest {
     }
 
     private static void registerReportQueries(AnnotationConfigApplicationContext context) {
+        registerBaseReportQueries(context);
+        context.registerBean(ReportHighlightQuery.class,
+                () -> mock(ReportHighlightQuery.class));
+    }
+
+    private static void registerBaseReportQueries(AnnotationConfigApplicationContext context) {
         context.registerBean(ReportParticipantQuery.class,
                 () -> mock(ReportParticipantQuery.class));
         context.registerBean(ReportGameResultQuery.class,
                 () -> mock(ReportGameResultQuery.class));
         context.registerBean(ReportStreakHistoryQuery.class,
                 () -> mock(ReportStreakHistoryQuery.class));
-        context.registerBean(ReportHighlightQuery.class,
-                () -> mock(ReportHighlightQuery.class));
     }
 }
