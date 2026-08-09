@@ -130,6 +130,25 @@ class PlayerParticipationServiceTest {
     }
 
     @Test
+    void adminDeactivationUsesTheSameProspectiveEffectSemantics() {
+        PlayerStore store = mock(PlayerStore.class);
+        long target = 3L;
+        when(store.synchronizeProfile(any())).thenReturn(admin());
+        when(store.findGameParticipationPeriod(target, GameType.GRIDWORDS, TODAY))
+                .thenReturn(Optional.of(new GameParticipationPeriod(target, GameType.GRIDWORDS, TODAY.minusDays(2), null)),
+                        Optional.of(new GameParticipationPeriod(target, GameType.GRIDWORDS, TODAY.minusDays(2), TOMORROW)));
+        when(store.deactivateGames(any())).thenReturn(new PlayerStore.StoredPlayer(
+                target, "Target", true, false, false, Instant.EPOCH, Instant.EPOCH));
+
+        var status = service(store).deactivate(identity(ADMIN), new PlayerIdentity(target, "Target"),
+                GameParticipationSelection.GRIDWORDS);
+
+        assertThat(status.message()).isEqualTo("GridWords: heute noch aktiv · ab 30.07.2026 inaktiv");
+        verify(store).deactivateGames(new PlayerStore.GameParticipationChange(
+                new PlayerStore.ProfileUpdate(target, "Target", false), GameParticipationSelection.GRIDWORDS, TOMORROW));
+    }
+
+    @Test
     void administrativeStatusIsReadOnlyAndUnknownTargetRemainsUnknown() {
         PlayerStore store = mock(PlayerStore.class);
         when(store.findAllPlayers()).thenReturn(List.of());
