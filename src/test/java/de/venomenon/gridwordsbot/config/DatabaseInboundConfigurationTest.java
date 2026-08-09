@@ -10,6 +10,9 @@ import de.venomenon.gridwordsbot.adapter.discord.inbound.ExcuseInteractionListen
 import de.venomenon.gridwordsbot.application.excuse.ExcuseInteractionService;
 import de.venomenon.gridwordsbot.application.excuse.ExcuseOpenService;
 import de.venomenon.gridwordsbot.domain.excuse.ExcuseCatalog;
+import de.venomenon.gridwordsbot.domain.achievement.AchievementDefinitionCatalog;
+import de.venomenon.gridwordsbot.domain.record.RecordDefinitionCatalog;
+import de.venomenon.gridwordsbot.application.achievement.AchievementEmojiResolver;
 import de.venomenon.gridwordsbot.port.in.ExcuseInteractionUseCase;
 import de.venomenon.gridwordsbot.port.in.ExcuseOpenUseCase;
 import de.venomenon.gridwordsbot.port.in.ExcuseExpirationUseCase;
@@ -55,6 +58,7 @@ class DatabaseInboundConfigurationTest {
                     () -> mock(DailyStatusInteractionContextQuery.class));
             context.registerBean(DailyResultDetailsQuery.class,
                     () -> mock(DailyResultDetailsQuery.class));
+            detailPresentationBeans(context);
             context.registerBean(PlayerStore.class, () -> mock(PlayerStore.class));
             context.registerBean(SubmissionStore.class, () -> mock(SubmissionStore.class));
             context.registerBean(ChannelMessageRetirementStore.class,
@@ -96,6 +100,7 @@ class DatabaseInboundConfigurationTest {
                     () -> mock(DailyStatusInteractionContextQuery.class));
             context.registerBean(DailyResultDetailsQuery.class,
                     () -> mock(DailyResultDetailsQuery.class));
+            detailPresentationBeans(context);
             context.registerBean(PlayerStore.class, () -> mock(PlayerStore.class));
             context.registerBean(SubmissionStore.class, () -> mock(SubmissionStore.class));
             context.registerBean(ExcuseStateStore.class, () -> mock(ExcuseStateStore.class));
@@ -124,5 +129,11 @@ class DatabaseInboundConfigurationTest {
                         LocalTime.of(8, 15),
                         ZoneId.of("Europe/Berlin")),
                 new GridwordsBotProperties.Storage(24));
+    }
+
+    private static void detailPresentationBeans(AnnotationConfigApplicationContext context) {
+        context.registerBean(RecordDefinitionCatalog.class, RecordDefinitionCatalog::recordsV1);
+        context.registerBean(AchievementDefinitionCatalog.class, AchievementDefinitionCatalog::achievementsV1);
+        context.registerBean(AchievementEmojiResolver.class, AchievementEmojiResolver::unicodeOnly);
     }
 }

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
+import de.venomenon.gridwordsbot.domain.record.RecordScopeType;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.List;
@@ -84,7 +85,7 @@ class PostgresDailyResultDetailsQueryIT {
                         'gridwords-share-v1', now(), now())
                 """, 1L, DATE, "⬜⬜⬜⬜⬜\n🟨🟨🟨🟨🟨\n🟩🟩🟩🟩🟩");
 
-        var initial = results.find(1L, GameType.GRIDWORDS, DATE).orElseThrow();
+        var initial = results.find(11L, 1L, GameType.GRIDWORDS, DATE).orElseThrow().result();
         assertThat(initial.outcome()).isEqualTo(new ShareOutcome.Solved(3, 6));
         assertThat(initial.duration()).isEqualTo(Duration.ofSeconds(85));
         assertThat(initial.board().orElseThrow().canonicalText()).contains("🟨🟨🟨🟨🟨");
@@ -96,11 +97,46 @@ class PostgresDailyResultDetailsQueryIT {
                 WHERE player_id = ? AND game_type = 'GRIDWORDS' AND game_date = ?
                 """, "⬜⬜⬜⬜⬜\n🟩🟩🟩🟩🟩", 1L, DATE);
 
-        var corrected = results.find(1L, GameType.GRIDWORDS, DATE).orElseThrow();
+        var corrected = results.find(11L, 1L, GameType.GRIDWORDS, DATE).orElseThrow().result();
         assertThat(corrected.outcome()).isEqualTo(new ShareOutcome.Solved(2, 6));
         assertThat(corrected.duration()).isEqualTo(Duration.ofSeconds(61));
         assertThat(corrected.board().orElseThrow().rows()).containsExactly(
                 "⬜⬜⬜⬜⬜", "🟩🟩🟩🟩🟩");
+    }
+
+    @Test
+    void resultQueryReadsOnlyCurrentRecordAndActiveAchievementProjections() {
+        insertPlayer(1L, "Player");
+        jdbc.update("""
+                INSERT INTO game_result
+                    (player_id, game_type, game_date, solved, attempts_used, max_attempts,
+                     duration_seconds, normalized_board, raw_share_text, parser_version, created_at, updated_at)
+                VALUES (1, 'GRIDWORDS', ?, TRUE, 3, 6, 85, ?, 'share', 'gridwords-share-v1', now(), now())
+                """, DATE, String.join("\n", List.of("⬜⬜⬜⬜⬜", "🟨🟨🟨🟨🟨", "🟩🟩🟩🟩🟩")));
+        Long resultId = jdbc.queryForObject("SELECT id FROM game_result WHERE player_id=1 AND game_date=?", Long.class, DATE);
+        jdbc.update("""
+                INSERT INTO record_state (
+                    guild_id, definition_key, definition_version, scope_type, scope_key, holder_player_id,
+                    value_kind, attempts, duration_millis, source_type, source_game_result_id,
+                    source_game_result_version, source_game_player_id, source_game_type, source_game_date,
+                    running, lock_version, created_at, updated_at)
+                VALUES (11, 'result.gridwords.fewest-attempts.personal', 'records-v1', 'PERSONAL', '1', 1,
+                    'ATTEMPTS_AND_DURATION', 3, 85000, 'GAME_RESULT', ?, 0, 1, 'GRIDWORDS', ?,
+                    FALSE, 0, now(), now())
+                """, resultId, DATE);
+        insertAward("participation.1.gridwords", "ACTIVE", null);
+        insertAward("participation.1.quadwords", "INVALIDATED", "now()");
+        int before = jdbc.queryForObject("SELECT count(*) FROM record_state", Integer.class)
+                + jdbc.queryForObject("SELECT count(*) FROM achievement_award_state", Integer.class);
+
+        var details = results.find(11L, 1L, GameType.GRIDWORDS, DATE).orElseThrow();
+
+        assertThat(details.currentRecords()).containsExactly(new de.venomenon.gridwordsbot.port.out.DailyResultDetailsQuery.CurrentRecord(
+                "result.gridwords.fewest-attempts.personal", RecordScopeType.PERSONAL));
+        assertThat(details.activeAchievementKeys()).containsExactly("participation.1.gridwords");
+        int after = jdbc.queryForObject("SELECT count(*) FROM record_state", Integer.class)
+                + jdbc.queryForObject("SELECT count(*) FROM achievement_award_state", Integer.class);
+        assertThat(after).isEqualTo(before);
     }
 
     @Test
@@ -131,8 +167,8 @@ class PostgresDailyResultDetailsQueryIT {
                         'quadwords-share-v1', now(), now())
                 """, 2L, DATE);
 
-        var withBoards = results.find(1L, GameType.QUADWORDS, DATE).orElseThrow();
-        var boardless = results.find(2L, GameType.QUADWORDS, DATE).orElseThrow();
+        var withBoards = results.find(11L, 1L, GameType.QUADWORDS, DATE).orElseThrow().result();
+        var boardless = results.find(11L, 2L, GameType.QUADWORDS, DATE).orElseThrow().result();
 
         assertThat(withBoards.quadWordsBoards()).isPresent();
         assertThat(withBoards.quadWordsBoards().orElseThrow().ordered())
@@ -140,7 +176,7 @@ class PostgresDailyResultDetailsQueryIT {
                 .containsExactly(topLeft, topRight, bottomLeft, bottomRight);
         assertThat(boardless.quadWordsBoards()).isEmpty();
         assertThat(boardless.outcome()).isEqualTo(new ShareOutcome.Solved(4, 9));
-        assertThat(results.find(3L, GameType.QUADWORDS, DATE)).isEmpty();
+        assertThat(results.find(11L, 3L, GameType.QUADWORDS, DATE)).isEmpty();
     }
 
     private void insertPlayer(long id, String displayName) {
@@ -149,6 +185,24 @@ class PostgresDailyResultDetailsQueryIT {
                     (discord_user_id, display_name, active, administrator, created_at, updated_at)
                 VALUES (?, ?, TRUE, FALSE, now(), now())
                 """, id, displayName);
+    }
+
+    private void insertAward(String key, String status, String invalidatedAt) {
+        if (invalidatedAt == null) {
+            jdbc.update("""
+                    INSERT INTO achievement_award_state
+                        (guild_id, participant_id, achievement_key, definition_version, award_status, earned_on,
+                         detected_at, evidence_kind, evidence_reference, invalidated_at, lock_version, created_at, updated_at)
+                    VALUES (11, 1, ?, 'achievements-v1', ?, ?, now(), 'GAME_RESULT', 'test', NULL, 0, now(), now())
+                    """, key, status, DATE);
+        } else {
+            jdbc.update("""
+                    INSERT INTO achievement_award_state
+                        (guild_id, participant_id, achievement_key, definition_version, award_status, earned_on,
+                         detected_at, evidence_kind, evidence_reference, invalidated_at, lock_version, created_at, updated_at)
+                    VALUES (11, 1, ?, 'achievements-v1', ?, ?, now(), 'GAME_RESULT', 'test', now(), 0, now(), now())
+                    """, key, status, DATE);
+        }
     }
 
     private void insertPeriod(long playerId, GameType gameType, LocalDate activeFrom, LocalDate inactiveFrom) {

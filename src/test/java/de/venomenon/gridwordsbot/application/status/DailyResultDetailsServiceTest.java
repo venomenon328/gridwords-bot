@@ -6,6 +6,9 @@ import de.venomenon.gridwordsbot.domain.model.GameType;
 import de.venomenon.gridwordsbot.domain.model.NormalizedBoard;
 import de.venomenon.gridwordsbot.domain.model.ParsedGameResult;
 import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
+import de.venomenon.gridwordsbot.domain.achievement.AchievementDefinitionCatalog;
+import de.venomenon.gridwordsbot.domain.record.RecordDefinitionCatalog;
+import de.venomenon.gridwordsbot.domain.record.RecordScopeType;
 import de.venomenon.gridwordsbot.port.in.DailyResultDetailsUseCase;
 import de.venomenon.gridwordsbot.port.out.DailyResultDetailsQuery;
 import de.venomenon.gridwordsbot.port.out.DailyStatusInteractionContextQuery;
@@ -23,7 +26,7 @@ class DailyResultDetailsServiceTest {
 
     @Test
     void returnsCurrentResultOnlyAfterGameSpecificPageValidation() {
-        var resultQuery = (DailyResultDetailsQuery) (player, type, date) -> Optional.of(grid());
+        var resultQuery = (DailyResultDetailsQuery) (guild, player, type, date) -> Optional.of(details());
         var service = service(
                 List.of(participant(2L, "B"), participant(1L, "a")),
                 List.of(participant(1L, "a")),
@@ -52,7 +55,7 @@ class DailyResultDetailsServiceTest {
     @Test
     void rejectsOldStatusAndCopiedOptionFromAnotherPageWithoutReadingResult() {
         DailyResultDetailsQuery never = neverRead();
-        var old = new DailyResultDetailsService((g, c, m, d) -> Optional.empty(), never)
+        var old = service((g, c, m, d) -> Optional.empty(), never)
                 .get(request(GameType.GRIDWORDS, 0, 1));
         var copied = service(players(26), List.of(), never)
                 .get(request(GameType.GRIDWORDS, 0, 26));
@@ -77,9 +80,9 @@ class DailyResultDetailsServiceTest {
     @Test
     void rejectsAllPagesWhenOneGameExceedsTheDeliveredLimit() {
         AtomicInteger resultReads = new AtomicInteger();
-        DailyResultDetailsQuery query = (player, type, date) -> {
+        DailyResultDetailsQuery query = (guild, player, type, date) -> {
             resultReads.incrementAndGet();
-            return Optional.of(grid());
+            return Optional.of(details());
         };
         var service = service(players(51), List.of(participant(99, "Quad only")), query);
 
@@ -95,7 +98,7 @@ class DailyResultDetailsServiceTest {
         var result = service(
                 List.of(participant(1L, "A")),
                 List.of(),
-                (p, t, d) -> Optional.empty())
+                (g, p, t, d) -> Optional.empty())
                 .get(request(GameType.GRIDWORDS, 0, 1));
 
         assertThat(result).isEqualTo(new DailyResultDetailsUseCase.Missing("A", GameType.GRIDWORDS, DATE));
@@ -108,7 +111,37 @@ class DailyResultDetailsServiceTest {
         return new DailyResultDetailsService(
                 (g, c, m, d) -> Optional.of(new DailyStatusInteractionContextQuery.Context(
                         gridParticipants, quadParticipants)),
-                results);
+                results, RecordDefinitionCatalog.recordsV1(), AchievementDefinitionCatalog.achievementsV1(), key -> Optional.empty());
+    }
+
+    @Test
+    void derivesOptionalDetailBlocksOnlyFromTheProvidedReadProjection() {
+        DailyResultDetailsQuery projection = (guild, player, type, date) -> Optional.of(
+                new DailyResultDetailsQuery.Details(42L, grid(), Optional.of("Genau so gespeichert."), List.of(
+                        new DailyResultDetailsQuery.CurrentRecord(
+                                "result.gridwords.fewest-attempts.personal", RecordScopeType.PERSONAL),
+                        new DailyResultDetailsQuery.CurrentRecord("streak.activity.personal", RecordScopeType.PERSONAL)),
+                        List.of("participation.1.gridwords", "situational.crossgame.perfect_double")));
+        DailyResultDetailsService service = new DailyResultDetailsService(
+                (g, c, m, d) -> Optional.of(new DailyStatusInteractionContextQuery.Context(
+                        List.of(participant(1L, "A")), List.of())), projection,
+                RecordDefinitionCatalog.recordsV1(), AchievementDefinitionCatalog.achievementsV1(),
+                key -> key.value().equals("participation.1.gridwords") ? Optional.of("<:wave:1>") : Optional.empty());
+
+        DailyResultDetailsUseCase.Found found = (DailyResultDetailsUseCase.Found) service.get(request(GameType.GRIDWORDS, 0, 1));
+
+        assertThat(found.selectedExcuse()).contains("Genau so gespeichert.");
+        assertThat(found.currentRecords()).containsExactly(new DailyResultDetailsUseCase.CurrentRecord(
+                "Wenigste Versuche", "Persönlich"));
+        assertThat(found.achievements()).containsExactly(
+                new DailyResultDetailsUseCase.Achievement("<:wave:1>", "GW: Dabei!"),
+                new DailyResultDetailsUseCase.Achievement("✨", "GW+QW: Perfekter Doppelschlag"));
+    }
+
+    private static DailyResultDetailsService service(
+            DailyStatusInteractionContextQuery contexts, DailyResultDetailsQuery results) {
+        return new DailyResultDetailsService(contexts, results, RecordDefinitionCatalog.recordsV1(),
+                AchievementDefinitionCatalog.achievementsV1(), key -> Optional.empty());
     }
 
     private static DailyStatusInteractionContextQuery.Participant participant(long id, String name) {
@@ -116,7 +149,7 @@ class DailyResultDetailsServiceTest {
     }
 
     private static DailyResultDetailsQuery neverRead() {
-        return (player, type, date) -> {
+        return (guild, player, type, date) -> {
             throw new AssertionError("result query must not be invoked");
         };
     }
@@ -139,5 +172,9 @@ class DailyResultDetailsServiceTest {
                 Duration.ZERO,
                 OptionalInt.empty(),
                 Optional.of(new NormalizedBoard(List.of("⬜⬜⬜⬜⬜"))));
+    }
+
+    private static DailyResultDetailsQuery.Details details() {
+        return new DailyResultDetailsQuery.Details(1L, grid(), Optional.empty(), List.of(), List.of());
     }
 }

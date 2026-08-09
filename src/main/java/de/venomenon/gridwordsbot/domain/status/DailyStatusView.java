@@ -1,6 +1,8 @@
 package de.venomenon.gridwordsbot.domain.status;
 
 import de.venomenon.gridwordsbot.domain.model.GameType;
+import de.venomenon.gridwordsbot.domain.model.ParsedGameResult;
+import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -24,10 +26,30 @@ public record DailyStatusView(DailyStatus status, int componentVersion, List<Dai
         for (GameType gameType : List.of(GameType.GRIDWORDS, GameType.QUADWORDS)) {
             pages.addAll(resultMenuPages(gameType, status.players().stream()
                     .filter(player -> player.participates(gameType))
-                    .map(player -> new PlayerOption(player.discordUserId(), player.displayName()))
+                    .map(player -> option(player.discordUserId(), player.displayName(), player.result(gameType)))
                     .toList()));
         }
         return new DailyStatusView(status, 1, pages);
+    }
+
+    private static PlayerOption option(long discordUserId, String displayName, java.util.Optional<ParsedGameResult> result) {
+        String visibleName = safeVisibleName(displayName);
+        if (result.isEmpty()) {
+            return new PlayerOption(discordUserId, displayName, "⬜ " + visibleName, "Noch nicht eingereicht");
+        }
+        ParsedGameResult parsed = result.orElseThrow();
+        String outcome = parsed.outcome() instanceof ShareOutcome.Solved solved
+                ? solved.attemptsUsed() + "/" + solved.maxAttempts()
+                : "X/" + parsed.outcome().maxAttempts();
+        String label = (parsed.outcome() instanceof ShareOutcome.Solved ? "✅ " : "❌ ") + visibleName;
+        long seconds = parsed.duration().toSeconds();
+        return new PlayerOption(discordUserId, displayName, label,
+                outcome + " · " + (seconds / 60) + ":" + String.format("%02d", seconds % 60));
+    }
+
+    private static String safeVisibleName(String displayName) {
+        String normalized = displayName.replaceAll("[\\p{Cntrl}]", " ").trim();
+        return normalized.isBlank() ? "Unbekannter Spieler" : normalized;
     }
 
     /** Shared v1 sorting and pagination rule for rendered menu pages and interaction validation. */
@@ -65,11 +87,19 @@ public record DailyStatusView(DailyStatus status, int componentVersion, List<Dai
         }
     }
 
-    public record PlayerOption(long discordUserId, String displayName) {
+    public record PlayerOption(long discordUserId, String displayName, String label, String description) {
         public PlayerOption {
             if (discordUserId <= 0) throw new IllegalArgumentException("discordUserId must be positive");
             Objects.requireNonNull(displayName, "displayName");
             if (displayName.isBlank()) throw new IllegalArgumentException("displayName must not be blank");
+            Objects.requireNonNull(label, "label");
+            Objects.requireNonNull(description, "description");
+            if (label.isBlank() || description.isBlank()) throw new IllegalArgumentException("option presentation must not be blank");
+        }
+
+        /** Compatibility constructor for callers that only need stable identity and sorting. */
+        public PlayerOption(long discordUserId, String displayName) {
+            this(discordUserId, displayName, displayName, "Noch nicht eingereicht");
         }
     }
 }
