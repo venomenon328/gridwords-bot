@@ -265,8 +265,10 @@ public final class PeriodicReportRenderer {
             case RecordScope.ServerIndividual ignored -> "serverweiter";
             case RecordScope.Shared ignored -> "gemeinsamer";
         };
-        String game = definition.game().map(value -> value == GameType.GRIDWORDS ? " GridWords" : " QuadWords").orElse("");
-        return "**" + subject + "** · " + scope + game + "-Rekord\n↳ "
+        String recordKind = definition.game()
+                .map(value -> scope + " " + (value == GameType.GRIDWORDS ? "GridWords" : "QuadWords") + "-Rekord")
+                .orElse(scope + " Rekord");
+        return "**" + subject + "** · " + recordKind + "\n↳ "
                 + metric(definition) + " · **" + value(event.draft().newValue()) + "**";
     }
 
