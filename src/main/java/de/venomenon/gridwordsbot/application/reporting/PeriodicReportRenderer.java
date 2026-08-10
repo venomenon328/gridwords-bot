@@ -19,6 +19,7 @@ import de.venomenon.gridwordsbot.domain.reporting.RenderedPeriodicReport;
 import de.venomenon.gridwordsbot.domain.reporting.RenderedReportField;
 import de.venomenon.gridwordsbot.domain.reporting.RenderedReportPage;
 import de.venomenon.gridwordsbot.domain.reporting.ReportGameStatistics;
+import de.venomenon.gridwordsbot.domain.reporting.ReportPeriod;
 import de.venomenon.gridwordsbot.domain.reporting.ReportRenderingException;
 import de.venomenon.gridwordsbot.domain.reporting.ReportStreakSnapshot;
 import de.venomenon.gridwordsbot.domain.reporting.ReportType;
@@ -30,71 +31,137 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.HexFormat;
-import java.util.List;
-import java.util.LinkedHashMap;
 import java.util.Comparator;
-import java.util.Map;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
 /** Renders complete reports into deterministic, Discord-safe transport-neutral pages. */
 public final class PeriodicReportRenderer {
-    private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("d. MMMM uuuu", Locale.GERMAN);
+    private static final DateTimeFormatter MONTH = DateTimeFormatter.ofPattern("MMMM", Locale.GERMAN);
     private static final String UNDEFINED = "—";
 
     public RenderedPeriodicReport render(PeriodicReport report) {
         Objects.requireNonNull(report, "report");
-        String title = title(report.reportType(), report.period().startDate().format(DATE), report.period().endDate().format(DATE));
-        List<RenderedReportField> fields = new ArrayList<>();
-        report.participants().forEach(section -> fields.add(personalField(section)));
-        fields.add(sharedField(report));
-        fields.addAll(highlightFields(report));
-        List<RenderedReportPage> pages = paginate(title, fields);
+        String range = dateRange(report.period());
+        String statisticsTitle = statisticsTitle(report.reportType(), range);
+        int calendarDays = Math.toIntExact(ChronoUnit.DAYS.between(
+                report.period().startDate(), report.period().endDate()) + 1);
+
+        List<RenderedReportField> statistics = new ArrayList<>();
+        report.participants().forEach(section -> statistics.add(personalField(section, calendarDays)));
+        statistics.add(sharedField(report));
+
+        List<PageSection> sections = new ArrayList<>();
+        sections.add(new PageSection(statisticsTitle, statistics));
+        List<RenderedReportField> highlights = highlightFields(report);
+        if (!highlights.isEmpty()) {
+            sections.add(new PageSection(highlightTitle(report.reportType(), range), highlights));
+        }
+
+        List<RenderedReportPage> pages = paginateSections(sections);
         return new RenderedPeriodicReport(pages, fingerprint(pages));
     }
 
-    private static String title(ReportType type, String start, String end) {
+    private static String statisticsTitle(ReportType type, String range) {
         String label = type == ReportType.WEEKLY ? "Wochenbericht" : "Monatsbericht";
-        return label + " · " + start + " bis " + end;
+        return "📊 " + label + " · " + range;
     }
 
-    private static RenderedReportField personalField(PeriodicReportParticipantSection section) {
+    private static String highlightTitle(ReportType type, String range) {
+        return (type == ReportType.WEEKLY ? "✨ Highlights der Woche · " : "✨ Highlights des Monats · ") + range;
+    }
+
+    private static String dateRange(ReportPeriod period) {
+        LocalDate start = period.startDate();
+        LocalDate end = period.endDate();
+        if (start.equals(end)) {
+            return start.getDayOfMonth() + ". " + start.format(MONTH) + " " + start.getYear();
+        }
+        if (start.getYear() == end.getYear() && start.getMonth() == end.getMonth()) {
+            return start.getDayOfMonth() + ".–" + end.getDayOfMonth() + ". "
+                    + end.format(MONTH) + " " + end.getYear();
+        }
+        if (start.getYear() == end.getYear()) {
+            return start.getDayOfMonth() + ". " + start.format(MONTH) + "–"
+                    + end.getDayOfMonth() + ". " + end.format(MONTH) + " " + end.getYear();
+        }
+        return start.getDayOfMonth() + ". " + start.format(MONTH) + " " + start.getYear() + "–"
+                + end.getDayOfMonth() + ". " + end.format(MONTH) + " " + end.getYear();
+    }
+
+    private static RenderedReportField personalField(
+            PeriodicReportParticipantSection section,
+            int calendarDays) {
         var days = section.dayCounts();
         var streaks = section.streaks();
-        return new RenderedReportField(safeDisplayName(section.participant().displayName()),
-                "Teilnahme: " + days.participationDays() + " · Aktivität: " + days.activityDays()
-                        + " · Komplett: " + days.completeDays() + " · Perfekt: " + days.perfectDays()
-                        + "\nGridWords\n" + gameStatistics(section.gameStatistics().gridWords())
-                        + "\nQuadWords\n" + gameStatistics(section.gameStatistics().quadWords())
-                        + "\nSerien (Stand/Rekord)\nAktivität: " + streak(streaks.activity())
-                        + " · Komplett: " + streak(streaks.complete())
-                        + "\nGridWords gelöst: " + streak(streaks.gridWordsSolved())
-                        + " · QuadWords gelöst: " + streak(streaks.quadWordsSolved())
-                        + " · Perfekt: " + streak(streaks.perfect()));
+        String name = fieldName("👤 ", section.participant().displayName());
+        String value = "📅 Teilnahme " + days.participationDays() + "/" + calendarDays
+                + " · Aktiv " + days.activityDays()
+                + " · Komplett " + days.completeDays()
+                + " · Perfekt " + days.perfectDays()
+                + "\n" + gameStatistics(section.gameStatistics().gridWords())
+                + "\n" + gameStatistics(section.gameStatistics().quadWords())
+                + "\n🔥 Serien (Stand/Rekord)"
+                + "\n↳ Aktiv " + streak(streaks.activity())
+                + " · Komplett " + streak(streaks.complete())
+                + " · GW " + streak(streaks.gridWordsSolved())
+                + " · QW " + streak(streaks.quadWordsSolved())
+                + " · Perfekt " + streak(streaks.perfect());
+        return new RenderedReportField(name, value);
     }
 
     private static String gameStatistics(ReportGameStatistics statistics) {
-        if (statistics.possibleDays() == 0) return "Nicht teilgenommen";
-        return "Eingereicht: " + statistics.submitted() + "/" + statistics.possibleDays()
-                + " · Gelöst: " + statistics.solved() + " · Nicht gelöst: " + statistics.unsolved()
-                + " · Fehlend: " + statistics.missing()
-                + "\nQuote: " + percentage(statistics.solutionRate().map(rate -> rate.numerator()).orElse(0), statistics.submitted())
-                + " · Ø Versuche: " + average(statistics.solvedAttemptsTotal(), statistics.solvedAttemptsCount())
-                + " · Ø Zeit: " + averageDuration(statistics.solvedDurationTotal(), statistics.solvedDurationCount())
-                + " · Bestzeit: " + statistics.bestSolvedDuration().map(PeriodicReportRenderer::duration).orElse(UNDEFINED);
+        String game = statistics.gameType() == GameType.GRIDWORDS ? "🟩 GW" : "🟦 QW";
+        if (statistics.possibleDays() == 0) {
+            return game + " — keine Teilnahme";
+        }
+        if (statistics.submitted() == 0) {
+            return game + " 0/" + statistics.possibleDays() + " · " + statistics.missing()
+                    + "⬜ · keine Einreichung";
+        }
+
+        StringBuilder line = new StringBuilder(game)
+                .append(' ').append(statistics.submitted()).append('/').append(statistics.possibleDays());
+        if (statistics.solved() == statistics.submitted() && statistics.missing() == 0) {
+            line.append(" ✅");
+        } else {
+            List<String> outcomes = new ArrayList<>();
+            if (statistics.solved() > 0) outcomes.add(statistics.solved() + "✅");
+            if (statistics.unsolved() > 0) outcomes.add(statistics.unsolved() + "❌");
+            if (statistics.missing() > 0) outcomes.add(statistics.missing() + "⬜");
+            line.append(" · ").append(String.join(" ", outcomes));
+        }
+        line.append(" · ").append(percentage(statistics.solved(), statistics.submitted()));
+        if (statistics.solved() > 0) {
+            line.append(" · ØVers. ").append(average(statistics.solvedAttemptsTotal(), statistics.solvedAttemptsCount()))
+                    .append(" · ØZeit ").append(averageDuration(
+                            statistics.solvedDurationTotal(), statistics.solvedDurationCount()))
+                    .append(" · Best ").append(statistics.bestSolvedDuration()
+                            .map(PeriodicReportRenderer::duration).orElseThrow());
+        }
+        return line.toString();
     }
 
     private static RenderedReportField sharedField(PeriodicReport report) {
         var days = report.shared().dayCounts();
         var streaks = report.shared().streaks();
-        return new RenderedReportField("Gemeinsam",
-                "Mögliche Tage: " + days.sharedPossibleDays() + " · Komplette Tage: " + days.completeDays()
-                        + " · Perfekte Tage: " + days.perfectDays()
-                        + "\nKomplettserie (Stand/Rekord): " + streak(streaks.complete())
-                        + " · Perfektserie (Stand/Rekord): " + streak(streaks.perfect()));
+        String dayLine = days.sharedPossibleDays() == 0
+                ? "📅 Keine gemeinsam möglichen Tage"
+                : "📅 Möglich " + days.sharedPossibleDays()
+                        + " · Komplett " + days.completeDays()
+                        + " · Perfekt " + days.perfectDays();
+        return new RenderedReportField("🤝 Gemeinsam",
+                dayLine
+                        + "\n🔥 Serien (Stand/Rekord)"
+                        + "\n↳ Komplett " + streak(streaks.complete())
+                        + " · Perfekt " + streak(streaks.perfect()));
     }
 
     private static List<RenderedReportField> highlightFields(PeriodicReport report) {
@@ -103,37 +170,40 @@ public final class PeriodicReportRenderer {
         for (PeriodicReportParticipantSection section : report.participants()) {
             Integer count = report.highlights().activeAwardsByParticipant().get(section.participant().discordUserId());
             if (count != null) {
-                awards.add(safeDisplayName(section.participant().displayName()) + ": " + count
-                        + (count == 1 ? " Achievement freigeschaltet" : " Achievements freigeschaltet"));
+                awards.add(safeDisplayName(section.participant().displayName()) + " · **" + count + "** freigeschaltet");
             }
         }
-        addSplitFields(fields, "🏅 Achievements", awards);
+        addSplitFields(fields, "🏅 Achievements", awards, "\n");
 
         Map<Long, String> names = new LinkedHashMap<>();
         report.participants().forEach(section -> names.put(section.participant().discordUserId(),
                 safeDisplayName(section.participant().displayName())));
         List<String> records = deduplicatedRecordEvents(report.highlights().recordEvents()).stream()
-                .map(event -> recordLine(event, names))
+                .map(event -> recordBlock(event, names))
                 .toList();
-        addSplitFields(fields, "🏆 Rekorde", records);
+        addSplitFields(fields, "🏆 Rekorde", records, "\n\n");
         return List.copyOf(fields);
     }
 
-    private static void addSplitFields(List<RenderedReportField> fields, String title, List<String> lines) {
-        if (lines.isEmpty()) return;
+    private static void addSplitFields(
+            List<RenderedReportField> fields,
+            String title,
+            List<String> blocks,
+            String separator) {
+        if (blocks.isEmpty()) return;
         List<String> chunks = new ArrayList<>();
         StringBuilder current = new StringBuilder();
-        for (String line : lines) {
-            if (line.length() > RenderedReportField.MAX_VALUE_LENGTH) {
-                throw new ReportRenderingException("report highlight line exceeds Discord field limit");
+        for (String block : blocks) {
+            if (block.length() > RenderedReportField.MAX_VALUE_LENGTH) {
+                throw new ReportRenderingException("report highlight block exceeds Discord field limit");
             }
-            int separator = current.isEmpty() ? 0 : 1;
-            if (current.length() + separator + line.length() > RenderedReportField.MAX_VALUE_LENGTH) {
+            int separatorLength = current.isEmpty() ? 0 : separator.length();
+            if (current.length() + separatorLength + block.length() > RenderedReportField.MAX_VALUE_LENGTH) {
                 chunks.add(current.toString());
                 current.setLength(0);
             }
-            if (!current.isEmpty()) current.append('\n');
-            current.append(line);
+            if (!current.isEmpty()) current.append(separator);
+            current.append(block);
         }
         if (!current.isEmpty()) chunks.add(current.toString());
         for (int index = 0; index < chunks.size(); index++) {
@@ -181,7 +251,7 @@ public final class PeriodicReportRenderer {
         };
     }
 
-    private static String recordLine(RecordEventSnapshot event, Map<Long, String> names) {
+    private static String recordBlock(RecordEventSnapshot event, Map<Long, String> names) {
         RecordDefinition<?> definition = RecordDefinitionCatalog.recordsV1().find(event.draft().stateKey().definitionKey())
                 .orElseThrow(() -> new IllegalStateException("record event references an unknown definition"));
         String subject = switch (event.draft().stateKey().scope()) {
@@ -195,9 +265,9 @@ public final class PeriodicReportRenderer {
             case RecordScope.ServerIndividual ignored -> "serverweiter";
             case RecordScope.Shared ignored -> "gemeinsamer";
         };
-        String game = definition.game().map(value -> value == GameType.GRIDWORDS ? "GridWords " : "QuadWords ").orElse("");
-        return subject + ": neuer " + scope + " " + game + "Rekord · " + metric(definition) + " · "
-                + value(event.draft().newValue());
+        String game = definition.game().map(value -> value == GameType.GRIDWORDS ? " GridWords" : " QuadWords").orElse("");
+        return "**" + subject + "** · " + scope + game + "-Rekord\n↳ "
+                + metric(definition) + " · **" + value(event.draft().newValue()) + "**";
     }
 
     private static long playerId(RecordSourceReference source) {
@@ -242,19 +312,20 @@ public final class PeriodicReportRenderer {
             RecordSourceReference.StreakRun source) { }
 
     private static String percentage(int solved, int submitted) {
-        return submitted == 0 ? UNDEFINED : decimal(BigDecimal.valueOf(solved).multiply(BigDecimal.valueOf(100)), submitted) + " %";
+        String value = decimal(BigDecimal.valueOf(solved).multiply(BigDecimal.valueOf(100)), submitted);
+        return (value.endsWith(",0") ? value.substring(0, value.length() - 2) : value) + " %";
     }
 
     private static String average(long total, int count) {
-        return count == 0 ? UNDEFINED : decimal(BigDecimal.valueOf(total), count);
+        return decimal(BigDecimal.valueOf(total), count);
     }
 
     private static String decimal(BigDecimal numerator, int denominator) {
-        return numerator.divide(BigDecimal.valueOf(denominator), 1, RoundingMode.HALF_UP).toPlainString().replace('.', ',');
+        return numerator.divide(BigDecimal.valueOf(denominator), 1, RoundingMode.HALF_UP)
+                .toPlainString().replace('.', ',');
     }
 
     private static String averageDuration(Duration total, int count) {
-        if (count == 0) return UNDEFINED;
         BigDecimal seconds = BigDecimal.valueOf(total.getSeconds())
                 .add(BigDecimal.valueOf(total.getNano()).movePointLeft(9));
         return duration(seconds.divide(BigDecimal.valueOf(count), 0, RoundingMode.HALF_UP).longValueExact());
@@ -277,6 +348,11 @@ public final class PeriodicReportRenderer {
         return streak.currentAtPeriodEnd() + "/" + streak.allTimeRecordThroughPeriodEnd();
     }
 
+    private static String fieldName(String prefix, String displayName) {
+        String value = prefix + safeDisplayName(displayName);
+        return truncateUtf16(value, RenderedReportField.MAX_NAME_LENGTH);
+    }
+
     private static String safeDisplayName(String displayName) {
         StringBuilder safe = new StringBuilder();
         for (int index = 0; index < displayName.length(); index++) {
@@ -292,41 +368,73 @@ public final class PeriodicReportRenderer {
         return normalized.isEmpty() ? UNDEFINED : normalized;
     }
 
+    private static String truncateUtf16(String value, int maxLength) {
+        if (value.length() <= maxLength) return value;
+        int end = maxLength;
+        if (end > 0 && Character.isHighSurrogate(value.charAt(end - 1))
+                && end < value.length() && Character.isLowSurrogate(value.charAt(end))) {
+            end--;
+        }
+        return value.substring(0, end);
+    }
+
     static List<RenderedReportPage> paginate(String title, List<RenderedReportField> fields) {
-        List<RenderedReportPage> pages = List.of();
+        return paginateSections(List.of(new PageSection(title, fields)));
+    }
+
+    private static List<RenderedReportPage> paginateSections(List<PageSection> sections) {
+        int fieldCount = sections.stream().mapToInt(section -> section.fields().size()).sum();
         int assumedPageCount = 1;
-        for (int attempt = 0; attempt <= fields.size() + 1; attempt++) {
-            pages = paginate(title, fields, assumedPageCount);
+        List<RenderedReportPage> pages = List.of();
+        for (int attempt = 0; attempt <= fieldCount + sections.size() + 1; attempt++) {
+            pages = paginateSections(sections, assumedPageCount);
             if (pages.size() == assumedPageCount) return pages;
             assumedPageCount = pages.size();
         }
         throw new ReportRenderingException("report page count did not stabilize");
     }
 
-    private static List<RenderedReportPage> paginate(String title, List<RenderedReportField> fields, int pageCount) {
-        List<List<RenderedReportField>> pageFields = new ArrayList<>();
-        List<RenderedReportField> current = new ArrayList<>();
-        for (RenderedReportField field : fields) {
-            if (!fits(title, current, field, pageFields.size() + 1, pageCount)) {
-                if (current.isEmpty()) throw new ReportRenderingException("report section cannot fit on a Discord page");
-                pageFields.add(List.copyOf(current));
-                current.clear();
-                if (!fits(title, current, field, pageFields.size() + 1, pageCount)) {
-                    throw new ReportRenderingException("report section cannot fit on a Discord page");
+    private static List<RenderedReportPage> paginateSections(List<PageSection> sections, int pageCount) {
+        List<PageDraft> drafts = new ArrayList<>();
+        for (PageSection section : sections) {
+            List<RenderedReportField> current = new ArrayList<>();
+            for (RenderedReportField field : section.fields()) {
+                int pageNumber = drafts.size() + 1;
+                if (!fits(section.title(), current, field, pageNumber, pageCount)) {
+                    if (current.isEmpty()) {
+                        throw new ReportRenderingException("report section cannot fit on a Discord page");
+                    }
+                    drafts.add(new PageDraft(section.title(), List.copyOf(current)));
+                    current.clear();
+                    pageNumber = drafts.size() + 1;
+                    if (!fits(section.title(), current, field, pageNumber, pageCount)) {
+                        throw new ReportRenderingException("report section cannot fit on a Discord page");
+                    }
                 }
+                current.add(field);
             }
-            current.add(field);
+            if (!current.isEmpty()) {
+                drafts.add(new PageDraft(section.title(), List.copyOf(current)));
+            }
         }
-        pageFields.add(List.copyOf(current));
+
         List<RenderedReportPage> pages = new ArrayList<>();
-        for (int index = 0; index < pageFields.size(); index++) {
-            Optional<String> footer = pageCount == 1 ? Optional.empty() : Optional.of("Seite " + (index + 1) + "/" + pageCount);
-            pages.add(new RenderedReportPage(title, pageFields.get(index), footer));
+        for (int index = 0; index < drafts.size(); index++) {
+            PageDraft draft = drafts.get(index);
+            Optional<String> footer = pageCount == 1
+                    ? Optional.empty()
+                    : Optional.of("Seite " + (index + 1) + "/" + pageCount);
+            pages.add(new RenderedReportPage(draft.title(), draft.fields(), footer));
         }
         return List.copyOf(pages);
     }
 
-    private static boolean fits(String title, List<RenderedReportField> current, RenderedReportField next, int page, int pageCount) {
+    private static boolean fits(
+            String title,
+            List<RenderedReportField> current,
+            RenderedReportField next,
+            int page,
+            int pageCount) {
         if (current.size() == RenderedReportPage.MAX_FIELDS) return false;
         Optional<String> footer = pageCount == 1 ? Optional.empty() : Optional.of("Seite " + page + "/" + pageCount);
         try {
@@ -363,4 +471,14 @@ public final class PeriodicReportRenderer {
         byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
         target.append(label).append(':').append(bytes.length).append(':').append(value);
     }
+
+    private record PageSection(String title, List<RenderedReportField> fields) {
+        private PageSection {
+            Objects.requireNonNull(title, "title");
+            fields = List.copyOf(Objects.requireNonNull(fields, "fields"));
+            if (fields.isEmpty()) throw new IllegalArgumentException("report page section needs fields");
+        }
+    }
+
+    private record PageDraft(String title, List<RenderedReportField> fields) { }
 }
