@@ -4,7 +4,9 @@
 **Stand:** 8. August 2026  
 **Entscheidung für:** Inkrement 13  
 **Verbindliches Issue:** #86  
-**Fachliche Grundlage:** [`../requirements/achievements.md`](../requirements/achievements.md)
+**Aktuelle fachliche Grundlage:** [`../product/achievements.md`](../product/achievements.md)
+
+**Historische Fachquelle:** [`../history/legacy/requirements/achievements.md`](../history/legacy/requirements/achievements.md)
 
 ## Kontext
 

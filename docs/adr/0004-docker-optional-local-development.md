@@ -1,6 +1,6 @@
 # ADR 0004: Docker-optionale lokale Entwicklung
 
-- **Status:** akzeptiert
+- **Status:** teilweise ersetzt durch [ADR 0010](0010-docker-available-local-development.md)
 - **Datum:** 29. Juli 2026
 - **Entscheidungsträger:** Tobias / Projektarchitektur
 

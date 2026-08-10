@@ -144,7 +144,7 @@ Negativ beziehungsweise Aufwand:
 
 ## Umsetzungshinweise
 
-- Die verbindliche Fachsemantik steht in `docs/requirements/periodic-reports.md`.
-- Die Umsetzung erfolgt paketweise nach `docs/increments/10-periodic-reports.md`.
+- Die aktuelle Fachsemantik steht in [`../product/reports.md`](../product/reports.md).
+- Die damalige Umsetzung ist unter [`../history/increments/10-periodic-reports.md`](../history/increments/10-periodic-reports.md) archiviert.
 - Architektur- und Integrationstests müssen sicherstellen, dass Discord-Aufrufe außerhalb von Transaktionen liegen.
 - Persistierte Fingerprints und Message-IDs sind Delivery-Metadaten, keine fachlichen Statistik-Snapshots.
