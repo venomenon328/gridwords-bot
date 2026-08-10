@@ -125,6 +125,42 @@ class PeriodicReportDeliveryRefreshTest {
         verify(store).markSucceeded(eq(KEY), eq(token), any());
     }
 
+    @Test
+    void ordinaryTickResumesChangedUnfinishedContentAfterInterruptedRefresh() {
+        PeriodicReport oldReport = report("Altes Layout");
+        PeriodicReport newReport = report("Neues Layout");
+        var oldRendered = new PeriodicReportRenderer().render(oldReport);
+        var newRendered = new PeriodicReportRenderer().render(newReport);
+        PeriodicReportDeliveryStore store = mock(PeriodicReportDeliveryStore.class);
+        PeriodicReportMessageGateway gateway = mock(PeriodicReportMessageGateway.class);
+        UUID token = UUID.fromString("00000000-0000-0000-0000-000000000121");
+        PeriodicReportDeliveryClaim claim = new PeriodicReportDeliveryClaim(token, NOW.plusSeconds(60));
+        var progress = List.of(new PeriodicReportDeliveryPageProgress(0, 900L));
+        PeriodicReportDeliveryRegistration oldRegistration = registration(oldRendered.contentFingerprint());
+        PeriodicReportDeliverySnapshot unfinished = snapshot(
+                oldRegistration, PeriodicReportDeliveryState.OPEN, Optional.empty(), progress, Optional.empty());
+        PeriodicReportDeliverySnapshot claimed = snapshot(
+                oldRegistration, PeriodicReportDeliveryState.CLAIMED, Optional.of(claim), progress, Optional.empty());
+
+        when(store.find(KEY)).thenReturn(Optional.of(unfinished), Optional.of(claimed));
+        when(store.claim(eq(KEY), any())).thenReturn(Optional.of(claim));
+        when(store.replaceContent(eq(KEY), eq(token), any())).thenReturn(true);
+        when(store.recordPage(eq(KEY), eq(token), any())).thenReturn(true);
+        when(store.markSucceeded(eq(KEY), eq(token), any())).thenReturn(true);
+        when(gateway.findExactMatches(eq(2L), any())).thenReturn(List.of());
+        when(gateway.create(eq(2L), any())).thenReturn(901L);
+
+        service(store, gateway).deliver(KEY, METADATA, newReport);
+
+        verify(gateway).delete(2L, 900L);
+        verify(store).replaceContent(
+                KEY,
+                token,
+                new PeriodicReportDeliveryContent(newRendered.contentFingerprint(), newRendered.pages().size()));
+        verify(gateway).create(eq(2L), any());
+        verify(store).markSucceeded(eq(KEY), eq(token), any());
+    }
+
     private static PeriodicReportDeliveryService service(
             PeriodicReportDeliveryStore store,
             PeriodicReportMessageGateway gateway) {
