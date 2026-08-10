@@ -55,6 +55,25 @@ public final class PeriodicReportDeliveryService {
             PeriodicReportDeliveryKey key,
             PeriodicReportDeliveryMetadata metadata,
             PeriodicReportResult result) {
+        deliver(key, metadata, result, false);
+    }
+
+    /**
+     * Explicitly allows a succeeded snapshot to be replaced when its visible fingerprint changed.
+     * The ordinary delivery path stays frozen; this is reserved for narrow operator-approved refresh triggers.
+     */
+    public void deliverRefreshingSucceededContent(
+            PeriodicReportDeliveryKey key,
+            PeriodicReportDeliveryMetadata metadata,
+            PeriodicReportResult result) {
+        deliver(key, metadata, result, true);
+    }
+
+    private void deliver(
+            PeriodicReportDeliveryKey key,
+            PeriodicReportDeliveryMetadata metadata,
+            PeriodicReportResult result,
+            boolean refreshChangedSucceededContent) {
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(metadata, "metadata");
         Objects.requireNonNull(result, "result");
@@ -80,8 +99,14 @@ public final class PeriodicReportDeliveryService {
         boolean reconcileSucceededSnapshot = existing
                 .map(snapshot -> snapshot.state() == PeriodicReportDeliveryState.SUCCEEDED)
                 .orElse(false);
+        boolean resumeChangedUnfinishedContent = existing
+                .filter(snapshot -> !snapshot.state().isTerminal())
+                .filter(snapshot -> rendered != null)
+                .filter(snapshot -> snapshot.registration().metadata().equals(metadata))
+                .filter(snapshot -> contentFingerprintChanged(snapshot, rendered))
+                .isPresent();
         PeriodicReportDeliverySnapshot snapshot;
-        if (reconcileSucceededSnapshot) {
+        if (reconcileSucceededSnapshot || resumeChangedUnfinishedContent) {
             if (rendered == null) {
                 return;
             }
@@ -120,9 +145,22 @@ public final class PeriodicReportDeliveryService {
                         store.markNoOp(key, claim.get().token(), current.checkedAt()));
                 return;
             }
+            boolean changedUnfinishedContent = !reconcileSucceededSnapshot
+                    && contentFingerprintChanged(ownedClaim.get().snapshot(), rendered);
             boolean delivered = reconcileSucceededSnapshot
-                    ? reconcileSucceededSnapshot(key, claim.get(), ownedClaim.get().snapshot(), rendered)
-                    : reconcilePages(key, claim.get(), rendered, ownedClaim.get().snapshot().pageProgress());
+                    ? reconcileSucceededSnapshot(
+                            key,
+                            claim.get(),
+                            ownedClaim.get().snapshot(),
+                            rendered,
+                            refreshChangedSucceededContent)
+                    : changedUnfinishedContent
+                            ? replaceEntirePageGroup(
+                                    key,
+                                    claim.get(),
+                                    ownedClaim.get().snapshot().pageProgress(),
+                                    rendered)
+                            : reconcilePages(key, claim.get(), rendered, ownedClaim.get().snapshot().pageProgress());
             if (delivered) {
                 activeClaim(key, claim.get()).ifPresent(current ->
                         store.markSucceeded(key, claim.get().token(), current.checkedAt()));
@@ -160,14 +198,25 @@ public final class PeriodicReportDeliveryService {
         }
     }
 
+    private static boolean contentFingerprintChanged(
+            PeriodicReportDeliverySnapshot snapshot,
+            RenderedPeriodicReport rendered) {
+        return snapshot.registration().content()
+                .map(content -> !content.fingerprint().equals(rendered.contentFingerprint()))
+                .orElse(true);
+    }
+
     private boolean reconcileSucceededSnapshot(
             PeriodicReportDeliveryKey key,
             PeriodicReportDeliveryClaim claim,
             PeriodicReportDeliverySnapshot snapshot,
-            RenderedPeriodicReport rendered) {
-        boolean fingerprintChanged = snapshot.registration().content()
-                .map(content -> !content.fingerprint().equals(rendered.contentFingerprint()))
-                .orElse(true);
+            RenderedPeriodicReport rendered,
+            boolean refreshChangedSucceededContent) {
+        boolean fingerprintChanged = contentFingerprintChanged(snapshot, rendered);
+        if (refreshChangedSucceededContent && fingerprintChanged) {
+            return replaceEntirePageGroup(key, claim, snapshot.pageProgress(), rendered);
+        }
+
         boolean missing = false;
         for (PeriodicReportDeliveryPageProgress progress : snapshot.pageProgress()) {
             if (!ownsActiveClaim(key, claim)) {

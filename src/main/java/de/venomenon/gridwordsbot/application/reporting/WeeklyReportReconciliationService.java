@@ -31,4 +31,10 @@ public final class WeeklyReportReconciliationService {
     public void reconcile(long guildId, long channelId) {
         reconciliationService.reconcile(guildId, channelId, ReportType.WEEKLY, weeklyReportTime, zone);
     }
+
+    /** Allows the latest due succeeded weekly report to adopt a changed visible fingerprint. */
+    public void reconcileRefreshingSucceededContent(long guildId, long channelId) {
+        reconciliationService.reconcileRefreshingSucceededContent(
+                guildId, channelId, ReportType.WEEKLY, weeklyReportTime, zone);
+    }
 }

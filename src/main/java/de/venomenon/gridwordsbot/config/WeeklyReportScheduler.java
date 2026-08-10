@@ -1,6 +1,8 @@
 package de.venomenon.gridwordsbot.config;
 
 import de.venomenon.gridwordsbot.application.reporting.WeeklyReportReconciliationService;
+import java.time.Clock;
+import java.time.DayOfWeek;
 import java.util.Objects;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.annotation.Conditional;
@@ -16,17 +18,25 @@ import org.springframework.stereotype.Component;
 final class WeeklyReportScheduler {
     private final WeeklyReportReconciliationService reconciliation;
     private final GridwordsBotProperties properties;
+    private final Clock clock;
 
     WeeklyReportScheduler(
             WeeklyReportReconciliationService reconciliation,
-            GridwordsBotProperties properties) {
+            GridwordsBotProperties properties,
+            Clock clock) {
         this.reconciliation = Objects.requireNonNull(reconciliation, "reconciliation");
         this.properties = Objects.requireNonNull(properties, "properties");
+        this.clock = Objects.requireNonNull(clock, "clock");
     }
 
     @EventListener(ApplicationReadyEvent.class)
     void startupReconciliation() {
-        reconcile();
+        if (clock.instant().atZone(properties.schedule().timeZone()).getDayOfWeek() == DayOfWeek.MONDAY) {
+            reconciliation.reconcileRefreshingSucceededContent(
+                    properties.discord().guildId(), properties.discord().channelId());
+        } else {
+            reconcile();
+        }
     }
 
     @Scheduled(fixedDelay = 60_000, initialDelay = 60_000)
