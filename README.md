@@ -4,18 +4,19 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 ## Aktueller Stand
 
-Der **produktive** funktionale Umfang bis einschließlich Inkrement 13 ist nach `main` gemergt, automatisiert gehärtet und ausgerollt.
+Der **produktive** funktionale Umfang bis einschließlich Inkrement 14 ist nach `main` gemergt, automatisiert gehärtet, real abgenommen und ausgerollt.
 
-Der aktuelle Produktionsrelease ist **Version 1.4.0**. Der produktive Stand basiert auf dem Merge-Commit
+Der aktuelle Produktionsrelease ist **Version 1.5.0**. Der tatsächlich ausgerollte Anwendungscode basiert auf dem Inkrement-14-Merge-Commit
 
-`213fe15dcc59e46856ea9be7066161fdc473353a`.
+`e06fc8f9dfb4645c0db5cd3532c1eb7b8289f784`.
+
+Nachgelagerte reine Dokumentationscommits auf `main` ändern diesen produktiven Codebezug nicht.
 
 **Inkrement 12 – Rekorde und Rekordmeldungen** wurde mit Version **1.3.0** produktiv eingeführt.  
-**Inkrement 13 – Achievements** wurde mit Version **1.4.0** produktiv eingeführt.
+**Inkrement 13 – Achievements** wurde mit Version **1.4.0** produktiv eingeführt.  
+**Inkrement 14 – UX- und QoL-Stärkung** wurde mit Version **1.5.0** produktiv eingeführt.
 
-**Inkrement 14 – UX- und QoL-Stärkung** befindet sich auf `feature/14-ux-qol` in der Abschlussabnahme für die geplante Version **1.5.0**. Die Pakete 14.1–14.4 sind implementiert und paketweise technisch abgenommen; das kumulative Hardening einschließlich Standardbuild, PostgreSQL-Integration, Migration/Upgrade sowie Produktionsimage-, Compose-, Backup-, Restore-, Resume- und Rollback-Gate ist ebenfalls grün. Offen ist ausschließlich die reale Discord-/Report-Abnahme. Inkrement 14 ist noch **nicht** nach `main` gemergt, nicht veröffentlicht und nicht produktiv ausgerollt.
-
-Für Inkrement 13 wurden vor dem Rollout Standardbuild, PostgreSQL-Integration, Migration/Upgrade sowie das vollständige Produktionscontainer-, Compose-, Backup-, Restore-, Resume- und Rollback-Gate erfolgreich ausgeführt. Der reale lokale Discord-Smoke deckte Startup, Migration 024, historischen Bootstrap, Introduction, `/achievements` und Restart-Idempotenz ab. Der anschließende Produktiv-Smoke/Canary wurde erfolgreich abgeschlossen.
+Inkrement 14 wurde vor dem Rollout mit Standardbuild, PostgreSQL-Integration, Migration/Upgrade sowie dem vollständigen Produktionsimage-, Compose-, Backup-, Restore-, Resume- und Rollback-Gate geprüft. Der reale Discord-/Report-Smoke auf der separaten Testumgebung wurde bestanden; anschließend wurde Release **1.5.0** veröffentlicht und produktiv ausgerollt. Der Produktiv-Smoke/Canary wurde vom Betreiber als bestanden bestätigt.
 
 Abnahmeprotokolle:
 
@@ -24,7 +25,7 @@ Abnahmeprotokolle:
 - [`docs/operations/12-records-acceptance.md`](docs/operations/12-records-acceptance.md)
 - [`docs/operations/13-achievements-acceptance.md`](docs/operations/13-achievements-acceptance.md)
 - [`docs/operations/13-achievements-live-canary.md`](docs/operations/13-achievements-live-canary.md)
-- [`docs/operations/14-ux-qol-acceptance.md`](docs/operations/14-ux-qol-acceptance.md) – laufende Abnahme von Inkrement 14
+- [`docs/operations/14-ux-qol-acceptance.md`](docs/operations/14-ux-qol-acceptance.md) – technische, reale und produktive Abnahme von Inkrement 14
 
 ## Fachlicher Funktionsumfang
 
@@ -37,46 +38,40 @@ Der produktive Bot unterstützt insbesondere:
 - unabhängige Teilnahme an GridWords, QuadWords, beiden oder keinem Spiel,
 - Self-Service- und Admin-Slash-Commands mit optionaler Spielauswahl,
 - einen globalen Reminderstatus mit spielbezogener Audience,
+- verständliche zeitliche Wirkung von Join/Activate und Leave/Deactivate,
+- Reminderstatus mit den tatsächlich konfigurierten Uhrzeiten,
 - kanonische Ergebnisnachrichten mit sicherer Quelllöschung,
 - Korrekturen durch Edit derselben kanonischen Nachricht,
 - persistente Tagesstatusnachrichten mit eindeutiger Nichtteilnahme-Darstellung,
+- Statussymbol sowie Ergebnis-/Dauer-Kurzinfo direkt in Tagesstatus-Dropdowns,
+- direkte Link-Buttons zu GridWords und QuadWords,
 - fünf persönliche und vier gemeinsame Serien,
+- `/status` als persönliches Dashboard mit heutigem Spielstand und allen fünf persönlichen Serien,
 - Reminder um standardmäßig 16:00 und 22:00 Uhr,
 - täglichen Tagesabschluss und Channel-Bereinigung um 06:00 Uhr,
 - Wochenberichte montags um 08:00 Uhr,
 - Monatsberichte am Monatsersten um 08:15 Uhr,
 - getrennte GridWords-/QuadWords-Nenner in Wochen- und Monatsberichten,
+- Achievement-Anzahlen je Spieler und vollständige gültige Rekord-Highlights in Wochen- und Monatsberichten,
 - interaktive, je Spiel getrennte Auswahlmenüs in Tagesstatusnachrichten,
 - ausschließlich ephemere, lesende Ergebnisdetails,
+- SELECTED-Ausrede, aktuell vom Ergebnis gehaltene Rekorde und am Spieltag freigeschaltete Achievements in den ephemeren Ergebnisdetails,
 - optionale kontextabhängige Ausreden bei klar definierten auffälligen Ergebnissen,
 - jeweils drei private Ausredenvorschläge, einen einmaligen Stilwechsel, Auswahl oder Verzicht,
 - Übernahme ausschließlich des gewählten Textes in dieselbe kanonische Ergebnisnachricht,
 - Ablauf, Cooldown und Wiederholungsschutz für Ausreden,
 - historische persönliche, serverweite individuelle und gemeinsame Rekorde für Ergebnisse und Serien,
 - aggregierte, korrigierbare Rekordmeldungen mit Edit/Delete-Reconciliation,
-- den ephemeren, strikt lesenden `/records`-Command mit `game`, `category` und optionaler Admin-Fremdansicht,
+- den ephemeren, strikt lesenden `/records`-Command mit `game`, `category`, `scope` und optionaler Admin-Fremdansicht,
 - persistente Record-Bootstrap-, Live-, Day-Close-, Delivery-, Retry- und Restart-Recovery,
 - einen kuratierten Katalog mit **60 Achievements** für Erfahrung, Zuverlässigkeit, Serien, Leistung und besondere Spielsituationen,
 - rückwirkende Achievement-Rekonstruktion aus der kanonischen Historie,
 - aggregierte öffentliche Achievement-Freischaltungen,
 - korrekturfähigen Achievement-State mit Invalidierung und Reaktivierung ohne öffentliche Aberkennungsnachricht,
-- den ephemeren `/achievements`-Command für aktive Achievements mit Self-/Other- und Game-Filter,
-- den ephemeren, self-only `/achievement-list`-Command mit allen 60 Definitionen und binärem `✅`/`❌`-Status ohne quantitative Fortschrittsanzeige,
+- den ephemeren `/achievements`-Command für aktive Achievements mit Self-/Other- und Game-Filter einschließlich fachlichem Freischaltdatum,
+- den ephemeren, self-only `/achievement-list`-Command mit allen 60 Definitionen, kombinierbaren `game`-/`category`-/`status`-Filtern und binärem `✅`/`❌`-Status ohne quantitative Fortschrittsanzeige,
 - Claim-, Lease-, Retry-, Recovery-, Supersession- und Duplikatschutz,
 - keine Discord-I/O innerhalb von Datenbanktransaktionen.
-
-Der noch nicht produktive Inkrement-14-Featurestand ergänzt zusätzlich:
-
-- Statussymbol sowie Ergebnis-/Dauer-Kurzinfo direkt in Tagesstatus-Dropdowns,
-- direkte Link-Buttons zu GridWords und QuadWords,
-- SELECTED-Ausrede, aktuell vom Ergebnis gehaltene Rekorde und am Spieltag freigeschaltete Achievements in den ephemeren Ergebnisdetails,
-- verständliche zeitliche Wirkung von Join/Activate und Leave/Deactivate,
-- Reminderstatus mit den tatsächlich konfigurierten Uhrzeiten,
-- `/status` als persönliches Dashboard mit heutigem Spielstand und allen fünf persönlichen Serien,
-- fachliches `earnedOn` in `/achievements`,
-- kombinierbare `game`-/`category`-/`status`-Filter in `/achievement-list`, weiterhin ohne Progressanzeige,
-- `scope`-Filter in `/records`,
-- Achievement-Anzahlen je Spieler und vollständige gültige Rekord-Highlights in Wochen- und Monatsberichten.
 
 Standardzeitzone ist `Europe/Berlin`.
 
@@ -95,7 +90,7 @@ Standardzeitzone ist `Europe/Berlin`.
 - [`docs/requirements/ux-qol.md`](docs/requirements/ux-qol.md) – verbindlicher Nachtrag für Inkrement 14
 - [`docs/requirements/production-deployment.md`](docs/requirements/production-deployment.md) – Produktions- und Deploymentweg
 - [`docs/architecture.md`](docs/architecture.md) – Architektur und Modulgrenzen
-- [`docs/implementation-plan.md`](docs/implementation-plan.md) – abgeschlossene und in Abnahme befindliche Produktinkremente
+- [`docs/implementation-plan.md`](docs/implementation-plan.md) – abgeschlossene Produktinkremente und Roadmapstatus
 - [`docs/development-guide.md`](docs/development-guide.md) – lokaler Build, Docker und Tests
 - [`docs/increments/11-contextual-excuses.md`](docs/increments/11-contextual-excuses.md) – Inkrement 11
 - [`docs/increments/12-records.md`](docs/increments/12-records.md) – Inkrement 12
@@ -105,7 +100,7 @@ Standardzeitzone ist `Europe/Berlin`.
 - [`docs/operations/13-achievements-operations.md`](docs/operations/13-achievements-operations.md) – Achievement-Betrieb und Recovery
 - [`docs/operations/13-achievements-acceptance.md`](docs/operations/13-achievements-acceptance.md) – technische und reale Abnahme von Inkrement 13
 - [`docs/operations/13-achievements-live-canary.md`](docs/operations/13-achievements-live-canary.md) – dokumentierter Produktiv-Canary von Inkrement 13
-- [`docs/operations/14-ux-qol-acceptance.md`](docs/operations/14-ux-qol-acceptance.md) – technische und reale Abnahmematrix von Inkrement 14
+- [`docs/operations/14-ux-qol-acceptance.md`](docs/operations/14-ux-qol-acceptance.md) – technische, reale und produktive Abnahme von Inkrement 14
 - [`docs/operations/`](docs/operations/) – Abnahmen, Betrieb, Deployment, Backup und Fehlerdiagnose
 - [`docs/adr/`](docs/adr/) – Architekturentscheidungen
 - [`AGENTS.md`](AGENTS.md) – Arbeitsregeln für Codex und Reviews

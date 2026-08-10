@@ -1,11 +1,12 @@
 # Inkrement 14 – UX- und QoL-Stärkung
 
-**Status:** fachlicher Lieferumfang 14.1–14.4 integriert; technisches Abschlusspaket 14.5 automatisiert abgenommen, realer Discord-/Report-Smoke ausstehend  
-**Stand:** 9. August 2026  
+**Status:** abgeschlossen, nach `main` gemergt und als Release **1.5.0** produktiv ausgerollt  
+**Stand:** 10. August 2026  
 **Umbrella-Issue:** #105  
-**Sammelbranch:** `feature/14-ux-qol`  
+**Gesamt-PR:** #111  
 **Fachliche Grundlage:** [`../requirements/ux-qol.md`](../requirements/ux-qol.md)  
-**Geplantes Release:** 1.5.0
+**Release:** 1.5.0  
+**Produktiver Anwendungscode:** `e06fc8f9dfb4645c0db5cd3532c1eb7b8289f784`
 
 ## 1. Ziel
 
@@ -40,21 +41,24 @@ Für alle Pakete gilt:
 5. JDA bleibt am Adapterrand; Application/Domain kennen keine JDA-Typen.
 6. Discord-I/O findet niemals innerhalb einer Datenbanktransaktion statt.
 7. Keine Discord-/Announcement-Texte als fachliche Datenquelle.
-8. Keine neue Persistenzwahrheit; eine Liquibase-Migration ist nicht vorgesehen.
+8. Keine neue Persistenzwahrheit; Inkrement 14 benötigte **keine Liquibase-Migration**.
 9. Falls ein Paket wider Erwarten eine Schemaänderung für notwendig hält, ist dies vor Umsetzung als konkrete Lücke nachzuweisen und darf nicht nur der Bequemlichkeit eines Read-Modells dienen.
 10. Vorhandene Paging-, Mention-, Idempotenz-, Retry-, Recovery- und historische Teilnahmegrenzen bleiben verbindlich.
 11. Keine generischen UI-, Query-, Dashboard-, Gamification-, Event- oder Messaging-Frameworks.
 12. Keine Inhalte späterer Pakete vorziehen.
 
+Der produktive Schema-Endstand bleibt Migration 024.
+
 ## 4. Branch- und PR-Modell
 
 - Sammelbranch: `feature/14-ux-qol`.
 - Pakete 14.1–14.4 wurden auf eigenen Arbeitsbranches umgesetzt und jeweils nach Review in den Sammelbranch gesquasht.
-- Paket 14.5 arbeitet auf dem kumulierten Stand nach 14.4.
-- Der **technische** 14.5-Hardening-/Dokumentationsstand darf nach vollständig grünen automatisierten Gates in `feature/14-ux-qol` integriert werden.
-- Dieser technische Merge schließt Issue #110 ausdrücklich noch nicht: reale Discord-/Report-Abnahme bleibt dessen letzter manueller Nachweis.
-- Gesamt-PR #111 gegen `main` bleibt bis zum dokumentierten realen Smoke im Draft.
-- Release Candidate, Tag, GHCR-Publish und produktiver Rollout erfolgen erst nach vollständiger Abnahme, Merge nach `main` und separater Release-/Deploymentfreigabe.
+- Paket 14.5 arbeitete auf dem kumulierten Stand nach 14.4 und führte keinen neuen Fachumfang ein.
+- Gesamt-PR #111 wurde nach vollständig grünen automatisierten Gates und dokumentiertem realen Discord-/Report-Smoke nach `main` gemergt.
+- Release **1.5.0** wurde anschließend über den separaten Release-/Deploymentpfad veröffentlicht und produktiv ausgerollt.
+- Der Produktiv-Smoke/Canary wurde am 10. August 2026 als bestanden bestätigt.
+
+Nachgelagerte reine Dokumentationscommits auf `main` ändern den Bezug des tatsächlich ausgerollten Anwendungscodes nicht.
 
 ## 5. Paketübersicht
 
@@ -64,7 +68,8 @@ Für alle Pakete gilt:
 | 14.2 | #107 | `feature/14-2-personal-command-ux` | Teilnahmebestätigungen, Reminderstatus/-zeiten, `/status`-Dashboard | ✅ PR #113 / Merge `ee4a5e8b…` |
 | 14.3 | #108 | `feature/14-3-read-command-ux` | `earnedOn`, `/achievement-list`-Filter, `/records`-Scopefilter | ✅ PR #114 / Merge `949115aa…` |
 | 14.4 | #109 | `feature/14-4-report-highlights` | Achievement-/Record-Highlights in periodischen Berichten | ✅ PR #115 / Merge `d4bf877a…` |
-| 14.5 | #110 | `feature/14-5-ux-qol-hardening` | Gesamthärtung, reale Abnahme und Releasevorbereitung | ✅ technische Gates in PR #117; ⬜ realer Smoke |
+| 14.5 | #110 | `feature/14-5-ux-qol-hardening` | Gesamthärtung, reale Abnahme und Releasevorbereitung | ✅ PR #117 / Merge `29fc6c0a…` |
+| Gesamt | #105 | `feature/14-ux-qol` | vollständiges Inkrement 14 | ✅ PR #111 / `main`-Merge `e06fc8f9…` / Release 1.5.0 |
 
 ---
 
@@ -122,7 +127,7 @@ Insbesondere:
 - `DailyResultDetailsEmbedRendererTest`,
 - `PostgresDailyResultDetailsQueryIT`.
 
-Standardbuild, PostgreSQL-Integration und Migration/Upgrade waren auf dem finalen Reviewstand grün. Reale sichtbare Discord-Abnahme erfolgt gesammelt in 14.5.
+Standardbuild, PostgreSQL-Integration und Migration/Upgrade waren auf dem finalen Reviewstand grün. Die reale sichtbare Discord-Abnahme erfolgte gesammelt in 14.5.
 
 ---
 
@@ -161,7 +166,7 @@ Insbesondere:
 - `PersonalStatusEmbedRendererTest`,
 - `PostgresPersonalStatusReadOnlyIT`.
 
-Alle drei Maven-Gates waren auf dem finalen Paketstand grün. Reale sichtbare Discord-Abnahme erfolgt gesammelt in 14.5.
+Alle drei Maven-Gates waren auf dem finalen Paketstand grün. Die reale sichtbare Discord-Abnahme erfolgte gesammelt in 14.5.
 
 ---
 
@@ -201,7 +206,7 @@ Insbesondere:
 - `DiscordRecordsCommandListenerTest`,
 - `PostgresAchievementsQueryIT`.
 
-Alle drei Maven-Gates waren auf dem finalen Paketstand grün. Reale sichtbare Discord-Abnahme erfolgt gesammelt in 14.5.
+Alle drei Maven-Gates waren auf dem finalen Paketstand grün. Die reale sichtbare Discord-Abnahme erfolgte gesammelt in 14.5.
 
 ---
 
@@ -250,32 +255,35 @@ Insbesondere:
 - `PeriodicReportRendererTest`,
 - `PeriodicReportDeliveryConfigurationTest`,
 - bestehende `PeriodicReportDeliveryService*`-Regressionstests,
-- `PostgresAchievementsQueryIT` mit ACTIVE-/Perioden-, BACKFILL-, Gleichstand- und Invalidierungsfällen.
+- PostgreSQL-Periodenreadtests mit ACTIVE-/Perioden-, BACKFILL-, Gleichstand- und Invalidierungsfällen.
 
-Alle drei Maven-Gates waren auf dem finalen Reviewstand grün. Reale Report-/Discord-Abnahme erfolgt gesammelt in 14.5.
+Alle drei Maven-Gates waren auf dem finalen Reviewstand grün. Die reale Report-/Discord-Abnahme erfolgte gesammelt in 14.5.
 
 ---
 
 # Paket 14.5 – Gesamthärtung, Abnahme und Releasevorbereitung
 
-**Status:** technische Härtung und automatisierte Operations-Abnahme bestanden; realer Discord-/Report-Smoke ausstehend  
+**Status:** vollständig technisch und real abgenommen; PR #117 integriert  
 **Issue:** #110  
 **PR:** #117  
 **Arbeitsbranch:** `feature/14-5-ux-qol-hardening`  
-**Ausgangsstand:** `d4bf877a4c5bdcb00467bb1fbe3c19a3c97ef819`
+**Ausgangsstand:** `d4bf877a4c5bdcb00467bb1fbe3c19a3c97ef819`  
+**Squash-Merge:** `29fc6c0ab45570bcb4e7c7800ca484a7635cb0ff`
 
 ## Ziel
 
-Kumulierten Stand ohne neuen Fachumfang technisch abnehmen, automatisierte Nachweislücken schließen, Dokumentation synchronisieren und den realen Discord-/Report-Smoke so vorbereiten, dass anschließend nur noch die externe Sichtprüfung dokumentiert werden muss.
+Kumulierten Stand ohne neuen Fachumfang technisch abnehmen, automatisierte Nachweislücken schließen, Dokumentation synchronisieren und den realen Discord-/Report-Smoke durchführen.
 
-## Ergebnis der technischen Härtung
+## Ergebnis der Härtung und Abnahme
 
-- keine fachliche oder technische Code-Regression gefunden, die eine weitere Produktivcodeänderung erfordert,
-- Abschlussdiff besteht ausschließlich aus Dokumentations-/Nachweisänderungen,
+- keine fachliche oder technische Code-Regression gefunden, die eine weitere Produktivcodeänderung erforderte,
+- Abschlussdiff von 14.5 bestand ausschließlich aus Dokumentations-/Nachweisänderungen,
 - Akzeptanzmatrix mit konkreten Paket-, Test- und Reviewnachweisen synchronisiert,
-- erster vollständiger Abschlusslauf: CI #1664 / Run-ID `31323660350` grün,
-- vollständiger `Container image`-Workflow #506 / Run-ID `31323660354` grün einschließlich Produktionsimage, Nicht-Root-/Runtime-Check, Compose, Backup, Restore, Resume und Application-Rollback,
-- finaler Evidenz-Head wird vor technischem Merge nochmals vollständig revalidiert; finale Run-IDs stehen in PR #117.
+- finaler Paket-Head: `f00d56bbc22181395ad2ea9c1703bf3d77051d18`,
+- CI #1674 / Run-ID `31324466419`: Standardbuild, PostgreSQL-Integration und Migration/Upgrade grün,
+- vollständiger `Container image`-Workflow #511 / Run-ID `31324466410` grün einschließlich Produktionsimage, Nicht-Root-/Runtime-Check, Compose, Backup, Restore, Resume und Application-Rollback,
+- realer Discord-/Report-Smoke am 9. August 2026 vollständig bestanden,
+- Issue #110 geschlossen und Gesamt-PR #111 für den Merge nach `main` freigegeben.
 
 ## Pflichtgates
 
@@ -287,20 +295,25 @@ mvn --batch-mode --no-transfer-progress -Pmigration-clean-install verify
 
 Zusätzlich der vollständige vorhandene `Container image`-Workflow einschließlich Produktionsimage, Nicht-Root-/Runtime-Check, Compose, Backup, Restore, Resume und Application-Rollback.
 
-## Abschlussgrenze
+---
 
-Der technische 14.5-PR darf nach vollständig grünen automatisierten Gates in `feature/14-ux-qol` gemergt werden. Danach gilt:
+## 6. Gesamtmerge und Produktivsetzung
 
-- Issue #110 bleibt offen,
-- Gesamt-PR #111 bleibt Draft,
-- `docs/operations/14-ux-qol-acceptance.md` weist den Discord-Smoke weiter als offen aus,
-- erst der dokumentierte erfolgreiche reale Smoke vervollständigt die Definition of Done von #110.
+Gesamt-PR #111 wurde nach vollständiger technischer und realer Abnahme nach `main` gemergt.
 
-Release/Produktivrollout bleiben ein separater Schritt.
+Der daraus hervorgegangene und tatsächlich produktiv ausgerollte Anwendungscode ist:
+
+`e06fc8f9dfb4645c0db5cd3532c1eb7b8289f784`
+
+Release **1.5.0** wurde am 10. August 2026 über den separaten Produktionspfad veröffentlicht und deployt. Der Deploymentweg verwendete unveränderliches SHA-Image, validiertes Pre-Deployment-Backup, Health-/Readiness-Prüfung und den bestehenden App-Rollbackpfad.
+
+Da Inkrement 14 keine neue Migration enthält, blieb der produktive Datenbankschema-Endstand unverändert bis einschließlich Migration 024.
+
+Der Produktiv-Smoke/Canary wurde vom Betreiber als bestanden bestätigt. Es wurde kein Rollbackkriterium ausgelöst.
 
 ---
 
-## 6. Nicht Bestandteil des Gesamtinkrements
+## 7. Nicht Bestandteil des Gesamtinkrements
 
 - quantitative Achievement-Fortschritte,
 - neue Achievements oder Rekordmetriken,
@@ -308,5 +321,4 @@ Release/Produktivrollout bleiben ein separater Schritt.
 - Reminderstatus pro Spiel,
 - Trendvergleiche in Reports,
 - manuelle Report-Commands,
-- generische Frameworks,
-- produktiver Release innerhalb der Paket-PRs.
+- generische Frameworks.

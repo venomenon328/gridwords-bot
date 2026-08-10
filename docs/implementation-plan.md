@@ -122,7 +122,7 @@ Verbindlich:
 
 ### Inkrement 11 – Kontextabhängige Ausreden
 
-**Status:** abgeschlossen; Issue #42 geschlossen, PR #46 nach `main` gemergt, Release 1.2.0 veröffentlicht und produktiv ausgerollt.
+**Status:** abgeschlossen; Issue #42 geschlossen, PR #46 nach `main` gemergt, Release **1.2.0** veröffentlicht und produktiv ausgerollt.
 
 Bei klar definierten auffälligen Ergebnissen kann der Ergebnisautor freiwillig drei private redaktionelle Ausreden öffnen, einmal den Stil wechseln, eine Ausrede auswählen oder verzichten. Nur der gewählte Text erscheint in derselben kanonischen Ergebnisnachricht. Ablauf, Cooldown, Wiederholungsschutz, Korrekturen und Recovery sind persistent abgesichert.
 
@@ -152,13 +152,11 @@ Verbindlich:
 
 **Status:** abgeschlossen; Umbrella-Issue #86 und Paket #94 abgeschlossen, Gesamt-PR #103 nach `main` gemergt, Release **1.4.0** produktiv ausgerollt und Produktiv-Smoke/Canary bestanden.
 
-Das Inkrement führt den kuratierten Katalog `achievements-v1` mit 60 stabilen, einmalig freischaltbaren Achievements ein. Der Katalog würdigt Erfahrung, Zuverlässigkeit, Teilnahmeserien, Erfolgsserien, Leistung sowie besondere Spiel- und Zeitsituationen. Vergaben werden aus der kanonischen Historie reconciled, korrekturfähig persistiert, bei Live-Freischaltungen aggregiert angekündigt und bei Einführung vollständig rückwirkend rekonstruiert.
+Das Inkrement führt den kuratierten Katalog `achievements-v1` mit 60 stabilen, einmalig freischaltbaren Achievements ein. Vergaben werden aus der kanonischen Historie reconciled, korrekturfähig persistiert, bei Live-Freischaltungen aggregiert angekündigt und bei Einführung vollständig rückwirkend rekonstruiert.
 
 `/achievements` zeigt die aktuell aktiven Achievements mit Self-/Other- und Game-Filter. `/achievement-list` zeigt self-only alle 60 Definitionen mit ausschließlich `✅`/`❌` als persönlichem Status und ohne quantitative Fortschrittsanzeige.
 
-Der finale Integrationsstand wurde mit Standardbuild, echtem PostgreSQL, Migration/Upgrade, Konkurrenz-, Retry-/Restart-/Send-vor-ACK- sowie Container-/Backup-/Restore-/Resume-/Rollbackpfaden gehärtet. Der lokale Discord-Smoke bestätigte Startup, Migration 024, historischen Bootstrap, Introduction, `/achievements` und Restart-Idempotenz. Der anschließende Produktiv-Canary wurde erfolgreich abgeschlossen.
-
-Der produktiv ausgerollte Achievement-Merge basiert auf `main`-Commit:
+Der produktiv ausgerollte Achievement-Code basiert auf `main`-Commit:
 
 `213fe15dcc59e46856ea9be7066161fdc473353a`
 
@@ -173,33 +171,35 @@ Verbindlich:
 - ADR 0020
 - Issue #86
 
-## In Abnahme
-
 ### Inkrement 14 – UX- und QoL-Stärkung bestehender Funktionen
 
-**Status:** fachlicher Lieferumfang der Pakete 14.1–14.4 in `feature/14-ux-qol` integriert; das kumulative technische Hardening einschließlich Maven-, PostgreSQL-, Migration-/Upgrade- und vollständigem Container-/Operations-Gate ist bestanden. Offen ist ausschließlich der reale Discord-/Report-Smoke. Geplanter Release **1.5.0**.
+**Status:** abgeschlossen; Issues #105–#110 geschlossen, Paket-PRs #112–#117 und Gesamt-PR #111 gemergt, technische und reale Abnahme bestanden und mit Release **1.5.0** produktiv ausgerollt. Produktiv-Smoke/Canary bestanden.
 
-Inkrement 14 führt bewusst kein neues großes Fachsystem ein. Es verbessert die sichtbaren und lesenden Oberflächen der bestehenden Funktionen:
+Inkrement 14 erweitert vorhandene Oberflächen ohne neue fachliche Persistenzwahrheit:
 
 - informative Tagesstatus-Dropdowns und direkte Spiel-Links,
 - angereicherte ephemere Ergebnisdetails mit gewählter Ausrede, aktuellen Ergebnisrekorden und Spieltag-Achievements,
 - verständliche zeitliche Teilnahmebestätigungen,
 - Reminderstatus mit tatsächlich konfigurierten Zeiten,
 - `/status` als persönliches Dashboard mit heutigem Zustand und allen fünf persönlichen Serien,
-- historisches `earnedOn` in `/achievements`,
-- kombinierbare `game`-/`category`-/`status`-Filter in `/achievement-list`, weiterhin ohne quantitative Fortschrittsanzeige,
+- fachliches `earnedOn` in `/achievements`,
+- kombinierbare `game`-/`category`-/`status`-Filter in `/achievement-list`, weiterhin ohne quantitative Progressanzeige,
 - Scopefilter in `/records`,
 - Achievement-Anzahlen und gültige Record-Highlights in Wochen- und Monatsberichten.
 
-Die Umsetzung bleibt auf vorhandenen kanonischen Daten und materialisierten Fachprojektionen. Read-only-Pfade lösen keine neue Fachauswertung oder Reconciliation aus. Für das Inkrement war keine Liquibase-Migration notwendig.
+Die Read-only-Pfade bleiben read-only und verwenden vorhandene kanonische Daten beziehungsweise materialisierte Fachprojektionen. Für das gesamte Inkrement war **keine neue Liquibase-Migration** notwendig; der produktive Schema-Endstand bleibt Migration 024.
 
-Paketstand:
+Technische Abschlussabnahme:
 
-- #106 / PR #112 – abgeschlossen,
-- #107 / PR #113 – abgeschlossen,
-- #108 / PR #114 – abgeschlossen,
-- #109 / PR #115 – abgeschlossen,
-- #110 / PR #117 – technische Härtung bestanden; reale Discord-/Report-Abnahme offen.
+- finaler 14.5-Paket-Head `f00d56bbc22181395ad2ea9c1703bf3d77051d18`,
+- Standardbuild, PostgreSQL-Integration und Migration/Upgrade grün,
+- vollständiger Produktionsimage-/Compose-/Backup-/Restore-/Resume-/Rollbackpfad grün,
+- realer Discord-/Report-Smoke bestanden,
+- Gesamt-PR #111 nach `main` gemergt.
+
+Der tatsächlich produktiv ausgerollte 1.5.0-Anwendungscode basiert auf `main`-Commit:
+
+`e06fc8f9dfb4645c0db5cd3532c1eb7b8289f784`
 
 Verbindlich:
 
@@ -208,8 +208,6 @@ Verbindlich:
 - `docs/operations/14-ux-qol-acceptance.md`
 - Umbrella-Issue #105
 - Gesamt-PR #111
-
-Vor Abschluss von Inkrement 14 muss nur noch der reale Discord-/Report-Smoke erfolgreich dokumentiert sein. Erst danach darf #110 geschlossen und Gesamt-PR #111 aus dem Draft genommen werden.
 
 ## Versionsstände
 
@@ -243,7 +241,9 @@ Rekorde, Serienrekorde, aggregierte Rekordmeldungen sowie `/records`.
 
 UX-/QoL-Stärkung bestehender Funktionen gemäß Inkrement 14.
 
-**Status:** geplant; Implementierung und technische Abschlussabnahme auf dem Feature-Branch bestanden, realer Discord-/Report-Smoke noch ausstehend. Nicht veröffentlicht und nicht produktiv deployt.
+**Status:** veröffentlicht, produktiv deployt und durch den Produktiv-Smoke/Canary bestätigt.
+
+Produktiver Anwendungscode: `e06fc8f9dfb4645c0db5cd3532c1eb7b8289f784`.
 
 ## Obsolet gewordene frühere Roadmap-Platzhalter
 
@@ -256,7 +256,7 @@ werden nicht weiterverfolgt. Sie waren keine umgesetzten oder abgenommenen Anfor
 
 ## Aktive Roadmap
 
-Inkrement 14 befindet sich nur noch in der realen Abschlussabnahme. Ein weiteres Produktinkrement ist derzeit nicht verbindlich freigegeben. Neue Funktionen werden erst nach separater Priorisierung über eigene Issues und Paketplanung aufgenommen.
+Derzeit ist **kein weiteres Produktinkrement verbindlich freigegeben**. Neue Funktionen werden erst nach separater Priorisierung über eigene Issues und Paketplanung aufgenommen.
 
 Spätere Achievement-Erweiterungen, insbesondere persönliche Rekord-, Durchschnitts-, Verbesserungs- oder Schwierigkeits-Achievements, benötigen eine eigene fachliche Entscheidung. Falls rekordbezogene Achievements ergänzt werden, dürfen sie auf den in Inkrement 12 eingeführten gültigen Rekordereignissen aufbauen und keine Rekordlogik duplizieren.
 
