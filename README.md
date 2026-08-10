@@ -4,19 +4,22 @@ Discord-Bot für das tägliche gemeinsame Spielen von GridWords und QuadWords.
 
 ## Aktueller Stand
 
-Der **produktive** funktionale Umfang bis einschließlich Inkrement 14 ist nach `main` gemergt, automatisiert gehärtet, real abgenommen und ausgerollt.
+Der **produktive** funktionale Umfang bis einschließlich Inkrement 14 sowie die Report-Layout-Nacharbeit aus Release 1.5.1 ist nach `main` gemergt, automatisiert gehärtet, real abgenommen und ausgerollt.
 
-Der aktuelle Produktionsrelease ist **Version 1.5.0**. Der tatsächlich ausgerollte Anwendungscode basiert auf dem Inkrement-14-Merge-Commit
+Der aktuelle Produktionsrelease ist **Version 1.5.1**. Der tatsächlich ausgerollte Anwendungscode basiert auf `main`-Commit
 
-`e06fc8f9dfb4645c0db5cd3532c1eb7b8289f784`.
+`832235f1ccc47900494e04fe5535e39194b70354`.
 
 Nachgelagerte reine Dokumentationscommits auf `main` ändern diesen produktiven Codebezug nicht.
 
 **Inkrement 12 – Rekorde und Rekordmeldungen** wurde mit Version **1.3.0** produktiv eingeführt.  
 **Inkrement 13 – Achievements** wurde mit Version **1.4.0** produktiv eingeführt.  
-**Inkrement 14 – UX- und QoL-Stärkung** wurde mit Version **1.5.0** produktiv eingeführt.
+**Inkrement 14 – UX- und QoL-Stärkung** wurde mit Version **1.5.0** produktiv eingeführt.  
+**Release 1.5.1 – Report-Layout-Nacharbeit** wurde anschließend produktiv ausgerollt und per Live-Canary bestätigt.
 
 Inkrement 14 wurde vor dem Rollout mit Standardbuild, PostgreSQL-Integration, Migration/Upgrade sowie dem vollständigen Produktionsimage-, Compose-, Backup-, Restore-, Resume- und Rollback-Gate geprüft. Der reale Discord-/Report-Smoke auf der separaten Testumgebung wurde bestanden; anschließend wurde Release **1.5.0** veröffentlicht und produktiv ausgerollt. Der Produktiv-Smoke/Canary wurde vom Betreiber als bestanden bestätigt.
+
+Release **1.5.1** verdichtet die sichtbare Darstellung von Wochen- und Monatsberichten, trennt Statistik und Highlights in klar erkennbare Reportseiten und ergänzt den eng begrenzten idempotenten Montag-Startup-Refresh für den zuletzt fälligen Wochenreport innerhalb seines bestehenden Catch-up-Fensters. Technische Gates, realer Discord-Smoke und Produktiv-Canary wurden bestanden; es war keine neue Liquibase-Migration nötig.
 
 Abnahmeprotokolle:
 
@@ -26,6 +29,7 @@ Abnahmeprotokolle:
 - [`docs/operations/13-achievements-acceptance.md`](docs/operations/13-achievements-acceptance.md)
 - [`docs/operations/13-achievements-live-canary.md`](docs/operations/13-achievements-live-canary.md)
 - [`docs/operations/14-ux-qol-acceptance.md`](docs/operations/14-ux-qol-acceptance.md) – technische, reale und produktive Abnahme von Inkrement 14
+- [`docs/operations/1.5.1-report-layout-acceptance.md`](docs/operations/1.5.1-report-layout-acceptance.md) – technische, reale und produktive Abnahme des Report-Layouts
 
 ## Fachlicher Funktionsumfang
 
@@ -52,7 +56,8 @@ Der produktive Bot unterstützt insbesondere:
 - Wochenberichte montags um 08:00 Uhr,
 - Monatsberichte am Monatsersten um 08:15 Uhr,
 - getrennte GridWords-/QuadWords-Nenner in Wochen- und Monatsberichten,
-- Achievement-Anzahlen je Spieler und vollständige gültige Rekord-Highlights in Wochen- und Monatsberichten,
+- kompakte, klar gegliederte Report-Spielerblöcke mit getrennten GridWords-/QuadWords-Zeilen und Serienwerten,
+- Achievement-Anzahlen je Spieler und vollständige gültige Rekord-Highlights auf eigenen Highlightseiten in Wochen- und Monatsberichten,
 - interaktive, je Spiel getrennte Auswahlmenüs in Tagesstatusnachrichten,
 - ausschließlich ephemere, lesende Ergebnisdetails,
 - SELECTED-Ausrede, aktuell vom Ergebnis gehaltene Rekorde und am Spieltag freigeschaltete Achievements in den ephemeren Ergebnisdetails,
@@ -88,6 +93,7 @@ Standardzeitzone ist `Europe/Berlin`.
 - [`docs/requirements/daily-status-reminders.md`](docs/requirements/daily-status-reminders.md) – Tagesstatus, Reminder und Cleanup
 - [`docs/requirements/periodic-reports.md`](docs/requirements/periodic-reports.md) – Wochen- und Monatsberichte
 - [`docs/requirements/ux-qol.md`](docs/requirements/ux-qol.md) – verbindlicher Nachtrag für Inkrement 14
+- [`docs/requirements/report-layout.md`](docs/requirements/report-layout.md) – verbindliches sichtbares Wochen-/Monatsreport-Layout ab 1.5.1
 - [`docs/requirements/production-deployment.md`](docs/requirements/production-deployment.md) – Produktions- und Deploymentweg
 - [`docs/architecture.md`](docs/architecture.md) – Architektur und Modulgrenzen
 - [`docs/implementation-plan.md`](docs/implementation-plan.md) – abgeschlossene Produktinkremente und Roadmapstatus
@@ -96,11 +102,13 @@ Standardzeitzone ist `Europe/Berlin`.
 - [`docs/increments/12-records.md`](docs/increments/12-records.md) – Inkrement 12
 - [`docs/increments/13-achievements.md`](docs/increments/13-achievements.md) – Inkrement 13
 - [`docs/increments/14-ux-qol.md`](docs/increments/14-ux-qol.md) – Inkrement 14
+- [`docs/increments/1.5.1-report-layout.md`](docs/increments/1.5.1-report-layout.md) – Report-Layout-Nacharbeit für Release 1.5.1
 - [`docs/operations/12-records-operations.md`](docs/operations/12-records-operations.md) – Record-Betrieb und Recovery
 - [`docs/operations/13-achievements-operations.md`](docs/operations/13-achievements-operations.md) – Achievement-Betrieb und Recovery
 - [`docs/operations/13-achievements-acceptance.md`](docs/operations/13-achievements-acceptance.md) – technische und reale Abnahme von Inkrement 13
 - [`docs/operations/13-achievements-live-canary.md`](docs/operations/13-achievements-live-canary.md) – dokumentierter Produktiv-Canary von Inkrement 13
 - [`docs/operations/14-ux-qol-acceptance.md`](docs/operations/14-ux-qol-acceptance.md) – technische, reale und produktive Abnahme von Inkrement 14
+- [`docs/operations/1.5.1-report-layout-acceptance.md`](docs/operations/1.5.1-report-layout-acceptance.md) – technische, reale und produktive Abnahme des Report-Layouts
 - [`docs/operations/`](docs/operations/) – Abnahmen, Betrieb, Deployment, Backup und Fehlerdiagnose
 - [`docs/adr/`](docs/adr/) – Architekturentscheidungen
 - [`AGENTS.md`](AGENTS.md) – Arbeitsregeln für Codex und Reviews

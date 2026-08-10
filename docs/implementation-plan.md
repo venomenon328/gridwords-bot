@@ -209,6 +209,42 @@ Verbindlich:
 - Umbrella-Issue #105
 - Gesamt-PR #111
 
+### Release 1.5.1 – Report-Layout-Nacharbeit
+
+**Status:** abgeschlossen; Issue #119 geschlossen, PR #123 nach `main` gemergt, technische und reale Discord-Abnahme bestanden, Release **1.5.1** veröffentlicht und produktiv ausgerollt. Produktiv-Canary bestanden.
+
+Die Patch-Nacharbeit verbessert ausschließlich die sichtbare Darstellung der bestehenden Wochen- und Monatsberichte:
+
+- kompakte Reporttitel und klar getrennte Spielerblöcke,
+- verdichtete GridWords-/QuadWords-Zeilen mit `✅`/`❌`/`⬜`,
+- kompakte persönliche und gemeinsame Serienwerte,
+- Statistik- und Highlightteil als getrennte persistierte Reportseiten,
+- atomare zweizeilige Record-Highlights mit globaler deterministischer Pagination,
+- eng begrenzter Montag-Startup-Refresh für den zuletzt fälligen erfolgreichen Wochenreport innerhalb des bereits bestehenden Catch-up-Fensters.
+
+Die Reportfachwerte, Record-/Achievement-Selektion, Snapshotsemantik außerhalb dieses expliziten Rolloutpfads und das Datenbankschema bleiben unverändert. Der produktive Schema-Endstand bleibt Migration 024.
+
+Technische und reale Abnahme:
+
+- Implementierungshead `5c3937cb92d69224755b54e9a712051df5c5361e`,
+- finaler Abnahmehead vor Merge `7313d69664fc0454683ecd197b92e49a24616e2b`,
+- Standardbuild, PostgreSQL-Integration und Migration/Upgrade grün,
+- Produktionsimage-/Runtime- sowie Compose-/Backup-/Restore-/Resume-/Rollbackregression grün,
+- realer Discord-Smoke mit altem 1.5.0-Wochenreport und erfolgreichem Montag-Refresh bestanden,
+- Produktivdeployment und Live-Canary bestanden.
+
+Der tatsächlich produktiv ausgerollte 1.5.1-Anwendungscode basiert auf `main`-Commit:
+
+`832235f1ccc47900494e04fe5535e39194b70354`
+
+Verbindlich:
+
+- `docs/requirements/report-layout.md`
+- `docs/increments/1.5.1-report-layout.md`
+- `docs/operations/1.5.1-report-layout-acceptance.md`
+- Issue #119
+- PR #123
+
 ## Versionsstände
 
 ### Version 1.0.x
@@ -244,6 +280,14 @@ UX-/QoL-Stärkung bestehender Funktionen gemäß Inkrement 14.
 **Status:** veröffentlicht, produktiv deployt und durch den Produktiv-Smoke/Canary bestätigt.
 
 Produktiver Anwendungscode: `e06fc8f9dfb4645c0db5cd3532c1eb7b8289f784`.
+
+### Version 1.5.1
+
+Kompaktes, klar gegliedertes Wochen-/Monatsreport-Layout mit eigener Highlightseite und idempotentem Montag-Startup-Refresh innerhalb des bestehenden Catch-up-Fensters.
+
+**Status:** veröffentlicht, produktiv deployt und durch den Produktiv-Smoke/Canary bestätigt.
+
+Produktiver Anwendungscode: `832235f1ccc47900494e04fe5535e39194b70354`.
 
 ## Obsolet gewordene frühere Roadmap-Platzhalter
 
