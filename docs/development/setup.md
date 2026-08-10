@@ -2,14 +2,15 @@
 
 ## Voraussetzungen
 
-- JDK 21
-- Maven Wrapper oder Maven 3.x
-- Docker Desktop mit Docker Compose für PostgreSQL-Integration und Containerprüfungen
 - Git
+- JDK 21
+- Maven 3.9 oder neuer
+- Docker Desktop mit Docker Compose für PostgreSQL-Integration und Containerprüfungen
 
 Prüfung unter PowerShell:
 
 ```powershell
+git --version
 java --version
 mvn --version
 docker version
@@ -50,7 +51,7 @@ docker compose exec postgres psql -U gridwords -d gridwords
 
 ## Anwendung starten
 
-Der Offline-Modus öffnet keine Discord-Verbindung:
+Der Offline-Modus öffnet bei der Standardkonfiguration keine Discord-Verbindung:
 
 ```powershell
 $env:SPRING_PROFILES_ACTIVE = "offline"
@@ -64,4 +65,4 @@ docker compose up -d postgres
 mvn "-Dspring-boot.run.profiles=database" spring-boot:run
 ```
 
-Ein echter Discord-Start benötigt die lokal gesetzten Guild-, Channel- und Tokenwerte. Tests dürfen niemals eine echte Discord-Verbindung öffnen.
+Ein echter Discord-Start benötigt die lokal gesetzten Guild-, Channel- und Tokenwerte sowie `DISCORD_ENABLED=true`. Tests dürfen niemals eine echte Discord-Verbindung öffnen.
