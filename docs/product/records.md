@@ -36,10 +36,27 @@ Zusammengehörige Rekordfakten werden in einer Meldung aggregiert. Die Delivery 
 
 ## `/records` und Ergebnisdetails
 
-`/records` antwortet ephemer aus der aktuellen Projektion, ohne die gesamte Historie neu zu scannen. Filter umfassen Spiel, Kategorie und Scope. Persönliche Rekorde eines anderen Nutzers sind nur über die dafür berechtigte administrative Ansicht zugänglich.
+`/records` antwortet ephemer aus der aktuellen Projektion, ohne die gesamte Historie neu zu scannen. Die optionalen Filter sind:
 
-Die Ergebnisdetailansicht zeigt ausschließlich aktuell gültige Rekorde, die das gewählte Ergebnis hält.
+- `game`: `Alle`, `GridWords`, `QuadWords`,
+- `category`: `Alle`, `Ergebnisse`, `Serien`,
+- `scope`: `Alle`, `Persönlich`, `Serverweit`, `Gemeinsam`,
+- `user`: optionaler Zielspieler ausschließlich für die administrative Fremdansicht.
+
+Die vorhandene Fremdansichts-Autorisierung gilt **vor** der fachlichen Filterung: Ein normaler Nutzer darf `user:<anderer Nutzer>` auch dann nicht verwenden, wenn `scope` anschließend nur serverweite oder gemeinsame Rekorde auswählen würde. Ohne `user` beziehen sich persönliche Rekorde auf den Aufrufer. Leere Kombinationen sind normale neutrale Leerzustände.
+
+Die Ergebnisdetailansicht zeigt ausschließlich aktuell gültige Ergebnisrekorde, deren aktuelle kanonische `GameResult`-Quelle exakt auf das ausgewählte Ergebnis einschließlich seiner aktuellen Version verweist. Persönliche und serverweit-individuelle Rekorde können gleichzeitig erscheinen; Serienrekorde werden keinem einzelnen Ergebnis künstlich zugerechnet. Historisch einmal ausgelöste, inzwischen gebrochene Rekorde erscheinen nicht.
 
 ## Berichtshighlights
 
-Berichte verwenden nur gültige, öffentlich zulässige Ereignisse der Typen `RESULT_RECORD_BROKEN`, `SERIES_RECORD_CROSSED` und `RECORD_SERIES_FINISHED`. Crossing und Finish desselben Laufs und derselben Rekorddefinition werden innerhalb einer Periode fachlich dedupliziert.
+Berichte verwenden ausschließlich persistierte aktuell `VALID`e Record-Events der Typen:
+
+- `RESULT_RECORD_BROKEN`,
+- `SERIES_RECORD_CROSSED`,
+- `RECORD_SERIES_FINISHED`.
+
+Zusätzlich muss der typisierte `processingOrigin.publicAnnouncementEligible()` wahr sein. Initialisierung, Gleichstand, Near Miss, Invalidierungsereignisse sowie `INVALIDATED` oder `SUPERSEDED` Events sind keine Reporthighlights. Ob unmittelbare öffentliche Rekordmeldungen zum Ereigniszeitpunkt global aktiviert waren, ist für den Bericht kein Sichtbarkeitskriterium.
+
+Die fachliche Periodenzuordnung erfolgt bei Ergebnisrekorden über `gameDate` der neuen `GameResult`-Quelle und bei Serienrekorden über `endDate` des neuen `StreakRecordValue`. `detectedAt`, Persistenz-, Scheduler- und Discord-Zeitpunkte dürfen ein fachlich älteres Ereignis nicht in eine spätere Berichtsperiode verschieben.
+
+Crossing und Finish derselben Record-State-Key-/StreakRun-Kombination werden nur **innerhalb derselben Berichtsperiode** zugunsten des gültigen Finish dedupliziert. Existiert nur das Crossing, bleibt es sichtbar. Es gibt keine periodenübergreifende Unterdrückung: Crossing in einer Periode und Finish in der folgenden dürfen jeweils erscheinen. Mehrere echte Ergebnisrekordverbesserungen derselben Definition innerhalb einer Periode bleiben mehrere Highlights.
