@@ -99,8 +99,14 @@ public final class PeriodicReportDeliveryService {
         boolean reconcileSucceededSnapshot = existing
                 .map(snapshot -> snapshot.state() == PeriodicReportDeliveryState.SUCCEEDED)
                 .orElse(false);
+        boolean resumeChangedUnfinishedContent = existing
+                .filter(snapshot -> !snapshot.state().isTerminal())
+                .filter(snapshot -> rendered != null)
+                .filter(snapshot -> snapshot.registration().metadata().equals(metadata))
+                .filter(snapshot -> contentFingerprintChanged(snapshot, rendered))
+                .isPresent();
         PeriodicReportDeliverySnapshot snapshot;
-        if (reconcileSucceededSnapshot) {
+        if (reconcileSucceededSnapshot || resumeChangedUnfinishedContent) {
             if (rendered == null) {
                 return;
             }
@@ -139,6 +145,8 @@ public final class PeriodicReportDeliveryService {
                         store.markNoOp(key, claim.get().token(), current.checkedAt()));
                 return;
             }
+            boolean changedUnfinishedContent = !reconcileSucceededSnapshot
+                    && contentFingerprintChanged(ownedClaim.get().snapshot(), rendered);
             boolean delivered = reconcileSucceededSnapshot
                     ? reconcileSucceededSnapshot(
                             key,
@@ -146,7 +154,13 @@ public final class PeriodicReportDeliveryService {
                             ownedClaim.get().snapshot(),
                             rendered,
                             refreshChangedSucceededContent)
-                    : reconcilePages(key, claim.get(), rendered, ownedClaim.get().snapshot().pageProgress());
+                    : changedUnfinishedContent
+                            ? replaceEntirePageGroup(
+                                    key,
+                                    claim.get(),
+                                    ownedClaim.get().snapshot().pageProgress(),
+                                    rendered)
+                            : reconcilePages(key, claim.get(), rendered, ownedClaim.get().snapshot().pageProgress());
             if (delivered) {
                 activeClaim(key, claim.get()).ifPresent(current ->
                         store.markSucceeded(key, claim.get().token(), current.checkedAt()));
@@ -184,15 +198,21 @@ public final class PeriodicReportDeliveryService {
         }
     }
 
+    private static boolean contentFingerprintChanged(
+            PeriodicReportDeliverySnapshot snapshot,
+            RenderedPeriodicReport rendered) {
+        return snapshot.registration().content()
+                .map(content -> !content.fingerprint().equals(rendered.contentFingerprint()))
+                .orElse(true);
+    }
+
     private boolean reconcileSucceededSnapshot(
             PeriodicReportDeliveryKey key,
             PeriodicReportDeliveryClaim claim,
             PeriodicReportDeliverySnapshot snapshot,
             RenderedPeriodicReport rendered,
             boolean refreshChangedSucceededContent) {
-        boolean fingerprintChanged = snapshot.registration().content()
-                .map(content -> !content.fingerprint().equals(rendered.contentFingerprint()))
-                .orElse(true);
+        boolean fingerprintChanged = contentFingerprintChanged(snapshot, rendered);
         if (refreshChangedSucceededContent && fingerprintChanged) {
             return replaceEntirePageGroup(key, claim, snapshot.pageProgress(), rendered);
         }
