@@ -154,6 +154,18 @@ Historischer Bootstrap ist öffentlich still, speichert aber rückwirkende Verga
 
 ## Commands und Darstellungen
 
-`/achievements` zeigt ephemer aktive Vergaben für den eigenen oder einen gewählten Nutzer, optional gefiltert nach Spiel und Erreichungsdatum. `/achievement-list` ist eine persönliche, ephemere Checkliste aller 60 Definitionen mit binärem Status; Filter sind Spiel/Scope, Kategorie und `Freigeschaltet`/`Offen`. Sie zeigt keinen Fortschrittszähler.
+`/achievements` zeigt ephemer ausschließlich aktuell aktive Vergaben für den Aufrufer oder einen optional gewählten Nutzer. Optional kann nach `game=GridWords` oder `game=QuadWords` gefiltert werden; ohne Filter gilt `Alle`, wobei `CROSS_GAME` und `GLOBAL` nur unter `Alle` erscheinen. Jede ausgegebene Vergabe zeigt ihr fachliches `earned_on` als `Freigeschaltet am DD.MM.YYYY`. Es gibt keinen Datumsfilter und keinen quantitativen Fortschritt.
 
-Ergebnisdetails zeigen aktive Vergaben mit `earned_on` am betrachteten Spieltag. Berichtshighlights verwenden ausschließlich dafür freigegebene, gültige Achievement-Ereignisse.
+`/achievement-list` ist self-only, strikt read-only und ephemer. Ohne Filter zeigt es alle 60 Definitionen in stabiler Katalogreihenfolge mit ausschließlich `✅` für aktuell `ACTIVE` und `❌` für fehlend oder `INVALIDATED`. Die drei frei kombinierbaren Filter sind:
+
+- `game`: `Alle`, `GridWords`, `QuadWords`, `GW+QW`; `GLOBAL` erscheint nur bei `Alle`,
+- `category`: `Alle`, `Erfahrung`, `Zuverlässigkeit`, `Leistung`, `Besonderes`,
+- `status`: `Alle`, `Freigeschaltet`, `Offen`, wobei `Offen` fehlend oder `INVALIDATED` bedeutet.
+
+Ein leeres Filterergebnis ist ein normaler Leerzustand. `/achievement-list` zeigt weder `earned_on` noch `n/x`, Prozentwerte oder Fortschrittsbalken und löst keinen History-Scan, Evaluator oder Reconciler aus.
+
+Ergebnisdetails zeigen alle aktuell `ACTIVE` Vergaben des Spielers, deren `earned_on` exakt dem betrachteten Spieltag entspricht. Die Darstellung behauptet nicht, dass das ausgewählte Ergebnis jedes Achievement allein verursacht hat.
+
+## Berichtshighlights
+
+Achievement-Highlights in Wochen- und Monatsberichten werden **nicht** aus Achievement-Events oder Announcement-Historie rekonstruiert. Für jeden Reportteilnehmer zählt ausschließlich der aktuelle `ACTIVE` Award-State mit `earned_on` innerhalb der inklusiven Berichtsperiode. Spieler mit null passenden Awards werden ausgelassen; die Reihenfolge bleibt die Reportteilnehmerreihenfolge. Eine spätere Invalidierung vor der Reporterzeugung reduziert den Zähler, ein bereits erfolgreich veröffentlichter Report bleibt nach den allgemeinen Snapshotregeln unverändert.
