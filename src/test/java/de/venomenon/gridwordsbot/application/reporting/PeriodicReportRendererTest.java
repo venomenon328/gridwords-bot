@@ -147,9 +147,10 @@ class PeriodicReportRendererTest {
     @Test
     void usesDeterministicHalfUpRoundingIncludingDurationsAboveOneHour() {
         ReportGameStatistics grid = statistics(GameType.GRIDWORDS, 3, 3, 2, 1, 5, 2, 7_321, 3_660);
+        ReportGameStatistics quad = statistics(GameType.QUADWORDS, 3, 3, 2, 1, 5, 2, 7_321, 3_660);
         String value = renderer.render(report(ReportType.WEEKLY,
                 new ReportPeriod(date(2026, 8, 3), date(2026, 8, 9)),
-                playerWithGames(1, "Anna", grid, grid, 3, 3, 2, 1)))
+                playerWithGames(1, "Anna", grid, quad, 3, 3, 2, 1)))
                 .pages().getFirst().fields().getFirst().value();
 
         assertThat(value).contains("66,7 % · ØVers. 2,5 · ØZeit 1:01:01 · Best 1:01:00");
