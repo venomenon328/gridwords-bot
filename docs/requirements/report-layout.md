@@ -5,7 +5,7 @@
 **Gültig ab:** Release 1.5.1  
 **Verbindliches Issue:** #119
 
-Dieses Dokument konkretisiert ausschließlich die sichtbare Darstellung der bereits bestehenden Wochen- und Monatsberichte. Die fachliche Grundlage bleibt `periodic-reports.md`; Record-, Achievement-, Serien-, Snapshot-, Delivery- und Recovery-Semantik werden nicht verändert.
+Dieses Dokument konkretisiert ausschließlich die sichtbare Darstellung der bereits bestehenden Wochen- und Monatsberichte. Die fachliche Grundlage bleibt `periodic-reports.md`; Record-, Achievement-, Serien-, Snapshot-, Delivery- und Recovery-Semantik werden nicht verändert, mit Ausnahme des in Abschnitt 13 ausdrücklich beschriebenen einmaligen layoutbezogenen Wochenreport-Refreshs beim Montags-Startup.
 
 ## 1. Ziel
 
@@ -25,7 +25,7 @@ Unverändert bleiben insbesondere:
 - persönliche und gemeinsame Serien,
 - Achievement-Periodenzuordnung,
 - Record-Event-Auswahl und Crossing/Finish-Deduplizierung,
-- Snapshot-, Catch-up-, Retry-, Recovery- und Deliveryregeln,
+- Catch-up-, Retry-, Recovery- und Deliveryregeln außerhalb des expliziten Montag-Startup-Refreshs,
 - ein Embed pro persistierter Discord-Reportseite.
 
 Es gibt keine Liquibase-Migration.
@@ -263,12 +263,28 @@ Seite 3/3 · ✨ Highlights der Woche …
 
 Es wird keine generische Section-/Layout-Engine eingeführt. Eine gezielte Rendererlogik für Statistik- und Highlightgruppe genügt.
 
-## 13. Snapshot- und Rolloutverhalten
+## 13. Snapshot-, Rollout- und Montag-Startup-Verhalten
 
-- Bereits erfolgreich veröffentlichte Reports werden nicht wegen des Layoutwechsels editiert oder neu veröffentlicht.
-- Das neue Layout gilt für künftig erzeugte Reports.
-- Eine nach bestehender Recoveryregel zulässige Neuerzeugung nach externer Löschung innerhalb des Catch-up-Fensters darf das aktuelle Rendererlayout verwenden.
-- Kein Sonder-Reconcile nur wegen des Layoutwechsels.
+Grundsätzlich bleibt ein erfolgreich veröffentlichter Report ein eingefrorener Snapshot:
+
+- normale Scheduler-Ticks editieren oder ersetzen einen erfolgreichen Report nicht allein wegen eines geänderten Renderings,
+- das neue Layout gilt regulär für künftig erzeugte Reports,
+- eine nach bestehender Recoveryregel zulässige Neuerzeugung nach externer Löschung innerhalb des Catch-up-Fensters darf das aktuelle Rendererlayout verwenden.
+
+Für Release 1.5.1 gilt zusätzlich genau eine eng begrenzte Layout-Rollout-Regel:
+
+- Beim `ApplicationReadyEvent` des Wochenreport-Schedulers wird **nur an einem Montag** ein expliziter Refresh-Modus verwendet.
+- Der Refresh betrifft ausschließlich den vom bestehenden Planner bestimmten **letzten fälligen Wochenbericht**.
+- Er ist nur innerhalb des bereits persistierten Catch-up-Fensters zulässig; dieses wird nicht erweitert oder umgangen.
+- Existiert ein erfolgreicher Snapshot und unterscheidet sich dessen persistierter Content-Fingerprint vom aktuell gerenderten Fingerprint, wird die komplette persistierte Discord-Seitengruppe unter dem bestehenden Claim-/Lease-Fencing kontrolliert ersetzt und der neue Fingerprint persistiert.
+- Ist der Fingerprint bereits aktuell, wird nichts allein wegen des Startup-Refreshs neu erstellt.
+- Weitere normale Scheduler-Ticks am Montag verwenden wieder den bisherigen Frozen-Snapshot-Pfad.
+- Ein weiterer Bot-Neustart am selben Montag ist dadurch idempotent: nach erfolgreichem ersten Refresh stimmt der Fingerprint bereits und es erfolgt keine erneute Layout-Neuveröffentlichung.
+- An Dienstag bis Sonntag gibt es keinen layoutbezogenen Startup-Refresh.
+- Monatsberichte verwenden diesen Sonderpfad nicht.
+- Der Sonderpfad ist ausschließlich die einmalige sichtbare Einführung des neuen Reportlayouts; er ändert keine Reportdaten oder Periodensemantik.
+
+Damit wird insbesondere am Montag, 10. August 2026 nach Rollout von 1.5.1 der Wochenbericht für 3.–9. August 2026 einmal in das neue Layout überführt, sofern er bereits erfolgreich im alten Layout veröffentlicht wurde und sein Catch-up-Fenster noch offen ist.
 
 ## 14. Nicht Bestandteil
 
