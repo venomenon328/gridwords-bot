@@ -156,8 +156,8 @@ Verworfen. Genau vier benannte Boards sind fachlich klarer, sicherer und leichte
 
 ## Verwandte Dokumente
 
-- `docs/architecture.md`
-- `docs/implementation-plan.md`
-- `docs/increments/06-quadwords-image-parser.md`
+- aktuelle Architektur: [`../architecture/overview.md`](../architecture/overview.md)
+- historischer Implementierungsplan: [`../history/legacy/implementation-plan-pre-consolidation.md`](../history/legacy/implementation-plan-pre-consolidation.md)
+- historischer Inkrementplan: [`../history/increments/06-quadwords-image-parser.md`](../history/increments/06-quadwords-image-parser.md)
 - ADR 0002 zur sicheren Nachrichtenersetzung
 - ADR 0010 zur Docker-verfügbaren lokalen Entwicklung

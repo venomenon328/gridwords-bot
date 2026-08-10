@@ -42,4 +42,4 @@ Der globale Reminderstatus bleibt erhalten. Das Hinzufügen eines zweiten Spiels
 
 ## Verbindliche Details
 
-Die vollständige Fachsemantik steht in `docs/requirements/game-specific-participation.md`. Die paketweise Umsetzung steht in `docs/increments/10.6-game-specific-participation.md`.
+Die aktuelle Fachsemantik steht in [`../product/participation.md`](../product/participation.md). Die damalige paketweise Umsetzung ist unter [`../history/increments/10.6-game-specific-participation.md`](../history/increments/10.6-game-specific-participation.md) archiviert.

@@ -45,7 +45,7 @@ Beide Metriken haben ausschließlich die Tags `result` (`succeeded`, `not_claime
 
 ## Rekord-Live-Auswertung beobachten
 
-Die dauerhafte Live-Auswertung arbeitet unabhängig von der Discord-Delivery und bleibt nach Restart über Claim, Lease und Retry fortsetzbar. Die vollständige Konfiguration, Zustandssemantik und Abnahmenachweise stehen unter [Betrieb und Abnahme der Rekord-Live-Auswertung](record-live-evaluation.md).
+Die dauerhafte Live-Auswertung arbeitet unabhängig von der Discord-Delivery und bleibt nach Restart über Claim, Lease und Retry fortsetzbar. Konfiguration, Zustandssemantik und sichere Diagnose stehen unter [Rekorde: Betrieb und Recovery](records.md).
 
 ```text
 RECORD_LIVE_EVALUATION_ENABLED=true

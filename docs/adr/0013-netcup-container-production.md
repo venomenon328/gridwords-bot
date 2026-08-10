@@ -98,6 +98,7 @@ Verworfen, um Testspieler, Testresultate und Message-IDs aus Testchannels nicht 
 
 Die operative Ausgestaltung steht in:
 
-- `docs/requirements/production-deployment.md`
-- `docs/increments/09-production-deployment-hardening.md`
+- aktuelle Produktionsarchitektur: [`../architecture/production.md`](../architecture/production.md)
+- historische Anforderung: [`../history/legacy/requirements/production-deployment.md`](../history/legacy/requirements/production-deployment.md)
+- historischer Inkrementplan: [`../history/increments/09-production-deployment-hardening.md`](../history/increments/09-production-deployment-hardening.md)
 - den Betriebsdokumenten unter `docs/operations/`

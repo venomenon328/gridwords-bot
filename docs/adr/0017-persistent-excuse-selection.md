@@ -98,4 +98,4 @@ Verworfen wegen externer Kosten und Ausfälle, unvorhersehbarer Ausgaben, schlec
 
 ## Verbindliche Details
 
-Die vollständige Fachsemantik steht in `docs/requirements/excuses.md`. Die paketweise Umsetzung steht in `docs/increments/11-contextual-excuses.md`.
+Die aktuelle Fachsemantik steht in [`../product/excuses.md`](../product/excuses.md). Die damalige paketweise Umsetzung ist unter [`../history/increments/11-contextual-excuses.md`](../history/increments/11-contextual-excuses.md) archiviert.

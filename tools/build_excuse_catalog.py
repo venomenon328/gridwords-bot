@@ -22,21 +22,21 @@ from pathlib import Path
 from typing import Iterable
 
 ROOT = Path(__file__).resolve().parents[1]
-EDITORIAL = ROOT / "docs" / "editorial"
+CONTENT = ROOT / "content" / "excuses"
 OUTPUT = ROOT / "src" / "main" / "resources" / "excuses" / "catalog.json"
 CATALOG_VERSION = "2026.08.04.1"
 EXPECTED_TEMPLATE_COUNT = 564
 
 SOURCE_FILES = (
-    EDITORIAL / "excuse-catalog-draft.md",
-    EDITORIAL / "excuse-catalog-draft-very-late-submission.md",
-    EDITORIAL / "excuse-catalog-draft-gridwords-last-attempt.md",
-    EDITORIAL / "excuse-catalog-draft-gridwords-very-slow.md",
-    EDITORIAL / "excuse-catalog-draft-quadwords-very-slow.md",
-    EDITORIAL / "excuse-catalog-draft-quadwords-single-board-collapse.md",
-    EDITORIAL / "excuse-catalog-draft-current-daily-outlier.md",
+    CONTENT / "drafts" / "general.md",
+    CONTENT / "drafts" / "very-late-submission.md",
+    CONTENT / "drafts" / "gridwords-last-attempt.md",
+    CONTENT / "drafts" / "gridwords-very-slow.md",
+    CONTENT / "drafts" / "quadwords-very-slow.md",
+    CONTENT / "drafts" / "quadwords-single-board-collapse.md",
+    CONTENT / "drafts" / "current-daily-outlier.md",
 )
-TOPIC_MAP_FILE = EDITORIAL / "excuse-catalog-general-topic-map.md"
+TOPIC_MAP_FILE = CONTENT / "review" / "general-topic-map.md"
 
 ENTRY_PATTERN = re.compile(r"^- `(?P<id>[a-z0-9._-]+)` – (?P<text>.+)$")
 TOPIC_PATTERN = re.compile(r"^\| `(?P<id>general\.[a-z0-9.-]+)` \| `(?P<topic>[A-Z_]+)` \|$")
