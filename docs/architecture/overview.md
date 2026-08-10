@@ -18,7 +18,7 @@ Discord / Scheduler / PostgreSQL / Konfiguration
 - Adapter implementieren Discord-, Persistenz-, Scheduler-, Katalog- und Observability-Belange.
 - Konfiguration wird typisiert gebunden. Infrastrukturmodelle werden nicht ungeprüft als öffentliche Domänenmodelle verwendet.
 
-Die Paketstruktur folgt diesen Grenzen unter `de.gridwordsbot.domain`, `application`, `port`, `adapter` und `config`. Achievements, Rekorde, Reporting, Status, Serien, Ausreden und Submissions bleiben fachlich benannte Module innerhalb desselben Deployments; es gibt keine Microservices oder verteilte Queue.
+Die Paketstruktur folgt diesen Grenzen unter `de.venomenon.gridwordsbot` mit den Hauptpaketen `domain`, `application`, `port`, `adapter`, `parser` und `config`. Achievements, Rekorde, Reporting, Status, Serien, Ausreden und Submissions bleiben fachlich benannte Module innerhalb desselben Deployments; es gibt keine Microservices oder verteilte Queue.
 
 ## Kanonische Daten und Projektionen
 
