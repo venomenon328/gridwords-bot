@@ -38,6 +38,29 @@ public final class PeriodicReportReconciliationService {
 
     /** Reconciles one exact delivery scope in the planner's chronological candidate order. */
     public void reconcile(long guildId, long channelId, ReportType reportType, LocalTime reportTime, ZoneId zone) {
+        reconcile(guildId, channelId, reportType, reportTime, zone, false);
+    }
+
+    /**
+     * Reconciles the latest due scope and allows a changed succeeded snapshot to be replaced.
+     * Ordinary scheduler ticks intentionally keep the original frozen-snapshot behavior.
+     */
+    public void reconcileRefreshingSucceededContent(
+            long guildId,
+            long channelId,
+            ReportType reportType,
+            LocalTime reportTime,
+            ZoneId zone) {
+        reconcile(guildId, channelId, reportType, reportTime, zone, true);
+    }
+
+    private void reconcile(
+            long guildId,
+            long channelId,
+            ReportType reportType,
+            LocalTime reportTime,
+            ZoneId zone,
+            boolean refreshChangedSucceededContent) {
         Objects.requireNonNull(reportType, "reportType");
         Objects.requireNonNull(reportTime, "reportTime");
         Objects.requireNonNull(zone, "zone");
@@ -54,7 +77,12 @@ public final class PeriodicReportReconciliationService {
             if (candidate.action() == PeriodicReportReconciliationAction.EXPIRE) {
                 store.expire(new PeriodicReportDeliveryExpiration(key, metadata), now);
             } else {
-                deliveryService.deliver(key, metadata, reportUseCase.generate(guildId, reportType, candidate.period()));
+                var result = reportUseCase.generate(guildId, reportType, candidate.period());
+                if (refreshChangedSucceededContent) {
+                    deliveryService.deliverRefreshingSucceededContent(key, metadata, result);
+                } else {
+                    deliveryService.deliver(key, metadata, result);
+                }
             }
         }
     }
