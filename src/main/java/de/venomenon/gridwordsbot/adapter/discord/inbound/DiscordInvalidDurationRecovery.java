@@ -16,6 +16,7 @@ import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.annotation.Profile;
@@ -35,6 +36,7 @@ final class DiscordInvalidDurationRecovery {
     private final InvalidDurationRecoveryUseCase recovery;
     private final LongFunction<InboundSharedMessage> sourceLoader;
 
+    @Autowired
     DiscordInvalidDurationRecovery(
             JDA jda,
             GridwordsBotProperties properties,
