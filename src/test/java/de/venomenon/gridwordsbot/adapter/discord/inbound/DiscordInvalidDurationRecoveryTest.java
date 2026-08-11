@@ -6,15 +6,38 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.venomenon.gridwordsbot.config.GridwordsBotProperties;
 import de.venomenon.gridwordsbot.port.in.InboundSharedMessage;
 import de.venomenon.gridwordsbot.port.in.InvalidDurationRecoveryUseCase;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.LongFunction;
+import net.dv8tion.jda.api.JDA;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 class DiscordInvalidDurationRecoveryTest {
+
+    @Test
+    void springCreatesRecoveryComponentWithDatabaseProfileAndDiscordEnabled() {
+        new ApplicationContextRunner()
+                .withInitializer(context -> context.getEnvironment().setActiveProfiles("database"))
+                .withUserConfiguration(DiscordInvalidDurationRecovery.class)
+                .withPropertyValues("gridwords.discord.enabled=true")
+                .withBean(JDA.class, () -> mock(JDA.class))
+                .withBean(GridwordsBotProperties.class, () -> new GridwordsBotProperties(
+                        new GridwordsBotProperties.Discord(true, "unused", 11L, 12L, List.of()),
+                        null,
+                        null))
+                .withBean(Clock.class, Clock::systemUTC)
+                .withBean(InvalidDurationRecoveryUseCase.class, () -> mock(InvalidDurationRecoveryUseCase.class))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).hasSingleBean(DiscordInvalidDurationRecovery.class);
+                });
+    }
 
     @Test
     void reloadsRecoverableMessagesAndContinuesAfterOneSourceFailure() {
