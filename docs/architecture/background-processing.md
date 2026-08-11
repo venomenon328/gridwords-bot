@@ -17,6 +17,8 @@ Alle Uhrzeiten gelten in `Europe/Berlin` und werden über einen injizierten `Clo
 
 Worker beanspruchen Arbeit atomar, verlängern oder verlieren eine Lease und speichern jeden extern relevanten Fortschritt. Technische Fehler führen zu begrenztem Retry; fachlich dauerhafte Fehler werden terminal markiert und beobachtbar gemacht. Nach Prozessstart werden unvollständige Ergebnisersetzungen, Refresh-Aufträge und Deliveries erneut geprüft.
 
+Eng begrenzte Parser-Reparaturen laufen als eigener stiller Wartungsweg nach dem normalen Application-Startup. Ein zuvor parserseitig abgelehnter Share wird nur dann erneut aus Discord geladen, wenn Fehlercode, persistierter Recovery-Zustand und der aktuelle Parser ihn eindeutig als reparierbaren Kandidaten ausweisen. Ein Prozessabbruch zwischen Vorbereitung und Abschluss lässt einen dauerhaften Marker für den nächsten Start zurück; der normale Share-Eingang erhält dadurch keine zusätzliche historische Zulassung.
+
 ## Bootstrap
 
 Rekord- und Achievement-Definitionen sind versionierter Anwendungscode. Ein Bootstrap berechnet historische Projektionen aus kanonischen Quellen, bleibt öffentlich still und markiert die aktive Definitionsversion erst nach vollständigem Erfolg als bereit. Live-Ankündigungen sind bis dahin gesperrt.
