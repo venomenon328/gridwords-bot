@@ -10,6 +10,7 @@ import de.venomenon.gridwordsbot.port.in.InboundSharedMessage;
 import de.venomenon.gridwordsbot.port.in.InvalidDurationRecoveryUseCase;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.LongFunction;
 import org.junit.jupiter.api.Test;
 
@@ -48,6 +49,21 @@ class DiscordInvalidDurationRecoveryTest {
 
         assertThat(recovery.recover()).isZero();
         verify(useCase, never()).recover(wrongChannel);
+    }
+
+    @Test
+    void discoveryFailureDoesNotPreventApplicationReadiness() {
+        InvalidDurationRecoveryUseCase useCase = mock(InvalidDurationRecoveryUseCase.class);
+        when(useCase.findCandidates(11L, 12L)).thenThrow(new IllegalStateException("database unavailable"));
+        AtomicBoolean sourceLoaded = new AtomicBoolean();
+        DiscordInvalidDurationRecovery recovery = new DiscordInvalidDurationRecovery(
+                11L, 12L, useCase, ignored -> {
+                    sourceLoaded.set(true);
+                    return message(301L);
+                });
+
+        assertThat(recovery.recover()).isZero();
+        assertThat(sourceLoaded).isFalse();
     }
 
     private static InboundSharedMessage message(long messageId) {
