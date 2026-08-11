@@ -24,7 +24,8 @@ public final class ShareHeaderParser {
     private static final Pattern HEADER_PATTERN = Pattern.compile(
             "^(?<game>GridWords|QuadWords)\\h*\\(\\h*(?<date>[^)]*?)\\h*\\)\\h*"
                     + "(?<attempts>\\S+)\\h*/\\h*(?<maximum>\\S+)\\h*in\\h*(?<duration>\\S+)(?<trailing>.*)$");
-    private static final Pattern DURATION_PATTERN = Pattern.compile("^(?<minutes>\\d+):(?<seconds>\\d{2})$");
+    private static final Pattern DURATION_PATTERN = Pattern.compile(
+            "^(?:(?<hours>\\d+):(?<clockMinutes>\\d{2})|(?<minutes>\\d+)):(?<seconds>\\d{2})$");
     private static final Pattern STREAK_PATTERN = Pattern.compile("^🔥\\uFE0F?\\h*(?<value>\\d+)\\h*$", Pattern.UNICODE_CASE);
 
     private ShareHeaderParser() {
@@ -119,11 +120,20 @@ public final class ShareHeaderParser {
             return Optional.empty();
         }
         try {
-            long minutes = Long.parseLong(matcher.group("minutes"));
             int seconds = Integer.parseInt(matcher.group("seconds"));
             if (seconds > 59) {
                 return Optional.empty();
             }
+            String hoursToken = matcher.group("hours");
+            if (hoursToken != null) {
+                long hours = Long.parseLong(hoursToken);
+                int minutes = Integer.parseInt(matcher.group("clockMinutes"));
+                if (minutes > 59) {
+                    return Optional.empty();
+                }
+                return Optional.of(Duration.ofHours(hours).plusMinutes(minutes).plusSeconds(seconds));
+            }
+            long minutes = Long.parseLong(matcher.group("minutes"));
             return Optional.of(Duration.ofMinutes(minutes).plusSeconds(seconds));
         } catch (NumberFormatException | ArithmeticException exception) {
             return Optional.empty();
