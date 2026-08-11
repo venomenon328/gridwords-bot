@@ -84,11 +84,23 @@ public final class GridWordsSourceDeletionService {
 
     /** Returns true only once the source deletion has been durably completed. */
     public boolean deleteAfterCanonicalPublication(long sourceMessageId) {
+        return deleteAfterCanonicalPublication(sourceMessageId, false);
+    }
+
+    /**
+     * Explicit parser-repair maintenance path.  Only the caller that already passed the persisted parser-recovery
+     * fence may use it; retries retain the same maintenance scope instead of weakening the normal date policy.
+     */
+    public boolean deleteAfterCanonicalPublicationMaintenance(long sourceMessageId) {
+        return deleteAfterCanonicalPublication(sourceMessageId, true);
+    }
+
+    private boolean deleteAfterCanonicalPublication(long sourceMessageId, boolean maintenanceRecovery) {
         SubmissionStore.StoredSubmission submission = submissions.findBySourceMessageId(sourceMessageId).orElse(null);
         if (submission == null || submission.state() == SubmissionStore.SubmissionState.COMPLETED) {
             return submission != null;
         }
-        if (!allowedToComplete(submission)) {
+        if (!maintenanceRecovery && !allowedToComplete(submission)) {
             return false;
         }
         if (submission.state() == SubmissionStore.SubmissionState.ORIGINAL_MESSAGE_DELETED) {
@@ -101,14 +113,17 @@ public final class GridWordsSourceDeletionService {
 
         java.time.Instant now = clock.instant();
         if (submission.sourceDeletionLeaseUntil().filter(leaseUntil -> leaseUntil.isAfter(now)).isPresent()) {
-            scheduleRetryAt(sourceMessageId, submission.sourceDeletionLeaseUntil().orElseThrow().plusSeconds(1));
+            scheduleRetryAt(
+                    sourceMessageId,
+                    submission.sourceDeletionLeaseUntil().orElseThrow().plusSeconds(1),
+                    maintenanceRecovery);
             return false;
         }
 
         SubmissionStore.SourceDeletionClaim claim = submissions.claimOriginalSourceDeletion(
                 sourceMessageId, now.plusSeconds(LEASE_SECONDS)).orElse(null);
         if (claim == null) {
-            scheduleRetryAfterBusyClaim(sourceMessageId, now);
+            scheduleRetryAfterBusyClaim(sourceMessageId, now, maintenanceRecovery);
             return false;
         }
 
@@ -128,7 +143,10 @@ public final class GridWordsSourceDeletionService {
                         SubmissionStore.OriginalDeletionFailure.RETRYABLE,
                         "source message deletion failed transiently");
                 if (recorded) {
-                    scheduleRetryAt(sourceMessageId, clock.instant().plusSeconds(LEASE_SECONDS + 1));
+                    scheduleRetryAt(
+                            sourceMessageId,
+                            clock.instant().plusSeconds(LEASE_SECONDS + 1),
+                            maintenanceRecovery);
                 }
                 yield false;
             }
@@ -223,21 +241,24 @@ public final class GridWordsSourceDeletionService {
         return submissions.completeOriginalSourceDeletion(sourceMessageId);
     }
 
-    private void scheduleRetryAfterBusyClaim(long sourceMessageId, java.time.Instant now) {
+    private void scheduleRetryAfterBusyClaim(
+            long sourceMessageId, java.time.Instant now, boolean maintenanceRecovery) {
         submissions.findBySourceMessageId(sourceMessageId)
                 .flatMap(SubmissionStore.StoredSubmission::sourceDeletionLeaseUntil)
                 .filter(leaseUntil -> leaseUntil.isAfter(now))
-                .ifPresent(leaseUntil -> scheduleRetryAt(sourceMessageId, leaseUntil.plusSeconds(1)));
+                .ifPresent(leaseUntil -> scheduleRetryAt(
+                        sourceMessageId, leaseUntil.plusSeconds(1), maintenanceRecovery));
     }
 
-    private void scheduleRetryAt(long sourceMessageId, java.time.Instant retryAt) {
+    private void scheduleRetryAt(
+            long sourceMessageId, java.time.Instant retryAt, boolean maintenanceRecovery) {
         if (!scheduledRetries.add(sourceMessageId)) {
             return;
         }
         try {
             retryScheduler.schedule(retryAt, () -> {
                 scheduledRetries.remove(sourceMessageId);
-                deleteAfterCanonicalPublication(sourceMessageId);
+                deleteAfterCanonicalPublication(sourceMessageId, maintenanceRecovery);
             });
         } catch (RejectedExecutionException ignored) {
             // A later startup can recover the durable delete state.

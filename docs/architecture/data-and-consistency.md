@@ -28,7 +28,7 @@ Bei Ergebnisersetzung bleibt die Reihenfolge Persistieren, Discord veröffentlic
 
 Fachliche Zeit verwendet einen injizierten `Clock` und `Europe/Berlin`. Fachcode ruft nicht unkontrolliert `LocalDate.now()` oder `Instant.now()` auf. Teilnahmeintervalle sind am Starttag einschließlich und am Endtag ausschließlich. Tages-, Perioden- und Bootstrapberechnungen erhalten explizite Stichtage.
 
-Die 06:00-Grenze entscheidet über zulässige Spieltage in normalen Nutzervorgängen. Administrative Imports, Bootstrap und Reparaturen sind explizit getrennte stille Betriebswege; sie umgehen die fachlichen Regeln nicht versehentlich über denselben Use Case.
+Die 06:00-Grenze entscheidet über zulässige Spieltage in normalen Nutzervorgängen. Administrative Imports, Bootstrap und Reparaturen sind explizit getrennte stille Betriebswege; sie umgehen die fachlichen Regeln nicht versehentlich über denselben Use Case. Eine Parser-Reparatur darf deshalb nur über den eigenen Maintenance-Pfad und nach Prüfung eines persistierten Recovery-Markers die normale Spieltagszulassung überspringen; der reguläre Share-Use-Case bleibt unverändert zeitbegrenzt.
 
 ## Projektionen und Reconciliation
 

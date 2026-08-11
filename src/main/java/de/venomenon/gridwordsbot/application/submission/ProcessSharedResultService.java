@@ -125,9 +125,23 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
 
     @Override
     public ProcessingResult process(InboundSharedMessage message) {
+        return process(message, null);
+    }
+
+    @Override
+    public ProcessingResult processMaintenanceRecovery(
+            InboundSharedMessage message, ParseErrorCode recoveredErrorCode) {
+        Objects.requireNonNull(recoveredErrorCode, "recoveredErrorCode");
+        return process(message, recoveredErrorCode);
+    }
+
+    private ProcessingResult process(InboundSharedMessage message, ParseErrorCode recoveredErrorCode) {
         ParseResult parseResult = parse(message);
         if (parseResult instanceof ParseResult.NotApplicable) {
             return new ProcessingResult.Ignored();
+        }
+        if (recoveredErrorCode != null) {
+            requirePreparedRecovery(message.messageId(), recoveredErrorCode);
         }
         SubmissionStore.StoredSubmission submission = submissionStore.register(registration(message));
         if (parseResult instanceof ParseResult.Invalid invalid) {
@@ -145,7 +159,7 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
             return new ProcessingResult.Rejected(
                     submission.parserErrorCode().orElse(ParseErrorCode.INVALID_IMAGE_STRUCTURE.name()));
         }
-        if (!admission.allows(parsed.gameDate())) {
+        if (recoveredErrorCode == null && !admission.allows(parsed.gameDate())) {
             // RESULT_STORED and FAILED_RETRYABLE are intentionally not exempt:
             // after logical day close neither recovery nor canonical completion
             // of an ordinary previous-day user operation may proceed.  Such
@@ -193,10 +207,24 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
         SubmissionStore.ResultStorageOutcome storage = submissionStore.consumeResultStorageOutcome(stored);
         achievementHandoff.accept(storage);
         refreshStatusSafely(parsed.gameDate());
+        if (recoveredErrorCode != null) {
+            return new ProcessingResult.Accepted(parsed.gameType());
+        }
         if (!canonicalPublisher.test(message.messageId())) {
             return new ProcessingResult.Ignored();
         }
         return new ProcessingResult.Accepted(parsed.gameType());
+    }
+
+    private void requirePreparedRecovery(long sourceMessageId, ParseErrorCode recoveredErrorCode) {
+        SubmissionStore.StoredSubmission submission = submissionStore.findBySourceMessageId(sourceMessageId)
+                .orElseThrow(() -> new IllegalStateException(
+                        "maintenance recovery requires an existing submission: " + sourceMessageId));
+        if (submission.state() != SubmissionStore.SubmissionState.RECEIVED
+                || submission.parserErrorCode().filter(recoveredErrorCode.name()::equals).isEmpty()) {
+            throw new IllegalStateException(
+                    "maintenance recovery requires a prepared parser rejection: " + sourceMessageId);
+        }
     }
 
     private ParsedGameResult completeQuadWords(InboundSharedMessage message, ParsedGameResult header) {
