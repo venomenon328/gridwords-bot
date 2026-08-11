@@ -35,9 +35,12 @@ public final class PostgresParserRecoveryStore implements ParserRecoveryStore {
                 SELECT source_message_id, raw_message_content, processing_state
                 FROM submission
                 WHERE guild_id = ? AND channel_id = ? AND parser_error_code = ?
-                  AND processing_state IN (
-                      'PARSE_REJECTED', 'RECEIVED', 'RESULT_STORED', 'CANONICAL_MESSAGE_PUBLISHED',
-                      'ORIGINAL_MESSAGE_DELETED', 'COMPLETED', 'SUPERSEDED')
+                  AND (
+                      processing_state IN (
+                          'PARSE_REJECTED', 'RECEIVED', 'RESULT_STORED', 'CANONICAL_MESSAGE_PUBLISHED',
+                          'ORIGINAL_MESSAGE_DELETED', 'COMPLETED', 'SUPERSEDED')
+                      OR (processing_state = 'FAILED_RETRYABLE' AND game_result_id IS NOT NULL)
+                  )
                 ORDER BY received_at, source_message_id
                 """, (rs, row) -> new Candidate(
                         rs.getLong("source_message_id"),
