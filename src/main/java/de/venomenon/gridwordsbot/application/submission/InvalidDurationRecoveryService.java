@@ -13,6 +13,7 @@ import de.venomenon.gridwordsbot.port.out.SubmissionStore;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.LongPredicate;
 
 /** Explicit, silent maintenance path for the former GridWords H:MM:SS parser bug. */
 public final class InvalidDurationRecoveryService implements InvalidDurationRecoveryUseCase {
@@ -21,20 +22,30 @@ public final class InvalidDurationRecoveryService implements InvalidDurationReco
 
     private final ParserRecoveryStore recoveryStore;
     private final ProcessSharedResultUseCase processor;
+    private final LongPredicate maintenanceCompletion;
     private final GridWordsShareParser gridWordsParser;
 
     public InvalidDurationRecoveryService(
             ParserRecoveryStore recoveryStore,
             ProcessSharedResultUseCase processor) {
-        this(recoveryStore, processor, new GridWordsShareParser());
+        this(recoveryStore, processor, ignored -> true);
+    }
+
+    public InvalidDurationRecoveryService(
+            ParserRecoveryStore recoveryStore,
+            ProcessSharedResultUseCase processor,
+            LongPredicate maintenanceCompletion) {
+        this(recoveryStore, processor, maintenanceCompletion, new GridWordsShareParser());
     }
 
     InvalidDurationRecoveryService(
             ParserRecoveryStore recoveryStore,
             ProcessSharedResultUseCase processor,
+            LongPredicate maintenanceCompletion,
             GridWordsShareParser gridWordsParser) {
         this.recoveryStore = Objects.requireNonNull(recoveryStore);
         this.processor = Objects.requireNonNull(processor);
+        this.maintenanceCompletion = Objects.requireNonNull(maintenanceCompletion);
         this.gridWordsParser = Objects.requireNonNull(gridWordsParser);
     }
 
@@ -43,8 +54,8 @@ public final class InvalidDurationRecoveryService implements InvalidDurationReco
         List<Long> recoverable = new ArrayList<>();
         for (ParserRecoveryStore.Candidate candidate
                 : recoveryStore.findCandidates(guildId, channelId, RECOVERED_ERROR)) {
-            if (isCompletedRecoveryState(candidate.state())) {
-                recoveryStore.complete(candidate.sourceMessageId(), RECOVERED_ERROR);
+            if (hasStoredResultOrLater(candidate.state())) {
+                completeDurableRecovery(candidate.sourceMessageId());
                 continue;
             }
             if (isNowParseableGridWords(candidate.rawMessageContent())) {
@@ -68,16 +79,24 @@ public final class InvalidDurationRecoveryService implements InvalidDurationReco
         if (result instanceof ProcessingResult.Rejected) {
             return false;
         }
-        return recoveryStore.complete(message.messageId(), RECOVERED_ERROR);
+        return completeDurableRecovery(message.messageId());
+    }
+
+    private boolean completeDurableRecovery(long sourceMessageId) {
+        if (!maintenanceCompletion.test(sourceMessageId)) {
+            return false;
+        }
+        return recoveryStore.complete(sourceMessageId, RECOVERED_ERROR);
     }
 
     private boolean isNowParseableGridWords(String content) {
         return gridWordsParser.parse(new ShareParseInput(content, List.of())) instanceof ParseResult.Parsed;
     }
 
-    private static boolean isCompletedRecoveryState(SubmissionStore.SubmissionState state) {
+    private static boolean hasStoredResultOrLater(SubmissionStore.SubmissionState state) {
         return switch (state) {
-            case RESULT_STORED, CANONICAL_MESSAGE_PUBLISHED, ORIGINAL_MESSAGE_DELETED, COMPLETED, SUPERSEDED -> true;
+            case RESULT_STORED, FAILED_RETRYABLE, CANONICAL_MESSAGE_PUBLISHED,
+                    ORIGINAL_MESSAGE_DELETED, COMPLETED, SUPERSEDED -> true;
             default -> false;
         };
     }
