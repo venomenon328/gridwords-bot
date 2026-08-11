@@ -32,7 +32,7 @@ import org.slf4j.LoggerFactory;
 /** Parses and persists an already filtered shared message without framework-specific types. */
 public final class ProcessSharedResultService implements ProcessSharedResultUseCase {
     private static final Logger LOGGER = LoggerFactory.getLogger(ProcessSharedResultService.class);
-    static final String GRIDWORDS_PARSER_VERSION = "gridwords-share-v2";
+    static final String GRIDWORDS_PARSER_VERSION = "gridwords-share-v1";
     static final String QUADWORDS_PARSER_VERSION = QuadWordsImageParser.VERSION;
     static final String QUADWORDS_TEXT_ONLY_PARSER_VERSION = "quadwords-share-v2";
     static final String OUTSIDE_ALLOWED_DATE_WINDOW = "OUTSIDE_ALLOWED_DATE_WINDOW";
@@ -207,6 +207,9 @@ public final class ProcessSharedResultService implements ProcessSharedResultUseC
         SubmissionStore.ResultStorageOutcome storage = submissionStore.consumeResultStorageOutcome(stored);
         achievementHandoff.accept(storage);
         refreshStatusSafely(parsed.gameDate());
+        if (recoveredErrorCode != null) {
+            return new ProcessingResult.Accepted(parsed.gameType());
+        }
         if (!canonicalPublisher.test(message.messageId())) {
             return new ProcessingResult.Ignored();
         }
