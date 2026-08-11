@@ -18,8 +18,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.event.EventListener;
 import org.springframework.context.annotation.Profile;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 /** Reloads narrowly selected source messages after startup and hands them to the silent repair use case. */
@@ -70,8 +70,16 @@ final class DiscordInvalidDurationRecovery {
     }
 
     int recover() {
+        List<Long> candidates;
+        try {
+            candidates = recovery.findCandidates(guildId, channelId);
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Parser recovery discovery failed; startup continues and recovery remains restartable", exception);
+            return 0;
+        }
+
         int recovered = 0;
-        for (long sourceMessageId : recovery.findCandidates(guildId, channelId)) {
+        for (long sourceMessageId : candidates) {
             try {
                 InboundSharedMessage message = Objects.requireNonNull(sourceLoader.apply(sourceMessageId));
                 if (message.guildId() != guildId || message.channelId() != channelId
