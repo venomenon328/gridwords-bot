@@ -16,7 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 /** PostgreSQL implementation of the narrow parser-repair recovery boundary. */
 @Repository
 @Profile("database")
-public final class PostgresParserRecoveryStore implements ParserRecoveryStore {
+public class PostgresParserRecoveryStore implements ParserRecoveryStore {
 
     private final JdbcTemplate jdbc;
     private final Clock clock;
