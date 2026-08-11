@@ -129,6 +129,16 @@ public final class CanonicalGridWordsPublicationService {
         return publishAndHandOff(sourceMessageId) == PublicationOutcome.PUBLISHED;
     }
 
+    /**
+     * Explicit parser-repair maintenance publication.  It bypasses only the normal business-date admission after
+     * the caller has already passed the durable parser-recovery fence; source deletion is deliberately handled by
+     * the matching maintenance operation rather than the ordinary post-publication callback.
+     */
+    public boolean publishMaintenanceRecovery(long sourceMessageId) {
+        PublicationOutcome outcome = publishOutcome(sourceMessageId, true);
+        return outcome == PublicationOutcome.PUBLISHED || outcome == PublicationOutcome.SUPERSEDED;
+    }
+
     /** Replays open publications and persisted refresh work after startup. */
     public void resumeOpenPublications() {
         for (SubmissionStore.StoredSubmission submission : submissions.findGridWordsAwaitingCanonicalPublication()) {
@@ -151,14 +161,14 @@ public final class CanonicalGridWordsPublicationService {
     }
 
     private PublicationOutcome publishAndHandOff(long sourceMessageId) {
-        PublicationOutcome outcome = publishOutcome(sourceMessageId);
+        PublicationOutcome outcome = publishOutcome(sourceMessageId, false);
         if (outcome == PublicationOutcome.PUBLISHED) {
             postPublication.accept(sourceMessageId);
         }
         return outcome;
     }
 
-    private PublicationOutcome publishOutcome(long sourceMessageId) {
+    private PublicationOutcome publishOutcome(long sourceMessageId, boolean maintenanceRecovery) {
         long resultId = 0;
         UUID claimToken = null;
         boolean deliveryAttemptRecorded = false;
@@ -177,13 +187,14 @@ public final class CanonicalGridWordsPublicationService {
             if (submission.state() == SubmissionStore.SubmissionState.COMPLETED) {
                 return PublicationOutcome.PUBLISHED;
             }
-            if (!admission.allows(result.parsedResult().gameDate()) || !isPublishable(result)) {
+            if ((!maintenanceRecovery && !admission.allows(result.parsedResult().gameDate())) || !isPublishable(result)) {
                 return PublicationOutcome.NOT_PUBLISHABLE;
             }
             // The public message is already durable in these intermediate
             // states.  Before the cutoff, hand the operation on only to its
-            // still-open source-delete phase; after the cutoff the admission
-            // check above stops that recovery as well.
+            // still-open source-delete phase; after the cutoff the normal path
+            // stops that recovery as well. Explicit maintenance recovery is
+            // fenced separately and may resume the same durable state.
             if (submission.state() == SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED
                     || submission.state() == SubmissionStore.SubmissionState.ORIGINAL_MESSAGE_DELETED) {
                 return PublicationOutcome.PUBLISHED;
@@ -202,7 +213,9 @@ public final class CanonicalGridWordsPublicationService {
                     resultId,
                     clock.instant().plusSeconds(LEASE_SECONDS)).orElse(null);
             if (claim == null) {
-                scheduleRetry(sourceMessageId);
+                if (!maintenanceRecovery) {
+                    scheduleRetry(sourceMessageId);
+                }
                 return PublicationOutcome.RETRY_SCHEDULED;
             }
             claimToken = claim.token();
@@ -234,13 +247,15 @@ public final class CanonicalGridWordsPublicationService {
                             results.releaseCanonicalPublicationClaim(resultId, claimToken);
                         }
                     } finally {
-                        if (deliveryAttemptRecorded) {
+                        if (deliveryAttemptRecorded && !maintenanceRecovery) {
                             requestCurrentRefresh(resultId, REFRESH_DELAY_SECONDS);
                         }
                     }
                 }
             }
-            scheduleRetry(sourceMessageId);
+            if (!maintenanceRecovery) {
+                scheduleRetry(sourceMessageId);
+            }
             return PublicationOutcome.RETRY_SCHEDULED;
         }
     }
