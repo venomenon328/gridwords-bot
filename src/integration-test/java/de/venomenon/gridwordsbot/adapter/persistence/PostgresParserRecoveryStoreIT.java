@@ -4,15 +4,23 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import de.venomenon.gridwordsbot.domain.model.GameType;
+import de.venomenon.gridwordsbot.domain.model.NormalizedBoard;
+import de.venomenon.gridwordsbot.domain.model.ParsedGameResult;
+import de.venomenon.gridwordsbot.domain.model.ShareOutcome;
 import de.venomenon.gridwordsbot.domain.parsing.ParseErrorCode;
+import de.venomenon.gridwordsbot.port.out.GameResultStore;
 import de.venomenon.gridwordsbot.port.out.ParserRecoveryStore;
 import de.venomenon.gridwordsbot.port.out.PlayerStore;
 import de.venomenon.gridwordsbot.port.out.SubmissionStore;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalInt;
 import liquibase.integration.spring.SpringLiquibase;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -78,6 +86,46 @@ class PostgresParserRecoveryStoreIT {
                 .map(ParserRecoveryStore.Candidate::sourceMessageId)
                 .toList());
         assertEquals(SubmissionStore.SubmissionState.RECEIVED, afterRestart.getFirst().state());
+    }
+
+    @Test
+    void keepsPostResultRetryFailureDiscoverableForTheNextMaintenancePass() {
+        long sourceMessageId = 612704L;
+        registerAndReject(sourceMessageId, ParseErrorCode.INVALID_DURATION);
+        assertTrue(recovery.prepare(sourceMessageId, ParseErrorCode.INVALID_DURATION));
+
+        ParsedGameResult parsed = new ParsedGameResult(
+                GameType.GRIDWORDS,
+                LocalDate.of(2026, 8, 10),
+                new ShareOutcome.Solved(3, 6),
+                Duration.ofHours(7).plusMinutes(38).plusSeconds(28),
+                OptionalInt.empty(),
+                Optional.of(new NormalizedBoard(List.of(
+                        "⬜⬜⬜⬜⬜",
+                        "🟨⬜⬜⬜⬜",
+                        "🟩🟩🟩🟩🟩"))));
+        submissions.storeResult(new SubmissionStore.ResultStorage(
+                sourceMessageId,
+                new GameResultStore.GameResultUpsert(
+                        PLAYER_ID,
+                        parsed,
+                        "GridWords (10. August 2026) 3/6 in 7:38:28",
+                        "gridwords-share-v1")));
+        submissions.markRetryableFailure(sourceMessageId, "canonical publication failed");
+
+        ParserRecoveryStore.Candidate candidate = recovery.findCandidates(
+                        GUILD_ID, CHANNEL_ID, ParseErrorCode.INVALID_DURATION).stream()
+                .filter(value -> value.sourceMessageId() == sourceMessageId)
+                .findFirst()
+                .orElseThrow();
+        assertEquals(SubmissionStore.SubmissionState.FAILED_RETRYABLE, candidate.state());
+        assertFalse(recovery.complete(sourceMessageId, ParseErrorCode.INVALID_DURATION));
+
+        assertTrue(submissions.transition(
+                sourceMessageId,
+                SubmissionStore.SubmissionState.FAILED_RETRYABLE,
+                SubmissionStore.SubmissionState.SUPERSEDED));
+        assertTrue(recovery.complete(sourceMessageId, ParseErrorCode.INVALID_DURATION));
     }
 
     @Test
