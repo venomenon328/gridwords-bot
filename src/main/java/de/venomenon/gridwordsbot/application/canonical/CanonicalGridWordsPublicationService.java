@@ -136,7 +136,16 @@ public final class CanonicalGridWordsPublicationService {
      */
     public boolean publishMaintenanceRecovery(long sourceMessageId) {
         PublicationOutcome outcome = publishOutcome(sourceMessageId, true);
-        return outcome == PublicationOutcome.PUBLISHED || outcome == PublicationOutcome.SUPERSEDED;
+        if (outcome == PublicationOutcome.SUPERSEDED) {
+            return true;
+        }
+        if (outcome != PublicationOutcome.PUBLISHED) {
+            return false;
+        }
+        SubmissionStore.StoredSubmission submission = submissions.findBySourceMessageId(sourceMessageId)
+                .orElseThrow();
+        long resultId = submission.gameResultId().orElseThrow();
+        return refreshCurrentPublication(resultId, true, sourceMessageId) == RefreshOutcome.COMPLETED;
     }
 
     /** Replays open publications and persisted refresh work after startup. */
@@ -336,7 +345,7 @@ public final class CanonicalGridWordsPublicationService {
             schedule.rerunRequested = false;
         }
         try {
-            outcome = refreshCurrentPublication(resultId);
+            outcome = refreshCurrentPublication(resultId, false, 0);
         } finally {
             RefreshOutcome completedOutcome = outcome;
             RefreshSchedule[] followUp = new RefreshSchedule[1];
@@ -366,7 +375,8 @@ public final class CanonicalGridWordsPublicationService {
         }
     }
 
-    private RefreshOutcome refreshCurrentPublication(long resultId) {
+    private RefreshOutcome refreshCurrentPublication(
+            long resultId, boolean maintenanceRecovery, long maintenanceSourceMessageId) {
         if (!retirement.isCanonicalPublicationAllowed(resultId)) {
             return RefreshOutcome.COMPLETED;
         }
@@ -379,9 +389,15 @@ public final class CanonicalGridWordsPublicationService {
                 return RefreshOutcome.COMPLETED;
             }
             SubmissionStore.StoredSubmission current = candidate.submission();
+            if (maintenanceRecovery && current.sourceMessageId() != maintenanceSourceMessageId) {
+                return RefreshOutcome.COMPLETED;
+            }
             if (current.state() != SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED
                     && current.state() != SubmissionStore.SubmissionState.ORIGINAL_MESSAGE_DELETED
                     && current.state() != SubmissionStore.SubmissionState.COMPLETED) {
+                if (maintenanceRecovery) {
+                    return RefreshOutcome.RETRY_SCHEDULED;
+                }
                 return switch (publishAndHandOff(current.sourceMessageId())) {
                     case NOT_PUBLISHABLE, RETIRED -> RefreshOutcome.COMPLETED;
                     case PUBLISHED, RETRY_SCHEDULED, SUPERSEDED -> RefreshOutcome.RETRY_SCHEDULED;
@@ -389,7 +405,7 @@ public final class CanonicalGridWordsPublicationService {
             }
 
             GameResultStore.StoredGameResult result = results.findById(resultId).orElseThrow();
-            if (!admission.allows(result.parsedResult().gameDate()) || !isPublishable(result)) {
+            if ((!maintenanceRecovery && !admission.allows(result.parsedResult().gameDate())) || !isPublishable(result)) {
                 return RefreshOutcome.COMPLETED;
             }
             GameResultStore.PublicationClaim claim = results.claimCanonicalPublication(
