@@ -72,42 +72,77 @@ class CanonicalGridWordsMaintenancePublicationTest {
                 OptionalLong.empty(),
                 NOW,
                 NOW);
-        SubmissionStore.StoredSubmission submission = new SubmissionStore.StoredSubmission(
-                SOURCE,
-                11L,
-                12L,
+        GameResultStore.StoredGameResult publishedResult = new GameResultStore.StoredGameResult(
+                RESULT,
                 PLAYER,
+                parsed,
                 result.rawShareText(),
-                SubmissionStore.SubmissionState.RESULT_STORED,
-                Optional.of(RESULT),
-                List.of(),
-                Optional.of("INVALID_DURATION"),
-                Optional.empty(),
+                result.parserVersion(),
+                OptionalLong.of(99L),
                 NOW,
                 NOW);
-        GameResultStore.PublicationClaim claim = new GameResultStore.PublicationClaim(
+        SubmissionStore.StoredSubmission submission = submission(
+                result.rawShareText(), SubmissionStore.SubmissionState.RESULT_STORED);
+        SubmissionStore.StoredSubmission publishedSubmission = submission(
+                result.rawShareText(), SubmissionStore.SubmissionState.CANONICAL_MESSAGE_PUBLISHED);
+        GameResultStore.PublicationClaim publishClaim = new GameResultStore.PublicationClaim(
                 UUID.fromString("00000000-0000-0000-0000-000000000127"),
                 NOW.plusSeconds(60));
+        GameResultStore.PublicationClaim refreshClaim = new GameResultStore.PublicationClaim(
+                UUID.fromString("00000000-0000-0000-0000-000000000129"),
+                NOW.plusSeconds(60));
 
-        when(submissions.findBySourceMessageId(SOURCE)).thenReturn(Optional.of(submission));
-        when(results.findById(RESULT)).thenReturn(Optional.of(result));
+        when(submissions.findBySourceMessageId(SOURCE)).thenReturn(
+                Optional.of(submission),
+                Optional.of(submission),
+                Optional.of(publishedSubmission));
+        when(results.findById(RESULT)).thenReturn(
+                Optional.of(result),
+                Optional.of(result),
+                Optional.of(publishedResult));
         when(results.findAll()).thenReturn(List.of(result));
         when(players.findGameParticipationPeriods()).thenReturn(List.of());
         when(players.findByDiscordUserId(PLAYER)).thenReturn(Optional.of(new PlayerStore.StoredPlayer(
                 PLAYER, "Player", true, false, Instant.EPOCH, Instant.EPOCH)));
         when(submissions.prepareCanonicalPublication(SOURCE, RESULT))
                 .thenReturn(SubmissionStore.CanonicalPublicationPreparation.PUBLISHABLE);
-        when(results.claimCanonicalPublication(eq(RESULT), any())).thenReturn(Optional.of(claim));
-        when(submissions.beginCanonicalDelivery(SOURCE, RESULT, claim.token()))
+        when(results.claimCanonicalPublication(eq(RESULT), any())).thenReturn(
+                Optional.of(publishClaim), Optional.of(refreshClaim));
+        when(submissions.beginCanonicalDelivery(SOURCE, RESULT, publishClaim.token()))
                 .thenReturn(new SubmissionStore.CanonicalDeliveryAttempt(1));
+        when(submissions.beginCanonicalDelivery(SOURCE, RESULT, refreshClaim.token()))
+                .thenReturn(new SubmissionStore.CanonicalDeliveryAttempt(2));
         when(discord.create(eq(12L), any())).thenReturn(99L);
-        when(submissions.completeCanonicalPublication(SOURCE, RESULT, 99L, claim.token())).thenReturn(true);
+        when(submissions.completeCanonicalPublication(SOURCE, RESULT, 99L, publishClaim.token())).thenReturn(true);
+        when(submissions.findCurrentCanonicalPublicationCandidate(RESULT)).thenReturn(Optional.of(
+                new SubmissionStore.CanonicalRefreshCandidate(publishedSubmission, 1)));
+        when(submissions.completeCanonicalRefresh(SOURCE, RESULT, 99L, refreshClaim.token(), 2))
+                .thenReturn(new SubmissionStore.CanonicalRefreshCompletion(false));
 
         assertThat(service.publish(SOURCE)).isFalse();
         verify(results, never()).claimCanonicalPublication(eq(RESULT), any());
 
         assertThat(service.publishMaintenanceRecovery(SOURCE)).isTrue();
         verify(discord).create(eq(12L), any());
-        verify(submissions).completeCanonicalPublication(SOURCE, RESULT, 99L, claim.token());
+        verify(discord).edit(eq(12L), eq(99L), any());
+        verify(submissions).completeCanonicalPublication(SOURCE, RESULT, 99L, publishClaim.token());
+        verify(submissions).completeCanonicalRefresh(SOURCE, RESULT, 99L, refreshClaim.token(), 2);
+    }
+
+    private static SubmissionStore.StoredSubmission submission(
+            String rawShareText, SubmissionStore.SubmissionState state) {
+        return new SubmissionStore.StoredSubmission(
+                SOURCE,
+                11L,
+                12L,
+                PLAYER,
+                rawShareText,
+                state,
+                Optional.of(RESULT),
+                List.of(),
+                Optional.of("INVALID_DURATION"),
+                Optional.empty(),
+                NOW,
+                NOW);
     }
 }
