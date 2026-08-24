@@ -27,8 +27,7 @@ class StreakDayClassifierTest {
         assertEquals(StreakDayAssessment.BoundaryReason.RESULT,
                 classifier.personalPerfect(1, DAY, false).boundaryReason().orElseThrow());
         assertEquals(StreakDayAssessment.State.MET, classifier.sharedComplete(DAY, false).state());
-        assertEquals(StreakDayAssessment.BoundaryReason.RESULT,
-                classifier.sharedPerfect(DAY, false).boundaryReason().orElseThrow());
+        assertEquals(StreakDayAssessment.State.MET, classifier.sharedPerfect(DAY, false).state());
     }
 
     @Test
@@ -68,7 +67,7 @@ class StreakDayClassifierTest {
     }
 
     @Test
-    void treatsParticipationAndSharedMinimumAsCalendarBoundaries() {
+    void treatsMissingParticipationAsACalendarBoundary() {
         List<GameParticipationPeriod> periods = List.of(
                 new GameParticipationPeriod(1, GameType.GRIDWORDS, DAY, null),
                 new GameParticipationPeriod(1, GameType.QUADWORDS, DAY, null));
@@ -76,8 +75,9 @@ class StreakDayClassifierTest {
 
         assertEquals(StreakDayAssessment.BoundaryReason.PARTICIPATION,
                 classifier.personalSolved(2, DAY, GameType.GRIDWORDS, true).boundaryReason().orElseThrow());
+        StreakDayClassifier noSharedParticipants = new StreakDayClassifier(List.of(), List.of());
         assertEquals(StreakDayAssessment.BoundaryReason.PARTICIPATION,
-                classifier.sharedSolved(DAY, GameType.GRIDWORDS, true).boundaryReason().orElseThrow());
+                noSharedParticipants.sharedSolved(DAY, GameType.GRIDWORDS, true).boundaryReason().orElseThrow());
     }
 
     private static StreakDayClassifier classifier(List<StreakGameResult> results) {

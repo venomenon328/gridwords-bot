@@ -9,7 +9,6 @@ import de.venomenon.gridwordsbot.domain.record.RecordAnnouncementSubject;
 import de.venomenon.gridwordsbot.domain.record.RecordBootstrapKey;
 import de.venomenon.gridwordsbot.domain.record.RecordBootstrapProjection;
 import de.venomenon.gridwordsbot.domain.record.RecordDefinitionCatalog;
-import de.venomenon.gridwordsbot.domain.record.RecordDefinitionVersion;
 import de.venomenon.gridwordsbot.domain.record.RecordDayCloseClaim;
 import de.venomenon.gridwordsbot.domain.record.RecordDayCloseKey;
 import de.venomenon.gridwordsbot.domain.record.RecordEventDraft;
@@ -203,7 +202,7 @@ public final class RecordDayCloseService implements RecordDayCloseUseCase {
         Instant now = clock.instant();
         if (!work.fence(key, claim.token(), now)) return DayCloseResult.LOST_LEASE;
         if (!history.load(key.guildId()).equals(canonical)) throw new StalePlan();
-        boolean ready = bootstrap.readiness(new RecordBootstrapKey(key.guildId(), RecordDefinitionVersion.RECORDS_V1))
+        boolean ready = bootstrap.readiness(new RecordBootstrapKey(key.guildId(), catalog.version()))
                 == RecordBootstrapReadiness.READY;
         reconcileStates(plan);
         List<AppendedFact> appended = appendFacts(key, plan, ready, now);

@@ -89,11 +89,11 @@ class GameParticipationStreakCalculatorTest {
                 results, periods, SECOND, TODAY, false);
 
         assertThat(provisional.personalGridWordsSolved()).isEqualTo(1);
-        assertThat(provisional.sharedGridWordsSolved()).isEqualTo(1);
+        assertThat(provisional.sharedGridWordsSolved()).isEqualTo(2);
         assertThat(provisional.personalQuadWordsSolved()).isZero();
         assertThat(provisional.personalComplete()).isZero();
         assertThat(historical.personalGridWordsSolved()).isZero();
-        assertThat(historical.sharedGridWordsSolved()).isZero();
+        assertThat(historical.sharedGridWordsSolved()).isEqualTo(2);
     }
 
     @Test
@@ -133,7 +133,7 @@ class GameParticipationStreakCalculatorTest {
     }
 
     @Test
-    void sharedGameSeriesUseDifferentPopulationsWhileCompleteAndPerfectUseOnlyIntersection() {
+    void sharedGameSeriesUseRelevantGameParticipantsWhileBothGameSeriesUseTheirIntersection() {
         List<GameParticipationPeriod> periods = List.of(
                 period(FIRST, GameType.GRIDWORDS, TODAY, null),
                 period(FIRST, GameType.QUADWORDS, TODAY, null),
@@ -164,11 +164,11 @@ class GameParticipationStreakCalculatorTest {
                         StreakSummary::sharedQuadWordsSolved,
                         StreakSummary::sharedComplete,
                         StreakSummary::sharedPerfect)
-                .containsExactly(0, 1, 1, 1);
+                .containsExactly(1, 1, 1, 1);
     }
 
     @Test
-    void everySharedConditionAppliesItsOwnMinimumPopulation() {
+    void sharedSolvedSeriesAcceptOneRelevantParticipantWhileBothGameSeriesRequireBothParticipation() {
         List<GameParticipationPeriod> periods = List.of(
                 period(FIRST, GameType.GRIDWORDS, TODAY, null),
                 period(SECOND, GameType.QUADWORDS, TODAY, null),
@@ -180,7 +180,7 @@ class GameParticipationStreakCalculatorTest {
 
         StreakSummary streaks = calculate(FIRST, results, periods);
 
-        assertThat(streaks.sharedGridWordsSolved()).isZero();
+        assertThat(streaks.sharedGridWordsSolved()).isEqualTo(1);
         assertThat(streaks.sharedQuadWordsSolved()).isEqualTo(1);
         assertThat(streaks.sharedComplete()).isZero();
         assertThat(streaks.sharedPerfect()).isZero();
@@ -208,14 +208,14 @@ class GameParticipationStreakCalculatorTest {
         afterCorrection.add(result(SECOND, TODAY, GameType.GRIDWORDS, false));
         StreakSummary corrected = calculate(FIRST, afterCorrection, periods);
 
-        assertThat(before.sharedGridWordsSolved()).isEqualTo(1);
+        assertThat(before.sharedGridWordsSolved()).isEqualTo(2);
         assertThat(after.sharedGridWordsSolved()).isEqualTo(2);
         assertThat(after.sharedComplete()).isEqualTo(2);
         assertThat(after.sharedPerfect()).isEqualTo(2);
-        assertThat(corrected.sharedGridWordsSolved()).isZero();
+        assertThat(corrected.sharedGridWordsSolved()).isEqualTo(2);
         assertThat(corrected.sharedQuadWordsSolved()).isEqualTo(2);
         assertThat(corrected.sharedComplete()).isEqualTo(2);
-        assertThat(corrected.sharedPerfect()).isZero();
+        assertThat(corrected.sharedPerfect()).isEqualTo(2);
     }
 
     @Test

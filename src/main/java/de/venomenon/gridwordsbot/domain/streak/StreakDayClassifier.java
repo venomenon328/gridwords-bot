@@ -67,39 +67,40 @@ public final class StreakDayClassifier {
     public StreakDayAssessment sharedSolved(LocalDate day, GameType game, boolean dayClosed) {
         Objects.requireNonNull(game, "game");
         List<Long> active = List.copyOf(participation(day).playersFor(game));
-        if (active.size() < 2) return participationBoundary();
-        boolean anyUnsolved = active.stream().map(id -> games(id, day).get(game))
-                .filter(Objects::nonNull).anyMatch(result -> !result.solved());
-        if (anyUnsolved) return resultBoundary();
-        boolean allSolved = active.stream().map(id -> games(id, day).get(game))
-                .allMatch(result -> result != null && result.solved());
-        return allSolved ? StreakDayAssessment.met() : missing(dayClosed);
+        if (active.isEmpty()) return participationBoundary();
+        boolean anySolved = active.stream().map(id -> games(id, day).get(game))
+                .anyMatch(result -> result != null && result.solved());
+        if (anySolved) return StreakDayAssessment.met();
+        boolean allUnsolved = active.stream().map(id -> games(id, day).get(game))
+                .allMatch(result -> result != null && !result.solved());
+        return allUnsolved ? resultBoundary() : missing(dayClosed);
     }
 
     public StreakDayAssessment sharedComplete(LocalDate day, boolean dayClosed) {
         DailyGameParticipation participation = participation(day);
         List<Long> active = List.copyOf(participation.bothGamesPlayers());
-        if (active.size() < 2) return participationBoundary();
-        boolean allComplete = active.stream().allMatch(id -> {
+        if (active.isEmpty()) return participationBoundary();
+        boolean anyComplete = active.stream().anyMatch(id -> {
             Map<GameType, StreakGameResult> games = games(id, day);
             return games.containsKey(GameType.GRIDWORDS) && games.containsKey(GameType.QUADWORDS);
         });
-        return allComplete ? StreakDayAssessment.met() : missing(dayClosed);
+        return anyComplete ? StreakDayAssessment.met() : missing(dayClosed);
     }
 
     public StreakDayAssessment sharedPerfect(LocalDate day, boolean dayClosed) {
         DailyGameParticipation participation = participation(day);
         List<Long> active = List.copyOf(participation.bothGamesPlayers());
-        if (active.size() < 2) return participationBoundary();
-        boolean anyUnsolved = active.stream().flatMap(id -> games(id, day).values().stream())
-                .anyMatch(result -> !result.solved());
-        if (anyUnsolved) return resultBoundary();
-        boolean allPerfect = active.stream().allMatch(id -> {
+        if (active.isEmpty()) return participationBoundary();
+        boolean anyPerfect = active.stream().anyMatch(id -> {
             Map<GameType, StreakGameResult> games = games(id, day);
             return games.containsKey(GameType.GRIDWORDS) && games.get(GameType.GRIDWORDS).solved()
                     && games.containsKey(GameType.QUADWORDS) && games.get(GameType.QUADWORDS).solved();
         });
-        return allPerfect ? StreakDayAssessment.met() : missing(dayClosed);
+        if (anyPerfect) return StreakDayAssessment.met();
+        boolean allBlockedByUnsolvedResult = active.stream().allMatch(id -> java.util.Arrays.stream(GameType.values())
+                .map(game -> games(id, day).get(game))
+                .anyMatch(result -> result != null && !result.solved()));
+        return allBlockedByUnsolvedResult ? resultBoundary() : missing(dayClosed);
     }
 
     public StreakDayAssessment personalDrought(long playerId, LocalDate day, GameType game, boolean dayClosed) {

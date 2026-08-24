@@ -67,7 +67,7 @@ class RecordPersistenceConfiguration {
     }
     @Bean RecordHistoryQuery recordHistoryQuery(JdbcTemplate jdbc) { return new PostgresRecordHistoryQuery(jdbc); }
     @Bean RecordLiveHistoryQuery recordLiveHistoryQuery(JdbcTemplate jdbc) { return new PostgresRecordLiveHistoryQuery(jdbc); }
-    @Bean RecordDefinitionCatalog recordDefinitionCatalog() { return RecordDefinitionCatalog.recordsV1(); }
+    @Bean RecordDefinitionCatalog recordDefinitionCatalog() { return RecordDefinitionCatalog.recordsV2(); }
     @Bean RecordTransactionRunner recordTransactionRunner(TransactionTemplate transactions) {
         return new RecordTransactionRunner() { @Override public <T> T inTransaction(java.util.function.Supplier<T> work) {
             return transactions.execute(status -> work.get());

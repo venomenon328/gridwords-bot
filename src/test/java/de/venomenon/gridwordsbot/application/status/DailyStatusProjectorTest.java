@@ -107,7 +107,7 @@ class DailyStatusProjectorTest {
     }
 
     @Test
-    void oneGamesUnsolvedResultChangesOnlyItsSharedSolvedStreakAndSharedPerfect() {
+    void oneGamesUnsolvedResultDoesNotInterruptSharedOrStreaksWithAnotherSuccess() {
         Fixtures fixtures = fixtures(List.of(1L, 2L), DATE.minusDays(10));
         fixtures.complete(1L, DATE.minusDays(1), true);
         fixtures.complete(2L, DATE.minusDays(1), true);
@@ -117,10 +117,10 @@ class DailyStatusProjectorTest {
 
         DailyStatus status = fixtures.projector().project(DATE, DATE);
 
-        assertThat(status.sharedGridWordsSolved()).isZero();
+        assertThat(status.sharedGridWordsSolved()).isEqualTo(2);
         assertThat(status.sharedQuadWordsSolved()).isEqualTo(2);
         assertThat(status.sharedComplete()).isEqualTo(2);
-        assertThat(status.sharedPerfect()).isZero();
+        assertThat(status.sharedPerfect()).isEqualTo(2);
     }
 
     @Test
@@ -155,8 +155,8 @@ class DailyStatusProjectorTest {
         assertThat(switcher.streaks().personalQuadWordsSolved()).isZero();
         assertThat(switcher.streaks().personalComplete()).isZero();
         assertThat(switcher.streaks().personalPerfect()).isZero();
-        assertThat(status.sharedGridWordsSolved()).isEqualTo(1);
-        assertThat(status.sharedQuadWordsSolved()).isZero();
+        assertThat(status.sharedGridWordsSolved()).isEqualTo(2);
+        assertThat(status.sharedQuadWordsSolved()).isEqualTo(2);
         assertThat(status.sharedComplete()).isZero();
         assertThat(status.sharedPerfect()).isZero();
     }

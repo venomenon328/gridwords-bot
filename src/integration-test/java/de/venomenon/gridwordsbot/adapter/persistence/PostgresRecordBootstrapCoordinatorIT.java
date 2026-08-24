@@ -38,6 +38,7 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -304,6 +305,43 @@ class PostgresRecordBootstrapCoordinatorIT {
     }
 
     @Test
+    void recordsV2BootstrapsIndependentlyFromSucceededV1AndKeepsV1AuditFacts() {
+        seedBothGamesParticipationAndQuadWordsResult();
+        RecordDefinitionCatalog v1 = RecordDefinitionCatalog.recordsV1();
+        RecordDefinitionCatalog v2 = RecordDefinitionCatalog.recordsV2();
+
+        assertThat(worker(historyQuery(), v1).coordinator().run(GUILD_ID))
+                .isEqualTo(RecordBootstrapCoordinator.BootstrapRunResult.SUCCEEDED);
+        int v1States = countForVersion("record_state", v1.version());
+        int v1Events = countForVersion("record_event", v1.version());
+
+        assertThat(worker(historyQuery(), v2).coordinator().run(GUILD_ID))
+                .isEqualTo(RecordBootstrapCoordinator.BootstrapRunResult.SUCCEEDED);
+        assertThat(bootstrap().find(new RecordBootstrapKey(GUILD_ID, v2.version())).orElseThrow().state())
+                .isEqualTo(RecordWorkState.SUCCEEDED);
+        assertThat(sharedStreakStates(v2.version())).isEqualTo(4);
+        assertThat(jdbc.queryForObject("""
+                SELECT min(streak_length) FROM record_state
+                WHERE definition_version=? AND source_type='STREAK_RUN' AND scope_type='SHARED'
+                """, Integer.class, v2.version().value())).isEqualTo(1);
+        assertThat(countForVersion("record_state", v1.version())).isEqualTo(v1States);
+        assertThat(countForVersion("record_event", v1.version())).isEqualTo(v1Events);
+        assertThat(jdbc.queryForObject("""
+                SELECT count(*) FROM record_event
+                WHERE definition_version=? AND event_type='RECORD_INITIALIZED'
+                """, Integer.class, v2.version().value()))
+                .isEqualTo(countForVersion("record_state", v2.version()));
+        assertNoAnnouncements();
+
+        int v2States = countForVersion("record_state", v2.version());
+        int v2Events = countForVersion("record_event", v2.version());
+        assertThat(worker(historyQuery(), v2).coordinator().run(GUILD_ID))
+                .isEqualTo(RecordBootstrapCoordinator.BootstrapRunResult.NOT_CLAIMED);
+        assertThat(countForVersion("record_state", v2.version())).isEqualTo(v2States);
+        assertThat(countForVersion("record_event", v2.version())).isEqualTo(v2Events);
+    }
+
+    @Test
     void concurrentStateInitializationUsesOneStateAndOneAnchorAcrossIndependentTransactions() throws Exception {
         CountDownLatch bothObservedMissingState = new CountDownLatch(2);
         CountDownLatch releaseInitializers = new CountDownLatch(1);
@@ -419,12 +457,61 @@ class PostgresRecordBootstrapCoordinatorIT {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM record_announcement", Integer.class)).isZero();
     }
 
+    private void seedBothGamesParticipationAndQuadWordsResult() {
+        jdbc.update("""
+                INSERT INTO player_participation_period
+                    (player_id,game_type,active_from,inactive_from,created_at,updated_at)
+                VALUES (7,'GRIDWORDS',DATE '2026-08-04',NULL,?,?),
+                       (7,'QUADWORDS',DATE '2026-08-04',NULL,?,?)
+                """, NOW.atOffset(ZoneOffset.UTC), NOW.atOffset(ZoneOffset.UTC),
+                NOW.atOffset(ZoneOffset.UTC), NOW.atOffset(ZoneOffset.UTC));
+        Long resultId = jdbc.queryForObject("""
+                INSERT INTO game_result (
+                    player_id,game_type,game_date,solved,attempts_used,max_attempts,duration_seconds,
+                    raw_share_text,parser_version,created_at,updated_at,version)
+                VALUES (7,'QUADWORDS',DATE '2026-08-04',TRUE,4,9,75,'QuadWords fixture','test',?,?,0)
+                RETURNING id
+                """, Long.class, NOW.minusSeconds(60).atOffset(ZoneOffset.UTC),
+                NOW.minusSeconds(60).atOffset(ZoneOffset.UTC));
+        jdbc.update("""
+                INSERT INTO submission (
+                    source_message_id,guild_id,channel_id,author_player_id,raw_message_content,processing_state,
+                    game_result_id,received_at,updated_at,original_deleted_at,version)
+                VALUES (101,1,2,7,'QuadWords fixture','COMPLETED',?,?,?,?,0)
+                """, resultId, NOW.minusSeconds(60).atOffset(ZoneOffset.UTC),
+                NOW.minusSeconds(60).atOffset(ZoneOffset.UTC), NOW.minusSeconds(60).atOffset(ZoneOffset.UTC));
+    }
+
+    private int countForVersion(String table, RecordDefinitionVersion version) {
+        if (!Set.of("record_state", "record_event").contains(table)) {
+            throw new IllegalArgumentException("unsupported record table");
+        }
+        return jdbc.queryForObject("SELECT count(*) FROM " + table + " WHERE definition_version=?", Integer.class,
+                version.value());
+    }
+
+    private int sharedStreakStates(RecordDefinitionVersion version) {
+        return jdbc.queryForObject("""
+                SELECT count(*) FROM record_state
+                WHERE definition_version=? AND source_type='STREAK_RUN' AND scope_type='SHARED'
+                """, Integer.class, version.value());
+    }
+
     private Worker worker(RecordHistoryQuery history) {
-        return worker(history, (states, events, transactions) ->
-                new RecordStateService(states, events, transactions, RecordDefinitionCatalog.recordsV1()));
+        return worker(history, RecordDefinitionCatalog.recordsV1());
+    }
+
+    private Worker worker(RecordHistoryQuery history, RecordDefinitionCatalog catalog) {
+        return worker(history, catalog, (states, events, transactions) ->
+                new RecordStateService(states, events, transactions, catalog));
     }
 
     private Worker worker(RecordHistoryQuery history, StateServiceFactory stateServiceFactory) {
+        return worker(history, RecordDefinitionCatalog.recordsV1(), stateServiceFactory);
+    }
+
+    private Worker worker(
+            RecordHistoryQuery history, RecordDefinitionCatalog catalog, StateServiceFactory stateServiceFactory) {
         DriverManagerDataSource source = newDataSource();
         JdbcTemplate workerJdbc = new JdbcTemplate(source);
         RecordBootstrapStore bootstraps = new PostgresRecordBootstrapStore(workerJdbc, clock);
@@ -436,7 +523,7 @@ class PostgresRecordBootstrapCoordinatorIT {
                 bootstraps,
                 history,
                 stateService,
-                RecordDefinitionCatalog.recordsV1(),
+                catalog,
                 clock));
     }
 

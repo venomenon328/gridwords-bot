@@ -2,7 +2,7 @@ package de.venomenon.gridwordsbot.domain.record;
 
 import java.util.Objects;
 
-/** Die vier expliziten Vergleichsordnungen aus records-v1. */
+/** Die vier expliziten Vergleichsordnungen der versionierten Rekordkataloge. */
 public final class RecordComparators {
     private static final RecordValueComparator<AttemptsDurationRecordValue> FEWEST_ATTEMPTS =
             new FewestAttemptsComparator();

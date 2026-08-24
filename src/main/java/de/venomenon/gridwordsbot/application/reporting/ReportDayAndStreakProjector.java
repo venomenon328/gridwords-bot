@@ -15,6 +15,9 @@ import de.venomenon.gridwordsbot.domain.reporting.ReportSharedStreaks;
 import de.venomenon.gridwordsbot.domain.reporting.ReportStreakHistory;
 import de.venomenon.gridwordsbot.domain.reporting.ReportStreakSnapshot;
 import de.venomenon.gridwordsbot.domain.streak.CalendarStreakCalculator;
+import de.venomenon.gridwordsbot.domain.streak.StreakDayAssessment;
+import de.venomenon.gridwordsbot.domain.streak.StreakDayClassifier;
+import de.venomenon.gridwordsbot.domain.streak.StreakGameResult;
 import de.venomenon.gridwordsbot.port.out.ReportStreakHistoryQuery;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -39,6 +42,13 @@ public final class ReportDayAndStreakProjector {
         LocalDate cutoff = basis.period().statisticsAndStreakCutoff();
         ReportStreakHistory history = Objects.requireNonNull(historyQuery.findThrough(cutoff), "streak history");
         HistoricalDays days = HistoricalDays.from(history, cutoff);
+        StreakDayClassifier sharedStreakDays = new StreakDayClassifier(
+                history.results().stream()
+                        .map(result -> new StreakGameResult(
+                                result.playerId(), result.gameDate(), result.gameType(),
+                                result.outcome() instanceof ShareOutcome.Solved))
+                        .toList(),
+                history.participationPeriods());
 
         List<ReportParticipantDayAndStreakSnapshot> participants = basis.participants().stream()
                 .map(participant -> projectParticipant(participant, basis, days))
@@ -46,7 +56,7 @@ public final class ReportDayAndStreakProjector {
         return new ReportDayAndStreakProjection(
                 participants,
                 sharedDayCounts(basis, days),
-                sharedStreaks(days, cutoff));
+                sharedStreaks(days, cutoff, sharedStreakDays));
     }
 
     private ReportParticipantDayAndStreakSnapshot projectParticipant(
@@ -77,11 +87,14 @@ public final class ReportDayAndStreakProjector {
         return new ReportSharedDayCounts(basis.sharedPossibleDays().size(), complete, perfect);
     }
 
-    private ReportSharedStreaks sharedStreaks(HistoricalDays days, LocalDate cutoff) {
+    private ReportSharedStreaks sharedStreaks(
+            HistoricalDays days, LocalDate cutoff, StreakDayClassifier sharedStreakDays) {
         LocalDate firstRelevantDay = days.firstParticipationDay().orElse(cutoff);
         return new ReportSharedStreaks(
-                snapshot(firstRelevantDay, cutoff, days::sharedComplete),
-                snapshot(firstRelevantDay, cutoff, days::sharedPerfect));
+                snapshot(firstRelevantDay, cutoff,
+                        day -> sharedStreakDays.sharedComplete(day, true).state() == StreakDayAssessment.State.MET),
+                snapshot(firstRelevantDay, cutoff,
+                        day -> sharedStreakDays.sharedPerfect(day, true).state() == StreakDayAssessment.State.MET));
     }
 
     private ReportStreakSnapshot snapshot(

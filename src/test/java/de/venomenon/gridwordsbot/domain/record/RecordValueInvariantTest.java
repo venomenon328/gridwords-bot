@@ -45,6 +45,7 @@ class RecordValueInvariantTest {
     @Test
     void keepsDefinitionAndLockVersionsAsDifferentTypes() {
         assertThat(RecordDefinitionVersion.RECORDS_V1.value()).isEqualTo("records-v1");
+        assertThat(RecordDefinitionVersion.RECORDS_V2.value()).isEqualTo("records-v2");
         assertThat(RecordLockVersion.initial().next()).isEqualTo(new RecordLockVersion(1));
         assertThatIllegalArgumentException().isThrownBy(() -> new RecordLockVersion(-1));
     }

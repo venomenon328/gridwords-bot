@@ -669,9 +669,10 @@ class PostgresPersistenceAdapterIT {
         registerSubmission(930L, tobias);
         store(930L, quadResultFor(tobias, true, "tobias quad"));
         registerSubmission(931L, georgia);
-        store(931L, resultFor(georgia, 3, "georgia grid"));
-        registerSubmission(932L, georgia);
-        store(932L, quadResultFor(georgia, true, "georgia quad"));
+        SubmissionStore.StoredSubmission incompleteOtherPlayer = store(
+                931L, resultFor(georgia, 3, "georgia grid"));
+        assertFalse(incompleteOtherPlayer.publicationContext().sharedCompleteEstablished());
+        assertFalse(incompleteOtherPlayer.publicationContext().sharedPerfectEstablished());
         registerSubmission(933L, tobias);
 
         SubmissionStore.StoredSubmission trigger = store(933L, resultFor(tobias, 3, "tobias grid"));
@@ -692,7 +693,7 @@ class PostgresPersistenceAdapterIT {
     }
 
     @Test
-    void publicationContextRequiresTwoGameMembershipAndTwoPlayersInTheIntersection() {
+    void publicationContextRequiresBothGameMembershipButAllowsOnePlayerInTheIntersection() {
         jdbc.update("DELETE FROM player_participation_period");
         long bothPlayer = 132L;
         long gridOnlyPlayer = 133L;
@@ -700,29 +701,31 @@ class PostgresPersistenceAdapterIT {
         adapter.upsert(new PlayerStore.PlayerUpsert(gridOnlyPlayer, "Grid only", false, false));
 
         registerSubmission(935L, bothPlayer);
-        store(935L, quadResultFor(bothPlayer, true, "both player quad"));
+        SubmissionStore.StoredSubmission quadOnly = store(935L, quadResultFor(bothPlayer, true, "both player quad"));
+        assertFalse(quadOnly.publicationContext().personalCompleteEstablished());
+        assertFalse(quadOnly.publicationContext().personalPerfectEstablished());
+        assertFalse(quadOnly.publicationContext().sharedCompleteEstablished());
+        assertFalse(quadOnly.publicationContext().sharedPerfectEstablished());
+
+        registerSubmission(937L, gridOnlyPlayer);
+        SubmissionStore.StoredSubmission splitAcrossPlayers = store(
+                937L, resultFor(gridOnlyPlayer, 3, "grid-only trigger"));
+        assertFalse(splitAcrossPlayers.publicationContext().personalCompleteEstablished());
+        assertFalse(splitAcrossPlayers.publicationContext().personalPerfectEstablished());
+        assertFalse(splitAcrossPlayers.publicationContext().sharedCompleteEstablished());
+        assertFalse(splitAcrossPlayers.publicationContext().sharedPerfectEstablished());
+
         registerSubmission(936L, bothPlayer);
-        SubmissionStore.StoredSubmission oneInIntersection = store(
-                936L, resultFor(bothPlayer, 3, "both player grid"));
+        SubmissionStore.StoredSubmission oneInIntersection = store(936L, resultFor(bothPlayer, 3, "both player grid"));
 
         assertTrue(oneInIntersection.publicationContext().personalCompleteEstablished());
         assertTrue(oneInIntersection.publicationContext().personalPerfectEstablished());
-        assertFalse(oneInIntersection.publicationContext().sharedCompleteEstablished());
-        assertFalse(oneInIntersection.publicationContext().sharedPerfectEstablished());
+        assertTrue(oneInIntersection.publicationContext().sharedCompleteEstablished());
+        assertTrue(oneInIntersection.publicationContext().sharedPerfectEstablished());
 
         SubmissionStore.StoredSubmission replay = store(
                 936L, resultFor(bothPlayer, 3, "both player grid"));
         assertEquals(oneInIntersection.publicationContext(), replay.publicationContext());
-
-        adapter.upsert(quadResultFor(gridOnlyPlayer, true, "stored without quad participation"));
-        registerSubmission(937L, gridOnlyPlayer);
-        SubmissionStore.StoredSubmission singleGame = store(
-                937L, resultFor(gridOnlyPlayer, 3, "grid-only trigger"));
-
-        assertFalse(singleGame.publicationContext().personalCompleteEstablished());
-        assertFalse(singleGame.publicationContext().personalPerfectEstablished());
-        assertFalse(singleGame.publicationContext().sharedCompleteEstablished());
-        assertFalse(singleGame.publicationContext().sharedPerfectEstablished());
     }
 
     @Test
@@ -740,8 +743,6 @@ class PostgresPersistenceAdapterIT {
         store(982L, resultFor(tobias, 3, "tobias grid"));
         registerSubmission(983L, georgia);
         store(983L, resultFor(georgia, 3, "georgia grid"));
-        registerSubmission(984L, georgia);
-        store(984L, quadResult(georgia, 4, "georgia quad", "quadwords-image-v2"));
 
         registerSubmission(source, tobias);
         SubmissionStore.StoredSubmission first = store(

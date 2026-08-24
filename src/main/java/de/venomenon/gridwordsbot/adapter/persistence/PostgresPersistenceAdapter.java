@@ -1111,13 +1111,21 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         boolean personalApplicable = participation.bothGamesPlayers().contains(playerId);
         boolean personalCompleteBefore = personalApplicable && complete(before, playerId, gameDate);
         boolean personalPerfectBefore = personalApplicable && perfect(before, playerId, gameDate);
-        boolean sharedCompleteBefore = sharedComplete(before, participation, gameDate);
-        boolean sharedPerfectBefore = sharedPerfect(before, participation, gameDate);
+        var sharedBefore = sharedStreakDays(before, periods);
+        var sharedAfter = sharedStreakDays(after, periods);
+        boolean sharedCompleteBefore = sharedBefore.sharedComplete(gameDate, false).state()
+                == de.venomenon.gridwordsbot.domain.streak.StreakDayAssessment.State.MET;
+        boolean sharedPerfectBefore = sharedBefore.sharedPerfect(gameDate, false).state()
+                == de.venomenon.gridwordsbot.domain.streak.StreakDayAssessment.State.MET;
+        boolean sharedCompleteAfter = sharedAfter.sharedComplete(gameDate, false).state()
+                == de.venomenon.gridwordsbot.domain.streak.StreakDayAssessment.State.MET;
+        boolean sharedPerfectAfter = sharedAfter.sharedPerfect(gameDate, false).state()
+                == de.venomenon.gridwordsbot.domain.streak.StreakDayAssessment.State.MET;
         return new PublicationContext(
                 personalApplicable && !personalCompleteBefore && complete(after, playerId, gameDate),
                 personalApplicable && !personalPerfectBefore && perfect(after, playerId, gameDate),
-                !sharedCompleteBefore && sharedComplete(after, participation, gameDate),
-                !sharedPerfectBefore && sharedPerfect(after, participation, gameDate));
+                !sharedCompleteBefore && sharedCompleteAfter,
+                !sharedPerfectBefore && sharedPerfectAfter);
     }
 
     private static boolean complete(List<StoredGameResult> results, long playerId, LocalDate gameDate) {
@@ -1130,16 +1138,15 @@ public class PostgresPersistenceAdapter implements PlayerStore, GameResultStore,
         return complete(results, playerId, gameDate) && games.stream().allMatch(result -> result.parsedResult().outcome() instanceof ShareOutcome.Solved);
     }
 
-    private static boolean sharedComplete(
-            List<StoredGameResult> results, DailyGameParticipation participation, LocalDate gameDate) {
-        List<Long> players = List.copyOf(participation.bothGamesPlayers());
-        return players.size() >= 2 && players.stream().allMatch(playerId -> complete(results, playerId, gameDate));
-    }
-
-    private static boolean sharedPerfect(
-            List<StoredGameResult> results, DailyGameParticipation participation, LocalDate gameDate) {
-        List<Long> players = List.copyOf(participation.bothGamesPlayers());
-        return players.size() >= 2 && players.stream().allMatch(playerId -> perfect(results, playerId, gameDate));
+    private static de.venomenon.gridwordsbot.domain.streak.StreakDayClassifier sharedStreakDays(
+            List<StoredGameResult> results, List<GameParticipationPeriod> periods) {
+        return new de.venomenon.gridwordsbot.domain.streak.StreakDayClassifier(
+                results.stream()
+                        .map(result -> new de.venomenon.gridwordsbot.domain.streak.StreakGameResult(
+                                result.playerId(), result.parsedResult().gameDate(), result.parsedResult().gameType(),
+                                result.parsedResult().outcome() instanceof ShareOutcome.Solved))
+                        .toList(),
+                periods);
     }
     private Optional<StoredGameResult> insertResultIfAbsent(GameResultUpsert request, Instant now) {
         ParsedGameResult parsed = request.parsedResult();

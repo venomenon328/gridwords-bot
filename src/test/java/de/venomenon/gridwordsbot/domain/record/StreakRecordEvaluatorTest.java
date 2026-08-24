@@ -116,6 +116,20 @@ class StreakRecordEvaluatorTest {
         assertTrue(completed.publicAnnouncementEligible());
     }
 
+    @Test
+    void evaluatesSharedRunsAgainstTheVersionedRecordsV2Definitions() {
+        StreakRun reference = sharedRun(START.minusDays(20), 7, StreakRunStatus.ENDED_BY_RESULT);
+        StreakRun candidate = sharedRun(START, 8, StreakRunStatus.ENDED_BY_RESULT);
+
+        StreakRecordEvaluation evaluation = new StreakRecordEvaluator(RecordDefinitionCatalog.recordsV2())
+                .evaluate(candidate, new StreakRecordHistorySnapshot(List.of(reference)), Set.of(),
+                        RecordProcessingOrigin.NORMAL_CORRECTION)
+                .evaluations().getFirst();
+
+        assertEquals(RecordDefinitionVersion.RECORDS_V2, evaluation.definition().definitionVersion());
+        assertEquals(StreakRecordClassification.NEW_RECORD, evaluation.classification());
+    }
+
     private StreakRecordEvaluation serverEvaluation(StreakRun candidate, List<StreakRun> history) {
         return evaluator.evaluate(candidate, new StreakRecordHistorySnapshot(history), Set.of(),
                         RecordProcessingOrigin.NORMAL_CORRECTION).evaluations().stream()
@@ -125,5 +139,10 @@ class StreakRecordEvaluatorTest {
     private static StreakRun run(long player, LocalDate start, int length, StreakRunStatus status) {
         return new StreakRun(new StreakRunIdentity(StreakRecordMetric.GRIDWORDS_SOLVED,
                 new RecordScope.Personal(player), start), start.plusDays(length - 1), status);
+    }
+
+    private static StreakRun sharedRun(LocalDate start, int length, StreakRunStatus status) {
+        return new StreakRun(new StreakRunIdentity(StreakRecordMetric.GRIDWORDS_SOLVED,
+                new RecordScope.Shared(), start), start.plusDays(length - 1), status);
     }
 }

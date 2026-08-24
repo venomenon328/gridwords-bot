@@ -17,8 +17,9 @@ public final class StreakRecordEvaluator {
 
     public StreakRecordEvaluator(RecordDefinitionCatalog catalog) {
         this.catalog = Objects.requireNonNull(catalog, "catalog");
-        if (!RecordDefinitionVersion.RECORDS_V1.equals(catalog.version())) {
-            throw new IllegalArgumentException("streak evaluator requires records-v1");
+        if (!RecordDefinitionVersion.RECORDS_V1.equals(catalog.version())
+                && !RecordDefinitionVersion.RECORDS_V2.equals(catalog.version())) {
+            throw new IllegalArgumentException("streak evaluator requires a supported complete record catalog");
         }
     }
 

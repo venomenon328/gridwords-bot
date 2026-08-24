@@ -374,7 +374,7 @@ class ResultRecordEvaluatorTest {
         RecordDefinitionCatalog otherVersion = RecordDefinitionCatalog.of(
                 new RecordDefinitionVersion("records-v2"), List.of(otherVersionDefinition));
         assertThatIllegalArgumentException().isThrownBy(() -> new ResultRecordEvaluator(otherVersion))
-                .withMessageContaining("records-v1");
+                .withMessageContaining("complete");
     }
 
     private static ResultRecordObservation candidate(int attempts, long seconds) {
