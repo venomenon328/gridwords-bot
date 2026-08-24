@@ -11,8 +11,8 @@ import org.junit.jupiter.api.Test;
 
 class AchievementCatalogEmbedRendererTest {
     @Test
-    void rendersAllSixtyWithOnlyCheckOrCrossStatusInsideOneDiscordInteractionBudget() {
-        var definitions = AchievementDefinitionCatalog.achievementsV1().definitions();
+    void rendersAllSixtyTwoWithOnlyCheckOrCrossStatusInsideOneDiscordInteractionBudget() {
+        var definitions = AchievementDefinitionCatalog.achievementsV2().definitions();
         List<AchievementCatalogQueryUseCase.Entry> entries = java.util.stream.IntStream.range(0, definitions.size())
                 .mapToObj(index -> {
                     var definition = definitions.get(index);

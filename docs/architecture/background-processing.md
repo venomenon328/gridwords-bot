@@ -21,7 +21,7 @@ Eng begrenzte Parser-Reparaturen laufen als eigener stiller Wartungsweg nach dem
 
 ## Bootstrap
 
-Rekord- und Achievement-Definitionen sind versionierter Anwendungscode. Ein Bootstrap berechnet historische Projektionen aus kanonischen Quellen, bleibt öffentlich still und markiert die aktive Definitionsversion erst nach vollständigem Erfolg als bereit. Live-Ankündigungen sind bis dahin gesperrt.
+Rekord- und Achievement-Definitionen sind versionierter Anwendungscode. Ein Bootstrap berechnet historische Projektionen aus kanonischen Quellen, bleibt öffentlich still und markiert die aktive Definitionsversion erst nach vollständigem Erfolg als bereit. Live-Ankündigungen sind bis dahin gesperrt. Das Upgrade von `achievements-v1` auf `achievements-v2` reconciled die neuen Definitionen ohne eine zweite historische Introduction; v1-Audit und eine noch offene v1-Delivery bleiben dabei erhalten.
 
 ## Berichte
 

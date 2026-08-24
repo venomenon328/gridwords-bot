@@ -7,6 +7,7 @@ import de.venomenon.gridwordsbot.application.achievement.AchievementBootstrapCoo
 import de.venomenon.gridwordsbot.application.achievement.AchievementReconciliationService;
 import de.venomenon.gridwordsbot.application.achievement.AchievementResultLifecycle;
 import de.venomenon.gridwordsbot.domain.achievement.AchievementDefinitionCatalog;
+import de.venomenon.gridwordsbot.domain.achievement.AchievementDefinitionVersion;
 import de.venomenon.gridwordsbot.port.out.AchievementAnnouncementStore;
 import de.venomenon.gridwordsbot.port.out.AchievementAwardStateStore;
 import de.venomenon.gridwordsbot.port.out.AchievementBootstrapStore;
@@ -41,7 +42,9 @@ class AchievementPersistenceConfigurationTest {
             assertThat(context.getBeansOfType(AchievementBootstrapStore.class)).hasSize(1);
             assertThat(context.getBeansOfType(AchievementAnnouncementStore.class)).hasSize(1);
             assertThat(context.getBeansOfType(AchievementHistoryQuery.class)).hasSize(1);
-            assertThat(context.getBean(AchievementDefinitionCatalog.class).definitions()).hasSize(60);
+            AchievementDefinitionCatalog catalog = context.getBean(AchievementDefinitionCatalog.class);
+            assertThat(catalog.version()).isEqualTo(AchievementDefinitionVersion.ACHIEVEMENTS_V2);
+            assertThat(catalog.definitions()).hasSize(62);
             assertThat(context.getBeansOfType(AchievementTransactionRunner.class)).hasSize(1);
             assertThat(context.getBean(AchievementReconciliationService.class)).isNotNull();
             assertThat(context.getBean(AchievementResultLifecycle.class)).isNotNull();

@@ -21,7 +21,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class AchievementsQueryServiceTest {
-    private static final AchievementDefinitionCatalog CATALOG = AchievementDefinitionCatalog.achievementsV1();
+    private static final AchievementDefinitionCatalog CATALOG = AchievementDefinitionCatalog.achievementsV2();
     private static final Instant NOW = Instant.parse("2026-08-08T12:00:00Z");
     private static final LocalDate EARNED_ON = LocalDate.of(2026, 7, 18);
 

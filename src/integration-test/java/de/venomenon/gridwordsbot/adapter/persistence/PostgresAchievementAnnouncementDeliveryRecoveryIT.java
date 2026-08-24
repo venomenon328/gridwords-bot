@@ -51,7 +51,7 @@ class PostgresAchievementAnnouncementDeliveryRecoveryIT {
     private static final long PARTICIPANT_ID = 30L;
     private static final Instant NOW = Instant.parse("2026-08-08T10:00:00Z");
     private static final ZoneId BERLIN = ZoneId.of("Europe/Berlin");
-    private static final AchievementDefinitionCatalog CATALOG = AchievementDefinitionCatalog.achievementsV1();
+    private static final AchievementDefinitionCatalog CATALOG = AchievementDefinitionCatalog.achievementsV2();
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16.6-alpine");

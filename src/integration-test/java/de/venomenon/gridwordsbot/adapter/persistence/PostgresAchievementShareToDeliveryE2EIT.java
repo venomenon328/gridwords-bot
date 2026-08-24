@@ -82,7 +82,7 @@ class PostgresAchievementShareToDeliveryE2EIT {
 
     @Test
     void firstSolvedShareReconcilesBeforeCanonicalPublicationAndDeliversOneAggregatedBatch() {
-        AchievementDefinitionCatalog catalog = AchievementDefinitionCatalog.achievementsV1();
+        AchievementDefinitionCatalog catalog = AchievementDefinitionCatalog.achievementsV2();
         PostgresPersistenceAdapter persistence = new PostgresPersistenceAdapter(jdbc, CLOCK, BERLIN);
         PostgresAchievementAwardStateStore awards = new PostgresAchievementAwardStateStore(jdbc, CLOCK);
         PostgresAchievementEventStore events = new PostgresAchievementEventStore(jdbc, CLOCK);

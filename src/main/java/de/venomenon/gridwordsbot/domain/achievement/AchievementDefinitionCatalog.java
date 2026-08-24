@@ -14,7 +14,9 @@ import java.util.Set;
 /** Vollständiger, deterministischer und hart validierter codebasierter Achievement-Katalog. */
 public final class AchievementDefinitionCatalog {
     private static final int ACHIEVEMENTS_V1_DEFINITION_COUNT = 60;
+    private static final int ACHIEVEMENTS_V2_DEFINITION_COUNT = 62;
     private static final AchievementDefinitionCatalog ACHIEVEMENTS_V1 = createAchievementsV1();
+    private static final AchievementDefinitionCatalog ACHIEVEMENTS_V2 = createAchievementsV2();
 
     private final AchievementDefinitionVersion version;
     private final List<AchievementDefinition> definitions;
@@ -23,7 +25,7 @@ public final class AchievementDefinitionCatalog {
     private AchievementDefinitionCatalog(
             AchievementDefinitionVersion version,
             List<AchievementDefinition> definitions,
-            boolean requireCompleteAchievementsV1) {
+            boolean requireCompleteCatalog) {
         this.version = Objects.requireNonNull(version, "version");
         this.definitions = List.copyOf(Objects.requireNonNull(definitions, "definitions"));
         if (this.definitions.isEmpty()) {
@@ -46,13 +48,18 @@ public final class AchievementDefinitionCatalog {
         }
         this.byKey = Map.copyOf(indexed);
 
-        if (requireCompleteAchievementsV1) {
-            validateAchievementsV1Completeness();
+        if (requireCompleteCatalog) {
+            validateCompleteCatalog();
         }
     }
 
     public static AchievementDefinitionCatalog achievementsV1() {
         return ACHIEVEMENTS_V1;
+    }
+
+    /** Historical V1 remains available for audit and compatibility; V2 is the active catalog. */
+    public static AchievementDefinitionCatalog achievementsV2() {
+        return ACHIEVEMENTS_V2;
     }
 
     public static AchievementDefinitionCatalog of(
@@ -138,6 +145,42 @@ public final class AchievementDefinitionCatalog {
                 AchievementDefinitionVersion.ACHIEVEMENTS_V1, definitions, true);
     }
 
+    private static AchievementDefinitionCatalog createAchievementsV2() {
+        List<AchievementDefinition> definitions = ACHIEVEMENTS_V1.definitions().stream()
+                .map(definition -> new AchievementDefinition(
+                        definition.key(),
+                        AchievementDefinitionVersion.ACHIEVEMENTS_V2,
+                        definition.category(),
+                        definition.scope(),
+                        definition.fallbackEmoji(),
+                        definition.displayName(),
+                        definition.description(),
+                        definition.rule()))
+                .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+        add(
+                definitions,
+                AchievementDefinitionVersion.ACHIEVEMENTS_V2,
+                "situational.repeated_pattern.gridwords",
+                AchievementCategory.SPECIAL,
+                AchievementScope.GRIDWORDS,
+                "🪞",
+                "GW: Mustertreue",
+                "Drei Tipps hintereinander mit exakt demselben Farbmuster.",
+                new AchievementRule.GridWordsRepeatedPattern(3));
+        add(
+                definitions,
+                AchievementDefinitionVersion.ACHIEVEMENTS_V2,
+                "situational.all_yellow_row",
+                AchievementCategory.SPECIAL,
+                AchievementScope.GLOBAL,
+                "🟨",
+                "Alles da, nichts sitzt",
+                "Ein Tipp bestand aus fünf gelben Feldern.",
+                new AchievementRule.AllYellowBoardRow());
+        return new AchievementDefinitionCatalog(
+                AchievementDefinitionVersion.ACHIEVEMENTS_V2, definitions, true);
+    }
+
     private static void add(
             List<AchievementDefinition> definitions,
             String key,
@@ -147,9 +190,31 @@ public final class AchievementDefinitionCatalog {
             String displayName,
             String description,
             AchievementRule rule) {
+        add(
+                definitions,
+                AchievementDefinitionVersion.ACHIEVEMENTS_V1,
+                key,
+                category,
+                scope,
+                fallbackEmoji,
+                displayName,
+                description,
+                rule);
+    }
+
+    private static void add(
+            List<AchievementDefinition> definitions,
+            AchievementDefinitionVersion version,
+            String key,
+            AchievementCategory category,
+            AchievementScope scope,
+            String fallbackEmoji,
+            String displayName,
+            String description,
+            AchievementRule rule) {
         definitions.add(new AchievementDefinition(
                 new AchievementKey(key),
-                AchievementDefinitionVersion.ACHIEVEMENTS_V1,
+                version,
                 category,
                 scope,
                 fallbackEmoji,
@@ -158,21 +223,27 @@ public final class AchievementDefinitionCatalog {
                 rule));
     }
 
-    private void validateAchievementsV1Completeness() {
-        if (!AchievementDefinitionVersion.ACHIEVEMENTS_V1.equals(version)) {
-            throw new IllegalArgumentException(
-                    "achievements-v1 catalog must use achievements-v1 definition version");
+    private void validateCompleteCatalog() {
+        int expectedDefinitions;
+        if (AchievementDefinitionVersion.ACHIEVEMENTS_V1.equals(version)) {
+            expectedDefinitions = ACHIEVEMENTS_V1_DEFINITION_COUNT;
+        } else if (AchievementDefinitionVersion.ACHIEVEMENTS_V2.equals(version)) {
+            expectedDefinitions = ACHIEVEMENTS_V2_DEFINITION_COUNT;
+        } else {
+            throw new IllegalArgumentException("unsupported complete achievement catalog version: " + version.value());
         }
-        if (definitions.size() != ACHIEVEMENTS_V1_DEFINITION_COUNT) {
-            throw new IllegalArgumentException("achievements-v1 must contain exactly 60 definitions");
+        if (definitions.size() != expectedDefinitions) {
+            throw new IllegalArgumentException(version.value() + " must contain exactly " + expectedDefinitions + " definitions");
         }
 
         long gridWords = definitions.stream().filter(d -> d.scope() == AchievementScope.GRIDWORDS).count();
         long quadWords = definitions.stream().filter(d -> d.scope() == AchievementScope.QUADWORDS).count();
         long crossGame = definitions.stream().filter(d -> d.scope() == AchievementScope.CROSS_GAME).count();
         long global = definitions.stream().filter(d -> d.scope() == AchievementScope.GLOBAL).count();
-        if (gridWords != 20 || quadWords != 22 || crossGame != 13 || global != 5) {
-            throw new IllegalArgumentException("achievements-v1 scope distribution is incomplete");
+        long expectedGridWords = version.equals(AchievementDefinitionVersion.ACHIEVEMENTS_V1) ? 20 : 21;
+        long expectedGlobal = version.equals(AchievementDefinitionVersion.ACHIEVEMENTS_V1) ? 5 : 6;
+        if (gridWords != expectedGridWords || quadWords != 22 || crossGame != 13 || global != expectedGlobal) {
+            throw new IllegalArgumentException(version.value() + " scope distribution is incomplete");
         }
     }
 }

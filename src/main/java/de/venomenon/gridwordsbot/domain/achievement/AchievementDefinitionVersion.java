@@ -9,6 +9,8 @@ public record AchievementDefinitionVersion(String value) {
 
     public static final AchievementDefinitionVersion ACHIEVEMENTS_V1 =
             new AchievementDefinitionVersion("achievements-v1");
+    public static final AchievementDefinitionVersion ACHIEVEMENTS_V2 =
+            new AchievementDefinitionVersion("achievements-v2");
 
     public AchievementDefinitionVersion {
         Objects.requireNonNull(value, "value");

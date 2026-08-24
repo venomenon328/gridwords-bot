@@ -65,7 +65,7 @@ class PostgresAchievementsQueryIT {
         jdbc = new JdbcTemplate(dataSource);
         awards = new PostgresAchievementAwardStateStore(jdbc, CLOCK);
         records = new PostgresRecordEventStore(jdbc, CLOCK);
-        catalog = AchievementDefinitionCatalog.achievementsV1();
+        catalog = AchievementDefinitionCatalog.achievementsV2();
     }
 
     @BeforeEach
@@ -101,7 +101,7 @@ class PostgresAchievementsQueryIT {
     }
 
     @Test
-    void fullCatalogQueryReturnsAllSixtyAndMarksOnlyActiveStateWithoutSideEffects() {
+    void fullCatalogQueryReturnsAllSixtyTwoAndMarksOnlyActiveStateWithoutSideEffects() {
         var first = catalog.definitions().get(0);
         var second = catalog.definitions().get(1);
         awards.initialize(
@@ -114,7 +114,7 @@ class PostgresAchievementsQueryIT {
         var result = new AchievementCatalogQueryService(awards, catalog)
                 .query(new AchievementCatalogQueryUseCase.Query(1, 77));
 
-        assertThat(result.entries()).hasSize(60);
+        assertThat(result.entries()).hasSize(62);
         assertThat(result.entries().get(0).achieved()).isTrue();
         assertThat(result.entries().get(1).achieved()).isFalse();
         assertThat(result.entries().stream().skip(2)).allMatch(entry -> !entry.achieved());

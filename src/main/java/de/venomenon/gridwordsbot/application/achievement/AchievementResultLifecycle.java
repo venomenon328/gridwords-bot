@@ -1,6 +1,7 @@
 package de.venomenon.gridwordsbot.application.achievement;
 
 import de.venomenon.gridwordsbot.domain.achievement.AchievementDefinitionCatalog;
+import de.venomenon.gridwordsbot.domain.achievement.AchievementDefinitionVersion;
 import de.venomenon.gridwordsbot.domain.achievement.persistence.AchievementEventFact;
 import de.venomenon.gridwordsbot.domain.achievement.persistence.AchievementWork;
 import de.venomenon.gridwordsbot.port.out.AchievementAnnouncementStore;
@@ -80,7 +81,7 @@ public final class AchievementResultLifecycle {
     void reconcileBootstrapParticipant(long guildId, long channelId, long participantId) {
         reconciliation.reconcile(new AchievementReconciliationService.ReconciliationRequest(
                 guildId, participantId, AchievementEventFact.ProcessingOrigin.BOOTSTRAP, Optional.empty()));
-        introductions.refresh(guildId, channelId, participantId);
+        refreshHistoricalIntroductionIfRequired(guildId, channelId, participantId);
     }
 
     private void reconcileAtBootstrapFence(
@@ -100,9 +101,15 @@ public final class AchievementResultLifecycle {
             } else {
                 reconciliation.reconcile(new AchievementReconciliationService.ReconciliationRequest(
                         guildId, participantId, origin, Optional.empty()));
-                introductions.refresh(guildId, channelId, participantId);
+                refreshHistoricalIntroductionIfRequired(guildId, channelId, participantId);
             }
             return null;
         });
+    }
+
+    private void refreshHistoricalIntroductionIfRequired(long guildId, long channelId, long participantId) {
+        if (catalog.version().equals(AchievementDefinitionVersion.ACHIEVEMENTS_V1)) {
+            introductions.refresh(guildId, channelId, participantId);
+        }
     }
 }

@@ -125,7 +125,7 @@ class PostgresAchievementStaleReconciliationIT {
     }
 
     private AchievementReconciliationService service(JdbcTemplate template, AchievementHistoryQuery history) {
-        AchievementDefinitionCatalog catalog = AchievementDefinitionCatalog.achievementsV1();
+        AchievementDefinitionCatalog catalog = AchievementDefinitionCatalog.achievementsV2();
         TransactionTemplate transactions = new TransactionTemplate(new DataSourceTransactionManager(template.getDataSource()));
         AchievementTransactionRunner runner = new AchievementTransactionRunner() {
             @Override
@@ -205,7 +205,7 @@ class PostgresAchievementStaleReconciliationIT {
                 INSERT INTO game_result (
                     player_id,game_type,game_date,solved,attempts_used,max_attempts,duration_seconds,
                     normalized_board,raw_share_text,parser_version,created_at,updated_at)
-                VALUES (?,'GRIDWORDS',?,TRUE,1,6,60,'ABCDE','share','gridwords-share-v1',?,?)
+                VALUES (?,'GRIDWORDS',?,TRUE,1,6,60,'🟩🟩🟩🟩🟩','share','gridwords-share-v1',?,?)
                 RETURNING id
                 """, Long.class, PARTICIPANT_ID, LocalDate.of(2026, 8, 7), Timestamp.from(NOW), Timestamp.from(NOW));
         jdbc.update("""

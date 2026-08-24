@@ -111,6 +111,54 @@ class PostgresAchievementBootstrapIT {
     }
 
     @Test
+    void v2BootstrapReconcilesBoardPatternsSilentlyAndPreservesV1AuditAndOpenIntroduction() {
+        insertPlayer(PARTICIPANT_ID, true);
+        insertParticipation(PARTICIPANT_ID, GameType.GRIDWORDS, LocalDate.of(2026, 8, 7), null);
+        long resultId = insertSolvedGridWords(PARTICIPANT_ID, 101L, LocalDate.of(2026, 8, 7));
+        jdbc.update("UPDATE game_result SET solved=FALSE, attempts_used=NULL, normalized_board=? WHERE id=?", String.join("\n",
+                "⬜⬜🟨⬜🟩", "⬜⬜🟨⬜🟩", "⬜⬜🟨⬜🟩",
+                "🟨⬜⬜⬜⬜", "⬜🟨⬜⬜⬜", "🟩🟩🟩🟩🟩"), resultId);
+
+        AchievementBootstrapCoordinator v1 = coordinator(jdbc, new PostgresPersistenceAdapter(jdbc, CLOCK, berlin()));
+        assertThat(v1.run(GUILD_ID, CHANNEL_ID)).isEqualTo(AchievementBootstrapCoordinator.BootstrapRunResult.SUCCEEDED);
+        AchievementAnnouncement.Snapshot v1Introduction = introduction();
+        List<String> v1Items = announcementKeys(v1Introduction);
+        int v1Events = jdbc.queryForObject(
+                "SELECT count(*) FROM achievement_event WHERE definition_version='achievements-v1'", Integer.class);
+
+        AchievementDefinitionCatalog v2Catalog = AchievementDefinitionCatalog.achievementsV2();
+        AchievementTransactionRunner v2Runner = runner(jdbc);
+        AchievementBootstrapStore bootstraps = bootstrapStore(jdbc);
+        AchievementBootstrapCoordinator v2 = new AchievementBootstrapCoordinator(
+                bootstraps,
+                v2Runner,
+                new PostgresPersistenceAdapter(jdbc, CLOCK, berlin()),
+                lifecycle(jdbc, noSubmissions(), bootstraps, v2Runner, v2Catalog),
+                v2Catalog,
+                CLOCK,
+                Duration.ofMinutes(2),
+                Duration.ofMinutes(1));
+
+        assertThat(v2.run(GUILD_ID, CHANNEL_ID)).isEqualTo(AchievementBootstrapCoordinator.BootstrapRunResult.SUCCEEDED);
+        assertThat(v2.run(GUILD_ID, CHANNEL_ID)).isEqualTo(AchievementBootstrapCoordinator.BootstrapRunResult.NOT_CLAIMED);
+        assertThat(bootstraps.find(bootstrapKey(AchievementDefinitionCatalog.achievementsV1())).orElseThrow().state())
+                .isEqualTo(AchievementWork.State.SUCCEEDED);
+        assertThat(bootstraps.find(bootstrapKey(v2Catalog)).orElseThrow().state())
+                .isEqualTo(AchievementWork.State.SUCCEEDED);
+        assertThat(new PostgresAchievementAwardStateStore(jdbc, CLOCK).find(new AchievementAwardState.Key(
+                GUILD_ID, PARTICIPANT_ID, new AchievementKey("situational.repeated_pattern.gridwords"))))
+                .hasValueSatisfying(state -> assertThat(state.write().status()).isEqualTo(AchievementAwardState.Status.ACTIVE));
+        assertThat(countAnnouncements(AchievementAnnouncement.Type.HISTORICAL_INTRODUCTION)).isEqualTo(1);
+        assertThat(introduction().registration().definitionVersion())
+                .isEqualTo(AchievementDefinitionCatalog.achievementsV1().version());
+        assertThat(announcementKeys(introduction())).containsExactlyElementsOf(v1Items);
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM achievement_event WHERE definition_version='achievements-v1'", Integer.class))
+                .isEqualTo(v1Events);
+        assertThat(countAnnouncements(AchievementAnnouncement.Type.LIVE_UNLOCK_BATCH)).isZero();
+    }
+
+    @Test
     void restartAfterPartialBootstrapStartsFromTheFrontWithoutDuplicatingIntroductions() {
         insertPlayer(PARTICIPANT_ID, true);
         insertPlayer(PARTICIPANT_ID + 1, false);
@@ -309,7 +357,15 @@ class PostgresAchievementBootstrapIT {
             SubmissionStore submissions,
             AchievementBootstrapStore bootstraps,
             AchievementTransactionRunner runner) {
-        AchievementDefinitionCatalog catalog = AchievementDefinitionCatalog.achievementsV1();
+        return lifecycle(template, submissions, bootstraps, runner, AchievementDefinitionCatalog.achievementsV1());
+    }
+
+    private AchievementResultLifecycle lifecycle(
+            JdbcTemplate template,
+            SubmissionStore submissions,
+            AchievementBootstrapStore bootstraps,
+            AchievementTransactionRunner runner,
+            AchievementDefinitionCatalog catalog) {
         AchievementAwardStateStore awards = new PostgresAchievementAwardStateStore(template, CLOCK);
         AchievementEventStore events = new PostgresAchievementEventStore(template, CLOCK);
         AchievementAnnouncementStore announcements = new PostgresAchievementAnnouncementStore(template, CLOCK);
@@ -434,7 +490,11 @@ class PostgresAchievementBootstrapIT {
     }
 
     private AchievementWork.BootstrapKey bootstrapKey() {
-        return new AchievementWork.BootstrapKey(GUILD_ID, AchievementDefinitionCatalog.achievementsV1().version());
+        return bootstrapKey(AchievementDefinitionCatalog.achievementsV1());
+    }
+
+    private AchievementWork.BootstrapKey bootstrapKey(AchievementDefinitionCatalog catalog) {
+        return new AchievementWork.BootstrapKey(GUILD_ID, catalog.version());
     }
 
     private AchievementWork.LeaseClaimRequest leaseRequest() {
@@ -503,7 +563,7 @@ class PostgresAchievementBootstrapIT {
                 INSERT INTO game_result (
                     player_id,game_type,game_date,solved,attempts_used,max_attempts,duration_seconds,
                     normalized_board,raw_share_text,parser_version,created_at,updated_at)
-                VALUES (?,'GRIDWORDS',?,TRUE,1,6,60,'ABCDE','share','gridwords-share-v1',?,?)
+                VALUES (?,'GRIDWORDS',?,TRUE,1,6,60,'🟩🟩🟩🟩🟩','share','gridwords-share-v1',?,?)
                 RETURNING id
                 """, Long.class, participantId, gameDate, Timestamp.from(NOW), Timestamp.from(NOW));
         jdbc.update("""

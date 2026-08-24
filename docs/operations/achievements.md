@@ -1,6 +1,6 @@
 # Achievements: Betrieb und Recovery
 
-Dieses Runbook beschreibt den produktiven Betriebs- und Recovery-Pfad von `achievements-v1`. Es ergänzt [ADR 0020](../adr/0020-achievement-state-reconciliation-and-delivery.md), die [fachliche Achievement-Dokumentation](../product/achievements.md), [Troubleshooting](troubleshooting.md) und den allgemeinen [Backup-/Restoreweg](backup-restore.md).
+Dieses Runbook beschreibt den produktiven Betriebs- und Recovery-Pfad von `achievements-v2`. Es ergänzt [ADR 0020](../adr/0020-achievement-state-reconciliation-and-delivery.md), [ADR 0022](../adr/0022-achievements-v2-silent-catalog-upgrade.md), die [fachliche Achievement-Dokumentation](../product/achievements.md), [Troubleshooting](troubleshooting.md) und den allgemeinen [Backup-/Restoreweg](backup-restore.md).
 
 ## 1. Betriebsmodell
 
@@ -9,6 +9,7 @@ Achievements sind eine materialisierte, korrekturfähige Projektion aus kanonisc
 - `game_result`,
 - ursprünglicher persistierter Share-Zeitpunkt,
 - historisch wirksame spielbezogene Teilnahme,
+- kanonische GridWords-Boarddaten aus `normalized_board`,
 - kanonische QuadWords-Boarddetails, soweit vorhanden.
 
 Die Achievement-Tabellen sind **keine** zweite Ergebniswahrheit. Ein technischer Reparaturpfad soll deshalb kanonische Daten erneut reconciliieren statt Award-/Event-/Announcement-Daten manuell passend zu editieren.
@@ -25,15 +26,15 @@ Liquibase-Migration 024 ist die verbindliche Schemaquelle für diese Tabellen.
 
 ## 2. Startup und historischer Bootstrap
 
-Beim Start wird der Bootstrap für `achievements-v1` registriert beziehungsweise wieder aufgenommen.
+Beim Start wird der Bootstrap für `achievements-v2` registriert beziehungsweise wieder aufgenommen. Der abgeschlossene oder offene `achievements-v1`-Bootstrap bleibt als Audit bestehen.
 
 Grundregeln:
 
 1. Claim und Lease werden persistent in PostgreSQL geführt.
 2. Ein abgelaufener Claim kann von einem späteren Lauf übernommen werden.
-3. Der Bootstrap darf bei Restart wieder von vorn über die Teilnehmer laufen; State-, Event- und Introduction-Idempotenz verhindern Duplikate.
+3. Der Bootstrap darf bei Restart wieder von vorn über die Teilnehmer laufen; State- und Event-Idempotenz verhindern Duplikate.
 4. Aktive und historisch inaktive Teilnehmer werden aus der kanonischen Historie rekonstruiert.
-5. Für jeden Teilnehmer existiert genau eine logische `HISTORICAL_INTRODUCTION` pro Definitionsversion, auch wenn der Teilnehmer null rückwirkende Awards besitzt.
+5. Die ursprüngliche `achievements-v1`-Einführung bleibt genau eine logische `HISTORICAL_INTRODUCTION` pro Teilnehmer, auch wenn der Teilnehmer null rückwirkende Awards besitzt. `achievements-v2` erstellt keine zweite Introduction und keine historische öffentliche Unlock-Meldung.
 6. Öffentliche Achievement-Delivery bleibt bis `SUCCEEDED` gegatet.
 
 Ein technischer Bootstrap-Fehler darf nicht als erfolgreicher Abschluss maskiert werden. Er bleibt diagnostizierbar und retrybar; normale Live-Meldungen werden dadurch weiterhin nicht freigegeben.
@@ -81,7 +82,7 @@ Das verhindert insbesondere, dass eine alte solved-Auswertung eine inzwischen ko
 
 ### 5.2 Bootstrap- und Introduction-Gates
 
-Eine Announcement-Projektion ist nur claimbar, wenn der passende `achievements-v1`-Bootstrap erfolgreich ist.
+Eine Announcement-Projektion ist nur claimbar, wenn der zu ihrer Definitionsversion passende Bootstrap erfolgreich ist. Beim v2-Upgrade bleibt eine bereits offene v1-Introduction unter ihrem v1-Bootstrap claimbar; sie wird nicht durch eine v2-Introduction ersetzt.
 
 Für denselben Teilnehmer gilt zusätzlich:
 
@@ -131,7 +132,7 @@ Eine synchronisierte Achievement-Meldung wird wegen einer späteren fachlichen I
 
 `/achievements` ist ein reiner Read-Pfad:
 
-- liest `achievement_award_state` plus den codebasierten V1-Katalog,
+- liest `achievement_award_state` plus den codebasierten V2-Katalog,
 - zeigt ausschließlich `ACTIVE`,
 - löst keinen historischen Vollscan, Evaluator oder Reconciler aus,
 - erzeugt keinen Player/Profile-Sync als Seiteneffekt,
@@ -140,7 +141,7 @@ Eine synchronisierte Achievement-Meldung wird wegen einer späteren fachlichen I
 
 `/achievement-list` ist ebenfalls strikt read-only und self-only:
 
-- zeigt alle 60 Definitionen des V1-Katalogs,
+- zeigt alle 62 Definitionen des V2-Katalogs,
 - `✅` bedeutet aktuell `ACTIVE`,
 - `❌` bedeutet fehlend oder `INVALIDATED`,
 - zeigt keine quantitativen Fortschrittswerte,
@@ -219,3 +220,5 @@ Für weitere Achievement-Versionen gilt:
 5. unveränderliches Release-/SHA-Image,
 6. kontrollierter Smoke/Canary mit klaren Rollbackkriterien,
 7. keine manuellen Achievement-Tabellenänderungen zur Simulation erfolgreicher Zustände.
+
+Für das konkrete Upgrade auf `achievements-v2` gilt zusätzlich: Vor dem App-Update den v1-Bootstrap-, Event- und Announcement-Zustand lesend sichern. Der v2-Bootstrap darf nur Award-State und append-only Events für tatsächlich neue Schlüssel ergänzen; eine vorhandene v1-Introduction darf weder gelöscht noch durch eine zweite historische Nachricht ergänzt werden.

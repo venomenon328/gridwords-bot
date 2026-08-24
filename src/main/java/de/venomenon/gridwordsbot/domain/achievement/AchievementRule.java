@@ -19,6 +19,8 @@ public sealed interface AchievementRule permits
         AchievementRule.CrossGameExactAttempts,
         AchievementRule.ConsecutiveSameSuccessfulResults,
         AchievementRule.ConsecutiveFailures,
+        AchievementRule.GridWordsRepeatedPattern,
+        AchievementRule.AllYellowBoardRow,
         AchievementRule.LocalTimeBefore,
         AchievementRule.LocalTimeAtOrAfter {
 
@@ -163,6 +165,26 @@ public sealed interface AchievementRule permits
         @Override
         public AchievementScope scope() {
             return AchievementScope.forGame(game);
+        }
+    }
+
+    /** Three neighboring rows within one canonical GridWords board use the same five-cell pattern. */
+    record GridWordsRepeatedPattern(int rowCount) implements AchievementRule {
+        public GridWordsRepeatedPattern {
+            requireAtLeastTwo(rowCount, "rowCount");
+        }
+
+        @Override
+        public AchievementScope scope() {
+            return AchievementScope.GRIDWORDS;
+        }
+    }
+
+    /** At least one canonical GridWords or QuadWords row is entirely yellow. */
+    record AllYellowBoardRow() implements AchievementRule {
+        @Override
+        public AchievementScope scope() {
+            return AchievementScope.GLOBAL;
         }
     }
 

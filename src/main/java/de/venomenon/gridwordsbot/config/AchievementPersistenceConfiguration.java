@@ -62,7 +62,7 @@ public class AchievementPersistenceConfiguration {
 
     @Bean
     AchievementDefinitionCatalog achievementDefinitionCatalog() {
-        return AchievementDefinitionCatalog.achievementsV1();
+        return AchievementDefinitionCatalog.achievementsV2();
     }
 
     @Bean

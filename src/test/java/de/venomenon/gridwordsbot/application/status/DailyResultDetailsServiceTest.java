@@ -111,7 +111,7 @@ class DailyResultDetailsServiceTest {
         return new DailyResultDetailsService(
                 (g, c, m, d) -> Optional.of(new DailyStatusInteractionContextQuery.Context(
                         gridParticipants, quadParticipants)),
-                results, RecordDefinitionCatalog.recordsV1(), AchievementDefinitionCatalog.achievementsV1(), key -> Optional.empty());
+                results, RecordDefinitionCatalog.recordsV1(), AchievementDefinitionCatalog.achievementsV2(), key -> Optional.empty());
     }
 
     @Test
@@ -125,7 +125,7 @@ class DailyResultDetailsServiceTest {
         DailyResultDetailsService service = new DailyResultDetailsService(
                 (g, c, m, d) -> Optional.of(new DailyStatusInteractionContextQuery.Context(
                         List.of(participant(1L, "A")), List.of())), projection,
-                RecordDefinitionCatalog.recordsV1(), AchievementDefinitionCatalog.achievementsV1(),
+                RecordDefinitionCatalog.recordsV1(), AchievementDefinitionCatalog.achievementsV2(),
                 key -> key.value().equals("participation.1.gridwords") ? Optional.of("<:wave:1>") : Optional.empty());
 
         DailyResultDetailsUseCase.Found found = (DailyResultDetailsUseCase.Found) service.get(request(GameType.GRIDWORDS, 0, 1));
@@ -141,7 +141,7 @@ class DailyResultDetailsServiceTest {
     private static DailyResultDetailsService service(
             DailyStatusInteractionContextQuery contexts, DailyResultDetailsQuery results) {
         return new DailyResultDetailsService(contexts, results, RecordDefinitionCatalog.recordsV1(),
-                AchievementDefinitionCatalog.achievementsV1(), key -> Optional.empty());
+                AchievementDefinitionCatalog.achievementsV2(), key -> Optional.empty());
     }
 
     private static DailyStatusInteractionContextQuery.Participant participant(long id, String name) {

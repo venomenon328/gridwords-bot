@@ -134,7 +134,7 @@ class DatabaseInboundConfigurationTest {
 
     private static void detailPresentationBeans(AnnotationConfigApplicationContext context) {
         context.registerBean(RecordDefinitionCatalog.class, RecordDefinitionCatalog::recordsV1);
-        context.registerBean(AchievementDefinitionCatalog.class, AchievementDefinitionCatalog::achievementsV1);
+        context.registerBean(AchievementDefinitionCatalog.class, AchievementDefinitionCatalog::achievementsV2);
         context.registerBean(AchievementEmojiResolver.class, AchievementEmojiResolver::unicodeOnly);
         context.registerBean(DailyStatusProjector.class, () -> mock(DailyStatusProjector.class));
     }

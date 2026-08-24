@@ -3,6 +3,7 @@ package de.venomenon.gridwordsbot.adapter.persistence;
 import de.venomenon.gridwordsbot.domain.achievement.AchievementHistorySnapshot;
 import de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod;
 import de.venomenon.gridwordsbot.domain.model.GameType;
+import de.venomenon.gridwordsbot.domain.model.NormalizedBoard;
 import de.venomenon.gridwordsbot.domain.model.QuadWordsBoard;
 import de.venomenon.gridwordsbot.domain.model.QuadWordsBoards;
 import de.venomenon.gridwordsbot.port.out.AchievementHistoryQuery;
@@ -30,7 +31,7 @@ public final class PostgresAchievementHistoryQuery implements AchievementHistory
         }
 
         List<AchievementHistorySnapshot.Result> results = jdbc.query("""
-                SELECT r.id, r.game_type, r.game_date, r.solved, r.attempts_used,
+                SELECT r.id, r.game_type, r.game_date, r.solved, r.attempts_used, r.normalized_board,
                        s.received_at,
                        r.quadwords_top_left_board, r.quadwords_top_right_board,
                        r.quadwords_bottom_left_board, r.quadwords_bottom_right_board
@@ -76,7 +77,16 @@ public final class PostgresAchievementHistoryQuery implements AchievementHistory
                 solved,
                 attempts,
                 rs.getObject("received_at", OffsetDateTime.class).toInstant(),
+                gridWordsBoard(rs, game),
                 quadWordsBoards(rs, game));
+    }
+
+    private static Optional<NormalizedBoard> gridWordsBoard(ResultSet rs, GameType game) throws SQLException {
+        if (game != GameType.GRIDWORDS) {
+            return Optional.empty();
+        }
+        String board = rs.getString("normalized_board");
+        return board == null ? Optional.empty() : Optional.of(NormalizedBoard.fromCanonicalText(board));
     }
 
     private static Optional<QuadWordsBoards> quadWordsBoards(ResultSet rs, GameType game) throws SQLException {

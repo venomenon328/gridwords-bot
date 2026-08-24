@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 
 class AchievementCatalogQueryServiceTest {
     private static final Instant NOW = Instant.parse("2026-08-08T12:00:00Z");
-    private static final AchievementDefinitionCatalog CATALOG = AchievementDefinitionCatalog.achievementsV1();
+    private static final AchievementDefinitionCatalog CATALOG = AchievementDefinitionCatalog.achievementsV2();
 
     @Test
     void defaultQueryReturnsEveryCatalogEntryInCatalogOrderWithOnlyActiveAwardsChecked() {
@@ -34,7 +34,7 @@ class AchievementCatalogQueryServiceTest {
 
         var result = service(awards).query(new AchievementCatalogQueryUseCase.Query(11, 22));
 
-        assertThat(result.entries()).hasSize(60);
+        assertThat(result.entries()).hasSize(62);
         assertThat(result.entries()).extracting(entry -> entry.key())
                 .containsExactlyElementsOf(CATALOG.definitions().stream().map(AchievementDefinition::key).toList());
         assertThat(result.entries().get(0).achieved()).isTrue();
