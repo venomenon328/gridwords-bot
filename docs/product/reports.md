@@ -15,13 +15,13 @@ Pro Berichtstyp wird höchstens die jüngste noch relevante versäumte Periode n
 
 Berichtsteilnehmer haben an mindestens einem Periodentag zu `U(d)` gehört. Ihre Reihenfolge folgt dem frühesten Teilnahmebeginn, anschließend der stabilen Spieler-ID.
 
-Spielstatistiken verwenden getrennte GridWords- und QuadWords-Teilnahmetage. Aktivität verwendet Unionstage, Komplett und Perfekt ausschließlich Zwei-Spiele-Tage. Gemeinsame Komplett- und Perfektnenner zählen nur Tage mit mindestens zwei Zwei-Spiele-Teilnehmern.
+Spielstatistiken verwenden getrennte GridWords- und QuadWords-Teilnahmetage. Aktivität verwendet Unionstage, Komplett und Perfekt ausschließlich Zwei-Spiele-Tage. Gemeinsame Komplett- und Perfektnenner zählen nur Tage mit mindestens zwei Zwei-Spiele-Teilnehmern. Diese Tagesstatistiken bleiben von der gemeinsamen Seriensemantik getrennt: `Möglich`, `Komplett` und `Perfekt` verwenden weiterhin ihre All-Player-Semantik und erweitern sich nicht auf Ein-Spieler-Tage.
 
 Je Spiel werden Einreichungen, gelöste und nicht gelöste Ergebnisse, fehlende Ergebnisse, Lösungsquote, durchschnittliche Versuche, durchschnittliche Lösungszeit und beste gelöste Leistung berechnet. `X` zählt als Einreichung. Fehlend ist `spielbezogene Teilnahmetage − Einreichungen`. Quoten teilen durch Einreichungen; Leistungsdurchschnitte berücksichtigen nur gelöste Ergebnisse. Nicht definierte Werte erscheinen neutral.
 
 ## Serien und Highlightquellen
 
-Persönliche Berichte zeigen die relevanten Tageszahlen und Serien bis einschließlich Periodenende. Der gemeinsame Abschnitt enthält Komplett- und Perfektwerte für Tage mit mindestens zwei Zwei-Spiele-Teilnehmern. Gemeinsame spielbezogene Lösungsserien werden im Bericht nicht zusätzlich ausgewiesen.
+Persönliche Berichte zeigen die relevanten Tageszahlen und Serien bis einschließlich Periodenende. Der gemeinsame Abschnitt enthält Tageswerte für Tage mit mindestens zwei Zwei-Spiele-Teilnehmern. Seine Komplett- und Perfektserien verwenden dagegen die gemeinsame OR-Semantik aus [`streaks.md`](streaks.md), einschließlich zulässiger Ein-Spieler-Tage. Gemeinsame spielbezogene Lösungsserien werden im Bericht nicht zusätzlich ausgewiesen.
 
 Optional folgt nach allen Statistikseiten zwingend eine neue logische Highlightseite mit Titel `✨ Highlights der Woche · …` beziehungsweise `✨ Highlights des Monats · …`. Ohne Highlights gibt es keine leere Seite.
 

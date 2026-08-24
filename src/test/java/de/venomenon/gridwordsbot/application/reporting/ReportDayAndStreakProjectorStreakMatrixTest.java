@@ -104,7 +104,7 @@ class ReportDayAndStreakProjectorStreakMatrixTest {
                 perfect(ONE, 28), perfect(TWO, 28), perfect(ONE, 29), perfect(TWO, 29)))
                 .sharedStreaks().perfect();
 
-        assertSnapshot(snapshot, 2, 3);
+        assertSnapshot(snapshot, 6, 6);
     }
 
     @Test
@@ -126,13 +126,13 @@ class ReportDayAndStreakProjectorStreakMatrixTest {
     }
 
     @Test
-    void missingActivePlayerResultAtPeriodEndFinallyPreventsSharedComplete() {
+    void oneCompletePlayerAtPeriodEndContinuesSharedComplete() {
         ReportStreakSnapshot snapshot = project(twoParticipantsBasis(), history(
                 participation(ONE, 27, null), participation(TWO, 27, null),
                 perfect(ONE, 27), perfect(TWO, 27), perfect(ONE, 28), perfect(TWO, 28), perfect(ONE, 29)))
                 .sharedStreaks().complete();
 
-        assertSnapshot(snapshot, 0, 2);
+        assertSnapshot(snapshot, 3, 3);
     }
 
     @Test
@@ -153,7 +153,7 @@ class ReportDayAndStreakProjectorStreakMatrixTest {
     }
 
     @Test
-    void fewerThanTwoActivePlayersExplicitlyBreaksASharedSeries() {
+    void onePerfectParticipantContinuesTheSharedSeries() {
         ReportStreakSnapshot snapshot = project(
                 basis(participant(ONE, 27, 28, 29), participant(TWO, 27, 29)),
                 history(
@@ -161,7 +161,21 @@ class ReportDayAndStreakProjectorStreakMatrixTest {
                         perfect(ONE, 27), perfect(TWO, 27), perfect(ONE, 28), perfect(ONE, 29), perfect(TWO, 29)))
                 .sharedStreaks().perfect();
 
-        assertSnapshot(snapshot, 1, 1);
+        assertSnapshot(snapshot, 3, 3);
+    }
+
+    @Test
+    void reportDayCountersRemainUnavailableForOneParticipantWhileSharedStreaksUseOrSemantics() {
+        ReportDayAndStreakProjection projection = project(
+                basis(participant(ONE, 27, 28, 29)),
+                history(
+                        participation(ONE, 27, null),
+                        perfect(ONE, 27), perfect(ONE, 28), perfect(ONE, 29)));
+
+        assertThat(projection.sharedDayCounts()).extracting("sharedPossibleDays", "completeDays", "perfectDays")
+                .containsExactly(0, 0, 0);
+        assertSnapshot(projection.sharedStreaks().complete(), 3, 3);
+        assertSnapshot(projection.sharedStreaks().perfect(), 3, 3);
     }
 
     @Test

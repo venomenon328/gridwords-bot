@@ -9,7 +9,6 @@ import de.venomenon.gridwordsbot.domain.record.RecordAnnouncementSubject;
 import de.venomenon.gridwordsbot.domain.record.RecordBootstrapKey;
 import de.venomenon.gridwordsbot.domain.record.RecordBootstrapProjection;
 import de.venomenon.gridwordsbot.domain.record.RecordDefinitionCatalog;
-import de.venomenon.gridwordsbot.domain.record.RecordDefinitionVersion;
 import de.venomenon.gridwordsbot.domain.record.RecordEventDraft;
 import de.venomenon.gridwordsbot.domain.record.RecordEventSnapshot;
 import de.venomenon.gridwordsbot.domain.record.RecordEventType;
@@ -163,7 +162,7 @@ public final class RecordLiveEvaluationProcessor {
             throw new StaleCorrectionPlan();
         }
         boolean ready = bootstrap.readiness(new RecordBootstrapKey(
-                claim.key().guildId(), RecordDefinitionVersion.RECORDS_V1)) == RecordBootstrapReadiness.READY;
+                claim.key().guildId(), catalog.version())) == RecordBootstrapReadiness.READY;
 
         Map<de.venomenon.gridwordsbot.domain.record.RecordStateKey, RecordStateService.StateTransition> transitions =
                 reconcileStates(claim, result, plan);

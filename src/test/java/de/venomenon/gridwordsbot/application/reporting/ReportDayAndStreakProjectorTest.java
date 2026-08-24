@@ -57,7 +57,7 @@ class ReportDayAndStreakProjectorTest {
         assertThat(projection.sharedStreaks().complete()).extracting("currentAtPeriodEnd", "allTimeRecordThroughPeriodEnd")
                 .containsExactly(6, 6);
         assertThat(projection.sharedStreaks().perfect()).extracting("currentAtPeriodEnd", "allTimeRecordThroughPeriodEnd")
-                .containsExactly(0, 4);
+                .containsExactly(6, 6);
     }
 
     @Test
@@ -80,7 +80,7 @@ class ReportDayAndStreakProjectorTest {
     }
 
     @Test
-    void ignoresResultsOutsideParticipationAndBreaksSharedStreaksBelowTwoActivePlayers() {
+    void keepsReportDayCountsAtTwoParticipantsWhileSharedStreaksUseOneSuccessfulPlayer() {
         ReportDayAndStreakProjection projection = project(
                 basis(participant(ONE, 27, 28, 29), participant(TWO, 27)),
                 history(
@@ -93,9 +93,9 @@ class ReportDayAndStreakProjectorTest {
         assertThat(projection.sharedDayCounts()).extracting("sharedPossibleDays", "completeDays", "perfectDays")
                 .containsExactly(1, 1, 1);
         assertThat(projection.sharedStreaks().complete()).extracting("currentAtPeriodEnd", "allTimeRecordThroughPeriodEnd")
-                .containsExactly(0, 1);
+                .containsExactly(3, 3);
         assertThat(projection.sharedStreaks().perfect()).extracting("currentAtPeriodEnd", "allTimeRecordThroughPeriodEnd")
-                .containsExactly(0, 1);
+                .containsExactly(3, 3);
     }
 
     private static ReportDayAndStreakProjection project(ReportParticipantBasis basis, ReportStreakHistory history) {

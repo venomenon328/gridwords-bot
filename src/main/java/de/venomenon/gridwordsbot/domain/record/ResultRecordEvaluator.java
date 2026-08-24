@@ -219,15 +219,16 @@ public final class ResultRecordEvaluator {
     }
 
     private static void validateCatalog(RecordDefinitionCatalog catalog) {
-        if (!RecordDefinitionVersion.RECORDS_V1.equals(catalog.version())) {
-            throw new IllegalArgumentException("result evaluator requires records-v1 definitions");
+        if (!RecordDefinitionVersion.RECORDS_V1.equals(catalog.version())
+                && !RecordDefinitionVersion.RECORDS_V2.equals(catalog.version())) {
+            throw new IllegalArgumentException("result evaluator requires a supported complete record catalog");
         }
         Set<RecordDefinitionKey> resultKeys = catalog.definitions().stream()
                 .filter(definition -> definition.metric() instanceof ResultRecordMetric)
                 .map(RecordDefinition::key)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
         if (resultKeys.size() != GameType.values().length * ResultRecordMetric.values().length * 2) {
-            throw new IllegalArgumentException("catalog does not contain the complete records-v1 result definitions");
+            throw new IllegalArgumentException("catalog does not contain the complete result definitions");
         }
         for (GameType game : GameType.values()) {
             for (ResultRecordMetric metric : ResultRecordMetric.values()) {
@@ -240,7 +241,7 @@ public final class ResultRecordEvaluator {
                             .count();
                     if (count != 1) {
                         throw new IllegalArgumentException(
-                                "catalog contains a missing or duplicate records-v1 result definition");
+                                "catalog contains a missing or duplicate result definition");
                     }
                 }
             }

@@ -462,7 +462,7 @@ class CanonicalGridWordsPublicationServiceTest {
     }
 
     @Test
-    void omitsZeroValuedContextualPerfectSeriesAfterTheDayStateWasEstablished() {
+    void retainsTheContextualSharedPerfectSeriesAfterTheDayStateWasEstablished() {
         service = new CanonicalGridWordsPublicationService(
                 results, players, submissions, discord,
                 Clock.fixed(Instant.parse("2026-07-29T03:00:00Z"), ZoneOffset.UTC),
@@ -490,9 +490,9 @@ class CanonicalGridWordsPublicationServiceTest {
 
         verify(discord).create(eq(12L), message.capture());
         assertThat(message.getValue().personalComplete()).isEqualTo(OptionalInt.of(2));
-        assertThat(message.getValue().sharedComplete()).isEqualTo(OptionalInt.of(1));
+        assertThat(message.getValue().sharedComplete()).isEqualTo(OptionalInt.of(2));
         assertThat(message.getValue().personalPerfect()).isEmpty();
-        assertThat(message.getValue().sharedPerfect()).isEmpty();
+        assertThat(message.getValue().sharedPerfect()).isEqualTo(OptionalInt.of(1));
     }
 
     @Test

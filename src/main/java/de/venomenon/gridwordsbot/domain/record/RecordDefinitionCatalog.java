@@ -13,15 +13,16 @@ import java.util.Set;
 
 /** Vollständiger, deterministischer und hart validierter codebasierter Rekordkatalog. */
 public final class RecordDefinitionCatalog {
-    private static final int RECORDS_V1_DEFINITION_COUNT = 32;
+    private static final int COMPLETE_DEFINITION_COUNT = 32;
     private static final RecordDefinitionCatalog RECORDS_V1 = createRecordsV1();
+    private static final RecordDefinitionCatalog RECORDS_V2 = createRecordsV2();
 
     private final RecordDefinitionVersion version;
     private final List<RecordDefinition<?>> definitions;
     private final Map<RecordDefinitionKey, RecordDefinition<?>> byKey;
 
     private RecordDefinitionCatalog(
-            RecordDefinitionVersion version, List<RecordDefinition<?>> definitions, boolean requireCompleteRecordsV1) {
+            RecordDefinitionVersion version, List<RecordDefinition<?>> definitions, boolean requireCompleteCatalog) {
         this.version = Objects.requireNonNull(version, "version");
         this.definitions = List.copyOf(Objects.requireNonNull(definitions, "definitions"));
         if (this.definitions.isEmpty()) {
@@ -46,13 +47,18 @@ public final class RecordDefinitionCatalog {
         }
         this.byKey = Map.copyOf(indexed);
 
-        if (requireCompleteRecordsV1) {
-            validateRecordsV1Completeness();
+        if (requireCompleteCatalog) {
+            validateCompleteCatalog();
         }
     }
 
     public static RecordDefinitionCatalog recordsV1() {
         return RECORDS_V1;
+    }
+
+    /** Active catalog: the shared positive streak definitions use OR semantics in records-v2. */
+    public static RecordDefinitionCatalog recordsV2() {
+        return RECORDS_V2;
     }
 
     public static RecordDefinitionCatalog of(
@@ -73,42 +79,50 @@ public final class RecordDefinitionCatalog {
     }
 
     private static RecordDefinitionCatalog createRecordsV1() {
+        return createCompleteCatalog(RecordDefinitionVersion.RECORDS_V1);
+    }
+
+    private static RecordDefinitionCatalog createRecordsV2() {
+        return createCompleteCatalog(RecordDefinitionVersion.RECORDS_V2);
+    }
+
+    private static RecordDefinitionCatalog createCompleteCatalog(RecordDefinitionVersion version) {
         List<RecordDefinition<?>> definitions = new ArrayList<>();
         for (GameType game : GameType.values()) {
             for (ResultRecordMetric metric : ResultRecordMetric.values()) {
-                definitions.add(resultDefinition(game, metric, RecordScopeType.PERSONAL));
-                definitions.add(resultDefinition(game, metric, RecordScopeType.SERVER_INDIVIDUAL));
+                definitions.add(resultDefinition(version, game, metric, RecordScopeType.PERSONAL));
+                definitions.add(resultDefinition(version, game, metric, RecordScopeType.SERVER_INDIVIDUAL));
             }
         }
         for (StreakRecordMetric metric : StreakRecordMetric.values()) {
-            definitions.add(streakDefinition(metric, RecordScopeType.PERSONAL));
-            definitions.add(streakDefinition(metric, RecordScopeType.SERVER_INDIVIDUAL));
+            definitions.add(streakDefinition(version, metric, RecordScopeType.PERSONAL));
+            definitions.add(streakDefinition(version, metric, RecordScopeType.SERVER_INDIVIDUAL));
             if (metric.sharedScopeAllowed()) {
-                definitions.add(streakDefinition(metric, RecordScopeType.SHARED));
+                definitions.add(streakDefinition(version, metric, RecordScopeType.SHARED));
             }
         }
-        return new RecordDefinitionCatalog(RecordDefinitionVersion.RECORDS_V1, definitions, true);
+        return new RecordDefinitionCatalog(version, definitions, true);
     }
 
     private static RecordDefinition<?> resultDefinition(
-            GameType game, ResultRecordMetric metric, RecordScopeType scopeType) {
+            RecordDefinitionVersion version, GameType game, ResultRecordMetric metric, RecordScopeType scopeType) {
         RecordAnnouncementThreshold.Result threshold = scopeType == RecordScopeType.PERSONAL
                 ? new RecordAnnouncementThreshold.Result(5, 1)
                 : new RecordAnnouncementThreshold.Result(10, 2);
         RecordDefinitionKey key = expectedKey(metric, Optional.of(game), scopeType);
         RecordSourceEligibility eligibility = new RecordSourceEligibility.SolvedGameResult(game);
         return switch (metric) {
-            case FEWEST_ATTEMPTS -> new RecordDefinition<>(key, RecordDefinitionVersion.RECORDS_V1, metric,
+            case FEWEST_ATTEMPTS -> new RecordDefinition<>(key, version, metric,
                     Optional.of(game), scopeType, RecordComparators.fewestAttempts(), eligibility, threshold);
-            case FASTEST_SOLUTION -> new RecordDefinition<>(key, RecordDefinitionVersion.RECORDS_V1, metric,
+            case FASTEST_SOLUTION -> new RecordDefinition<>(key, version, metric,
                     Optional.of(game), scopeType, RecordComparators.fastestDuration(), eligibility, threshold);
-            case SLOWEST_SUCCESSFUL_SOLUTION -> new RecordDefinition<>(key, RecordDefinitionVersion.RECORDS_V1,
+            case SLOWEST_SUCCESSFUL_SOLUTION -> new RecordDefinition<>(key, version,
                     metric, Optional.of(game), scopeType, RecordComparators.slowestDuration(), eligibility, threshold);
         };
     }
 
     private static RecordDefinition<StreakRecordValue> streakDefinition(
-            StreakRecordMetric metric, RecordScopeType scopeType) {
+            RecordDefinitionVersion version, StreakRecordMetric metric, RecordScopeType scopeType) {
         int minimumLength = metric.drought() ? 3 : 7;
         RecordAnnouncementThreshold.Streak threshold = switch (scopeType) {
             case PERSONAL -> new RecordAnnouncementThreshold.Streak(minimumLength, 1, 1);
@@ -117,7 +131,7 @@ public final class RecordDefinitionCatalog {
         };
         return new RecordDefinition<>(
                 expectedKey(metric, metric.fixedGame(), scopeType),
-                RecordDefinitionVersion.RECORDS_V1,
+                version,
                 metric,
                 metric.fixedGame(),
                 scopeType,
@@ -176,12 +190,9 @@ public final class RecordDefinitionCatalog {
         }
     }
 
-    private void validateRecordsV1Completeness() {
-        if (!RecordDefinitionVersion.RECORDS_V1.equals(version)) {
-            throw new IllegalArgumentException("records-v1 catalog must use records-v1 definition version");
-        }
-        if (definitions.size() != RECORDS_V1_DEFINITION_COUNT) {
-            throw new IllegalArgumentException("records-v1 must contain exactly 32 definitions");
+    private void validateCompleteCatalog() {
+        if (definitions.size() != COMPLETE_DEFINITION_COUNT) {
+            throw new IllegalArgumentException("complete record catalog must contain exactly 32 definitions");
         }
 
         for (GameType game : GameType.values()) {
@@ -197,10 +208,10 @@ public final class RecordDefinitionCatalog {
                 requireDefinition(metric, metric.fixedGame(), RecordScopeType.SHARED);
             }
         }
-        definitions.forEach(this::validateRecordsV1Threshold);
+        definitions.forEach(this::validateCompleteCatalogThreshold);
     }
 
-    private void validateRecordsV1Threshold(RecordDefinition<?> definition) {
+    private void validateCompleteCatalogThreshold(RecordDefinition<?> definition) {
         RecordAnnouncementThreshold expected;
         if (definition.metric() instanceof ResultRecordMetric) {
             expected = definition.scopeType() == RecordScopeType.PERSONAL
@@ -216,7 +227,7 @@ public final class RecordDefinitionCatalog {
             };
         }
         if (!expected.equals(definition.announcementThreshold())) {
-            throw new IllegalArgumentException("records-v1 definition uses the wrong announcement threshold: "
+            throw new IllegalArgumentException("complete record catalog uses the wrong announcement threshold: "
                     + definition.key());
         }
     }
@@ -224,7 +235,7 @@ public final class RecordDefinitionCatalog {
     private void requireDefinition(RecordMetric metric, Optional<GameType> game, RecordScopeType scopeType) {
         RecordDefinitionKey key = expectedKey(metric, game, scopeType);
         if (!byKey.containsKey(key)) {
-            throw new IllegalArgumentException("records-v1 is missing definition " + key);
+            throw new IllegalArgumentException("complete record catalog is missing definition " + key);
         }
     }
 

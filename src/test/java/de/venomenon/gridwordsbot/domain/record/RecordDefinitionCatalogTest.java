@@ -28,6 +28,25 @@ class RecordDefinitionCatalogTest {
     }
 
     @Test
+    void recordsV2KeepsTheSameLogicalDefinitionsThresholdsAndComparators() {
+        RecordDefinitionCatalog v1 = RecordDefinitionCatalog.recordsV1();
+        RecordDefinitionCatalog v2 = RecordDefinitionCatalog.recordsV2();
+
+        assertThat(v2.version()).isEqualTo(RecordDefinitionVersion.RECORDS_V2);
+        assertThat(v2.definitions()).hasSize(32);
+        assertThat(v2.definitions().stream().map(RecordDefinition::key)).containsExactlyElementsOf(expectedKeys());
+        assertThat(v2.definitions()).allSatisfy(definition -> {
+            RecordDefinition<?> v1Definition = v1.find(definition.key()).orElseThrow();
+            assertThat(definition.definitionVersion()).isEqualTo(RecordDefinitionVersion.RECORDS_V2);
+            assertThat(definition.metric()).isEqualTo(v1Definition.metric());
+            assertThat(definition.game()).isEqualTo(v1Definition.game());
+            assertThat(definition.scopeType()).isEqualTo(v1Definition.scopeType());
+            assertThat(definition.announcementThreshold()).isEqualTo(v1Definition.announcementThreshold());
+            assertThat(definition.valueKind()).isEqualTo(v1Definition.valueKind());
+        });
+    }
+
+    @Test
     void containsExactlyTheTwelveResultDefinitions() {
         List<RecordDefinition<?>> resultDefinitions = RecordDefinitionCatalog.recordsV1().definitions().stream()
                 .filter(definition -> definition.metric() instanceof ResultRecordMetric)

@@ -38,7 +38,7 @@ class StreakCalculatorTest {
         assertThat(streaks.personalGridWordsSolved()).isEqualTo(2);
         assertThat(streaks.personalQuadWordsSolved()).isEqualTo(1);
         assertThat(streaks.personalPerfect()).isEqualTo(1);
-        assertThat(streaks.sharedGridWordsSolved()).isEqualTo(1);
+        assertThat(streaks.sharedGridWordsSolved()).isEqualTo(2);
         assertThat(streaks.sharedQuadWordsSolved()).isEqualTo(1);
         assertThat(streaks.sharedComplete()).isEqualTo(1);
         assertThat(streaks.sharedPerfect()).isEqualTo(1);
@@ -59,7 +59,7 @@ class StreakCalculatorTest {
         assertThat(streaks.personalGridWordsSolved()).isZero();
         assertThat(streaks.personalQuadWordsSolved()).isEqualTo(1);
         assertThat(streaks.personalPerfect()).isZero();
-        assertThat(streaks.sharedGridWordsSolved()).isZero();
+        assertThat(streaks.sharedGridWordsSolved()).isEqualTo(1);
         assertThat(streaks.sharedQuadWordsSolved()).isEqualTo(1);
     }
 
@@ -76,7 +76,7 @@ class StreakCalculatorTest {
         assertThat(streaks.personalQuadWordsSolved()).isZero();
         assertThat(streaks.personalComplete()).isZero();
         assertThat(streaks.personalPerfect()).isZero();
-        assertThat(streaks.sharedGridWordsSolved()).isZero();
+        assertThat(streaks.sharedGridWordsSolved()).isEqualTo(1);
         assertThat(streaks.sharedQuadWordsSolved()).isZero();
     }
 
@@ -100,13 +100,13 @@ class StreakCalculatorTest {
         assertThat(streaks.personalQuadWordsSolved()).isZero();
         assertThat(streaks.personalPerfect()).isZero();
         assertThat(streaks.sharedGridWordsSolved()).isEqualTo(2);
-        assertThat(streaks.sharedQuadWordsSolved()).isZero();
+        assertThat(streaks.sharedQuadWordsSolved()).isEqualTo(2);
         assertThat(streaks.sharedComplete()).isEqualTo(2);
-        assertThat(streaks.sharedPerfect()).isZero();
+        assertThat(streaks.sharedPerfect()).isEqualTo(2);
     }
 
     @Test
-    void currentMissingSharedResultIsProvisionalButHistoricalMissingResultEndsTheStreak() {
+    void sharedSolvedUsesOneSuccessfulPlayerWhileMissingResultsRemainProvisional() {
         List<StreakCalculator.PlayerResult> results = completeResults(TOBIAS, GEORGIA, TODAY.minusDays(1));
         results = new ArrayList<>(results);
         results.add(result(TOBIAS, TODAY, GameType.GRIDWORDS, true));
@@ -116,14 +116,14 @@ class StreakCalculatorTest {
         StreakSummary historical = calculator.calculateWithParticipation(
                 results, alwaysActive(TOBIAS, GEORGIA), TOBIAS, TODAY, false);
 
-        assertThat(provisional.sharedGridWordsSolved()).isEqualTo(1);
+        assertThat(provisional.sharedGridWordsSolved()).isEqualTo(2);
         assertThat(provisional.sharedQuadWordsSolved()).isEqualTo(1);
-        assertThat(historical.sharedGridWordsSolved()).isZero();
+        assertThat(historical.sharedGridWordsSolved()).isEqualTo(2);
         assertThat(historical.sharedQuadWordsSolved()).isZero();
     }
 
     @Test
-    void everyActivePlayerMustSolveTheSelectedGame() {
+    void oneSuccessfulActivePlayerContinuesTheSharedSolvedStreak() {
         List<StreakCalculator.PlayerResult> results = new ArrayList<>(
                 completeResults(TOBIAS, GEORGIA, THIRD, TODAY.minusDays(1)));
         results.add(result(TOBIAS, TODAY, GameType.GRIDWORDS, true));
@@ -136,7 +136,7 @@ class StreakCalculatorTest {
         StreakSummary streaks = calculator.calculateWithParticipation(
                 results, alwaysActive(TOBIAS, GEORGIA, THIRD), TOBIAS, TODAY);
 
-        assertThat(streaks.sharedGridWordsSolved()).isZero();
+        assertThat(streaks.sharedGridWordsSolved()).isEqualTo(2);
         assertThat(streaks.sharedQuadWordsSolved()).isEqualTo(2);
     }
 
@@ -154,7 +154,7 @@ class StreakCalculatorTest {
         StreakSummary before = calculator.calculate(beforeBackfill, List.of(TOBIAS, GEORGIA), TOBIAS, TODAY);
         StreakSummary after = calculator.calculate(afterBackfill, List.of(TOBIAS, GEORGIA), TOBIAS, TODAY);
 
-        assertThat(before.sharedGridWordsSolved()).isEqualTo(1);
+        assertThat(before.sharedGridWordsSolved()).isEqualTo(2);
         assertThat(before.sharedQuadWordsSolved()).isEqualTo(2);
         assertThat(after.sharedGridWordsSolved()).isEqualTo(2);
         assertThat(after.sharedQuadWordsSolved()).isEqualTo(2);
@@ -176,10 +176,10 @@ class StreakCalculatorTest {
 
         StreakSummary streaks = calculator.calculate(results, List.of(TOBIAS, GEORGIA), TOBIAS, TODAY);
 
-        assertThat(streaks.sharedGridWordsSolved()).isZero();
+        assertThat(streaks.sharedGridWordsSolved()).isEqualTo(2);
         assertThat(streaks.sharedQuadWordsSolved()).isEqualTo(2);
         assertThat(streaks.sharedComplete()).isEqualTo(2);
-        assertThat(streaks.sharedPerfect()).isZero();
+        assertThat(streaks.sharedPerfect()).isEqualTo(2);
     }
 
     @Test
@@ -204,17 +204,17 @@ class StreakCalculatorTest {
     }
 
     @Test
-    void fewerThanTwoParticipantsNeverCreatesAnySharedDay() {
+    void oneParticipantCanContinueAllSharedStreaks() {
         List<ParticipationPeriod> periods = List.of(
                 new ParticipationPeriod(TOBIAS, TODAY.minusDays(10), null));
 
         StreakSummary streaks = calculator.calculateWithParticipation(
                 completeResults(TOBIAS, TODAY), periods, TOBIAS, TODAY);
 
-        assertThat(streaks.sharedGridWordsSolved()).isZero();
-        assertThat(streaks.sharedQuadWordsSolved()).isZero();
-        assertThat(streaks.sharedComplete()).isZero();
-        assertThat(streaks.sharedPerfect()).isZero();
+        assertThat(streaks.sharedGridWordsSolved()).isEqualTo(1);
+        assertThat(streaks.sharedQuadWordsSolved()).isEqualTo(1);
+        assertThat(streaks.sharedComplete()).isEqualTo(1);
+        assertThat(streaks.sharedPerfect()).isEqualTo(1);
     }
 
     private static List<ParticipationPeriod> alwaysActive(long... players) {

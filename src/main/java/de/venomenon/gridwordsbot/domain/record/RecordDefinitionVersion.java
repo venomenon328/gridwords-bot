@@ -8,6 +8,7 @@ public record RecordDefinitionVersion(String value) {
     private static final Pattern VALID_VALUE = Pattern.compile("[a-z][a-z0-9-]*");
 
     public static final RecordDefinitionVersion RECORDS_V1 = new RecordDefinitionVersion("records-v1");
+    public static final RecordDefinitionVersion RECORDS_V2 = new RecordDefinitionVersion("records-v2");
 
     public RecordDefinitionVersion {
         Objects.requireNonNull(value, "value");

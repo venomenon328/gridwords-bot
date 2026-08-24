@@ -2,7 +2,9 @@
 
 ## Quellen und Version
 
-Die aktive Definitionsversion ist `records-v1`. Kanonische Quellen sind Spielergebnisse und historische Teilnahmezeiträume. `record_state` ist eine materialisierte Projektion und Konkurrenzanker, kein Ersatz für diese Quellen. Rekordzustand, unveränderliches Auditereignis und Discord-Ankündigungsprojektion sind getrennte persistente Ebenen.
+Die aktive Definitionsversion ist `records-v2`. Kanonische Quellen sind Spielergebnisse und historische Teilnahmezeiträume. `record_state` ist eine materialisierte Projektion und Konkurrenzanker, kein Ersatz für diese Quellen. Rekordzustand, unveränderliches Auditereignis und Discord-Ankündigungsprojektion sind getrennte persistente Ebenen.
+
+`records-v2` enthält dieselben 32 logischen Definitionen, Schlüssel, Scopes, Comparatoren und Meldungsschwellen wie `records-v1`. Inkompatibel geändert ist ausschließlich die Grundlage der vier positiven gemeinsamen Serien: Sie folgen der OR-Semantik aus [`streaks.md`](streaks.md). Der versionierte Bootstrap baut `records-v2` beim ersten Start vollständig und öffentlich still aus den kanonischen Quellen auf. Erfolgreiche `records-v1`-Bootstraps werden nicht erneut ausgeführt; ihre States und Events bleiben als Audithistorie erhalten.
 
 ## Ergebnisrekorde
 

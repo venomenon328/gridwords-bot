@@ -107,6 +107,7 @@ class PostgresRecordLiveEvaluationProcessorIT {
 
     @BeforeEach
     void clean() {
+        catalog = RecordDefinitionCatalog.recordsV1();
         jdbc.update("DELETE FROM record_announcement_message");
         jdbc.update("DELETE FROM record_announcement_event");
         jdbc.update("DELETE FROM record_announcement");
@@ -132,6 +133,24 @@ class PostgresRecordLiveEvaluationProcessorIT {
                 assertThat(snapshot.state().name()).isEqualTo("SUCCEEDED"));
         assertThat(jdbc.queryForObject("SELECT count(*) FROM record_state", Integer.class)).isPositive();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM record_event", Integer.class)).isPositive();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM record_announcement", Integer.class)).isZero();
+    }
+
+    @Test
+    void recordsV2CorrectionReconcilesTheSharedOrRunAgainstCanonicalPostgresHistory() {
+        catalog = RecordDefinitionCatalog.recordsV2();
+        insertPlayerAndParticipation(1, LocalDate.of(2026, 8, 1));
+        readyBootstrap();
+        insertAndProcess(1, LocalDate.of(2026, 8, 1), true, 3, 60);
+        long corrected = insertAndProcess(1, LocalDate.of(2026, 8, 2), true, 3, 60);
+
+        assertSharedGridWordsRun(2, LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 2));
+
+        correctResult(corrected, false, null, 99, RecordProcessingOrigin.NORMAL_CORRECTION);
+        assertThat(processor(work).process(claim()))
+                .isEqualTo(RecordLiveEvaluationProcessor.ProcessingResult.PROCESSED);
+
+        assertSharedGridWordsRun(1, LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 1));
         assertThat(jdbc.queryForObject("SELECT count(*) FROM record_announcement", Integer.class)).isZero();
     }
 
@@ -292,7 +311,7 @@ class PostgresRecordLiveEvaluationProcessorIT {
     }
 
     @Test
-    void correctionAfterReentryKeepsAndFallsBackToAllTimeStreaksFromTheEarlierPeriods() {
+    void correctionAfterReentryKeepsTheSharedOrStreakWhilePersonalAndServerStreaksFallBack() {
         insertPlayer(1);
         insertPlayer(2);
         insertParticipation(1, LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 10));
@@ -311,7 +330,7 @@ class PostgresRecordLiveEvaluationProcessorIT {
         assertStreakSource("streak.gridwords-solved.server-individual", "SERVER_INDIVIDUAL", "server",
                 LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 10));
         assertStreakSource("streak.gridwords-solved.shared", "SHARED", "shared",
-                LocalDate.of(2026, 8, 3), LocalDate.of(2026, 8, 10));
+                LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 10));
 
         long reentryEnd = resultId(1, LocalDate.of(2026, 8, 10));
         correctResult(reentryEnd, true, 3, 60, RecordProcessingOrigin.NORMAL_CORRECTION);
@@ -350,20 +369,19 @@ class PostgresRecordLiveEvaluationProcessorIT {
         assertStreakSource("streak.gridwords-solved.server-individual", "SERVER_INDIVIDUAL", "server",
                 LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 9));
         assertStreakSource("streak.gridwords-solved.shared", "SHARED", "shared",
-                LocalDate.of(2026, 7, 3), LocalDate.of(2026, 7, 9));
-        assertThat(jdbc.queryForList("""
-                SELECT event_id FROM record_event
+                LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 10));
+        assertThat(jdbc.queryForObject("""
+                SELECT count(*) FROM record_event
                 WHERE event_id IN (?,?,?) AND validity='INVALIDATED'
-                ORDER BY event_id
-                """, UUID.class, supersededLaterFacts.get(0), supersededLaterFacts.get(1),
-                supersededLaterFacts.get(2))).containsExactlyInAnyOrderElementsOf(supersededLaterFacts);
+                """, Integer.class, supersededLaterFacts.get(0), supersededLaterFacts.get(1),
+                supersededLaterFacts.get(2))).isEqualTo(2);
         assertThat(jdbc.queryForList("""
                 SELECT desired_projection FROM record_announcement
                 WHERE idempotency_key IN (?,?) ORDER BY idempotency_key
                 """, String.class, laterAnnouncements.get(0), laterAnnouncements.get(1)))
                 .containsExactlyInAnyOrder(
                         RecordAnnouncementProjection.EDIT.name(),
-                        RecordAnnouncementProjection.DELETE.name());
+                        RecordAnnouncementProjection.CREATE.name());
         assertNoDuplicateValidFacts();
     }
 
@@ -722,7 +740,7 @@ class PostgresRecordLiveEvaluationProcessorIT {
     }
 
     private void readyBootstrap() {
-        RecordBootstrapKey key = new RecordBootstrapKey(10, RecordDefinitionVersion.RECORDS_V1);
+        RecordBootstrapKey key = new RecordBootstrapKey(10, catalog.version());
         bootstraps.register(key);
         var bootstrapClaim = bootstraps.claim(key,
                 new RecordLeaseClaimRequest(NOW, NOW.plusSeconds(60))).orElseThrow();
@@ -787,6 +805,17 @@ class PostgresRecordLiveEvaluationProcessorIT {
                 """, definitionKey, scopeType, scopeKey))
                 .containsEntry("source_streak_start_date", java.sql.Date.valueOf(expectedStart))
                 .containsEntry("streak_end_date", java.sql.Date.valueOf(expectedEnd));
+    }
+
+    private void assertSharedGridWordsRun(int length, LocalDate start, LocalDate end) {
+        assertThat(jdbc.queryForMap("""
+                SELECT streak_length,source_streak_start_date,streak_end_date FROM record_state
+                WHERE definition_version=? AND definition_key='streak.gridwords-solved.shared'
+                  AND scope_type='SHARED' AND scope_key='shared'
+                """, catalog.version().value()))
+                .containsEntry("streak_length", length)
+                .containsEntry("source_streak_start_date", java.sql.Date.valueOf(start))
+                .containsEntry("streak_end_date", java.sql.Date.valueOf(end));
     }
 
     private long resultId(long playerId, LocalDate gameDate) {
