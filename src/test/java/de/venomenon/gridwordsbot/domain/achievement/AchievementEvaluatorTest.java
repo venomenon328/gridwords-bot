@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod;
 import de.venomenon.gridwordsbot.domain.model.GameType;
+import de.venomenon.gridwordsbot.domain.model.NormalizedBoard;
 import de.venomenon.gridwordsbot.domain.model.QuadWordsBoard;
 import de.venomenon.gridwordsbot.domain.model.QuadWordsBoards;
 import java.time.Instant;
@@ -179,6 +180,81 @@ class AchievementEvaluatorTest {
     }
 
     @Test
+    void repeatedGridPatternRequiresThreeNeighboringIdenticalCanonicalRowsAndAllowsFailures() {
+        String repeated = "⬜⬜🟨⬜🟩";
+        AchievementEvaluation exactThree = evaluator.evaluate(snapshot(
+                List.of(gridWithBoard(1, START, true, 4, repeated, repeated, repeated, "🟩🟩🟩🟩🟩")),
+                active(GameType.GRIDWORDS, START, null)));
+        assertEarnedOn(exactThree, "situational.repeated_pattern.gridwords", START);
+
+        AchievementEvaluation fourRows = evaluator.evaluate(snapshot(
+                List.of(gridWithBoard(2, START.plusDays(1), true, 5,
+                        repeated, repeated, repeated, repeated, "🟩🟩🟩🟩🟩")),
+                active(GameType.GRIDWORDS, START, null)));
+        assertEarnedOn(fourRows, "situational.repeated_pattern.gridwords", START.plusDays(1));
+
+        AchievementEvaluation onlyTwo = evaluator.evaluate(snapshot(
+                List.of(gridWithBoard(3, START.plusDays(2), true, 3, repeated, repeated, "🟩🟩🟩🟩🟩")),
+                active(GameType.GRIDWORDS, START, null)));
+        assertThat(onlyTwo.find(key("situational.repeated_pattern.gridwords"))).isEmpty();
+
+        AchievementEvaluation interrupted = evaluator.evaluate(snapshot(
+                List.of(gridWithBoard(4, START.plusDays(3), true, 5,
+                        repeated, repeated, "⬜🟨🟨⬜🟩", repeated, "🟩🟩🟩🟩🟩")),
+                active(GameType.GRIDWORDS, START, null)));
+        assertThat(interrupted.find(key("situational.repeated_pattern.gridwords"))).isEmpty();
+
+        AchievementEvaluation oneDifferentCell = evaluator.evaluate(snapshot(
+                List.of(gridWithBoard(5, START.plusDays(4), true, 4,
+                        repeated, repeated, "⬜⬜🟨🟩🟩", "🟩🟩🟩🟩🟩")),
+                active(GameType.GRIDWORDS, START, null)));
+        assertThat(oneDifferentCell.find(key("situational.repeated_pattern.gridwords"))).isEmpty();
+
+        AchievementEvaluation unsolvedGray = evaluator.evaluate(snapshot(
+                List.of(failedGridWithBoard(6, START.plusDays(5),
+                        "⬜⬜⬜⬜⬜", "⬜⬜⬜⬜⬜", "⬜⬜⬜⬜⬜", "🟨⬜⬜⬜⬜", "⬜🟨⬜⬜⬜", "⬜⬜🟨⬜⬜")),
+                active(GameType.GRIDWORDS, START, null)));
+        assertEarnedOn(unsolvedGray, "situational.repeated_pattern.gridwords", START.plusDays(5));
+    }
+
+    @Test
+    void repeatedGridPatternDoesNotInterpretComparableQuadWordsBoards() {
+        QuadWordsBoard repeated = board(List.of("⬜⬜🟨⬜🟩", "⬜⬜🟨⬜🟩", "⬜⬜🟨⬜🟩", "🟩🟩🟩🟩🟩"));
+        AchievementEvaluation evaluation = evaluator.evaluate(snapshot(
+                List.of(solvedWithBoards(1, START, 4, new QuadWordsBoards(repeated, repeated, repeated, repeated))),
+                active(GameType.QUADWORDS, START, null)));
+
+        assertThat(evaluation.find(key("situational.repeated_pattern.gridwords"))).isEmpty();
+    }
+
+    @Test
+    void allYellowRowUsesOnlyCanonicalBoardsAcrossBothGames() {
+        AchievementEvaluation grid = evaluator.evaluate(snapshot(
+                List.of(gridWithBoard(1, START, true, 3,
+                        "⬜⬜⬜⬜⬜", "🟨🟨🟨🟨🟨", "🟩🟩🟩🟩🟩")),
+                active(GameType.GRIDWORDS, START, null)));
+        assertEarnedOn(grid, "situational.all_yellow_row", START);
+
+        QuadWordsBoard yellowOnSecondAttempt = board(List.of(
+                "⬜⬜⬜⬜⬜", "🟨🟨🟨🟨🟨", "⬜⬜⬜⬜⬜", "🟩🟩🟩🟩🟩"));
+        QuadWordsBoard withoutYellow = board(List.of(
+                "⬜⬜⬜⬜⬜", "⬜🟨🟨🟨🟨", "⬜⬜⬜⬜⬜", "🟩🟩🟩🟩🟩"));
+        AchievementEvaluation quad = evaluator.evaluate(snapshot(
+                List.of(solvedWithBoards(2, START.plusDays(1), 4,
+                        new QuadWordsBoards(withoutYellow, yellowOnSecondAttempt, yellowOnSecondAttempt, withoutYellow))),
+                active(GameType.QUADWORDS, START, null)));
+        assertEarnedOn(quad, "situational.all_yellow_row", START.plusDays(1));
+
+        AchievementEvaluation mixedAndBoardless = evaluator.evaluate(snapshot(
+                List.of(
+                        gridWithBoard(3, START.plusDays(2), true, 2, "🟨🟨🟨🟨🟩", "🟩🟩🟩🟩🟩"),
+                        solved(4, GameType.QUADWORDS, START.plusDays(3), 7)),
+                active(GameType.GRIDWORDS, START, null),
+                active(GameType.QUADWORDS, START, null)));
+        assertThat(mixedAndBoardless.find(key("situational.all_yellow_row"))).isEmpty();
+    }
+
+    @Test
     void dejaVuUsesThreeConsecutiveSuccessfulCanonicalEndValuesAndIgnoresCalendarGaps() {
         List<AchievementHistorySnapshot.Result> grid = List.of(
                 solved(1, GameType.GRIDWORDS, START, 5),
@@ -321,6 +397,23 @@ class AchievementEvaluatorTest {
                 Optional.of(boards));
     }
 
+    private static AchievementHistorySnapshot.Result gridWithBoard(
+            long id, LocalDate day, boolean solved, int attempts, String... rows) {
+        return new AchievementHistorySnapshot.Result(
+                id,
+                GameType.GRIDWORDS,
+                day,
+                solved,
+                solved ? OptionalInt.of(attempts) : OptionalInt.empty(),
+                ZonedDateTime.of(day, LocalTime.NOON, BERLIN).toInstant(),
+                Optional.of(new NormalizedBoard(List.of(rows))),
+                Optional.empty());
+    }
+
+    private static AchievementHistorySnapshot.Result failedGridWithBoard(long id, LocalDate day, String... rows) {
+        return gridWithBoard(id, day, false, 0, rows);
+    }
+
     private static QuadWordsBoards boards(int topLeft, int topRight, int bottomLeft, int bottomRight) {
         return new QuadWordsBoards(
                 board(topLeft), board(topRight), board(bottomLeft), board(bottomRight));
@@ -332,6 +425,10 @@ class AchievementEvaluatorTest {
             rows.add("⬜⬜⬜⬜⬜");
         }
         rows.add("🟩🟩🟩🟩🟩");
+        return new QuadWordsBoard(rows);
+    }
+
+    private static QuadWordsBoard board(List<String> rows) {
         return new QuadWordsBoard(rows);
     }
 }

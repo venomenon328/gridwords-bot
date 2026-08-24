@@ -1,6 +1,7 @@
 package de.venomenon.gridwordsbot.domain.achievement;
 
 import de.venomenon.gridwordsbot.domain.model.GameType;
+import de.venomenon.gridwordsbot.domain.model.NormalizedBoard;
 import de.venomenon.gridwordsbot.domain.model.QuadWordsBoard;
 import de.venomenon.gridwordsbot.domain.model.QuadWordsBoards;
 import de.venomenon.gridwordsbot.domain.streak.StreakDayAssessment;
@@ -27,7 +28,7 @@ public final class AchievementEvaluator {
     private final AchievementDefinitionCatalog catalog;
 
     public AchievementEvaluator() {
-        this(AchievementDefinitionCatalog.achievementsV1());
+        this(AchievementDefinitionCatalog.achievementsV2());
     }
 
     public AchievementEvaluator(AchievementDefinitionCatalog catalog) {
@@ -83,6 +84,10 @@ public final class AchievementEvaluator {
                     context.resultsFor(value.game()), value.resultCount());
             case AchievementRule.ConsecutiveFailures value -> consecutiveFailures(
                     context.resultsFor(value.game()), value.resultCount());
+            case AchievementRule.GridWordsRepeatedPattern value -> firstResult(
+                    context.resultsFor(GameType.GRIDWORDS), result -> hasRepeatedGridWordsPattern(result, value.rowCount()));
+            case AchievementRule.AllYellowBoardRow ignored -> firstResult(
+                    context.snapshot().results(), AchievementEvaluator::hasAllYellowBoardRow);
             case AchievementRule.LocalTimeBefore value -> firstTimedResult(
                     context, time -> time.isBefore(value.exclusiveUpperBound()));
             case AchievementRule.LocalTimeAtOrAfter value -> firstTimedResult(
@@ -286,6 +291,43 @@ public final class AchievementEvaluator {
             }
         }
         return Optional.empty();
+    }
+
+    private static boolean hasRepeatedGridWordsPattern(AchievementHistorySnapshot.Result result, int requiredCount) {
+        if (result.game() != GameType.GRIDWORDS || result.gridWordsBoard().isEmpty()) {
+            return false;
+        }
+        String previous = null;
+        int runLength = 0;
+        for (String row : result.gridWordsBoard().orElseThrow().rows()) {
+            if (row.equals(previous)) {
+                runLength++;
+            } else {
+                previous = row;
+                runLength = 1;
+            }
+            if (runLength >= requiredCount) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasAllYellowBoardRow(AchievementHistorySnapshot.Result result) {
+        if (result.game() == GameType.GRIDWORDS) {
+            return result.gridWordsBoard().map(AchievementEvaluator::hasAllYellowRow).orElse(false);
+        }
+        return result.quadWordsBoards().stream()
+                .flatMap(boards -> boards.ordered().stream())
+                .anyMatch(AchievementEvaluator::hasAllYellowRow);
+    }
+
+    private static boolean hasAllYellowRow(NormalizedBoard board) {
+        return board.rows().contains("\uD83D\uDFE8".repeat(5));
+    }
+
+    private static boolean hasAllYellowRow(QuadWordsBoard board) {
+        return board.rows().contains("\uD83D\uDFE8".repeat(5));
     }
 
     private record EarnedFact(LocalDate earnedOn, AchievementEvidence.Kind kind, String reference) {

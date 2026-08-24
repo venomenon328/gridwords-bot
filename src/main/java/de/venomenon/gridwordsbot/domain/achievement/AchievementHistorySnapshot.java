@@ -2,6 +2,7 @@ package de.venomenon.gridwordsbot.domain.achievement;
 
 import de.venomenon.gridwordsbot.domain.model.GameParticipationPeriod;
 import de.venomenon.gridwordsbot.domain.model.GameType;
+import de.venomenon.gridwordsbot.domain.model.NormalizedBoard;
 import de.venomenon.gridwordsbot.domain.model.QuadWordsBoards;
 import de.venomenon.gridwordsbot.domain.streak.StreakGameResult;
 import java.time.Instant;
@@ -78,7 +79,20 @@ public record AchievementHistorySnapshot(
             boolean solved,
             OptionalInt attempts,
             Instant receivedAt,
+            Optional<NormalizedBoard> gridWordsBoard,
             Optional<QuadWordsBoards> quadWordsBoards) {
+
+        /** Compatibility constructor for snapshots that predate canonical GridWords board projection. */
+        public Result(
+                long resultId,
+                GameType game,
+                LocalDate gameDate,
+                boolean solved,
+                OptionalInt attempts,
+                Instant receivedAt,
+                Optional<QuadWordsBoards> quadWordsBoards) {
+            this(resultId, game, gameDate, solved, attempts, receivedAt, Optional.empty(), quadWordsBoards);
+        }
 
         public Result {
             if (resultId <= 0) {
@@ -88,6 +102,7 @@ public record AchievementHistorySnapshot(
             Objects.requireNonNull(gameDate, "gameDate");
             attempts = Objects.requireNonNull(attempts, "attempts");
             Objects.requireNonNull(receivedAt, "receivedAt");
+            gridWordsBoard = Objects.requireNonNull(gridWordsBoard, "gridWordsBoard");
             quadWordsBoards = Objects.requireNonNull(quadWordsBoards, "quadWordsBoards");
 
             if (solved != attempts.isPresent()) {
@@ -99,6 +114,9 @@ public record AchievementHistorySnapshot(
                 if (attempts.getAsInt() < minimum || attempts.getAsInt() > maximum) {
                     throw new IllegalArgumentException("attempts outside the solved range for " + game);
                 }
+            }
+            if (game != GameType.GRIDWORDS && gridWordsBoard.isPresent()) {
+                throw new IllegalArgumentException("board details are only valid for GridWords");
             }
             if (game != GameType.QUADWORDS && quadWordsBoards.isPresent()) {
                 throw new IllegalArgumentException("board details are only valid for QuadWords");

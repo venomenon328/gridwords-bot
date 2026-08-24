@@ -32,6 +32,27 @@ class AchievementDefinitionCatalogTest {
     }
 
     @Test
+    void achievementsV2KeepsTheCompleteV1CatalogAndAddsTheTwoBoardPatternDefinitions() {
+        AchievementDefinitionCatalog v1 = AchievementDefinitionCatalog.achievementsV1();
+        AchievementDefinitionCatalog v2 = AchievementDefinitionCatalog.achievementsV2();
+
+        assertThat(v2.version()).isEqualTo(AchievementDefinitionVersion.ACHIEVEMENTS_V2);
+        assertThat(v2.definitions()).hasSize(62);
+        assertThat(v2.definitions().subList(0, 60))
+                .extracting(AchievementDefinition::key)
+                .containsExactlyElementsOf(v1.definitions().stream().map(AchievementDefinition::key).toList());
+        assertThat(v2.find(new AchievementKey("situational.deja_vu.gridwords")).orElseThrow())
+                .extracting(AchievementDefinition::displayName, AchievementDefinition::rule)
+                .containsExactly("GW: Déjà-vu", new AchievementRule.ConsecutiveSameSuccessfulResults(GameType.GRIDWORDS, 3));
+        assertThat(v2.find(new AchievementKey("situational.repeated_pattern.gridwords")).orElseThrow())
+                .extracting(AchievementDefinition::fallbackEmoji, AchievementDefinition::displayName, AchievementDefinition::rule)
+                .containsExactly("🪞", "GW: Mustertreue", new AchievementRule.GridWordsRepeatedPattern(3));
+        assertThat(v2.find(new AchievementKey("situational.all_yellow_row")).orElseThrow())
+                .extracting(AchievementDefinition::fallbackEmoji, AchievementDefinition::displayName, AchievementDefinition::rule)
+                .containsExactly("🟨", "Alles da, nichts sitzt", new AchievementRule.AllYellowBoardRow());
+    }
+
+    @Test
     void usesTheSpecifiedCategoryAndScopeDistribution() {
         Map<AchievementCategory, Long> byCategory = AchievementDefinitionCatalog.achievementsV1().definitions().stream()
                 .collect(Collectors.groupingBy(
@@ -52,6 +73,25 @@ class AchievementDefinitionCatalogTest {
                 AchievementScope.QUADWORDS, 22L,
                 AchievementScope.CROSS_GAME, 13L,
                 AchievementScope.GLOBAL, 5L));
+    }
+
+    @Test
+    void achievementsV2HasTheSpecifiedExtendedScopeAndCategoryDistribution() {
+        Map<AchievementCategory, Long> byCategory = AchievementDefinitionCatalog.achievementsV2().definitions().stream()
+                .collect(Collectors.groupingBy(AchievementDefinition::category, Collectors.counting()));
+        Map<AchievementScope, Long> byScope = AchievementDefinitionCatalog.achievementsV2().definitions().stream()
+                .collect(Collectors.groupingBy(AchievementDefinition::scope, Collectors.counting()));
+
+        assertThat(byCategory).containsExactlyInAnyOrderEntriesOf(Map.of(
+                AchievementCategory.EXPERIENCE, 13L,
+                AchievementCategory.RELIABILITY, 13L,
+                AchievementCategory.PERFORMANCE, 21L,
+                AchievementCategory.SPECIAL, 15L));
+        assertThat(byScope).containsExactlyInAnyOrderEntriesOf(Map.of(
+                AchievementScope.GRIDWORDS, 21L,
+                AchievementScope.QUADWORDS, 22L,
+                AchievementScope.CROSS_GAME, 13L,
+                AchievementScope.GLOBAL, 6L));
     }
 
     @Test
@@ -113,6 +153,14 @@ class AchievementDefinitionCatalogTest {
                 .isEqualTo(new AchievementRule.LocalTimeBefore(LocalTime.of(7, 0)));
         assertThat(rule("timing.after_2300"))
                 .isEqualTo(new AchievementRule.LocalTimeAtOrAfter(LocalTime.of(23, 0)));
+    }
+
+    @Test
+    void v2ModelsTheSpecifiedBoardPatternRuleParameters() {
+        assertThat(rule(AchievementDefinitionCatalog.achievementsV2(), "situational.repeated_pattern.gridwords"))
+                .isEqualTo(new AchievementRule.GridWordsRepeatedPattern(3));
+        assertThat(rule(AchievementDefinitionCatalog.achievementsV2(), "situational.all_yellow_row"))
+                .isEqualTo(new AchievementRule.AllYellowBoardRow());
     }
 
     @Test
@@ -198,7 +246,11 @@ class AchievementDefinitionCatalogTest {
     }
 
     private static AchievementRule rule(String key) {
-        return AchievementDefinitionCatalog.achievementsV1()
+        return rule(AchievementDefinitionCatalog.achievementsV1(), key);
+    }
+
+    private static AchievementRule rule(AchievementDefinitionCatalog catalog, String key) {
+        return catalog
                 .find(new AchievementKey(key))
                 .orElseThrow()
                 .rule();

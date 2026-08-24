@@ -31,4 +31,10 @@ public record NormalizedBoard(List<String> rows) {
     public String canonicalText() {
         return String.join("\n", rows);
     }
+
+    /** Rehydrates only the canonical line-based representation written by {@link #canonicalText()}. */
+    public static NormalizedBoard fromCanonicalText(String text) {
+        Objects.requireNonNull(text, "text");
+        return new NormalizedBoard(List.of(text.split("\\n", -1)));
+    }
 }

@@ -87,11 +87,16 @@ class PostgresAchievementReconciliationIT {
 
         var result = service.reconcile(liveRequest("submission:102"));
 
-        assertThat(new PostgresAchievementHistoryQuery(jdbc).load(GUILD_ID, PARTICIPANT_ID).results())
+        List<AchievementHistorySnapshot.Result> history = new PostgresAchievementHistoryQuery(jdbc)
+                .load(GUILD_ID, PARTICIPANT_ID).results();
+        assertThat(history)
                 .extracting(AchievementHistorySnapshot.Result::receivedAt)
                 .containsExactly(
                         Instant.parse("2026-08-07T21:30:00Z"),
                         Instant.parse("2026-08-07T21:31:00Z"));
+        assertThat(history.getFirst().gridWordsBoard()).hasValueSatisfying(board ->
+                assertThat(board.canonicalText()).isEqualTo("🟩🟩🟩🟩🟩"));
+        assertThat(history.get(1).quadWordsBoards()).isEmpty();
         assertThat(result.liveUnlockBatch()).isPresent();
         assertThat(state("crossgame.participation.1").write().status()).isEqualTo(AchievementAwardState.Status.ACTIVE);
         assertThat(state("crossgame.success.1").write().status()).isEqualTo(AchievementAwardState.Status.ACTIVE);
@@ -160,6 +165,41 @@ class PostgresAchievementReconciliationIT {
                 """, Integer.class)).isEqualTo(1);
         assertThat(announcementItems(announcement.registration().key()).size()).isLessThan(initialItems);
         assertThat(pendingAnnouncement().deliveryState()).isEqualTo(AchievementAnnouncement.DeliveryState.OPEN);
+    }
+
+    @Test
+    void canonicalGridBoardCorrectionInvalidatesAndReactivatesTheNewPatternAward() {
+        insertPlayerAndParticipation();
+        long resultId = insertResult(101, "GRIDWORDS", false, null, Instant.parse("2026-08-07T21:30:00Z"));
+        String repeatedPattern = String.join("\n",
+                "⬜⬜🟨⬜🟩", "⬜⬜🟨⬜🟩", "⬜⬜🟨⬜🟩",
+                "🟨⬜⬜⬜⬜", "⬜🟨⬜⬜⬜", "⬜⬜🟨⬜⬜");
+        jdbc.update("UPDATE game_result SET normalized_board=? WHERE id=?", repeatedPattern, resultId);
+        AchievementReconciliationService service = service(jdbc);
+
+        service.reconcile(liveRequest("submission:101"));
+        assertThat(state("situational.repeated_pattern.gridwords").write().status())
+                .isEqualTo(AchievementAwardState.Status.ACTIVE);
+
+        jdbc.update("UPDATE game_result SET normalized_board=? WHERE id=?", String.join("\n",
+                "⬜⬜🟨⬜🟩", "⬜⬜🟨⬜🟩", "⬜🟨🟨⬜🟩",
+                "🟨⬜⬜⬜⬜", "⬜🟨⬜⬜⬜", "⬜⬜🟨⬜⬜"), resultId);
+        service.reconcile(correctionRequest());
+        assertThat(state("situational.repeated_pattern.gridwords").write().status())
+                .isEqualTo(AchievementAwardState.Status.INVALIDATED);
+
+        jdbc.update("UPDATE game_result SET normalized_board=? WHERE id=?", repeatedPattern, resultId);
+        service.reconcile(correctionRequest());
+        assertThat(state("situational.repeated_pattern.gridwords").write().status())
+                .isEqualTo(AchievementAwardState.Status.ACTIVE);
+        assertThat(jdbc.queryForObject("""
+                SELECT count(*) FROM achievement_event
+                 WHERE achievement_key='situational.repeated_pattern.gridwords' AND event_type='INVALIDATED'
+                """, Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("""
+                SELECT count(*) FROM achievement_event
+                 WHERE achievement_key='situational.repeated_pattern.gridwords' AND event_type='REACTIVATED'
+                """, Integer.class)).isEqualTo(1);
     }
 
     @Test
@@ -234,7 +274,7 @@ class PostgresAchievementReconciliationIT {
 
     private AchievementReconciliationService service(
             JdbcTemplate template, AchievementHistoryQuery history, AchievementEventStore events) {
-        AchievementDefinitionCatalog catalog = AchievementDefinitionCatalog.achievementsV1();
+        AchievementDefinitionCatalog catalog = AchievementDefinitionCatalog.achievementsV2();
         TransactionTemplate transactions = new TransactionTemplate(new DataSourceTransactionManager(template.getDataSource()));
         AchievementTransactionRunner runner = new AchievementTransactionRunner() {
             @Override
@@ -316,7 +356,7 @@ class PostgresAchievementReconciliationIT {
     private void bootstrapSucceeded() {
         PostgresAchievementBootstrapStore bootstraps = new PostgresAchievementBootstrapStore(jdbc, CLOCK);
         AchievementWork.BootstrapKey key = new AchievementWork.BootstrapKey(
-                GUILD_ID, AchievementDefinitionCatalog.achievementsV1().version());
+                GUILD_ID, AchievementDefinitionCatalog.achievementsV2().version());
         bootstraps.register(key);
         AchievementWork.LeaseClaim claim = bootstraps.claim(
                 key, new AchievementWork.LeaseClaimRequest(NOW, NOW.plusSeconds(60))).orElseThrow();
@@ -338,7 +378,7 @@ class PostgresAchievementReconciliationIT {
 
     private long insertResult(long sourceMessageId, String game, boolean solved, Integer attempts, Instant receivedAt) {
         int maxAttempts = game.equals("GRIDWORDS") ? 6 : 9;
-        String board = game.equals("GRIDWORDS") ? "ABCDE" : null;
+        String board = game.equals("GRIDWORDS") ? "🟩🟩🟩🟩🟩" : null;
         Long resultId = jdbc.queryForObject("""
                 INSERT INTO game_result (
                     player_id,game_type,game_date,solved,attempts_used,max_attempts,duration_seconds,

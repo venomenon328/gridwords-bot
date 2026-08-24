@@ -2,9 +2,9 @@
 
 ## Modell und Definitionsversion
 
-Die aktive Definitionsversion `achievements-v1` enthält genau 60 stabile Definitionen. Jede besitzt einen unveränderlichen Schlüssel, Kategorie, Scope, Namen, Text und Emoji. Kategorien sind `EXPERIENCE`, `RELIABILITY`, `PERFORMANCE` und `SPECIAL`; Scopes sind `GRIDWORDS`, `QUADWORDS`, `CROSS_GAME` und `GLOBAL`.
+Die aktive Definitionsversion `achievements-v2` enthält genau 62 stabile Definitionen. Jede besitzt einen unveränderlichen Schlüssel, Kategorie, Scope, Namen, Text und Emoji. Kategorien sind `EXPERIENCE`, `RELIABILITY`, `PERFORMANCE` und `SPECIAL`; Scopes sind `GRIDWORDS`, `QUADWORDS`, `CROSS_GAME` und `GLOBAL`. Der unveränderte 60er-Katalog `achievements-v1` bleibt historischer Auditbestand.
 
-Kanonische Quellen sind gültige Spielergebnisse, deren ursprünglicher Empfangszeitpunkt, historisch wirksame Teilnahme, QuadWords-Boarddaten sowie daraus abgeleitete Tages- und Serienzustände. `earned_on` bezeichnet den fachlichen Erreichungstag; `detected_at` den getrennten technischen Erkennungszeitpunkt.
+Kanonische Quellen sind gültige Spielergebnisse, deren ursprünglicher Empfangszeitpunkt, historisch wirksame Teilnahme, GridWords- und QuadWords-Boarddaten sowie daraus abgeleitete Tages- und Serienzustände. `earned_on` bezeichnet den fachlichen Erreichungstag; `detected_at` den getrennten technischen Erkennungszeitpunkt.
 
 ## Verbindlicher Katalog
 
@@ -71,13 +71,15 @@ Teilnahmeserien verwenden aufeinanderfolgende Tage historischer Spielteilnahme m
 | `situational.crossgame.double_last_chance` | am selben Tag GridWords `6/6` und QuadWords `9/9`, beide gelöst |
 | `situational.deja_vu.gridwords` | drei unmittelbar aufeinanderfolgende gültige gelöste GridWords-Ergebnisse mit identischem Endwert |
 | `situational.deja_vu.quadwords` | drei unmittelbar aufeinanderfolgende gültige gelöste QuadWords-Ergebnisse mit identischem `n/9`; Boarddaten sind irrelevant |
+| `situational.repeated_pattern.gridwords` | ein kanonisches GridWords-Board enthält mindestens drei unmittelbar aufeinanderfolgende, exakt gleiche Fünf-Felder-Farbzeilen; die Lösung des Spiels ist nicht erforderlich |
+| `situational.all_yellow_row` | mindestens eine kanonische Boardzeile in GridWords oder auf einem der vier QuadWords-Boards ist exakt `🟨🟨🟨🟨🟨` |
 | `timing.before_0700` | ein ursprünglicher gültiger Share vor 07:00 Uhr lokaler Zeit |
 | `timing.after_2300` | ein ursprünglicher gültiger Share ab 23:00 Uhr lokaler Zeit |
 | `situational.crossgame.perfect_double` | am selben Tag GridWords `1/6` und QuadWords `4/9`, beide gelöst |
 | `situational.failure_run.3.gridwords` | drei unmittelbar aufeinanderfolgende gültige erfolglose GridWords-Ergebnisse |
 | `situational.failure_run.3.quadwords` | drei unmittelbar aufeinanderfolgende gültige erfolglose QuadWords-Ergebnisse |
 
-Nur die beiden Boarddefinitionen benötigen Boarddaten; historische boardlose Ergebnisse bleiben für alle anderen Definitionen auswertbar.
+Die vier boardabhängigen Definitionen verwenden ausschließlich kanonische Boarddaten. `situational.repeated_pattern.gridwords` liest `normalized_board`; `situational.all_yellow_row` liest für GridWords ebenfalls `normalized_board` und für QuadWords die vier kanonischen Boardspalten. Ein boardloses QuadWords-Ergebnis ist dafür ein normaler Non-Match; historische boardlose Ergebnisse bleiben für alle anderen Definitionen auswertbar.
 
 ### Anzeigenamen und Emojis
 
@@ -140,6 +142,8 @@ Diese Metadaten gehören zur stabilen Definition; die Bedingungen ergeben sich a
 | `situational.crossgame.double_last_chance` | 💓 | GW+QW: Doppeltes Herzschlagfinale |
 | `situational.deja_vu.gridwords` | 🔁 | GW: Déjà-vu |
 | `situational.deja_vu.quadwords` | 🔁 | QW: Déjà-vu |
+| `situational.repeated_pattern.gridwords` | 🪞 | GW: Mustertreue |
+| `situational.all_yellow_row` | 🟨 | Alles da, nichts sitzt |
 | `timing.before_0700` | 🌅 | Frühaufsteher |
 | `timing.after_2300` | 🦉 | Nachteule |
 | `situational.crossgame.perfect_double` | ✨ | GW+QW: Perfekter Doppelschlag |
@@ -150,13 +154,13 @@ Diese Metadaten gehören zur stabilen Definition; die Bedingungen ergeben sich a
 
 Der aktuelle Award-Zustand ist materialisiert, das Achievement-Ereignis append-only und die Discord-Ankündigung eine getrennte Delivery-Projektion. Reconciliation berechnet den Sollzustand aus den Quellen und führt abhängig vom bisherigen Zustand Unlock, No-op, Reaktivierung oder Invalidierung aus. Korrekturen dürfen eine Vergabe invalidieren oder wieder aktivieren; eine öffentliche Aberkennungsnachricht gibt es nicht.
 
-Historischer Bootstrap ist öffentlich still, speichert aber rückwirkende Vergaben. Vor erfolgreichem Bootstrap der aktiven Definitionsversion sind Live-Ankündigungen gesperrt. Nach Einführung erhält jeder relevante Teilnehmer höchstens eine zusammengefasste Einführung; neue Live-Unlocks werden pro Ursache aggregiert veröffentlicht.
+Historischer Bootstrap ist öffentlich still, speichert aber rückwirkende Vergaben. Vor erfolgreichem Bootstrap der aktiven Definitionsversion sind Live-Ankündigungen gesperrt. Die ursprüngliche `achievements-v1`-Einführung bleibt pro Teilnehmer höchstens eine zusammengefasste logische Delivery. `achievements-v2` ist ein stilles Katalogupgrade: Es erzeugt keine zweite historische Introduction und keine öffentliche historische Unlock-Flut; vorhandenes v1-Audit und offene v1-Delivery bleiben erhalten. Neue Live-Unlocks werden pro Ursache aggregiert veröffentlicht.
 
 ## Commands und Darstellungen
 
 `/achievements` zeigt ephemer ausschließlich aktuell aktive Vergaben für den Aufrufer oder einen optional gewählten Nutzer. Optional kann nach `game=GridWords` oder `game=QuadWords` gefiltert werden; ohne Filter gilt `Alle`, wobei `CROSS_GAME` und `GLOBAL` nur unter `Alle` erscheinen. Jede ausgegebene Vergabe zeigt ihr fachliches `earned_on` als `Freigeschaltet am DD.MM.YYYY`. Es gibt keinen Datumsfilter und keinen quantitativen Fortschritt.
 
-`/achievement-list` ist self-only, strikt read-only und ephemer. Ohne Filter zeigt es alle 60 Definitionen in stabiler Katalogreihenfolge mit ausschließlich `✅` für aktuell `ACTIVE` und `❌` für fehlend oder `INVALIDATED`. Die drei frei kombinierbaren Filter sind:
+`/achievement-list` ist self-only, strikt read-only und ephemer. Ohne Filter zeigt es alle 62 Definitionen in stabiler Katalogreihenfolge mit ausschließlich `✅` für aktuell `ACTIVE` und `❌` für fehlend oder `INVALIDATED`. Die drei frei kombinierbaren Filter sind:
 
 - `game`: `Alle`, `GridWords`, `QuadWords`, `GW+QW`; `GLOBAL` erscheint nur bei `Alle`,
 - `category`: `Alle`, `Erfahrung`, `Zuverlässigkeit`, `Leistung`, `Besonderes`,

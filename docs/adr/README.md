@@ -25,3 +25,4 @@ ADRs dokumentieren getroffene Architekturentscheidungen in ihrem damaligen Konte
 | [0019](0019-migration-clean-install-gate.md) | Reproduzierbarer Migration-Clean-Install-Gate | akzeptiert |
 | [0020](0020-achievement-state-reconciliation-and-delivery.md) | Achievement-Reconciliation und idempotente Delivery | akzeptiert |
 | [0021](0021-targeted-parser-rejection-recovery.md) | Gezielte Recovery persistierter Parser-Ablehnungen | akzeptiert |
+| [0022](0022-achievements-v2-silent-catalog-upgrade.md) | Stilles `achievements-v2`-Katalogupgrade | akzeptiert |
