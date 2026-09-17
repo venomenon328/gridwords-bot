@@ -12,8 +12,9 @@ public interface ReminderCandidateStore {
     /**
      * One active player who still misses at least one game.
      *
-     * <p>All such players are rendered in the reminder. {@code reminderOptIn} controls only whether the Discord
-     * transport addresses the player with an actual user mention or displays the server name as plain text.</p>
+     * <p>A reminder is sent only when at least one candidate opted in. If it is sent, all candidates are rendered;
+     * {@code reminderOptIn} controls whether the Discord transport addresses this player with an actual user mention
+     * or displays the server name as plain text.</p>
      */
     record ReminderCandidate(
             long discordUserId,

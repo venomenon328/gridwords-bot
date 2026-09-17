@@ -42,16 +42,36 @@ class ReminderDeliveryServiceTest {
     }
 
     @Test
+    void sendsWhenEveryMissingPlayerOptedIn() {
+        RecordingStore store = new RecordingStore();
+        List<ReminderCandidateStore.ReminderCandidate> selected = List.of(
+                new ReminderCandidateStore.ReminderCandidate(
+                        42, "Name", List.of(GameType.GRIDWORDS), true),
+                new ReminderCandidateStore.ReminderCandidate(
+                        43, "Other", List.of(GameType.QUADWORDS), true));
+        RecordingGateway gateway = new RecordingGateway();
+
+        service(store, date -> selected, gateway).deliver(DATE, 1, LocalTime.of(18, 0));
+
+        assertThat(gateway.calls).isOne();
+        assertThat(gateway.allowed).containsExactlyInAnyOrder(42L, 43L);
+        assertThat(gateway.candidates).isEqualTo(selected);
+        assertThat(store.completed).isEqualTo(DailyStatusStore.ReminderState.SENT);
+        assertThat(store.messageId).contains(99L);
+    }
+
+    @Test
     void persistsNoCandidatesWithoutDiscordCall() {
         RecordingStore store = new RecordingStore();
         RecordingGateway gateway = new RecordingGateway();
         service(store, date -> List.of(), gateway).deliver(DATE, 1, LocalTime.of(18, 0));
         assertThat(store.completed).isEqualTo(DailyStatusStore.ReminderState.NO_CANDIDATES);
+        assertThat(store.messageId).isEmpty();
         assertThat(gateway.calls).isZero();
     }
 
     @Test
-    void sendsPlainSummaryEvenWhenEveryMissingPlayerOptedOut() {
+    void persistsNoCandidatesWhenEveryMissingPlayerOptedOut() {
         RecordingStore store = new RecordingStore();
         RecordingGateway gateway = new RecordingGateway();
         ReminderCandidateStore candidates = date -> List.of(
@@ -60,13 +80,13 @@ class ReminderDeliveryServiceTest {
 
         service(store, candidates, gateway).deliver(DATE, 1, LocalTime.of(18, 0));
 
-        assertThat(gateway.calls).isOne();
-        assertThat(gateway.allowed).isEmpty();
-        assertThat(store.completed).isEqualTo(DailyStatusStore.ReminderState.SENT);
+        assertThat(gateway.calls).isZero();
+        assertThat(store.completed).isEqualTo(DailyStatusStore.ReminderState.NO_CANDIDATES);
+        assertThat(store.messageId).isEmpty();
     }
 
     @Test
-    void secondAttemptReloadsCandidates() {
+    void secondAttemptReloadsCandidatesAndSuppressesOptOutOnlyAudience() {
         RecordingStore store = new RecordingStore();
         int[] reads = {0};
         ReminderCandidateStore candidates = date -> ++reads[0] == 1
@@ -81,10 +101,13 @@ class ReminderDeliveryServiceTest {
         service.deliver(DATE, 2, LocalTime.of(23, 0));
 
         assertThat(reads[0]).isEqualTo(2);
-        assertThat(gateway.allowed).isEmpty();
+        assertThat(gateway.calls).isOne();
+        assertThat(gateway.allowed).containsExactly(42L);
         assertThat(gateway.candidates).singleElement()
                 .extracting(ReminderCandidateStore.ReminderCandidate::discordUserId)
-                .isEqualTo(43L);
+                .isEqualTo(42L);
+        assertThat(store.completed).isEqualTo(DailyStatusStore.ReminderState.NO_CANDIDATES);
+        assertThat(store.messageId).isEmpty();
     }
 
     @Test

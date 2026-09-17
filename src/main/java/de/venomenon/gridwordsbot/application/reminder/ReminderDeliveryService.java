@@ -48,6 +48,10 @@ public final class ReminderDeliveryService {
                     .filter(ReminderCandidateStore.ReminderCandidate::reminderOptIn)
                     .map(ReminderCandidateStore.ReminderCandidate::discordUserId)
                     .collect(Collectors.toUnmodifiableSet());
+            if (allowed.isEmpty()) {
+                store.completeReminder(claim, DailyStatusStore.ReminderState.NO_CANDIDATES, java.util.Optional.empty());
+                return;
+            }
             long messageId = messages.send(channelId, date, stage, selected, allowed);
             store.completeReminder(claim, DailyStatusStore.ReminderState.SENT, java.util.Optional.of(messageId));
         } catch (DiscordDeliveryException exception) {
